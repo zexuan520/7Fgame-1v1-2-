@@ -155,7 +155,9 @@ def sfx():
     S["memory"] = delay(mix(*[np.concatenate([np.zeros(int(k * 0.15 * SR)), tone(f, 1.2, harm=((1, 1), (3, 0.15)), decay=0.6)])
                               for k, f in enumerate([440, 554, 659])]), 0.2, 0.35)
     S["death"] = mix(tone(98, 1.4, harm=((1, 1), (1.5, 0.4)), decay=0.6), lowpass(noise(1.0), 400) * env(1.0, 0.05, 0.4) * 0.5)
-    S["boss"] = mix(thud(45, 1.6, 0.7), metal(130, 1.8, 1.0) * 0.6)
+    # 头目登场：一记铜管味的和弦重音加镲片（不用锣，不要日式味）
+    stab = mix(*[tone(f, 1.4, harm=((1, 1), (2, 0.5), (3, 0.35), (4, 0.2)), decay=0.5, attack=0.01) for f in (110, 165, 220, 262)])
+    S["boss"] = mix(stab * 0.8, thud(50, 1.0, 0.3) * 0.8, bandpass(noise(1.4), 3000, 10000) * env(1.4, 0.002, 0.45) * 0.5)
     S["ui_move"] = tone(880, 0.05, decay=0.015) * 0.5
     S["ui_select"] = mix(tone(660, 0.12, decay=0.05), np.concatenate([np.zeros(int(0.04 * SR)), tone(990, 0.12, decay=0.05)]))
     S["ui_back"] = tone(440, 0.1, decay=0.04) * 0.6
@@ -166,106 +168,205 @@ def sfx():
 
 
 # ---------------- 背景音乐 ----------------
-# 都是五声音阶的小段，拨弦（Karplus-Strong）+ 竹笛（带颤音的正弦）+ 太鼓 + 持续低音，长度是小节的整数倍，首尾接得上
+# 轻快的大调小段（头目战用小调）：和弦进行 + 木琴琶音 + 主旋律 + 贝斯 + 轻鼓组。
+# 每首长度是小节的整数倍，尾巴叠回开头，首尾接得上。
 
-def pluck(freq, dur, sr=MSR, damp=0.996):
-    n = int(dur * sr)
-    period = max(2, int(sr / freq))
-    buf = rng.uniform(-1, 1, period)
-    out = np.zeros(n)
-    for i in range(n):
-        out[i] = buf[i % period]
-        buf[i % period] = damp * 0.5 * (buf[i % period] + buf[(i + 1) % period])
-    return out * np.exp(-np.arange(n) / sr / (dur * 0.5))
+MAJOR = [0, 2, 4, 5, 7, 9, 11]
+MINOR = [0, 2, 3, 5, 7, 8, 10]
 
 
-def flute(freq, dur, sr=MSR):
+def pitch(root, scale, deg):
+    """音阶上第 deg 级（0 = 主音，可以是负数或超过 7）"""
+    octv, k = divmod(int(deg), 7)
+    return root * 2 ** ((scale[k] + 12 * octv) / 12)
+
+
+def marimba(freq, dur, sr=MSR):
     tt = t(dur, sr)
-    vib = 1 + 0.006 * np.sin(2 * np.pi * 5.2 * tt) * np.minimum(tt / 0.3, 1)
+    return (np.sin(2 * np.pi * freq * tt) * np.exp(-tt / 0.22)
+            + 0.35 * np.sin(2 * np.pi * freq * 4 * tt) * np.exp(-tt / 0.04)
+            + 0.08 * np.sin(2 * np.pi * freq * 10 * tt) * np.exp(-tt / 0.01))
+
+
+def lead(freq, dur, sr=MSR, soft=False):
+    """主旋律：柔和的方波（只取奇次谐波、再低通），轻微颤音，起音不硬"""
+    tt = t(dur + 0.12, sr)
+    vib = 1 + 0.003 * np.sin(2 * np.pi * 5.5 * tt) * np.clip((tt - 0.15) / 0.2, 0, 1)
     ph = 2 * np.pi * np.cumsum(freq * vib) / sr
-    body = np.sin(ph) + 0.2 * np.sin(2 * ph) + 0.08 * np.sin(3 * ph)
-    breath = lowpass(rng.uniform(-1, 1, len(tt)), 3000, sr) * 0.06
-    a = np.minimum(tt / 0.08, 1) * np.minimum((dur - tt) / 0.15, 1)
-    return (body + breath) * np.clip(a, 0, 1)
+    if soft:
+        body = np.sin(ph) + 0.15 * np.sin(2 * ph)
+    else:
+        body = np.sin(ph) + np.sin(3 * ph) / 3 * 0.6 + np.sin(5 * ph) / 5 * 0.3
+    a = np.clip(tt / 0.015, 0, 1) * np.clip((dur + 0.12 - tt) / 0.12, 0, 1) * (0.75 + 0.25 * np.exp(-tt / 0.1))
+    return body * a
 
 
-def taiko(sr=MSR, big=True):
-    dur = 0.6 if big else 0.25
+def bass(freq, dur, sr=MSR):
     tt = t(dur, sr)
-    f = (70 if big else 140) * (1 + np.exp(-tt / 0.03))
-    ph = 2 * np.pi * np.cumsum(f) / sr
-    return np.sin(ph) * np.exp(-tt / (0.18 if big else 0.06)) + lowpass(rng.uniform(-1, 1, len(tt)), 800, sr) * np.exp(-tt / 0.02) * 0.3
+    body = np.sin(2 * np.pi * freq * tt) + 0.35 * np.sin(4 * np.pi * freq * tt) + 0.12 * np.sin(6 * np.pi * freq * tt)
+    return body * np.clip(tt / 0.006, 0, 1) * np.exp(-tt / max(0.08, dur * 0.7))
+
+
+def kick(sr=MSR):
+    tt = t(0.3, sr)
+    f = 55 * (1 + 2.5 * np.exp(-tt / 0.025))
+    return np.sin(2 * np.pi * np.cumsum(f) / sr) * np.exp(-tt / 0.11)
+
+
+def snare(sr=MSR):
+    tt = t(0.22, sr)
+    return (bandpass(rng.uniform(-1, 1, len(tt)), 1500, 7000, sr) * np.exp(-tt / 0.05) * 0.8
+            + np.sin(2 * np.pi * 190 * tt) * np.exp(-tt / 0.04) * 0.5)
+
+
+def hat(sr=MSR, open_=False):
+    dur = 0.18 if open_ else 0.05
+    tt = t(dur, sr)
+    x = rng.uniform(-1, 1, len(tt))
+    x = x - lowpass(x, 6000, sr)
+    return x * np.exp(-tt / (0.06 if open_ else 0.012))
+
+
+def shaker(sr=MSR):
+    tt = t(0.08, sr)
+    x = bandpass(rng.uniform(-1, 1, len(tt)), 4000, 9000, sr)
+    return x * np.sin(np.pi * np.clip(tt / 0.08, 0, 1)) ** 2
 
 
 def place(track, x, at, gain=1.0, sr=MSR):
     i = int(at * sr)
+    if i >= len(track):
+        return
     j = min(len(track), i + len(x))
     track[i:j] += x[:j - i] * gain
 
 
-def note(root, deg):
-    """五声音阶：宫商角徵羽（0 2 4 7 9），deg 可以超过 5 往上一组"""
-    scale = [0, 2, 4, 7, 9]
-    octv, k = divmod(deg, 5)
-    return root * 2 ** ((scale[k] + 12 * octv) / 12)
+ARPS = {
+    # 一小节 8 个八分音符，弹和弦里的第几个音（0 根音 1 三音 2 五音 3 高八度根音）
+    "up": [0, 1, 2, 3, 2, 1, 2, 1],
+    "bounce": [0, 2, 1, 2, 3, 2, 1, 2],
+    "wide": [0, 2, 3, 2, 1, 3, 2, 3],
+}
 
 
-def music_track(name, bpm, bars, root, melody, drums, flute_line, drone_gain, mood_dark=False):
+def _b_section(melody, chords_a, chords_b, lift=0):
+    """B 段旋律：照 A 段的节奏，每个音换成 B 段和弦里离原来最近的和弦音（可以整体抬高 lift 级）"""
+    out = []
+    for b, deg, d in melody:
+        bar = int(b // 4)
+        if bar >= len(chords_b):
+            continue
+        ch = chords_b[bar]
+        target = deg + lift
+        cands = [ch + k + 7 * o for o in range(-2, 3) for k in (0, 2, 4)]
+        # 强拍落在和弦音上，弱拍保留原来的经过音
+        if b % 1 == 0:
+            target = min(cands, key=lambda c: (abs(c - target), c))
+        out.append((b + len(chords_a) * 4, target, d))
+    return out
+
+
+def song(name, bpm, root, scale, chords, melody, drums, arp="up", bass_pat=(0, 2), lead_soft=False,
+         lead_gain=0.32, arp_gain=0.22, bass_gain=0.42, drum_gain=1.0, echo=0.25, chords_b=None, lift=0):
+    """chords：每小节一个和弦（音阶级数）；melody：[(拍, 音阶级数, 拍数)]，从第 0 小节开始，循环填满整首；
+    drums：{"kick": [拍...], "snare": [...], "hat": [...], "shaker": [...]}（一小节内）"""
     beat = 60.0 / bpm
+    if chords_b:
+        melody = list(melody) + _b_section(melody, chords, chords_b, lift)
+        chords = list(chords) + list(chords_b)
+    bars = len(chords)
     total = bars * 4 * beat
-    tr = np.zeros(int(total * MSR) + MSR)
-    # 低音持续
-    tt = t(total, MSR)
-    drone = np.sin(2 * np.pi * root / 2 * tt) + 0.4 * np.sin(2 * np.pi * root * 0.75 * tt)
-    if mood_dark:
-        drone += 0.3 * np.sin(2 * np.pi * root * 0.53 * tt)
-    place(tr, drone * drone_gain * (0.8 + 0.2 * np.sin(2 * np.pi * tt / (beat * 8))), 0)
-    # 拨弦旋律：melody 是 [(第几拍, 音阶位置, 拍数)]，一段旋律重复填满
-    span = max(b + d for b, _, d in melody)
+    tr = np.zeros(int(total * MSR) + MSR * 2)
+    for bar, ch in enumerate(chords):
+        t0 = bar * 4 * beat
+        tones = [pitch(root, scale, ch), pitch(root, scale, ch + 2), pitch(root, scale, ch + 4), pitch(root, scale, ch + 7)]
+        # 琶音（高一个八度）
+        for i, k in enumerate(ARPS[arp]):
+            place(tr, marimba(tones[k] * 2, 0.6), t0 + i * beat / 2, arp_gain * (1.0 if i % 2 == 0 else 0.75))
+        # 贝斯：根音，在 bass_pat 的拍子上；反拍跳一下高八度
+        for b in bass_pat:
+            place(tr, bass(tones[0] / 2, beat * 0.9), t0 + b * beat, bass_gain)
+            place(tr, bass(tones[0], beat * 0.4), t0 + (b + 1.5) * beat, bass_gain * 0.45)
+        # 鼓
+        for b in drums.get("kick", []):
+            place(tr, kick(), t0 + b * beat, 0.8 * drum_gain)
+        for b in drums.get("snare", []):
+            place(tr, snare(), t0 + b * beat, 0.45 * drum_gain)
+        for b in drums.get("hat", []):
+            place(tr, hat(), t0 + b * beat, 0.18 * drum_gain)
+        for b in drums.get("shaker", []):
+            place(tr, shaker(), t0 + b * beat, 0.16 * drum_gain)
+    # 主旋律（高一个八度），带一点回声
+    span = 4 * max(1, int(np.ceil(max(b + d for b, _, d in melody) / 4)))
+    mel = np.zeros_like(tr)
     rep = 0
     while rep * span < bars * 4:
         for b, deg, d in melody:
             at = (rep * span + b) * beat
             if at < total:
-                place(tr, pluck(note(root * 2, deg), d * beat + 0.5), at, 0.5)
+                place(mel, lead(pitch(root * 2, scale, deg), d * beat * 0.92, soft=lead_soft), at, lead_gain)
         rep += 1
-    # 鼓：drums 是一小节里的 [(拍, 大鼓?)]
-    for bar in range(bars):
-        for b, big in drums:
-            place(tr, taiko(big=big), (bar * 4 + b) * beat, 0.7 if big else 0.35)
-    # 笛子：隔几小节吹一句
-    for start_bar, line in flute_line:
-        at = start_bar * 4 * beat
-        for b, deg, d in line:
-            place(tr, flute(note(root * 4, deg), d * beat), at + b * beat, 0.28)
+    tr += mel + delay(mel, beat * 0.75, echo, MSR)[:len(mel)]
     # 首尾接上：把多出来的尾巴叠回开头
     n = int(total * MSR)
     tr[:len(tr) - n] += tr[n:]
     tr = tr[:n]
+    # 最后 10 毫秒慢慢靠到开头那个采样上，循环接缝不爆音
+    k = int(0.01 * MSR)
+    tr[-k:] = tr[-k:] + (tr[0] - tr[-1]) * np.linspace(0, 1, k)
     write(os.path.join(ROOT, "music", name + ".wav"), tr, MSR)
 
 
 def music():
-    # 破庙：慢、安静，只有拨弦和远远的笛子
-    music_track("hub", 66, 8, 196.0,
-                [(0, 4, 2), (2, 3, 1), (3, 2, 1), (4, 0, 3), (8, 2, 1), (9, 3, 1), (10, 4, 2), (12, 1, 4)],
-                [], [(2, [(0, 7, 3), (3, 6, 1), (4, 5, 4)]), (6, [(0, 5, 2), (2, 4, 2), (4, 2, 4)])], 0.18)
-    # 荒村：紧一点，有太鼓
-    music_track("village", 92, 8, 220.0,
-                [(0, 2, 1), (1, 4, 1), (2, 5, 1), (3, 4, 1), (4, 2, 2), (6, 1, 1), (7, 0, 1),
-                 (8, 2, 1), (9, 4, 1), (10, 7, 2), (12, 5, 1), (13, 4, 1), (14, 2, 2)],
-                [(0, True), (2.5, False), (3, True)], [(4, [(0, 9, 2), (2, 7, 2), (4, 5, 4)])], 0.14)
-    # 竹林古寺：笛子为主，空灵
-    music_track("bamboo", 76, 8, 233.08,
-                [(0, 0, 2), (3, 2, 1), (4, 4, 2), (7, 3, 1), (8, 2, 3), (12, 0, 4)],
-                [(0, True)], [(0, [(0, 7, 2), (2, 9, 2), (4, 7, 1), (5, 5, 3)]), (2, [(0, 5, 2), (2, 4, 2), (4, 2, 4)]),
-                              (4, [(0, 9, 3), (3, 7, 1), (4, 10, 4)]), (6, [(0, 7, 2), (2, 5, 2), (4, 4, 4)])], 0.16)
-    # 头目：快、重，太鼓密
-    music_track("boss", 128, 8, 174.61,
-                [(0, 0, 0.5), (0.5, 0, 0.5), (1, 2, 0.5), (1.5, 3, 0.5), (2, 4, 1), (3, 3, 1),
-                 (4, 0, 0.5), (4.5, 0, 0.5), (5, 2, 0.5), (5.5, 4, 0.5), (6, 5, 1), (7, 4, 1)],
-                [(0, True), (1, False), (1.5, False), (2, True), (3, False), (3.5, True)],
-                [(4, [(0, 7, 1), (1, 8, 1), (2, 9, 2)]), (6, [(0, 9, 1), (1, 8, 1), (2, 7, 2)])], 0.2, True)
+    # 破庙：温和轻快，回到据点歇口气
+    song("hub", 96, 174.61, MAJOR, [0, 5, 3, 4, 0, 5, 3, 4],
+         [(0, 4, 1), (1, 2, 0.5), (1.5, 4, 0.5), (2, 5, 1), (3, 4, 1),
+          (4, 2, 1.5), (5.5, 0, 0.5), (6, 1, 1), (7, 2, 1),
+          (8, 3, 1), (9, 5, 1), (10, 7, 1), (11, 5, 1),
+          (12, 4, 2), (14, 6, 1), (15, 4, 1),
+          (16, 7, 1), (17, 6, 0.5), (17.5, 7, 0.5), (18, 9, 1), (19, 7, 1),
+          (20, 5, 2), (22, 4, 1), (23, 2, 1),
+          (24, 3, 1), (25, 2, 1), (26, 3, 1), (27, 5, 1),
+          (28, 6, 1), (29, 4, 1), (30, 1, 2)],
+         {"kick": [0, 2.5], "shaker": [0.5, 1.5, 2.5, 3.5], "snare": [3]},
+         arp="up", bass_pat=(0, 2), lead_soft=True, lead_gain=0.3, drum_gain=0.6, chords_b=[3, 4, 2, 5, 3, 4, 0, 0])
+    # 荒村：出发冒险，蹦蹦跳跳
+    song("village", 124, 196.0, MAJOR, [0, 4, 5, 3, 0, 4, 3, 4],
+         [(0, 4, 0.5), (0.5, 4, 0.5), (1, 5, 0.5), (1.5, 4, 0.5), (2, 2, 1), (3, 4, 1),
+          (4, 4, 0.5), (4.5, 6, 0.5), (5, 8, 1), (6, 6, 1), (7, 4, 1),
+          (8, 5, 0.5), (8.5, 5, 0.5), (9, 7, 0.5), (9.5, 5, 0.5), (10, 4, 1), (11, 2, 1),
+          (12, 3, 1), (13, 2, 0.5), (13.5, 3, 0.5), (14, 4, 2),
+          (16, 7, 1), (17, 6, 0.5), (17.5, 5, 0.5), (18, 4, 1), (19, 2, 1),
+          (20, 1, 0.5), (20.5, 2, 0.5), (21, 4, 1), (22, 6, 2),
+          (24, 5, 1), (25, 7, 1), (26, 8, 0.5), (26.5, 7, 0.5), (27, 5, 1),
+          (28, 4, 1.5), (29.5, 6, 0.5), (30, 4, 2)],
+         {"kick": [0, 1.5, 2], "snare": [1, 3], "hat": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5]},
+         arp="bounce", bass_pat=(0, 2), lead_gain=0.3, chords_b=[5, 3, 0, 4, 5, 3, 1, 4], lift=2)
+    # 竹林古寺：清亮，风吹竹叶的感觉
+    song("bamboo", 108, 146.83, MAJOR, [0, 2, 3, 4, 5, 3, 0, 4],
+         [(0, 7, 1.5), (1.5, 8, 0.5), (2, 9, 1), (3, 7, 1),
+          (4, 6, 2), (6, 4, 1), (7, 6, 1),
+          (8, 5, 1), (9, 7, 1), (10, 10, 1.5), (11.5, 9, 0.5),
+          (12, 8, 3), (15, 6, 1),
+          (16, 9, 1.5), (17.5, 8, 0.5), (18, 7, 1), (19, 5, 1),
+          (20, 5, 1), (21, 6, 1), (22, 7, 2),
+          (24, 9, 1), (25, 7, 1), (26, 4, 1), (27, 7, 1),
+          (28, 6, 2), (30, 8, 2)],
+         {"kick": [0, 2], "snare": [3], "shaker": [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5]},
+         arp="wide", bass_pat=(0, 2), lead_soft=True, lead_gain=0.32, drum_gain=0.75, echo=0.3,
+         chords_b=[3, 4, 5, 2, 3, 1, 4, 4])
+    # 头目：快、有劲（小调，但不是日式音阶）
+    song("boss", 148, 220.0, MINOR, [0, 5, 2, 6, 0, 5, 3, 4],
+         [(0, 4, 0.5), (0.5, 4, 0.5), (1, 7, 1), (2, 6, 0.5), (2.5, 4, 0.5), (3, 2, 1),
+          (4, 2, 0.5), (4.5, 4, 0.5), (5, 5, 1), (6, 4, 1), (7, 2, 1),
+          (8, 4, 0.5), (8.5, 4, 0.5), (9, 7, 1), (10, 9, 1), (11, 8, 1),
+          (12, 6, 2), (14, 4, 1), (15, 6, 1),
+          (16, 7, 1), (17, 9, 1), (18, 8, 0.5), (18.5, 7, 0.5), (19, 6, 1),
+          (20, 7, 0.5), (20.5, 6, 0.5), (21, 4, 1), (22, 2, 2),
+          (24, 3, 1), (25, 5, 1), (26, 7, 1), (27, 8, 1),
+          (28, 6, 2), (30, 4, 1), (31, 6, 1)],
+         {"kick": [0, 1, 2, 3], "snare": [1, 3], "hat": [0.5, 1.5, 2.5, 3.5], "shaker": [0.25, 0.75, 1.25, 1.75, 2.25, 2.75, 3.25, 3.75]},
+         arp="bounce", bass_pat=(0, 1, 2, 3), lead_gain=0.3, bass_gain=0.36, chords_b=[5, 6, 0, 0, 3, 4, 5, 4], lift=2)
 
 
 if __name__ == "__main__":

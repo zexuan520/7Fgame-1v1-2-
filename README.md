@@ -334,7 +334,7 @@ godot --headless --path . res://tests/test_run.tscn
 
 ## 声音
 
-音效和背景音乐都是 `tools/gen_audio.py` 用程序合成的占位声音（`python3 tools/gen_audio.py` 重新生成），放在 `assets/sfx/`（38 个）和 `assets/music/`（破庙、荒村、竹林古寺、头目四首，循环）。换正式素材时直接覆盖同名 wav。
+音效和背景音乐都是 `tools/gen_audio.py` 用程序合成的占位声音（`python3 tools/gen_audio.py` 重新生成），放在 `assets/sfx/`（38 个）和 `assets/music/`（破庙、荒村、竹林古寺、头目四首，循环；轻快的大调和弦进行，木琴琶音、主旋律、贝斯和轻鼓组，头目战用小调，每首有 A、B 两段）。换正式素材时直接覆盖同名 wav。
 
 代码里放声音：`Game.sfx("parry")` 放音效（同一个音效隔不到 0.035 秒的跳过，每次音高随机一点点），`Game.music("hub")` 换背景音乐（淡出淡入）。弹反、格挡、挨打、处决、架势崩溃、危字招式、刀风、跳、闪身、喝药、招式、副武器、铜钱魂玉、开箱、砸罐子、换房间、三选一、记忆碎片、头目登场都有声音。音量（总音量、音乐、音效）在设置里调，存在 `user://settings.cfg`。
 
