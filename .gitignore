@@ -1,2 +1,4 @@
 node_modules/
 video/out/*.png
+video/out/*.wav
+video/out/cues.json

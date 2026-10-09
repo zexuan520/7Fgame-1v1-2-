@@ -7,269 +7,700 @@
 <link rel="stylesheet" href="../node_modules/@fontsource/noto-serif-sc/700.css">
 <link rel="stylesheet" href="../node_modules/@fontsource/noto-sans-sc/400.css">
 <link rel="stylesheet" href="../node_modules/@fontsource/noto-sans-sc/700.css">
+<link rel="stylesheet" href="../node_modules/@fontsource/ma-shan-zheng/400.css">
 <style>
   :root {
-    --bg: #100c0a;
-    --ink: #f3e9d8;
-    --dim: #a89880;
-    --gold: #e0b45a;
-    --red: #c8322b;
+    --bg: #0b0807;
+    --ink: #f4ead8;
+    --dim: #9c8b72;
+    --gold: #e2b65c;
+    --gold2: #fff1c9;
+    --red: #c4302b;
+    --wei: #4c8fe0;
+    --shu: #d9493f;
     --serif: "Noto Serif SC", serif;
     --sans: "Noto Sans SC", sans-serif;
+    --brush: "Ma Shan Zheng", serif;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 1080px; height: 1920px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--sans); }
-  #stage { position: relative; width: 1080px; height: 1920px; overflow: hidden; }
+  #stage { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: var(--bg); }
 
-  /* background layers */
-  #glow { position: absolute; inset: -200px; background:
-      radial-gradient(900px 700px at 50% 42%, rgba(200,50,43,.28), transparent 70%),
-      radial-gradient(700px 500px at 80% 90%, rgba(224,180,90,.10), transparent 70%); }
-  #grid { position: absolute; inset: 0; background-image:
-      linear-gradient(rgba(224,180,90,.05) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(224,180,90,.05) 1px, transparent 1px);
-      background-size: 90px 90px; }
+  /* ---------- atmosphere ---------- */
+  #glow { position: absolute; inset: -300px; background:
+      radial-gradient(800px 700px at 50% 45%, rgba(196,48,43,.30), transparent 70%),
+      radial-gradient(600px 500px at 85% 85%, rgba(226,182,92,.12), transparent 70%),
+      radial-gradient(700px 600px at 10% 10%, rgba(76,143,224,.07), transparent 70%); }
+  .smoke { position: absolute; width: 900px; height: 900px; border-radius: 50%; filter: blur(90px); background: rgba(120,80,60,.20); }
   #embers { position: absolute; inset: 0; }
-  .ember { position: absolute; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 12px var(--gold); }
-  #vignette { position: absolute; inset: 0; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.75)); }
+  .ember { position: absolute; left: 0; top: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--gold2); box-shadow: 0 0 14px 3px rgba(226,182,92,.8); }
+  #vignette { position: absolute; inset: 0; background: radial-gradient(ellipse 75% 65% at center, transparent 50%, rgba(0,0,0,.85)); pointer-events: none; }
+  #grain { position: absolute; inset: 0; width: 1080px; height: 1920px; opacity: .11; mix-blend-mode: overlay; image-rendering: pixelated; }
+  #flash { position: absolute; inset: 0; background: radial-gradient(circle at 50% 45%, #fff6dd, #e2b65c 40%, transparent 75%); opacity: 0; mix-blend-mode: screen; }
+  #frameline { position: absolute; inset: 40px; border: 1px solid rgba(226,182,92,.18); pointer-events: none; }
+  #frameline::before, #frameline::after { content: ""; position: absolute; width: 60px; height: 60px; border-color: rgba(226,182,92,.55); border-style: solid; }
+  #frameline::before { left: -1px; top: -1px; border-width: 3px 0 0 3px; }
+  #frameline::after { right: -1px; bottom: -1px; border-width: 0 3px 3px 0; }
 
-  /* top timeline */
-  #timeline { position: absolute; left: 90px; right: 90px; top: 210px; height: 80px; }
-  #timeline .rail { position: absolute; left: 0; right: 0; top: 30px; height: 2px; background: rgba(243,233,216,.18); }
-  #timeline .fill { position: absolute; left: 0; top: 30px; height: 2px; background: var(--gold); }
-  #timeline .dot { position: absolute; top: 21px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 20px var(--gold); }
-  #timeline .lab { position: absolute; top: 52px; font: 700 24px var(--sans); color: var(--dim); transform: translateX(-50%); }
-  #brand { position: absolute; left: 90px; top: 140px; font: 700 28px var(--serif); letter-spacing: 8px; color: var(--dim); }
+  /* ---------- HUD ---------- */
+  #hud { position: absolute; left: 90px; right: 90px; top: 150px; height: 110px; }
+  #hud .brand { font: 400 40px var(--brush); color: var(--gold); letter-spacing: 6px; }
+  #hud .chap { position: absolute; right: 0; top: 6px; font: 700 26px var(--sans); color: var(--dim); letter-spacing: 6px; }
+  #hud .rail { position: absolute; left: 0; right: 0; top: 78px; height: 2px; background: rgba(244,234,216,.14); }
+  #hud .fill { position: absolute; left: 0; top: 78px; height: 2px; background: linear-gradient(90deg, transparent, var(--gold)); }
+  #hud .dot { position: absolute; top: 71px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: var(--gold2); box-shadow: 0 0 18px 4px var(--gold); }
+  #hud .lab { position: absolute; top: 90px; font: 700 22px var(--sans); color: var(--dim); transform: translateX(-50%); }
 
-  /* scenes */
-  .scene { position: absolute; inset: 0; display: none; }
-  .center { position: absolute; left: 90px; right: 90px; top: 420px; bottom: 420px; display: flex; flex-direction: column; justify-content: center; }
-  .year { font: 900 260px/1 var(--serif); color: var(--gold); letter-spacing: -4px; text-shadow: 0 0 60px rgba(224,180,90,.35); }
-  .month { display: inline-block; margin-top: 18px; padding: 8px 22px; border: 2px solid var(--red); color: #ffb3ab; font: 700 34px var(--sans); letter-spacing: 4px; align-self: flex-start; }
-  .title { margin-top: 48px; font: 900 112px/1.15 var(--serif); }
-  .title em { font-style: normal; color: var(--gold); }
-  .sub { margin-top: 36px; font: 400 44px/1.6 var(--sans); color: var(--ink); opacity: .9; }
-  .sub b { color: var(--gold); font-weight: 700; }
-  .note { margin-top: 28px; font: 400 28px/1.5 var(--sans); color: var(--dim); }
-  .bar { width: 120px; height: 8px; background: var(--red); margin-top: 48px; }
-  .tag { display: inline-block; margin: 0 16px 16px 0; padding: 14px 28px; border: 2px solid rgba(224,180,90,.55); font: 700 40px var(--serif); color: var(--ink); background: rgba(224,180,90,.06); }
-  .big-num { font: 900 300px/1 var(--serif); color: var(--gold); text-shadow: 0 0 70px rgba(224,180,90,.4); }
-  .big-num small { font-size: 110px; margin-left: 10px; }
-  .seal { position: absolute; right: 110px; top: 470px; width: 170px; height: 170px; border: 6px solid var(--red); color: var(--red); font: 900 64px/1.1 var(--serif); display: flex; align-items: center; justify-content: center; text-align: center; transform: rotate(-8deg); }
+  /* ---------- scenes ---------- */
+  .scene { position: absolute; inset: 0; display: none; transform-origin: 50% 45%; }
+  .wrap { position: absolute; left: 90px; right: 150px; top: 330px; bottom: 360px; display: flex; flex-direction: column; justify-content: center; }
+  .kicker { font: 700 30px var(--sans); color: var(--gold); letter-spacing: 10px; }
+  .kicker::before { content: ""; display: inline-block; width: 50px; height: 2px; background: var(--gold); vertical-align: middle; margin-right: 18px; }
+  .year { font: 900 250px/1 var(--serif); letter-spacing: -6px; margin-left: -8px;
+          background: linear-gradient(100deg, #b98a3a 0%, var(--gold) 35%, var(--gold2) 50%, var(--gold) 65%, #b98a3a 100%);
+          background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+          filter: drop-shadow(0 0 40px rgba(226,182,92,.35)); }
+  .date { font: 700 34px var(--sans); color: #ffb3a8; letter-spacing: 6px; margin-top: 6px; }
+  .h1 { margin-top: 36px; font: 900 104px/1.18 var(--serif); }
+  .h1 em, .h2 em { font-style: normal; color: var(--gold); }
+  .h2 { font: 900 72px/1.3 var(--serif); }
+  .p { margin-top: 30px; font: 400 40px/1.65 var(--sans); color: rgba(244,234,216,.88); }
+  .p b { color: var(--gold); font-weight: 700; }
+  .fine { margin-top: 22px; font: 400 26px/1.5 var(--sans); color: var(--dim); }
+  .rule { width: 100%; height: 1px; margin-top: 40px; background: linear-gradient(90deg, var(--gold), transparent); transform-origin: left; }
+  .stat { display: flex; gap: 60px; margin-top: 44px; }
+  .stat div { font: 400 26px/1.4 var(--sans); color: var(--dim); }
+  .stat strong { display: block; font: 900 84px/1 var(--serif); color: var(--ink); }
+  .stat strong small { font-size: 36px; color: var(--gold); margin-left: 6px; }
 
-  /* opening & ending */
-  .open-line { font: 900 150px/1.2 var(--serif); text-align: center; }
-  .open-line em { font-style: normal; color: var(--gold); }
-  .open-sub { margin-top: 60px; text-align: center; font: 700 52px var(--sans); letter-spacing: 12px; color: var(--ink); }
-  .open-yrs { margin-top: 30px; text-align: center; font: 900 64px var(--serif); color: var(--gold); letter-spacing: 6px; }
-  .src { position: absolute; left: 90px; right: 90px; bottom: 380px; font: 400 26px/1.6 var(--sans); color: var(--dim); text-align: center; }
+  /* cold open */
+  .cold { position: absolute; left: 0; right: 0; top: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px; }
+  .cold .line { font: 700 50px var(--serif); color: rgba(244,234,216,.85); letter-spacing: 6px; }
+  .cold .quote { font: 400 170px var(--brush); color: var(--gold); text-shadow: 0 0 60px rgba(226,182,92,.4); margin-top: 20px; }
+
+  /* title */
+  .title-wrap { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .logo-slot { height: 150px; margin-bottom: 40px; }
+  .logo-slot img { height: 150px; object-fit: contain; filter: drop-shadow(0 0 30px rgba(226,182,92,.4)); }
+  .big-brush { font: 400 400px/1 var(--brush); color: var(--ink); text-shadow: 0 0 80px rgba(196,48,43,.6); letter-spacing: -10px; }
+  .big-brush span { display: inline-block; }
+  .title-sub { margin-top: 30px; font: 900 64px var(--serif); letter-spacing: 30px; margin-right: -30px; color: var(--gold); }
+  .title-yrs { margin-top: 26px; font: 700 34px var(--sans); letter-spacing: 14px; color: var(--dim); }
+  .motto { margin-top: 70px; font: 700 40px var(--serif); letter-spacing: 16px; }
+
+  /* chapter card */
+  .chapter { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+  .chapter .ink { position: absolute; width: 1500px; height: 1500px; left: -210px; top: 210px; }
+  .chapter .glyph { position: relative; font: 400 620px/1 var(--brush); color: var(--ink); text-shadow: 0 10px 80px rgba(0,0,0,.6); }
+  .chapter .no { position: absolute; left: 150px; top: 640px; writing-mode: vertical-rl; font: 900 54px var(--serif); letter-spacing: 18px; color: var(--gold); }
+  .chapter .cap { position: absolute; right: 150px; bottom: 560px; writing-mode: vertical-rl; font: 700 36px var(--serif); letter-spacing: 12px; color: rgba(244,234,216,.75); }
+  .chapter .seal { position: absolute; right: 200px; top: 600px; }
+  .seal { width: 130px; height: 130px; border: 6px solid var(--red); border-radius: 10px; color: var(--red); font: 400 56px/1.05 var(--brush); display: flex; align-items: center; justify-content: center; text-align: center; background: rgba(196,48,43,.08); }
+
+  /* screenshot frame */
+  .shot { position: relative; width: 100%; aspect-ratio: 16/9; overflow: hidden; border: 1px solid rgba(226,182,92,.5); box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 8px rgba(226,182,92,.06); background: #120d0b; margin-bottom: 50px; }
+  .shot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .shot .cap { position: absolute; left: 18px; bottom: 14px; font: 700 22px var(--sans); color: var(--gold2); letter-spacing: 4px; text-shadow: 0 2px 8px #000; }
+  .shot .sweep { position: absolute; inset: 0; background: linear-gradient(105deg, transparent 40%, rgba(255,241,201,.25) 50%, transparent 60%); background-size: 300% 100%; }
+  .shot canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+  /* map */
+  .map { width: 820px; height: 820px; align-self: center; margin: 10px 0 30px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px 30px; font: 400 30px var(--sans); color: rgba(244,234,216,.85); }
+  .legend i { display: inline-block; width: 18px; height: 18px; border-radius: 50%; margin-right: 10px; vertical-align: middle; }
+  .boss { display: flex; align-items: baseline; gap: 22px; margin-top: 22px; font: 400 34px/1.4 var(--sans); }
+  .boss .t { font: 900 46px var(--serif); color: var(--gold); width: 150px; flex: none; }
+  .boss b { color: #ffcf9a; }
+
+  /* bars */
+  .bars { margin-top: 50px; display: flex; flex-direction: column; gap: 46px; }
+  .bar-row .lbl { font: 700 32px var(--sans); color: rgba(244,234,216,.85); margin-bottom: 14px; }
+  .bar-row .lbl span { color: var(--dim); font-weight: 400; margin-left: 12px; font-size: 26px; }
+  .bar-track { position: relative; height: 70px; background: rgba(244,234,216,.06); }
+  .bar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: linear-gradient(90deg, #7a2420, var(--red) 50%, var(--gold)); box-shadow: 0 0 30px rgba(226,182,92,.35); }
+  .bar-val { position: absolute; top: 50%; transform: translateY(-50%); margin-left: 20px; font: 900 56px var(--serif); color: var(--ink); white-space: nowrap; }
+  .bar-val small { font-size: 30px; color: var(--gold); }
+
+  /* funnel */
+  .funnel { margin-top: 40px; display: flex; flex-direction: column; gap: 18px; }
+  .fstep { position: relative; height: 112px; display: flex; align-items: center; justify-content: space-between; padding: 0 36px; border: 1px solid rgba(226,182,92,.4); background: linear-gradient(90deg, rgba(196,48,43,.25), rgba(226,182,92,.06)); }
+  .fstep .n { font: 900 64px var(--serif); color: var(--gold); }
+  .fstep .d { font: 700 32px var(--sans); }
+
+  /* constellation */
+  .orbit { position: relative; width: 860px; height: 860px; align-self: center; }
+  .orbit .core { position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%); text-align: center; font: 400 120px/1 var(--brush); color: var(--gold); text-shadow: 0 0 50px rgba(226,182,92,.5); }
+  .orbit .core small { display: block; margin-top: 16px; font: 700 28px var(--sans); color: var(--dim); letter-spacing: 8px; }
+  .orbit .g { position: absolute; left: 0; top: 0; padding: 12px 24px; font: 700 36px var(--serif); white-space: nowrap; border: 1px solid rgba(226,182,92,.5); background: rgba(16,11,9,.75); }
+  .orbit .g.main { font-size: 46px; color: var(--gold2); border-color: var(--gold); background: rgba(196,48,43,.25); }
+  .orbit svg { position: absolute; inset: 0; }
+
+  .family { margin-top: 50px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .family .card { position: relative; overflow: hidden; height: 120px; display: flex; flex-direction: column; justify-content: center; padding: 0 22px; border: 1px solid rgba(226,182,92,.35); background: linear-gradient(135deg, rgba(196,48,43,.14), rgba(16,11,9,.6)); font: 700 36px var(--serif); }
+  .family .card.main { grid-column: span 3; height: 170px; font-size: 72px; border-color: var(--gold); background: linear-gradient(110deg, rgba(196,48,43,.45), rgba(16,11,9,.5) 70%); }
+  .family .card.main small { font: 700 28px var(--sans); color: var(--gold); letter-spacing: 6px; margin-top: 6px; }
+  .family .card::after { content: ""; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 40%, rgba(255,241,201,.18) 50%, transparent 60%); background-size: 300% 100%; background-position: var(--sx, 160%) 0; }
+  .src { font: 400 24px/1.6 var(--sans); color: var(--dim); text-align: center; }
 </style>
 </head>
 <body>
 <div id="stage">
   <div id="glow"></div>
-  <div id="grid"></div>
+  <div class="smoke" id="sm1"></div><div class="smoke" id="sm2"></div><div class="smoke" id="sm3"></div>
   <div id="embers"></div>
-  <div id="vignette"></div>
 
-  <div id="brand">起凡 · 编年史</div>
-  <div id="timeline"><div class="rail"></div><div class="fill"></div><div class="dot"></div></div>
-
-  <!-- 0 opening -->
-  <section class="scene" data-dur="5" data-year="2006" data-hide-tl>
-    <div class="center">
-      <div class="open-line" data-d="0.2">起于<em>凡</em></div>
-      <div class="open-line" data-d="0.8">而<em>非凡</em></div>
-      <div class="open-sub" data-d="1.6">起凡游戏编年史</div>
-      <div class="open-yrs" data-d="2.1">2006 — 2026</div>
+  <!-- ===== COLD OPEN ===== -->
+  <section class="scene" data-dur="6.5" data-year="2006" data-hud="0" data-sfx="drone">
+    <div class="cold">
+      <div class="line" data-d="0.3">那一年，网吧的灯彻夜不灭</div>
+      <div class="line" data-d="1.4">耳机里，有人在喊——</div>
+      <div class="quote" data-d="2.6" data-a="blurin">「开黑吗？」</div>
     </div>
   </section>
 
-  <section class="scene" data-dur="5.5" data-year="2006">
-    <div class="center">
-      <div class="year" data-d="0" data-anim="count" data-from="2000" data-to="2006">2006</div>
-      <div class="title" data-d="0.5">一切的<em>起点</em></div>
-      <div class="sub" data-d="1.0">上海起凡数字技术有限公司成立<br>目标：做<b>国产原创</b>的竞技游戏</div>
-      <div class="bar" data-d="1.4" data-anim="wipe"></div>
+  <!-- ===== TITLE ===== -->
+  <section class="scene" data-dur="6" data-year="2006" data-hud="0" data-sfx="boom">
+    <div class="title-wrap">
+      <div class="logo-slot" data-d="1.6"><img data-asset="logo.png" alt=""></div>
+      <div class="big-brush"><span data-d="0.0" data-a="brush">起</span><span data-d="0.35" data-a="brush">凡</span></div>
+      <div class="title-sub" data-d="1.1">编年史</div>
+      <div class="title-yrs" data-d="1.5">2006 — 2026 · 二十年</div>
+      <div class="motto" data-d="2.4">起 于 凡 · 而 非 凡</div>
     </div>
   </section>
 
-  <section class="scene" data-dur="6" data-year="2007.35">
-    <div class="center">
-      <div class="year" data-d="0" data-anim="count" data-from="2006" data-to="2007">2007</div>
-      <div class="month" data-d="0.3">五月</div>
-      <div class="title" data-d="0.6">《<em>三国争霸</em>》<br>上线</div>
-      <div class="sub" data-d="1.1">三国题材即时对战<br>蜀魏两大阵营 · <b>5V5</b> 对抗</div>
+  <!-- ===== CH1 起 ===== -->
+  <section class="scene" data-dur="3" data-year="2006" data-hud="0" data-sfx="boom" data-chapter="第一章 · 起">
+    <div class="chapter" data-fx="ink">
+      <svg class="ink" viewBox="0 0 1500 1500"><defs>
+        <filter id="rough1"><feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="4" seed="3"/><feDisplacementMap in="SourceGraphic" scale="220"/></filter></defs>
+        <circle cx="750" cy="750" r="0" fill="#5c1512" filter="url(#rough1)" opacity=".85"/></svg>
+      <div class="no" data-d="0.3">第一章</div>
+      <div class="glyph" data-d="0.1" data-a="slam">起</div>
+      <div class="cap" data-d="0.6">二〇〇六 — 二〇〇七</div>
+      <div class="seal" data-d="0.9" data-a="stamp">原创</div>
     </div>
-    <div class="seal" data-d="1.6" data-anim="stamp">首作</div>
   </section>
 
-  <section class="scene" data-dur="6" data-year="2007.55">
-    <div class="center">
+  <section class="scene" data-dur="7.5" data-year="2006" data-sfx="whoosh">
+    <div class="wrap">
+      <div class="kicker" data-d="0">时代背景</div>
+      <div class="h2" data-d="0.3" style="margin-top:30px">魔兽争霸 RPG 地图<br>统治着中国网吧</div>
+      <div class="p" data-d="0.9">对战平台百家争鸣，<br>却几乎没有一款<b>中国人自己原创</b>的竞技游戏。</div>
+      <div class="rule" data-d="1.6" data-a="wipe"></div>
+      <div class="year" data-d="2.2" data-a="count" data-from="2000" data-to="2006" style="margin-top:40px">2006</div>
+      <div class="p" data-d="2.6" style="margin-top:10px">上海起凡数字技术有限公司 <b>成立</b></div>
+    </div>
+  </section>
+
+  <section class="scene" data-dur="8" data-year="2007.35" data-sfx="hit">
+    <div class="wrap">
+      <div class="shot" data-d="0" data-a="shot"><img data-asset="sgzb-1.jpg" alt=""><canvas data-fallback="clash" data-n="5"></canvas><div class="sweep"></div><div class="cap">三国争霸</div></div>
+      <div class="year" data-d="0.3" data-a="count" data-from="2006" data-to="2007">2007</div>
+      <div class="date" data-d="0.5">五月 · 首作问世</div>
+      <div class="h1" data-d="0.8" style="font-size:96px">《<em>三国争霸</em>》</div>
+      <div class="p" data-d="1.3">蜀魏对垒 · <b>5V5</b> 即时对战</div>
+      <div class="stat" data-d="1.9">
+        <div><strong data-a="count" data-from="0" data-to="20" data-suffix="<small>万</small>">20<small>万</small></strong>最高同时在线</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" data-dur="6.5" data-year="2007.55" data-sfx="hit">
+    <div class="wrap">
       <div class="year" data-d="0">2007</div>
-      <div class="month" data-d="0.3">七月</div>
-      <div class="title" data-d="0.6">起凡游戏平台<br>正式<em>推出</em></div>
-      <div class="sub" data-d="1.1">国内首款<b>原创电竞游戏平台</b><br>填补国产原创电竞的空白</div>
+      <div class="date" data-d="0.3">七月</div>
+      <div class="h1" data-d="0.6">起凡游戏平台<br><em>正式上线</em></div>
+      <div class="p" data-d="1.2">国内首款<b>原创电竞游戏平台</b><br>填补国产原创电竞的空白</div>
     </div>
   </section>
 
-  <section class="scene" data-dur="6.5" data-year="2008.9">
-    <div class="center">
-      <div class="year" data-d="0" data-anim="count" data-from="2007" data-to="2008">2008</div>
-      <div class="month" data-d="0.3">十二月</div>
-      <div class="title" data-d="0.6">《<em>群雄逐鹿</em>》</div>
-      <div class="sub" data-d="1.0">在三国争霸基础上全面改造<br>开启 <b>10V10</b> 大规模对战</div>
-      <div class="note" data-d="1.6">一代人的网吧记忆，从这里开始</div>
-    </div>
-    <div class="seal" data-d="1.8" data-anim="stamp">经典</div>
-  </section>
-
-  <section class="scene" data-dur="6" data-year="2011.1">
-    <div class="center">
-      <div class="year" data-d="0" data-anim="count" data-from="2008" data-to="2011">2011</div>
-      <div class="title" data-d="0.5"><em>11对战平台</em><br>上线</div>
-      <div class="sub" data-d="1.0">起凡旗下第二个平台<br>主打 <b>DotA 天梯</b> 与 War3 对战</div>
+  <!-- ===== CH2 盛 ===== -->
+  <section class="scene" data-dur="3" data-year="2008" data-hud="0" data-sfx="boom" data-chapter="第二章 · 盛">
+    <div class="chapter" data-fx="ink">
+      <svg class="ink" viewBox="0 0 1500 1500"><defs>
+        <filter id="rough2"><feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="4" seed="9"/><feDisplacementMap in="SourceGraphic" scale="220"/></filter></defs>
+        <circle cx="750" cy="750" r="0" fill="#5c1512" filter="url(#rough2)" opacity=".85"/></svg>
+      <div class="no" data-d="0.3">第二章</div>
+      <div class="glyph" data-d="0.1" data-a="slam">盛</div>
+      <div class="cap" data-d="0.6">二〇〇八 — 二〇一二</div>
+      <div class="seal" data-d="0.9" data-a="stamp">逐鹿</div>
     </div>
   </section>
 
-  <section class="scene" data-dur="7" data-year="2012.5">
-    <div class="center">
-      <div class="year" data-d="0" data-anim="count" data-from="2011" data-to="2012">2012</div>
-      <div class="title" data-d="0.4">巅峰时刻</div>
-      <div class="big-num" data-d="0.9" data-anim="count" data-from="0" data-to="45" data-suffix="<small>万+</small>">45<small>万+</small></div>
-      <div class="sub" data-d="1.4">起凡平台最高<b>同时在线</b>人数</div>
-      <div class="note" data-d="2.0">* 据百度百科记载</div>
+  <section class="scene" data-dur="8" data-year="2008.9" data-sfx="hit">
+    <div class="wrap">
+      <div class="shot" data-d="0" data-a="shot"><img data-asset="qxzl-1.jpg" alt=""><canvas data-fallback="clash" data-n="10"></canvas><div class="sweep"></div><div class="cap">群雄逐鹿</div></div>
+      <div class="year" data-d="0.3" data-a="count" data-from="2007" data-to="2008">2008</div>
+      <div class="date" data-d="0.5">十二月</div>
+      <div class="h1" data-d="0.8" style="font-size:96px">《<em>群雄逐鹿</em>》</div>
+      <div class="p" data-d="1.3">打破 5V5 的固有格局<br>首创全场 <b>10V10</b> 武将大乱斗</div>
     </div>
   </section>
 
-  <section class="scene" data-dur="6" data-year="2013.58">
-    <div class="center">
-      <div class="year" data-d="0" data-anim="count" data-from="2012" data-to="2013">2013</div>
-      <div class="month" data-d="0.3">七月三十一日</div>
-      <div class="title" data-d="0.6">《<em>三国争霸2</em>》</div>
-      <div class="sub" data-d="1.1">独立客户端的 <b>MOBA</b> 续作<br>Conquest of the Three Kingdoms II</div>
+  <section class="scene" data-dur="12" data-year="2009.5" data-sfx="whoosh">
+    <div class="wrap" style="top:300px">
+      <div class="kicker" data-d="0">战场解析</div>
+      <div class="h2" data-d="0.2" style="margin-top:20px">二十人，<em>一张地图</em></div>
+      <svg class="map" viewBox="0 0 1000 1000" data-fx="map" data-d="0.3">
+        <defs>
+          <linearGradient id="riv" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2d6fa8" stop-opacity=".1"/><stop offset=".5" stop-color="#5aa7e8" stop-opacity=".55"/><stop offset="1" stop-color="#2d6fa8" stop-opacity=".1"/></linearGradient>
+          <clipPath id="mapclip"><rect x="40" y="40" width="920" height="920"/></clipPath>
+          <pattern id="hatch" width="16" height="16" patternUnits="userSpaceOnUse"><path d="M0 16 L16 0" stroke="rgba(226,182,92,.07)" stroke-width="2"/></pattern>
+        </defs>
+        <rect x="40" y="40" width="920" height="920" fill="url(#hatch)" stroke="rgba(226,182,92,.5)" stroke-width="2"/>
+        <path class="river" clip-path="url(#mapclip)" d="M40 40 L960 960" stroke="url(#riv)" stroke-width="90" fill="none"/>
+        <path class="lane" d="M140 860 L140 140 L860 140" stroke="#e2b65c" stroke-width="10" fill="none" stroke-linecap="round"/>
+        <path class="lane" d="M140 860 L860 140" stroke="#e2b65c" stroke-width="10" fill="none" stroke-linecap="round"/>
+        <path class="lane" d="M140 860 L860 860 L860 140" stroke="#e2b65c" stroke-width="10" fill="none" stroke-linecap="round"/>
+        <g class="camp" transform="translate(860 140)"><circle r="70" fill="rgba(76,143,224,.25)" stroke="#4c8fe0" stroke-width="5"/><text y="22" text-anchor="middle" font-family="Ma Shan Zheng" font-size="70" fill="#cfe3ff">魏</text></g>
+        <g class="camp" transform="translate(140 860)"><circle r="70" fill="rgba(217,73,63,.25)" stroke="#d9493f" stroke-width="5"/><text y="22" text-anchor="middle" font-family="Ma Shan Zheng" font-size="70" fill="#ffd9d4">蜀</text></g>
+        <text class="lbl" x="500" y="118" text-anchor="middle" font-family="Noto Sans SC" font-weight="700" font-size="34" fill="#f4ead8">上路</text>
+        <text class="lbl" x="560" y="470" text-anchor="middle" font-family="Noto Sans SC" font-weight="700" font-size="34" fill="#f4ead8" transform="rotate(-45 560 470)">中路</text>
+        <text class="lbl" x="500" y="912" text-anchor="middle" font-family="Noto Sans SC" font-weight="700" font-size="34" fill="#f4ead8">下路</text>
+        <text class="lbl" x="300" y="250" text-anchor="middle" font-family="Noto Sans SC" font-size="30" fill="#9fd0ff" transform="rotate(45 300 250)">大 河</text>
+        <circle class="pulse" cx="860" cy="140" r="70" fill="none" stroke="#4c8fe0" stroke-width="4"/>
+        <circle class="pulse" cx="140" cy="860" r="70" fill="none" stroke="#d9493f" stroke-width="4"/>
+      </svg>
+      <div class="legend" data-d="2.2"><span><i style="background:var(--wei)"></i>魏国大营 · 右上</span><span><i style="background:var(--shu)"></i>蜀国大营 · 左下</span><span>示意图</span></div>
+      <div class="boss" data-d="4.0"><span class="t">前期</span><span>击杀红点 BOSS，得 <b>魂印玄铁 / 魂印天书</b>，最高成长至七级</span></div>
+      <div class="boss" data-d="5.6"><span class="t">35′</span><span>第三个 BOSS 出现，掉落 <b>炎黄战戟</b></span></div>
+      <div class="boss" data-d="7.0"><span class="t">40′</span><span>更强的 BOSS 降临，掉落 <b>龙缕剑</b></span></div>
+      <div class="boss" data-d="8.6"><span class="t">胜负</span><span>拆掉对方<b>主帐篷</b>，或对方全体投降</span></div>
     </div>
   </section>
 
-  <section class="scene" data-dur="6" data-year="2014.5">
-    <div class="center">
-      <div class="year" data-d="0" data-anim="count" data-from="2013" data-to="2014">2014</div>
-      <div class="title" data-d="0.5">群雄逐鹿<br><em>冠军联赛</em></div>
-      <div class="big-num" data-d="1.0" data-anim="count" data-from="0" data-to="100" data-suffix="<small>万元</small>">100<small>万元</small></div>
-      <div class="sub" data-d="1.5">联赛总奖金</div>
+  <section class="scene" data-dur="7.5" data-year="2011.1" data-sfx="hit">
+    <div class="wrap">
+      <div class="year" data-d="0" data-a="count" data-from="2008" data-to="2011">2011</div>
+      <div class="h1" data-d="0.4"><em>11对战平台</em><br>上线</div>
+      <div class="p" data-d="0.9">起凡的第二张王牌<br>主打 War3 对战与 <b>DotA 天梯</b></div>
+      <div class="stat" data-d="1.6">
+        <div><strong data-a="count" data-from="0" data-to="80" data-suffix="<small>万</small>">80<small>万</small></strong>2012年9月 DotA 最高在线</div>
+      </div>
     </div>
   </section>
 
-  <section class="scene" data-dur="7" data-year="2016">
-    <div class="center">
-      <div class="title" data-d="0" style="margin-top:0">起凡<em>游戏家族</em></div>
-      <div class="sub" data-d="0.3" style="margin-bottom:40px">除了三国争霸与群雄逐鹿，还有……</div>
-      <div data-d="0.6"><span class="tag">修真世界</span><span class="tag">真三国乱舞</span></div>
-      <div data-d="0.9"><span class="tag">三国伏魔</span><span class="tag">三国英魂</span></div>
-      <div data-d="1.2"><span class="tag">守卫剑阁</span><span class="tag">黑暗三国</span></div>
-      <div data-d="1.5"><span class="tag">借东风</span><span class="tag">金戈铁马</span><span class="tag">星雨阁</span></div>
+  <section class="scene" data-dur="8" data-year="2012.5" data-sfx="hit">
+    <div class="wrap">
+      <div class="kicker" data-d="0">巅峰时刻</div>
+      <div class="year" data-d="0.2" data-a="count" data-from="2011" data-to="2012" style="margin-top:24px">2012</div>
+      <div class="bars" data-fx="bars" data-d="0.6">
+        <div class="bar-row"><div class="lbl">三国争霸<span>最高同时在线</span></div><div class="bar-track"><div class="bar-fill" data-v="20"></div><div class="bar-val" data-v="20">20<small>万</small></div></div></div>
+        <div class="bar-row"><div class="lbl">起凡游戏平台<span>2012年最高同时在线</span></div><div class="bar-track"><div class="bar-fill" data-v="45"></div><div class="bar-val" data-v="45">45<small>万+</small></div></div></div>
+      </div>
+      <div class="p" data-d="3.2" style="margin-top:50px">一个国产原创平台，<br>站上了它的<b>最高点</b>。</div>
+      <div class="fine" data-d="3.6">数据来源：百度百科</div>
     </div>
   </section>
 
-  <section class="scene" data-dur="6.5" data-year="2019">
-    <div class="center">
-      <div class="title" data-d="0" style="margin-top:0">时代<em>转向</em></div>
-      <div class="sub" data-d="0.5">端游 MOBA 与手游崛起<br>对战平台的黄金年代<b>渐渐落幕</b></div>
-      <div class="note" data-d="1.2">平衡性与付费争议，也让不少老玩家离开</div>
+  <!-- ===== CH3 战 ===== -->
+  <section class="scene" data-dur="3" data-year="2011" data-hud="0" data-sfx="boom" data-chapter="第三章 · 战">
+    <div class="chapter" data-fx="ink">
+      <svg class="ink" viewBox="0 0 1500 1500"><defs>
+        <filter id="rough3"><feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="4" seed="21"/><feDisplacementMap in="SourceGraphic" scale="220"/></filter></defs>
+        <circle cx="750" cy="750" r="0" fill="#5c1512" filter="url(#rough3)" opacity=".85"/></svg>
+      <div class="no" data-d="0.3">第三章</div>
+      <div class="glyph" data-d="0.1" data-a="slam">战</div>
+      <div class="cap" data-d="0.6">电竞 · 荣耀</div>
+      <div class="seal" data-d="0.9" data-a="stamp">冠军</div>
     </div>
   </section>
 
-  <section class="scene" data-dur="5.5" data-year="2026">
-    <div class="center">
-      <div class="year" data-d="0" data-anim="count" data-from="2014" data-to="2026">2026</div>
-      <div class="title" data-d="0.5">平台<em>仍在</em>运行</div>
-      <div class="sub" data-d="1.0">起凡平台至今仍有版本更新<br>那些开黑的夜晚<b>没人忘记</b></div>
+  <section class="scene" data-dur="9" data-year="2011.5" data-sfx="whoosh">
+    <div class="wrap">
+      <div class="kicker" data-d="0">WCG 2011</div>
+      <div class="h2" data-d="0.3" style="margin-top:24px">《群雄逐鹿》<br>登上 <em>WCG</em> 舞台</div>
+      <div class="funnel" data-fx="funnel" data-d="0.8">
+        <div class="fstep" style="width:100%"><span class="d">全国选拔</span><span class="n">数百支</span></div>
+        <div class="fstep" style="width:86%"><span class="d">决出</span><span class="n">16 强</span></div>
+        <div class="fstep" style="width:72%"><span class="d">线上鏖战</span><span class="n">12 队</span></div>
+        <div class="fstep" style="width:58%;border-color:var(--gold)"><span class="d">中国区总决赛</span><span class="n">2 席</span></div>
+      </div>
+      <div class="p" data-d="4.6">二十人的战场，<br>第一次被当作<b>真正的电竞</b>来对待。</div>
     </div>
   </section>
 
-  <section class="scene" data-dur="6" data-year="2026" data-hide-tl>
-    <div class="center">
-      <div class="open-line" data-d="0.2" style="font-size:110px">你玩过<br>哪一款？</div>
-      <div class="open-sub" data-d="1.0" style="letter-spacing:4px">评论区说说你的<em style="font-style:normal;color:var(--gold)">本命英雄</em></div>
+  <section class="scene" data-dur="7" data-year="2014.5" data-sfx="hit">
+    <div class="wrap">
+      <div class="year" data-d="0" data-a="count" data-from="2011" data-to="2014">2014</div>
+      <div class="h1" data-d="0.4">群雄逐鹿<br><em>冠军联赛</em></div>
+      <div class="stat" data-d="1.0">
+        <div><strong data-a="count" data-from="0" data-to="100" data-suffix="<small>万元</small>" style="font-size:180px">100<small>万元</small></strong>联赛总奖金</div>
+      </div>
+      <div class="p" data-d="2.2">百万奖池，属于一款<b>国产原创</b>竞技游戏。</div>
     </div>
-    <div class="src" data-d="1.6">资料来源：百度百科、起凡官网等公开资料<br>部分日期各来源说法不一，以官方为准</div>
   </section>
+
+  <!-- ===== CH4 变 ===== -->
+  <section class="scene" data-dur="3" data-year="2013" data-hud="0" data-sfx="boom" data-chapter="第四章 · 变">
+    <div class="chapter" data-fx="ink">
+      <svg class="ink" viewBox="0 0 1500 1500"><defs>
+        <filter id="rough4"><feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="4" seed="33"/><feDisplacementMap in="SourceGraphic" scale="220"/></filter></defs>
+        <circle cx="750" cy="750" r="0" fill="#16263d" filter="url(#rough4)" opacity=".9"/></svg>
+      <div class="no" data-d="0.3">第四章</div>
+      <div class="glyph" data-d="0.1" data-a="slam">变</div>
+      <div class="cap" data-d="0.6">二〇一三 — 二〇二〇</div>
+      <div class="seal" data-d="0.9" data-a="stamp">求变</div>
+    </div>
+  </section>
+
+  <section class="scene" data-dur="7.5" data-year="2013.58" data-sfx="hit">
+    <div class="wrap">
+      <div class="shot" data-d="0" data-a="shot"><img data-asset="sgzb2-1.jpg" alt=""><canvas data-fallback="lanes"></canvas><div class="sweep"></div><div class="cap">三国争霸2</div></div>
+      <div class="year" data-d="0.3" data-a="count" data-from="2012" data-to="2013">2013</div>
+      <div class="date" data-d="0.5">七月三十一日</div>
+      <div class="h1" data-d="0.8" style="font-size:96px">《<em>三国争霸2</em>》</div>
+      <div class="p" data-d="1.3">独立客户端的 <b>MOBA</b> 续作<br><span style="color:var(--dim);font-size:30px">Conquest of the Three Kingdoms II</span></div>
+    </div>
+  </section>
+
+  <section class="scene" data-dur="8" data-year="2016" data-sfx="whoosh">
+    <div class="wrap">
+      <div class="kicker" data-d="0">起凡宇宙</div>
+      <div class="h2" data-d="0.2" style="margin-top:20px">不止<em>三国</em>，不止逐鹿</div>
+      <div class="family" data-fx="family" data-d="0.4">
+        <div class="card main"><span>群雄逐鹿</span><small>10V10 · 旗舰</small></div>
+        <div class="card main"><span>三国争霸</span><small>5V5 · 首作</small></div>
+        <div class="card"><span>三国争霸2</span></div>
+        <div class="card"><span>真三国乱舞</span></div>
+        <div class="card"><span>修真世界</span></div>
+        <div class="card"><span>三国伏魔</span></div>
+        <div class="card"><span>三国英魂</span></div>
+        <div class="card"><span>守卫剑阁</span></div>
+        <div class="card"><span>黑暗三国</span></div>
+        <div class="card"><span>借东风</span></div>
+        <div class="card"><span>金戈铁马</span></div>
+        <div class="card"><span>星雨阁</span></div>
+      </div>
+      <div class="fine" data-d="3.2">部分作品 · 以起凡官网产品列表为准</div>
+    </div>
+  </section>
+
+  <section class="scene" data-dur="7.5" data-year="2019" data-sfx="whoosh">
+    <div class="wrap">
+      <div class="kicker" data-d="0">时代转向</div>
+      <div class="h1" data-d="0.3">潮水<em>退去</em></div>
+      <div class="p" data-d="0.9">端游 MOBA 与手游接连崛起，<br>对战平台的黄金年代<b>缓缓落幕</b>。</div>
+      <div class="p" data-d="2.0" style="color:var(--dim)">平衡与付费的争议，<br>也让一些老玩家转身离开。</div>
+      <div class="rule" data-d="3.0" data-a="wipe"></div>
+      <div class="p" data-d="3.4">但总有人，<b>没有走</b>。</div>
+    </div>
+  </section>
+
+  <!-- ===== CH5 凡 ===== -->
+  <section class="scene" data-dur="3" data-year="2026" data-hud="0" data-sfx="boom" data-chapter="终章 · 凡">
+    <div class="chapter" data-fx="ink">
+      <svg class="ink" viewBox="0 0 1500 1500"><defs>
+        <filter id="rough5"><feTurbulence type="fractalNoise" baseFrequency="0.012" numOctaves="4" seed="47"/><feDisplacementMap in="SourceGraphic" scale="220"/></filter></defs>
+        <circle cx="750" cy="750" r="0" fill="#5a4214" filter="url(#rough5)" opacity=".85"/></svg>
+      <div class="no" data-d="0.3">终　章</div>
+      <div class="glyph" data-d="0.1" data-a="slam">凡</div>
+      <div class="cap" data-d="0.6">二〇二六 · 此刻</div>
+      <div class="seal" data-d="0.9" data-a="stamp">不灭</div>
+    </div>
+  </section>
+
+  <section class="scene" data-dur="7" data-year="2026" data-sfx="hit">
+    <div class="wrap">
+      <div class="year" data-d="0" data-a="count" data-from="2014" data-to="2026">2026</div>
+      <div class="h1" data-d="0.4">二十年，<br>平台<em>仍在运行</em></div>
+      <div class="p" data-d="1.0">版本依旧在更新，<br>大营依旧有人在守。</div>
+      <div class="stat" data-d="1.8">
+        <div><strong>20<small>年</small></strong>2006 — 2026</div>
+        <div><strong>10<small>V10</small></strong>从未改变的战场</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="scene" data-dur="8" data-year="2026" data-hud="0" data-sfx="final">
+    <div class="title-wrap">
+      <div class="logo-slot" data-d="0.2"><img data-asset="logo.png" alt=""></div>
+      <div class="big-brush" style="font-size:220px"><span data-d="0.2" data-a="brush">起于凡</span></div>
+      <div class="big-brush" style="font-size:220px;color:var(--gold)"><span data-d="0.8" data-a="brush">而非凡</span></div>
+      <div class="motto" data-d="2.0" style="letter-spacing:8px">你的本命武将是谁？</div>
+      <div class="title-yrs" data-d="2.5" style="letter-spacing:6px">评论区，集结。</div>
+      <div class="src" data-d="3.2" style="margin-top:120px">资料来源：百度百科、起凡官网、新浪游戏等公开资料<br>部分日期各来源说法不一，以官方为准</div>
+    </div>
+  </section>
+
+  <!-- overlays -->
+  <div id="hud"><div class="brand">起凡 · 编年史</div><div class="chap"></div><div class="rail"></div><div class="fill"></div><div class="dot"></div></div>
+  <div id="flash"></div>
+  <div id="vignette"></div>
+  <canvas id="grain" width="270" height="480"></canvas>
+  <div id="frameline"></div>
 </div>
 
 <script>
 const YEAR_MIN = 2006, YEAR_MAX = 2026;
 const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, x) => a + (b - a) * x;
 const easeOut = x => 1 - Math.pow(1 - x, 3);
+const easeInOut = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
 const easeBack = x => { const c = 1.7; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+let seed = 11;
+const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const hash = n => { const x = Math.sin(n * 127.1) * 43758.5453; return x - Math.floor(x); };
 
+/* ---------- assets: show <img> if file exists, otherwise fallback canvas ---------- */
+const assetPromises = [];
+for (const img of document.querySelectorAll('img[data-asset]')) {
+  assetPromises.push(new Promise(res => {
+    img.onload = () => { img.dataset.ok = '1'; const fb = img.parentElement.querySelector('canvas[data-fallback]'); if (fb) fb.remove(); res(); };
+    img.onerror = () => { img.remove(); res(); };
+    img.src = 'assets/' + img.dataset.asset;
+  }));
+}
+window.assetsReady = Promise.all(assetPromises).then(() => {
+  for (const slot of document.querySelectorAll('.logo-slot')) if (!slot.querySelector('img')) slot.style.display = 'none';
+});
+
+/* ---------- scene timing ---------- */
 const scenes = [...document.querySelectorAll('.scene')];
 let acc = 0;
 for (const s of scenes) { s._start = acc; s._dur = +s.dataset.dur; acc += s._dur; }
 window.TOTAL = acc;
+window.CUES = scenes.map(s => ({ t: s._start, sfx: s.dataset.sfx || 'whoosh', dur: s._dur }));
 
-// timeline labels
-const tl = document.getElementById('timeline');
+/* ---------- HUD ---------- */
+const hud = document.getElementById('hud');
 const xOf = y => (y - YEAR_MIN) / (YEAR_MAX - YEAR_MIN) * 100;
 for (const y of [2006, 2011, 2016, 2021, 2026]) {
-  const l = document.createElement('div'); l.className = 'lab'; l.textContent = y; l.style.left = xOf(y) + '%'; tl.appendChild(l);
+  const l = document.createElement('div'); l.className = 'lab'; l.textContent = y; l.style.left = xOf(y) + '%'; hud.appendChild(l);
 }
+let chapterName = '';
+for (const s of scenes) { if (s.dataset.chapter) chapterName = s.dataset.chapter; s._chapter = chapterName; }
 
-// deterministic embers
-const emberBox = document.getElementById('embers');
+/* ---------- embers & smoke ---------- */
 const embers = [];
-let seed = 7;
-const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-for (let i = 0; i < 40; i++) {
-  const e = document.createElement('div'); e.className = 'ember'; emberBox.appendChild(e);
-  embers.push({ el: e, x: rnd() * 1080, speed: 30 + rnd() * 70, phase: rnd() * 1920, sway: 20 + rnd() * 40, size: 0.4 + rnd() * 1.1, f: rnd() * 6 });
+for (let i = 0; i < 55; i++) {
+  const e = document.createElement('div'); e.className = 'ember'; document.getElementById('embers').appendChild(e);
+  embers.push({ el: e, x: rnd() * 1080, speed: 25 + rnd() * 90, phase: rnd() * 2100, sway: 15 + rnd() * 50, size: .3 + rnd() * 1.2, f: rnd() * 6, blur: rnd() < .3 });
+  if (embers.at(-1).blur) e.style.filter = 'blur(3px)';
+}
+const smokes = ['sm1', 'sm2', 'sm3'].map((id, i) => ({ el: document.getElementById(id), i }));
+
+/* ---------- grain ---------- */
+const gc = document.getElementById('grain').getContext('2d');
+const gimg = gc.createImageData(270, 480);
+function grain(frame) {
+  let s = (frame * 9301 + 49297) % 233280 || 1;
+  const d = gimg.data;
+  for (let i = 0; i < d.length; i += 4) {
+    s = (s * 16807) % 2147483647;
+    const v = (s & 255);
+    d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+  }
+  gc.putImageData(gimg, 0, 0);
 }
 
-window.render = function (t) {
-  // background motion
-  for (const m of embers) {
-    const y = 1920 - ((m.phase + t * m.speed) % 2100);
-    const x = m.x + Math.sin(t * 0.8 + m.f) * m.sway;
-    m.el.style.transform = `translate(${x}px, ${y}px) scale(${m.size})`;
-    m.el.style.opacity = (0.25 + 0.5 * (0.5 + 0.5 * Math.sin(t * 2 + m.f))).toFixed(3);
+/* ---------- fallback canvases (procedural battle art) ---------- */
+function drawClash(cv, local, n) {
+  const W = cv.width = 900, H = cv.height = 506, c = cv.getContext('2d');
+  const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#1d1210'); g.addColorStop(1, '#0d0a12'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+  // terrain lines
+  c.strokeStyle = 'rgba(226,182,92,.08)'; c.lineWidth = 1;
+  for (let i = 0; i < 14; i++) { c.beginPath(); c.moveTo(0, i * 40 + (local * 10 % 40)); c.lineTo(W, i * 40 - 120 + (local * 10 % 40)); c.stroke(); }
+  const meet = easeInOut(clamp(local / 2.4));
+  const rows = n === 10 ? 5 : 5, cols = n / rows;
+  for (const side of [0, 1]) {
+    const col = side ? '#4c8fe0' : '#d9493f';
+    for (let k = 0; k < n; k++) {
+      const r = k % rows, q = Math.floor(k / rows);
+      const bx = side ? W - 120 - q * 60 : 120 + q * 60;
+      const tx = side ? W / 2 + 40 + q * 50 : W / 2 - 40 - q * 50;
+      const x = lerp(bx, tx, meet) + Math.sin(local * 3 + k) * 4;
+      const y = 90 + r * 80 + Math.cos(local * 2 + k * 1.7) * 5;
+      c.fillStyle = col; c.shadowColor = col; c.shadowBlur = 18;
+      c.beginPath(); c.arc(x, y, 13, 0, 7); c.fill();
+      c.strokeStyle = col; c.lineWidth = 3; c.beginPath(); c.moveTo(x, y); c.lineTo(x + (side ? -26 : 26), y - 18); c.stroke();
+    }
   }
-  document.getElementById('glow').style.transform = `translate(${Math.sin(t * 0.3) * 40}px, ${Math.cos(t * 0.23) * 30}px)`;
+  c.shadowBlur = 0;
+  if (local > 2.2) {
+    const p = clamp((local - 2.2) / .9), r = 40 + p * 380;
+    const rg = c.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, r);
+    rg.addColorStop(0, `rgba(255,241,201,${.75 * (1 - p)})`); rg.addColorStop(1, 'rgba(226,182,92,0)');
+    c.fillStyle = rg; c.fillRect(0, 0, W, H);
+  }
+  c.font = '400 120px "Ma Shan Zheng"'; c.textAlign = 'center';
+  c.fillStyle = 'rgba(217,73,63,.22)'; c.fillText('蜀', 110, H - 40);
+  c.fillStyle = 'rgba(76,143,224,.22)'; c.fillText('魏', W - 110, H - 40);
+  c.font = '900 64px "Noto Serif SC"'; c.fillStyle = 'rgba(244,234,216,.9)'; c.fillText(n + ' V ' + n, W / 2, 80);
+}
+function drawLanes(cv, local) {
+  const W = cv.width = 900, H = cv.height = 506, c = cv.getContext('2d');
+  const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#101a26'); g.addColorStop(1, '#1d1210'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+  const p = easeOut(clamp(local / 2));
+  c.lineCap = 'round';
+  const paths = [[[90, 450], [90, 60], [810, 60]], [[90, 450], [810, 60]], [[90, 450], [810, 450], [810, 60]]];
+  paths.forEach((pts, i) => {
+    c.strokeStyle = 'rgba(226,182,92,.8)'; c.lineWidth = 8; c.shadowColor = '#e2b65c'; c.shadowBlur = 16;
+    let total = 0; for (let j = 1; j < pts.length; j++) total += Math.hypot(pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1]);
+    let left = total * clamp(p * 1.3 - i * .15);
+    c.beginPath(); c.moveTo(...pts[0]);
+    for (let j = 1; j < pts.length && left > 0; j++) {
+      const L = Math.hypot(pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1]), f = Math.min(1, left / L);
+      c.lineTo(lerp(pts[j - 1][0], pts[j][0], f), lerp(pts[j - 1][1], pts[j][1], f)); left -= L;
+    }
+    c.stroke();
+  });
+  c.shadowBlur = 0;
+  for (const [x, y, col] of [[90, 450, '#d9493f'], [810, 60, '#4c8fe0']]) {
+    c.fillStyle = col; c.globalAlpha = .3 + .2 * Math.sin(local * 4); c.beginPath(); c.arc(x, y, 50, 0, 7); c.fill(); c.globalAlpha = 1;
+  }
+  c.font = '900 60px "Noto Serif SC"'; c.textAlign = 'center'; c.fillStyle = 'rgba(244,234,216,.9)'; c.fillText('MOBA', W / 2 + 60, H / 2 + 60);
+}
 
-  // timeline progress: interpolate between scene years
-  let year = YEAR_MIN, hideTl = false;
+/* ---------- custom scene effects ---------- */
+const FX = {
+  ink(el, local) {
+    const c = el.querySelector('.ink circle');
+    c.setAttribute('r', (easeOut(clamp(local / 0.9)) * 640).toFixed(1));
+    const g = el.querySelector('.glyph');
+    g.style.letterSpacing = '0';
+  },
+  map(el, local) {
+    const p0 = local - +el.dataset.d;
+    el.querySelector('.river').style.opacity = easeOut(clamp(p0 / .8));
+    el.querySelectorAll('.lane').forEach((ln, i) => {
+      const L = ln.getTotalLength(); ln.style.strokeDasharray = L;
+      ln.style.strokeDashoffset = L * (1 - easeInOut(clamp((p0 - .6 - i * .35) / 1.2)));
+    });
+    el.querySelectorAll('.camp').forEach((cp, i) => {
+      const s = easeBack(clamp((p0 - .3 - i * .2) / .6));
+      const base = cp.getAttribute('transform').split(' scale')[0];
+      cp.setAttribute('transform', `${base} scale(${Math.max(0, s).toFixed(3)})`);
+    });
+    el.querySelectorAll('.lbl').forEach((t, i) => t.style.opacity = easeOut(clamp((p0 - 1.8 - i * .15) / .5)));
+    el.querySelectorAll('.pulse').forEach((pc, i) => {
+      const ph = ((p0 * .8 + i * .5) % 1);
+      pc.setAttribute('r', 70 + ph * 90); pc.style.opacity = p0 > 1 ? (1 - ph) * .8 : 0;
+    });
+  },
+  bars(el, local) {
+    const p0 = local - +el.dataset.d;
+    el.querySelectorAll('.bar-row').forEach((row, i) => {
+      const p = easeOut(clamp((p0 - i * .6) / 1.4));
+      const f = row.querySelector('.bar-fill'), v = row.querySelector('.bar-val');
+      const w = +f.dataset.v / 45 * 68; f.style.width = (w * p) + '%'; v.style.left = (w * p) + '%';
+      v.innerHTML = Math.round(+v.dataset.v * p) + v.innerHTML.replace(/^\d+/, '');
+    });
+  },
+  funnel(el, local) {
+    const p0 = local - +el.dataset.d;
+    el.querySelectorAll('.fstep').forEach((s, i) => {
+      const p = easeOut(clamp((p0 - i * .55) / .6));
+      s.style.opacity = p; s.style.transform = `translateX(${(1 - p) * -80}px)`;
+      s.style.boxShadow = i === 3 && p0 > 2.4 ? `0 0 ${30 + 20 * Math.sin(p0 * 5)}px rgba(226,182,92,.5)` : 'none';
+    });
+  },
+  family(el, local) {
+    const p0 = local - +el.dataset.d;
+    el.querySelectorAll('.card').forEach((c, i) => {
+      const p = easeOut(clamp((p0 - i * .13) / .6));
+      c.style.opacity = p; c.style.transform = `translateY(${(1 - p) * 40}px) scale(${.92 + .08 * p})`;
+      c.style.setProperty('--sx', lerp(160, -60, clamp((p0 - .4 - i * .13) / 1.2)) + '%');
+    });
+  },
+  orbit(el, local) {
+    const p0 = local - +el.dataset.d;
+    el.querySelectorAll('.g').forEach((g, i) => {
+      const r = +g.dataset.r, a = (+g.dataset.a0 + p0 * (r < 300 ? 6 : -4)) * Math.PI / 180;
+      const p = easeBack(clamp((p0 - .3 - i * .12) / .6));
+      const x = 430 + Math.cos(a) * r * Math.min(1, Math.max(0, p)), y = 430 + Math.sin(a) * r * .82 * Math.min(1, Math.max(0, p));
+      g.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%) scale(${Math.max(0, p)})`;
+      g.style.opacity = clamp(p);
+    });
+    el.querySelector('.core').style.opacity = easeOut(clamp(p0 / .6));
+  },
+};
+
+/* ---------- main render ---------- */
+window.render = function (t) {
+  const frame = Math.round(t * 30);
+  grain(frame);
+  for (const m of embers) {
+    const y = 1980 - ((m.phase + t * m.speed) % 2100);
+    const x = m.x + Math.sin(t * .7 + m.f) * m.sway;
+    m.el.style.transform = `translate(${x}px, ${y}px) scale(${m.size})`;
+    m.el.style.opacity = (.2 + .6 * (.5 + .5 * Math.sin(t * 2.3 + m.f))).toFixed(3);
+  }
+  for (const s of smokes) {
+    const x = 540 + Math.sin(t * .11 + s.i * 2.1) * 500 - 450, y = 960 + Math.cos(t * .09 + s.i * 1.3) * 700 - 450;
+    s.el.style.transform = `translate(${x}px, ${y}px) scale(${1 + .2 * Math.sin(t * .2 + s.i)})`;
+  }
+  document.getElementById('glow').style.transform = `translate(${Math.sin(t * .25) * 50}px, ${Math.cos(t * .19) * 40}px)`;
+
+  // flash on scene boundaries
+  let flash = 0;
+  for (const s of scenes) {
+    const dt = t - s._start;
+    if (s.dataset.sfx === 'boom' || s.dataset.sfx === 'final') { if (dt >= 0 && dt < .5) flash = Math.max(flash, (1 - dt / .5) * .85); }
+    else if (dt >= 0 && dt < .25) flash = Math.max(flash, (1 - dt / .25) * .25);
+  }
+  document.getElementById('flash').style.opacity = flash.toFixed(3);
+
+  // HUD
+  let year = YEAR_MIN, hudOn = 0;
   for (let i = 0; i < scenes.length; i++) {
     const s = scenes[i], local = t - s._start;
     if (local >= 0 && local < s._dur) {
       const prev = i > 0 ? +scenes[i - 1].dataset.year : +s.dataset.year;
-      year = prev + (+s.dataset.year - prev) * easeOut(clamp(local / 0.8));
-      hideTl = s.hasAttribute('data-hide-tl');
+      year = lerp(prev, +s.dataset.year, easeOut(clamp(local / .9)));
+      const on = x => x && x.dataset.hud !== '0';
+      if (!on(s)) hudOn = 0;
+      else hudOn = Math.min(on(scenes[i - 1]) ? 1 : clamp(local / .4), on(scenes[i + 1]) ? 1 : clamp((s._dur - local) / .3));
+      hud.querySelector('.chap').textContent = s._chapter;
     }
   }
-  const tlOp = hideTl ? 0 : 1;
-  tl.style.opacity = tlOp; document.getElementById('brand').style.opacity = tlOp;
-  tl.querySelector('.fill').style.width = xOf(year) + '%';
-  tl.querySelector('.dot').style.left = xOf(year) + '%';
+  hud.style.opacity = hudOn.toFixed(3);
+  hud.querySelector('.fill').style.width = xOf(year) + '%';
+  hud.querySelector('.dot').style.left = xOf(year) + '%';
 
   // scenes
   for (const s of scenes) {
     const local = t - s._start;
     if (local < 0 || local >= s._dur) { s.style.display = 'none'; continue; }
     s.style.display = 'block';
-    const exit = clamp((s._dur - local) / 0.45);
+    const exit = clamp((s._dur - local) / .4);
+    // slow camera push-in, quick blur-out on exit
+    s.style.transform = `scale(${1 + .045 * (local / s._dur)})`;
+    s.style.filter = exit < 1 ? `blur(${(1 - exit) * 14}px)` : 'none';
+    s.style.opacity = exit.toFixed(3);
+
     for (const el of s.querySelectorAll('[data-d]')) {
-      const p = clamp((local - +el.dataset.d) / 0.7);
-      const e = easeOut(p);
-      const anim = el.dataset.anim;
-      let tf = `translateY(${(1 - e) * 60}px)`;
-      if (anim === 'stamp') tf = `rotate(-8deg) scale(${p === 0 ? 2.4 : 2.4 - 1.4 * easeBack(p)})`;
-      if (anim === 'wipe') { el.style.transformOrigin = 'left'; tf = `scaleX(${e})`; }
-      if (anim === 'count') {
+      const d = +el.dataset.d, a = el.dataset.a;
+      const p = clamp((local - d) / .75), e = easeOut(p);
+      let op = e, tf = `translateY(${(1 - e) * 50}px)`, filt = '';
+      if (a === 'blurin') { tf = `scale(${1.25 - .25 * e})`; filt = `blur(${(1 - e) * 24}px)`; }
+      if (a === 'brush') { const q = clamp((local - d) / .9); tf = `scale(${1.3 - .3 * easeOut(q)})`; filt = `blur(${(1 - easeOut(q)) * 30}px)`; op = easeOut(q); el.style.clipPath = `inset(0 ${100 - easeInOut(q) * 100}% 0 0)`; }
+      if (a === 'slam') { const q = clamp((local - d) / .45); tf = `scale(${2.2 - 1.2 * easeOut(q)})`; filt = `blur(${(1 - q) * 20}px)`; op = q; }
+      if (a === 'stamp') { tf = `rotate(-8deg) scale(${p === 0 ? 2.6 : 2.6 - 1.6 * easeBack(p)})`; }
+      if (a === 'wipe') { el.style.transformOrigin = 'left'; tf = `scaleX(${easeInOut(p)})`; }
+      if (a === 'shot') {
+        tf = `translateY(${(1 - e) * 80}px) scale(${.94 + .06 * e})`;
+        const img = el.querySelector('img'); if (img) img.style.transform = `scale(${1.08 + .08 * (local / s._dur)}) translateX(${-1.5 * local}%)`;
+        el.querySelector('.sweep').style.backgroundPosition = `${lerp(160, -60, clamp((local - .6) / 1.4))}% 0`;
+        const fb = el.querySelector('canvas[data-fallback]');
+        if (fb) fb.dataset.fallback === 'clash' ? drawClash(fb, local, +fb.dataset.n) : drawLanes(fb, local);
+      }
+      if (a === 'count') {
         const from = +el.dataset.from, to = +el.dataset.to;
-        const v = Math.round(from + (to - from) * easeOut(clamp((local - +el.dataset.d) / 1.0)));
+        const v = Math.round(lerp(from, to, easeOut(clamp((local - d) / 1.1))));
         el.innerHTML = v + (el.dataset.suffix || '');
       }
-      el.style.opacity = (e * exit).toFixed(3);
-      el.style.transform = tf + (exit < 1 ? ` translateY(${(1 - exit) * -30}px)` : '');
+      if (el.classList.contains('year')) el.style.backgroundPosition = `${lerp(100, 0, clamp((local - d) / 1.6))}% 0`;
+      el.style.opacity = op.toFixed(3);
+      el.style.transform = tf;
+      el.style.filter = filt;
     }
+    for (const el of s.querySelectorAll('[data-a="count"]:not([data-d])')) {
+      const d = +el.closest('[data-d]').dataset.d;
+      el.innerHTML = Math.round(lerp(+el.dataset.from, +el.dataset.to, easeOut(clamp((local - d) / 1.3)))) + (el.dataset.suffix || '');
+    }
+    for (const fxEl of s.querySelectorAll('[data-fx]')) FX[fxEl.dataset.fx](fxEl, local);
   }
 };
 window.render(0);
