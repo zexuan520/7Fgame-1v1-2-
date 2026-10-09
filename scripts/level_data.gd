@@ -16,9 +16,11 @@ extends RefCounted
 ##   width                  房间宽度（画面 640，宽的房间镜头会跟着走）
 ##   theme                  village 荒村黄昏 / river 河畔夜 / temple 破庙
 ##   seed                   背景随机种子（房子、树的位置）
-##   props                  摆设 [种类, x]：well 井、cart 板车（能站）、crates 木箱（能站）、
-##                          shed 破棚顶（能站）、scarecrow 稻草人、fire 篝火、sign 路牌、grave 坟头
-##   waves                  一波一波的敌人。每波是 [[敌人类型, x], ...]；
+##   props                  摆设和地形 [种类, x] 或 [种类, x, 离地高度]，种类见 RoomProps 开头的说明。
+##                          能站的：cart crates hay shed wall house2（两层楼带楼梯） scaffold tower；
+##                          能砍碎的：jar urn barrel box（Breakable，掉铜钱、伤药）；
+##                          能互动的：chest 宝箱、note 遗骸（第 4 项是 NOTES 里的 id）
+##   waves                  一波一波的敌人。每波是 [[敌人类型, x], ...]，写了第 3 项高度的站在平台上不走动；
 ##                          第一波站在原地，主角走近才动手；后面的波次在上一波清完后从两边冲进来
 ##   intro                  头目先演登场
 ##   line                   进屋时屏幕下方的一句话 [谁, 内容]
@@ -50,44 +52,64 @@ const FLOORS := [
 const ROOMS := {
 	# ---------- 起点 ----------
 	"village_gate": {"name": "荒村村口", "width": 720.0, "theme": "village", "seed": 1,
-		"props": [["sign", 300.0], ["scarecrow", 470.0]],
+		"props": [["bamboo", 20.0], ["sign", 150.0], ["barrel", 205.0], ["jar", 228.0], ["urn", 244.0],
+			["lantern", 290.0], ["hay", 350.0], ["jar", 350.0, 28.0], ["note", 410.0, 0.0, "gate"],
+			["woodpile", 460.0], ["scarecrow", 540.0]],
 		"line": ["", "山下的村子早就没人了。往前走，刀在河那边。"]},
 
 	# ---------- 战斗 ----------
 	"lane": {"name": "荒村小道", "width": 960.0, "theme": "village", "seed": 2,
-		"props": [["cart", 380.0], ["fire", 620.0]],
-		"waves": [[["dog", 620.0], ["dog", 680.0]], [["dog", 40.0], ["dog", 920.0], ["dog", 900.0]]]},
+		"props": [["laundry", 100.0], ["house2", 330.0], ["urn", 300.0], ["jar", 260.0, 70.0], ["jar", 300.0, 70.0],
+			["chest", 340.0, 128.0], ["jar", 455.0], ["barrel", 472.0], ["cart", 520.0], ["crates", 610.0],
+			["box", 610.0, 34.0], ["woodpile", 650.0], ["fire", 690.0], ["lantern", 760.0]],
+		"waves": [[["dog", 560.0], ["dog", 640.0], ["archer", 380.0, 70.0]], [["dog", 40.0], ["dog", 920.0], ["dog", 900.0]]]},
 	"yard": {"name": "破屋院子", "width": 900.0, "theme": "village", "seed": 3,
-		"props": [["crates", 330.0], ["shed", 560.0], ["fire", 760.0]],
-		"waves": [[["shield", 560.0], ["archer", 780.0]], [["dog", 860.0], ["archer", 40.0]]]},
-	"well": {"name": "枯井", "width": 1000.0, "theme": "village", "seed": 4,
-		"props": [["well", 470.0], ["crates", 720.0]],
-		"waves": [[["dog", 560.0], ["dog", 620.0]], [["archer", 940.0], ["archer", 980.0], ["shield", 900.0]]]},
+		"props": [["laundry", 170.0], ["urn", 215.0], ["bucket", 236.0], ["shed", 330.0], ["jar", 330.0, 74.0],
+			["fire", 430.0], ["scaffold", 520.0], ["chest", 520.0, 112.0], ["box", 520.0, 56.0], ["crates", 615.0],
+			["barrel", 650.0], ["jar", 668.0], ["woodpile", 700.0]],
+		"waves": [[["shield", 440.0], ["archer", 520.0, 112.0], ["dog", 600.0]], [["dog", 860.0], ["archer", 40.0]]]},
+	"well": {"name": "枯井", "width": 1060.0, "theme": "village", "seed": 4,
+		"props": [["bamboo", 30.0], ["barrel", 230.0], ["jar", 252.0], ["jar", 264.0], ["well", 300.0], ["bucket", 326.0],
+			["wall", 420.0], ["house2", 680.0], ["urn", 640.0, 70.0], ["chest", 690.0, 128.0], ["jar", 720.0],
+			["box", 790.0], ["lantern", 810.0]],
+		"waves": [[["dog", 520.0], ["dog", 560.0], ["archer", 420.0, 46.0]], [["archer", 1000.0], ["archer", 1040.0], ["shield", 960.0]]]},
 	"field": {"name": "荒田", "width": 1120.0, "theme": "village", "seed": 5,
-		"props": [["scarecrow", 420.0], ["scarecrow", 780.0], ["cart", 600.0]],
-		"waves": [[["archer", 700.0], ["archer", 860.0]], [["dog", 1080.0], ["dog", 1060.0], ["shield", 40.0]]]},
+		"props": [["bamboo", 60.0], ["scarecrow", 300.0], ["hay", 400.0], ["jar", 400.0, 28.0], ["hay", 444.0],
+			["woodpile", 490.0], ["cart", 560.0], ["urn", 600.0], ["scarecrow", 630.0], ["scaffold", 700.0],
+			["box", 700.0, 56.0], ["tower", 830.0], ["chest", 830.0, 100.0], ["barrel", 880.0]],
+		"waves": [[["archer", 700.0, 112.0], ["archer", 830.0, 100.0], ["dog", 760.0]],
+			[["dog", 1080.0], ["dog", 1060.0], ["shield", 40.0]]]},
 	"barn": {"name": "粮仓", "width": 920.0, "theme": "village", "seed": 6,
-		"props": [["shed", 380.0], ["crates", 640.0], ["fire", 520.0]],
-		"waves": [[["shield", 600.0], ["dog", 660.0], ["dog", 700.0]], [["archer", 880.0], ["shield", 860.0]]]},
+		"props": [["barrel_d", 140.0], ["fire", 175.0], ["shed", 300.0], ["jar", 300.0, 74.0], ["hay", 385.0],
+			["house2", 560.0], ["urn", 520.0, 70.0], ["chest", 570.0, 128.0], ["barrel", 470.0], ["box", 660.0],
+			["woodpile", 700.0]],
+		"waves": [[["shield", 470.0], ["dog", 520.0], ["dog", 600.0]], [["archer", 560.0, 70.0], ["shield", 860.0]]]},
 	"graves": {"name": "乱坟岗", "width": 980.0, "theme": "village", "seed": 8,
-		"props": [["grave", 340.0], ["grave", 420.0], ["grave", 660.0], ["grave", 760.0], ["fire", 560.0]],
-		"waves": [[["dog", 600.0], ["archer", 820.0]], [["shield", 940.0], ["dog", 40.0], ["dog", 60.0]]]},
+		"props": [["grave", 200.0], ["urn", 215.0], ["grave", 250.0], ["jar", 266.0], ["stone_lantern", 300.0],
+			["grave", 340.0], ["banner", 365.0], ["wall", 450.0], ["chest", 450.0, 46.0], ["note", 540.0, 0.0, "grave"],
+			["grave", 600.0], ["jar", 615.0], ["stone_lantern", 660.0], ["bamboo", 700.0]],
+		"waves": [[["dog", 520.0], ["archer", 450.0, 46.0]], [["shield", 940.0], ["dog", 40.0], ["dog", 60.0]]]},
 
 	# ---------- 精英 ----------
 	"shrine_ronin": {"name": "山神庙前", "width": 820.0, "theme": "village", "seed": 9,
-		"props": [["fire", 300.0], ["grave", 620.0]],
+		"props": [["wall", 150.0], ["stone_lantern", 240.0], ["fire", 320.0], ["banner", 400.0],
+			["stone_lantern", 470.0], ["urn", 500.0], ["jar", 515.0], ["note", 540.0, 0.0, "ronin"]],
 		"line": ["堕落浪人", "这条路，我先占了。"],
 		"waves": [[["ronin", 560.0]]]},
 	"bandit_camp": {"name": "山贼营地", "width": 1000.0, "theme": "village", "seed": 10,
-		"props": [["fire", 480.0], ["crates", 300.0], ["cart", 760.0]],
+		"props": [["tent", 200.0], ["banner", 260.0], ["fire", 330.0], ["rack", 400.0], ["crates", 470.0],
+			["box", 470.0, 34.0], ["barrel", 500.0], ["urn", 540.0], ["tower", 620.0], ["chest", 620.0, 100.0],
+			["tent", 710.0]],
 		"line": ["山贼", "有人闯营！"],
-		"waves": [[["ronin", 640.0], ["archer", 900.0]], [["dog", 960.0], ["dog", 40.0]]]},
+		"waves": [[["ronin", 420.0], ["archer", 620.0, 100.0]], [["dog", 960.0], ["dog", 40.0]]]},
 
 	# ---------- 商人、土地庙 ----------
 	"merchant": {"name": "行脚商人", "width": 720.0, "theme": "village", "seed": 11,
-		"props": [["fire", 150.0], ["cart", 640.0]]},
+		"props": [["bamboo", 40.0], ["barrel_d", 100.0], ["fire", 150.0], ["lantern", 205.0], ["woodpile", 600.0],
+			["cart", 640.0]]},
 	"roadside_shrine": {"name": "路边土地庙", "width": 720.0, "theme": "village", "seed": 12,
-		"props": [["grave", 520.0]]},
+		"props": [["bamboo", 60.0], ["hay", 130.0], ["note", 190.0, 0.0, "shrine"], ["urn", 250.0],
+			["stone_lantern", 300.0], ["stone_lantern", 420.0], ["jar", 470.0], ["grave", 520.0], ["bamboo", 600.0]]},
 
 	# ---------- 头目 ----------
 	"river": {"name": "断水河畔", "width": 840.0, "theme": "river", "seed": 13,
@@ -95,6 +117,14 @@ const ROOMS := {
 
 	# ---------- 据点 ----------
 	"temple": {"name": "破庙", "width": 800.0, "theme": "temple", "seed": 0},
+}
+
+## 遗骸、遗书上写的字（站在前面按 下 查看）
+const NOTES := {
+	"gate": ["路边的遗书", "「村里的人都往山上逃了。别去河边，柳家那位谁也不让过。」"],
+	"grave": ["无名墓", "「这里埋着十七个想过河的人。刀都插在坟上了。」"],
+	"ronin": ["浪人的遗骸", "「我也想拿那把刀……他的居合，收刀比拔刀还快。」"],
+	"shrine": ["土地庙的签", "「签文：水不可断。想断水的人，先断了自己。」"],
 }
 
 ## 房间类型在地图上的样子：图标名、颜色、门上的字

@@ -36,6 +36,8 @@ var _retreat_t := 0.0
 var _intro_said := 0
 var _keep_jitter := 0.0     # 每个敌人想站的距离稍微错开，不会挤在一个点上
 var aggro := true           # false 时站着不动，等玩家走近（房间里的第一波）
+var perch := false          # 守在高处不走动（站在屋顶、望楼上的弓手）
+var _jump_cd := 0.0
 var _side := 1              # 包抄的一边（ai.flank 为 true 时有一半会绕到玩家另一边）
 
 # 美术
@@ -348,7 +350,15 @@ func _state_idle(delta: float) -> void:
 	var dx := target.global_position.x - global_position.x
 	var dist := absf(dx)
 	var speed: float = data["speed"]
-	if _side < 0 and attack_cooldown > 0.0 and dist < 160.0 and _retreat_t <= 0.0:
+	_jump_cd -= delta
+	var dy := target.global_position.y - global_position.y
+	var level := absf(dy) < 36.0 or not target.is_on_floor()
+	if not level and not perch and is_on_floor():
+		_chase_level(dx, dy, speed, delta)
+		return
+	if perch:
+		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
+	if _side < 0 and not perch and attack_cooldown > 0.0 and dist < 160.0 and _retreat_t <= 0.0:
 		# 包抄：从玩家身边窜过去，绕到另一边
 		var goal := target.global_position.x + signf(-dx if dx != 0.0 else 1.0) * -90.0
 		if goal < 30.0 or goal > float(main.arena_w) - 30.0:
@@ -362,14 +372,14 @@ func _state_idle(delta: float) -> void:
 	facing = 1 if dx >= 0.0 else -1
 	var accel := 900.0 if speed < 150.0 else 1500.0
 
-	if _retreat_t > 0.0:
+	if _retreat_t > 0.0 and not perch:
 		# 打完就跑：往后跳开拉距离（野狗、弓手）
 		_retreat_t -= delta
 		velocity.x = move_toward(velocity.x, -facing * speed, accel * 1.5 * delta)
 		return
 
 	var my_turn: bool = main.can_attack(self)
-	if attack_cooldown <= 0.0 and is_on_floor() and my_turn:
+	if attack_cooldown <= 0.0 and is_on_floor() and my_turn and (level or perch):
 		if dist < float(_ai("attack_range")):
 			_start_move(_pick(_ai("picks")))
 			return
@@ -389,7 +399,28 @@ func _state_idle(delta: float) -> void:
 		want = facing * speed
 	elif dist < near_d:
 		want = -facing * speed * 0.7
+	if perch:
+		want = 0.0
 	velocity.x = move_toward(velocity.x, want, accel * delta)
+
+
+## 玩家不在同一层：在下面就走到平台边掉下去（正上方时直接穿下去），在上面就走到下方跳上去
+func _chase_level(dx: float, dy: float, speed: float, delta: float) -> void:
+	facing = 1 if dx >= 0.0 else -1
+	if dy > 0.0:
+		if absf(dx) < 40.0:
+			drop_through()
+		velocity.x = move_toward(velocity.x, signf(dx) * speed, 1500.0 * delta)
+		return
+	if absf(dx) < 110.0 and _jump_cd <= 0.0:
+		# 起跳高度刚好够到玩家脚下那一层
+		_jump_cd = 1.4 + rng.randf() * 0.6
+		velocity.y = -minf(sqrt(2.0 * GRAVITY * (-dy + 20.0)), 720.0)
+		velocity.x = signf(dx) * clampf(absf(dx) * 2.4, 60.0, speed * 1.5)
+		main.spawn_dust(global_position, 0.0, 6)
+		return
+	var want := signf(dx) * speed if absf(dx) > 30.0 else 0.0
+	velocity.x = move_toward(velocity.x, want, 1500.0 * delta)
 
 
 func _pick(options: Array) -> String:
@@ -737,7 +768,15 @@ func _spawn_fx() -> void:
 			var a := Arrow.new()
 			a.main = main
 			a.facing = facing
-			a.velocity = Vector2(facing * float(info["speed"]), 0.0)
+			# 朝玩家身体瞄，高处往下射、低处往上射（角度有上限）
+			var dir := Vector2(facing, 0.0)
+			if target != null:
+				var to := target.global_position + Vector2(0, -26) - (global_position + Vector2(facing * 14.0, -34.0))
+				if signf(to.x) == float(facing):
+					dir = to.normalized()
+					dir.y = clampf(dir.y, -0.6, 0.6)
+					dir = dir.normalized()
+			a.velocity = dir * float(info["speed"])
 			a.dmg = info["dmg"]
 			a.posture = info["posture"]
 			a.position = global_position + Vector2(facing * 14.0, -34.0)

@@ -1,7 +1,7 @@
 extends Node
 ## 关卡和肉鸽流程自动测试（无界面运行）：
 ##   godot --headless --path . res://tests/test_run.tscn
-## 验证岔路地图、破庙出发、房间锁门和波次、掉钱、商人、土地庙、死亡带回 60% 魂玉、打败柳江远、供台。
+## 验证岔路地图、平台和楼梯、砸罐子开宝箱、破庙出发、房间锁门和波次、掉钱、商人、土地庙、死亡带回 60% 魂玉、打败柳江远、供台。
 
 var main: Node
 var failures := 0
@@ -18,6 +18,7 @@ func _run() -> void:
 	await _setup()
 	await test_hub_and_start()
 	await test_fight_room()
+	await test_platforms_and_loot()
 	await test_shop_and_rest()
 	await test_death_returns_home()
 	await _setup()
@@ -168,6 +169,69 @@ func test_fight_room() -> void:
 	await _frames(120)
 	_check(r.coins > 0 and r.kills >= first, "敌人掉的铜钱飞到身上（铜钱 %d，斩敌 %d）" % [r.coins, r.kills])
 	_check(r.jade >= 1, "清场给魂玉（%d）" % r.jade)
+
+
+func test_platforms_and_loot() -> void:
+	print("平台、楼梯、罐子、宝箱")
+	var r: Run = Game.run
+	var col: int = r.node()["next"][0]
+	r.rows[r.row + 1][col]["type"] = "fight"
+	r.rows[r.row + 1][col]["room"] = "lane"
+	main._go_next(col)
+	await _wait_fade()
+	var p := _p()
+	# 从楼梯走上二楼
+	p.global_position = Vector2(120, 299)
+	Input.action_press("p1_right")
+	await _frames(75)
+	Input.action_release("p1_right")
+	await _frames(10)
+	_check(p.on_platform() and p.global_position.y < 240.0, "顺着楼梯走上二楼（x %.0f y %.0f）" % [p.global_position.x, p.global_position.y])
+	# 下+跳 落回地面
+	Input.action_press("p1_down")
+	await _frames(2)
+	Input.action_press("p1_jump")
+	await _frames(2)
+	Input.action_release("p1_jump")
+	Input.action_release("p1_down")
+	await _frames(40)
+	_check(p.is_on_floor() and p.global_position.y > 295.0, "下+跳 从二楼落回地面（y %.0f）" % p.global_position.y)
+	# 敌人会跳上平台追
+	p.global_position = Vector2(330, 229)
+	p.invul_timer = 99.0
+	await _frames(10)
+	var dog: Enemy = main.spawn_enemy("dog", Vector2(300, 300))
+	var highest := 300.0
+	for i in range(150):
+		await _frames(1)
+		p.invul_timer = 99.0
+		highest = minf(highest, dog.global_position.y)
+	_check(highest < 235.0, "野狗跳上二楼追人（最高 y %.0f）" % highest)
+	# 砸罐子
+	var coins := r.coins
+	var jar: Breakable = null
+	for b: Breakable in main.breakables:
+		if b.kind == "barrel":
+			jar = b
+	jar.hit(jar.global_position.x - 10.0)
+	await _frames(12)
+	jar.hit(jar.global_position.x - 10.0)
+	_check(jar.broken, "木桶砍两刀碎掉")
+	p.global_position = jar.global_position
+	await _frames(100)
+	_check(r.coins > coins, "木桶里的铜钱飞到身上（%d → %d）" % [coins, r.coins])
+	# 屋顶上的宝箱
+	var chest := _find("chest")
+	_check(chest != null and chest.global_position.y < 200.0, "宝箱放在屋顶上")
+	coins = r.coins
+	main.interact(chest, p)
+	p.global_position = chest.global_position
+	await _frames(100)
+	_check(not chest.enabled and r.coins >= coins + 12, "打开宝箱拿到铜钱（+%d）" % (r.coins - coins))
+	_kill_all()
+	await _frames(90)
+	_kill_all()
+	await _frames(90)
 
 
 func test_shop_and_rest() -> void:

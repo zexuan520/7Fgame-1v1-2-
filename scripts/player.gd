@@ -548,6 +548,11 @@ func _state_dodge(_delta: float) -> void:
 # ---------- 动作 ----------
 
 func _try_jump() -> void:
+	if _drop_t > 0.0:
+		return   # 刚穿下平台，这一下跳不算
+	if on_platform() and _held("down"):
+		drop_through()   # 下+跳：从平台上跳下去
+		return
 	if is_on_floor():
 		velocity.y = JUMP_VELOCITY
 		_squash = Vector2(0.85, 1.15)

@@ -20,7 +20,7 @@ func _physics_process(delta: float) -> void:
 		_trail.pop_back()
 	global_position += velocity * delta
 	_life -= delta
-	if _life <= 0.0 or global_position.x < -60.0 or global_position.x > float(main.arena_w) + 60.0:
+	if _life <= 0.0 or global_position.y > Fighter.GROUND_Y + 2.0 or global_position.x < -60.0 or global_position.x > float(main.arena_w) + 60.0:
 		queue_free()
 		return
 	if deflected_by == null:
@@ -73,11 +73,12 @@ func _draw() -> void:
 	for i in range(_trail.size()):
 		var a := 0.35 * (1.0 - float(i) / _trail.size())
 		var p := _trail[i] - global_position
-		draw_line(p, p - Vector2(facing * 6.0, 0), Color(1, 1, 1, a) if not back else Color(1.0, 0.85, 0.4, a), 1.0)
-	var d := Vector2(facing, 0)
+		draw_line(p, p - velocity.normalized() * 6.0, Color(1, 1, 1, a) if not back else Color(1.0, 0.85, 0.4, a), 1.0)
+	var d := velocity.normalized() if velocity.length() > 1.0 else Vector2(facing, 0)
 	draw_line(-d * 13.0, Vector2.ZERO, Color(0.05, 0.03, 0.03), 3.0)
 	draw_line(-d * 12.0, Vector2.ZERO, shaft, 1.0)
-	draw_colored_polygon(PackedVector2Array([d * 3.0, Vector2(0, -1.5), Vector2(0, 1.5)]), Color(0.85, 0.88, 0.95))
+	var n := Vector2(-d.y, d.x)
+	draw_colored_polygon(PackedVector2Array([d * 3.0, n * -1.5, n * 1.5]), Color(0.85, 0.88, 0.95))
 	# 箭羽
-	draw_line(-d * 12.0, -d * 15.0 + Vector2(0, -2), Color(0.9, 0.9, 0.85), 1.0)
-	draw_line(-d * 12.0, -d * 15.0 + Vector2(0, 2), Color(0.9, 0.9, 0.85), 1.0)
+	draw_line(-d * 12.0, -d * 15.0 - n * 2.0, Color(0.9, 0.9, 0.85), 1.0)
+	draw_line(-d * 12.0, -d * 15.0 + n * 2.0, Color(0.9, 0.9, 0.85), 1.0)

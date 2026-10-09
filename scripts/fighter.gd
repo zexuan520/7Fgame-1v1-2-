@@ -4,6 +4,8 @@ extends CharacterBody2D
 ## 坐标约定：节点原点在脚底中心，向上为 -y。
 
 const GRAVITY := 1500.0
+const PLATFORM_LAYER := 3            # 平台、楼梯在第 3 层（单向，能从下面跳穿、按下+跳往下落）
+const GROUND_Y := 300.0
 const POSTURE_RECOVER_DELAY := 1.5   # 不受攻击 1.5 秒后架势开始回落
 
 var max_hp := 200.0
@@ -19,11 +21,14 @@ var flash_color := Color.WHITE
 var main: Node                       # 主场景，用来放特效、找对手
 
 var _posture_idle := 0.0
+var _drop_t := 0.0                   # 正在穿过平台往下落
 
 
 func setup_body() -> void:
 	collision_layer = 2
 	collision_mask = 1   # 只和地形碰撞，角色之间可以穿过
+	set_collision_mask_value(PLATFORM_LAYER, true)
+	floor_snap_length = 6.0   # 下楼梯时贴着台阶走，不会一步一跳
 	var shape := CollisionShape2D.new()
 	var rect := RectangleShape2D.new()
 	rect.size = body_size
@@ -68,7 +73,23 @@ func flash(color: Color, time: float = 0.12) -> void:
 	flash_timer = time
 
 
+## 站在平台或楼梯上（不是地面）
+func on_platform() -> bool:
+	return is_on_floor() and global_position.y < GROUND_Y - 3.0
+
+
+## 从脚下的平台掉下去
+func drop_through() -> void:
+	set_collision_mask_value(PLATFORM_LAYER, false)
+	_drop_t = 0.28
+	velocity.y = maxf(velocity.y, 60.0)
+
+
 func apply_gravity(delta: float) -> void:
+	if _drop_t > 0.0:
+		_drop_t -= delta
+		if _drop_t <= 0.0:
+			set_collision_mask_value(PLATFORM_LAYER, true)
 	if not is_on_floor():
 		velocity.y = minf(velocity.y + GRAVITY * delta, 950.0)
 

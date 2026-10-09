@@ -14,12 +14,14 @@ const ENTRY_X := 70.0                 # 进房间时站的位置
 const MAX_ATTACKERS := 2              # 设计文档：同时最多两个敌人进攻
 const REVIVE_RATIO := 0.4             # 双人时倒下的人，清完房间以 40% 生命爬起来
 const DEATH_DELAY := 2.4              # 全员倒下后多久出结算
+const HEAL_PICKUP := 0.15             # 罐子里的伤药回 15% 生命
 
 var arena_w := PRACTICE_W             # 当前房间宽度，镜头和墙都按它来
 var mode := "practice"                # practice 练武场 / hub 破庙 / room 闯关中的房间
 var players: Array[Player] = []
 var enemies: Array[Enemy] = []
 var interactables: Array[Interactable] = []
+var breakables: Array[Breakable] = []
 var camera: Camera2D
 var world: Node2D
 var fx_root: Node2D
@@ -100,6 +102,7 @@ func _build_room(def: Dictionary) -> void:
 		e.queue_free()
 	enemies.clear()
 	interactables.clear()
+	breakables.clear()
 	for f in fx_root.get_children():
 		f.queue_free()
 	waves = []
@@ -129,12 +132,37 @@ func _build_room(def: Dictionary) -> void:
 	_add_box(ground, Rect2(-40, -200, 40, 600))                  # 左墙
 	_add_box(ground, Rect2(arena_w, -200, 40, 600))              # 右墙
 	var props: Array = def.get("props", [])
+	# 平台和楼梯单独一层：单向，能从下面跳上去，按 下+跳 落下去
+	var plat := StaticBody2D.new()
+	plat.collision_layer = 0
+	plat.collision_mask = 0
+	plat.set_collision_layer_value(Fighter.PLATFORM_LAYER, true)
+	room_root.add_child(plat)
 	for r in RoomProps.platform_rects(props, FLOOR_Y):
-		_add_box(ground, r, true)
+		_add_box(plat, r, true)
+	for rp: Array in RoomProps.ramps(props, FLOOR_Y):
+		_add_ramp(plat, rp[0], rp[1])
 	var pr := RoomProps.new()
 	pr.props = props
 	pr.floor_y = FLOOR_Y
 	room_root.add_child(pr)
+	for item: Array in props:
+		var at := Vector2(float(item[1]), FLOOR_Y - (float(item[2]) if item.size() > 2 else 0.0))
+		if Breakable.KINDS.has(item[0]):
+			var b := Breakable.new()
+			b.kind = item[0]
+			b.main = self
+			b.position = at
+			b.z_index = 3
+			room_root.add_child(b)
+			breakables.append(b)
+		elif item[0] == "chest":
+			var it := _add_interactable("chest", at.x, "", "chest", Color("e0b860"))
+			it.position = at
+		elif item[0] == "note":
+			var id: String = item[3] if item.size() > 3 else "ronin"
+			var it := _add_interactable("note", at.x, "", "note", Color("c8bca8"), {"id": id})
+			it.position = at
 
 	front_root = Node2D.new()
 	front_root.z_index = 20
@@ -150,6 +178,19 @@ func _add_box(body: StaticBody2D, r: Rect2, one_way: bool = false) -> void:
 	shape.shape = rect
 	shape.position = r.get_center()
 	shape.one_way_collision = one_way
+	body.add_child(shape)
+
+
+## 楼梯：一块斜着的单向碰撞板，上表面贴着 a→b 这条线
+func _add_ramp(body: StaticBody2D, a: Vector2, b: Vector2) -> void:
+	var d := b - a
+	var shape := CollisionShape2D.new()
+	var rect := RectangleShape2D.new()
+	rect.size = Vector2(d.length(), 8)
+	shape.shape = rect
+	shape.rotation = d.angle()
+	shape.position = (a + b) / 2.0 + Vector2(-d.y, d.x).normalized() * 4.0
+	shape.one_way_collision = true
 	body.add_child(shape)
 
 
@@ -318,8 +359,9 @@ func _make_exits() -> void:
 func _spawn_wave(i: int, intro: bool = false) -> void:
 	wave = i
 	for s: Array in waves[i]:
-		var pos := Vector2(float(s[1]), FLOOR_Y)
+		var pos := Vector2(float(s[1]), FLOOR_Y - (float(s[2]) if s.size() > 2 else 0.0))
 		var e := spawn_enemy(s[0], pos)
+		e.perch = s.size() > 2   # 写了高度的守在高处
 		if intro:
 			e.start_intro()
 		elif i == 0:
@@ -443,23 +485,29 @@ func on_enemy_killed(e: Enemy) -> void:
 		spawn_pickups("jade", int(drop["jade"]), at)
 
 
-## 崩出一把铜钱/魂玉：最多 8 个，钱数平分到每个上
-func spawn_pickups(kind: String, amount: int, at: Vector2) -> void:
-	var n := mini(amount, 8)
+## 崩出一把铜钱/魂玉/伤药：最多 8 个，钱数平分到每个上。ground 是它们落在哪一层
+func spawn_pickups(kind: String, amount: int, at: Vector2, ground: float = FLOOR_Y) -> void:
+	var n := mini(amount, 8) if kind != "heal" else amount
 	var left := amount
 	for i in range(n):
 		var pk := Pickup.new()
 		pk.kind = kind
-		pk.amount = left / (n - i)
+		pk.amount = left / (n - i) if kind != "heal" else 1
 		left -= pk.amount
 		pk.main = self
-		pk.floor_y = FLOOR_Y
+		pk.floor_y = ground
 		pk.position = at
 		pk.velocity = Vector2(randf_range(-110, 110), randf_range(-320, -180))
 		fx_root.add_child(pk)
 
 
 func collect(kind: String, amount: int, p: Player) -> void:
+	if kind == "heal":
+		var add := minf(p.max_hp * HEAL_PICKUP * amount, p.max_hp - p.hp)
+		p.hp += add
+		spawn_text(p.global_position + Vector2(0, -64), "+%d" % roundi(add), Color(0.5, 1.0, 0.55), 12)
+		spawn_spark(p.global_position + Vector2(0, -30), Color(0.5, 1.0, 0.6), 8)
+		return
 	if Game.run == null:
 		return
 	if kind == "coin":
@@ -536,6 +584,26 @@ func interact(it: Interactable, p: Player) -> void:
 				spawn_spark(q.global_position + Vector2(0, -30), Color(0.6, 0.85, 1.0), 14)
 			spawn_text(at, "香火绵长 · 伤势痊愈", Color(0.7, 0.9, 1.0), 12)
 			flash_screen(Color(0.5, 0.7, 1.0), 0.2)
+		"chest":
+			if not it.enabled:
+				return
+			it.used = true
+			it.enabled = false
+			var top := it.global_position + Vector2(0, -16)
+			spawn_pickups("coin", randi_range(12, 24), top, it.global_position.y)
+			if randf() < 0.4:
+				spawn_pickups("heal", 1, top, it.global_position.y)
+			if randf() < 0.25:
+				spawn_pickups("jade", randi_range(1, 2), top, it.global_position.y)
+			spawn_spark(top, Color(1.0, 0.85, 0.4), 16)
+			spawn_ring(top, Color(1.0, 0.85, 0.4), 24.0)
+			shake(1.5)
+		"note":
+			var note: Array = LevelData.NOTES.get(it.data["id"], ["", "……"])
+			hud.say(note[0], note[1], 5.0)
+			if not it.used:
+				it.used = true
+				spawn_pickups("coin", 5, it.global_position + Vector2(8, -6), it.global_position.y)
 		"altar":
 			if not it.enabled:
 				return
@@ -593,6 +661,25 @@ func _apply_player_stats(p: Player, refill: bool) -> void:
 	else:
 		p.hp = minf(p.max_hp, p.hp + maxf(0.0, p.max_hp - old_max))
 		p.gourds = mini(p.max_gourds, p.gourds + maxi(0, p.max_gourds - old_gourds))
+
+
+## 玩家出手的判定框碰到罐子、木桶就砍碎
+func _hit_breakables() -> void:
+	if breakables.is_empty():
+		return
+	for p in players:
+		var r := Rect2()
+		if p.state == Player.S.ATTACK and p.attack_phase == 1:
+			r = p._attack_rect()
+		elif p.state == Player.S.ART and p.state_time >= float(Player.ART["windup"]):
+			var size: Vector2 = Player.ART["size"]
+			r = Rect2(p.global_position + Vector2(-size.x / 2.0, -size.y), size)
+		else:
+			continue
+		for b: Variant in breakables:
+			if is_instance_valid(b) and not b.broken and r.intersects(b.rect()):
+				b.hit(p.global_position.x)
+	breakables.assign(breakables.filter(func(b: Variant) -> bool: return is_instance_valid(b) and not b.broken))
 
 
 ## 黑屏过渡：变黑 → 执行 → 变亮
@@ -894,6 +981,7 @@ func _process(delta: float) -> void:
 	elif mode == "room" and _fade_dir == 0:
 		_update_room(real_dt)
 	_update_interact()
+	_hit_breakables()
 	_update_fade(real_dt)
 	_flash.a = maxf(0.0, _flash.a - real_dt * 1.6)
 	post.set_shader_parameter("flash", _flash)

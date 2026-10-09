@@ -2,7 +2,7 @@ class_name Pickup
 extends Node2D
 ## 敌人死后崩出来的铜钱、魂玉：先弹几下落在地上，过一会儿自己飞向最近的玩家。
 
-var kind := "coin"          # coin / jade
+var kind := "coin"          # coin 铜钱 / jade 魂玉 / heal 伤药（回 15% 生命）
 var amount := 1
 var main: Node
 var velocity := Vector2.ZERO
@@ -41,6 +41,11 @@ func _draw() -> void:
 	if kind == "jade":
 		for i in range(3):
 			draw_circle(Vector2.ZERO, 3.0 + i * 2.5, Color(0.3, 0.9, 0.65, 0.08))
+	elif kind == "heal":
+		for i in range(3):
+			draw_circle(Vector2.ZERO, 3.0 + i * 2.5, Color(1.0, 0.4, 0.35, 0.09))
+		Icons.draw(self, "herb", Vector2.ZERO, Color(1, 1, 1))
+		return
 	var spin := absf(cos(_t * 8.0))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(maxf(spin, 0.3), 1.0))
 	Icons.draw(self, kind, Vector2.ZERO, Color(1, 1, 1))

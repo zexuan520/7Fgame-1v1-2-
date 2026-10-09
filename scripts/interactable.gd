@@ -5,7 +5,7 @@ extends Node2D
 
 const RANGE := 26.0
 
-var kind := "door"          # door / item / rest / altar
+var kind := "door"          # door 门 / item 货物 / rest 土地庙 / altar 供台 / chest 宝箱 / note 遗骸
 var label := ""             # 头上的字
 var sub := ""               # 小字（价格、说明）
 var icon := ""              # 图标：门是房间类型，货物是货物 id
@@ -30,6 +30,8 @@ func prompt() -> String:
 		"item": return "↓ 购买" if enabled else "卖完了"
 		"rest": return "↓ 上香" if enabled else "香已经点上了"
 		"altar": return "↓ 供奉" if enabled else "已满"
+		"chest": return "↓ 打开" if enabled else "空了"
+		"note": return "↓ 查看"
 	return "↓"
 
 
@@ -45,11 +47,15 @@ func _draw() -> void:
 		"door": _draw_door()
 		"item", "altar": _draw_item()
 		"rest": _draw_shrine()
+		"chest": _draw_chest()
+		"note": _draw_note()
 	var font: Font = Game.font
 	# 门：字在门匾上面；货物、供台：平时只显示名字，走近了才显示说明和价格
 	var top := -100.0 if kind == "door" else -40.0
 	if kind == "rest":
 		top = -60.0
+	elif kind == "chest" or kind == "note":
+		top = -30.0
 	var a := 1.0 if highlight else 0.75
 	var show_sub := sub != "" and (highlight or kind == "door" or kind == "rest")
 	if highlight:
@@ -187,3 +193,48 @@ func _draw_shrine() -> void:
 	elif enabled:
 		for i in range(3):
 			draw_circle(Vector2(0, -20), 10.0 + i * 5.0, Color(color, 0.05 + 0.03 * sin(time * 3.0)))
+
+
+# ---------- 宝箱、遗骸 ----------
+
+func _draw_chest() -> void:
+	var o := Color("0c080a")
+	var wood := Color("6a3a24")
+	var trim := Color("c9a24a")
+	draw_rect(Rect2(-12, -13, 24, 13), o)
+	draw_rect(Rect2(-11, -12, 22, 12), wood)
+	draw_rect(Rect2(-11, -12, 22, 1), wood.lightened(0.25))
+	if used:
+		# 打开了：盖子往后翻，里面空的
+		draw_rect(Rect2(-12, -22, 24, 6), o)
+		draw_rect(Rect2(-11, -21, 22, 4), wood.darkened(0.2))
+		draw_rect(Rect2(-10, -12, 20, 3), Color("1a0e0a"))
+	else:
+		draw_rect(Rect2(-12, -18, 24, 7), o)
+		draw_rect(Rect2(-11, -17, 22, 6), wood.lightened(0.1))
+		draw_rect(Rect2(-11, -17, 22, 1), wood.lightened(0.35))
+		var glint := 0.6 + 0.4 * sin(time * 3.0)
+		for i in range(3):
+			draw_circle(Vector2(0, -10), 8.0 + i * 5.0, Color(1.0, 0.8, 0.3, 0.04 * glint))
+	for x in [-9, 7]:
+		draw_rect(Rect2(x, -17 if not used else -12, 2, 17 if not used else 12), trim.darkened(0.2))
+	draw_rect(Rect2(-2, -12, 4, 4), trim)
+	draw_rect(Rect2(-1, -11, 2, 2), o)
+
+
+func _draw_note() -> void:
+	var o := Color("0c080a")
+	# 靠着石头坐着的遗骸：斗笠、破衣服、插在地上的刀、手边一卷纸
+	draw_colored_polygon(PackedVector2Array([Vector2(-14, 0), Vector2(-10, -12), Vector2(4, -14), Vector2(10, 0)]), Color("2a2430"))
+	draw_colored_polygon(PackedVector2Array([Vector2(-8, 0), Vector2(-6, -14), Vector2(2, -16), Vector2(5, 0)]), Color("4a3a36"))
+	draw_circle(Vector2(-2, -18), 4, Color("c8bca8"))
+	draw_rect(Rect2(-4, -19, 1, 1), o)
+	draw_rect(Rect2(-1, -19, 1, 1), o)
+	draw_colored_polygon(PackedVector2Array([Vector2(-10, -20), Vector2(6, -20), Vector2(-2, -26)]), Color("8a7a4a"))
+	draw_line(Vector2(12, 0), Vector2(15, -24), Color("9a9aa4"), 1.0)
+	draw_rect(Rect2(13, -28, 5, 2), Color("3a2a22"))
+	draw_rect(Rect2(6, -4, 7, 3), Color("e0d4b8"))
+	draw_rect(Rect2(6, -4, 1, 3), Color("a8946a"))
+	if not used:
+		var b := 0.5 + 0.5 * sin(time * 3.0)
+		draw_rect(Rect2(9, -9 - roundf(b * 2.0), 1, 1), Color(1.0, 0.95, 0.7, b))

@@ -51,6 +51,18 @@ static func draw(c: CanvasItem, id: String, at: Vector2, col: Color) -> void:
 			c.draw_circle(p, 3.5, Color("b8742e"))
 			c.draw_circle(p, 2.5, Color("d89a48"))
 			c.draw_rect(Rect2(p + Vector2(-1, -1), Vector2(2, 2)), Color("4a2a14"))
+		"herb":
+			# 伤药：一小包红色药丸 + 两片叶子
+			c.draw_circle(p + Vector2(0, 1), 3, o)
+			c.draw_circle(p + Vector2(0, 1), 2.5, Color("d8443a"))
+			c.draw_rect(Rect2(p + Vector2(-1, 0), Vector2(1, 1)), Color("ffb0a0"))
+			c.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -2), p + Vector2(-4, -5), p + Vector2(-1, -5)]), Color("5aa04a"))
+			c.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -2), p + Vector2(4, -5), p + Vector2(1, -5)]), Color("7ac06a"))
+		"chest":
+			c.draw_rect(Rect2(p + Vector2(-6, -3), Vector2(12, 8)), o)
+			c.draw_rect(Rect2(p + Vector2(-5, -2), Vector2(10, 6)), col)
+			c.draw_rect(Rect2(p + Vector2(-5, -2), Vector2(10, 2)), hi)
+			c.draw_rect(Rect2(p + Vector2(-1, 0), Vector2(2, 2)), Color("e8c060"))
 		"jade":
 			c.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -4), p + Vector2(3, 0), p + Vector2(0, 4), p + Vector2(-3, 0)]), Color("5ed6a8"))
 			c.draw_rect(Rect2(p + Vector2(-1, -2), Vector2(1, 2)), Color("d8fff0"))
