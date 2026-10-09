@@ -1,5 +1,7 @@
 extends Node
-## 全局单例（自动加载为 Game）：按键映射、中文字体、调试开关、这一局的状态、存档。
+## 全局单例（自动加载为 Game）：按键映射、中文字体、调试开关、这一局的状态、存档、声音和设置。
+## 声音：Game.sfx("parry") 放音效（assets/sfx/），Game.music("hub") 换背景音乐（assets/music/，循环）。
+## 素材是 tools/gen_audio.py 合成的占位声音，换正式素材直接覆盖同名 wav。
 
 const PARRY_WINDOW := 0.15        # 设计文档：弹反窗口 0.15 秒
 const PARRY_WINDOW_EASY := 0.25   # 低难度 0.25 秒
@@ -21,6 +23,20 @@ var save := {"jade": 0, "talents": {}, "weapons": ["katana"], "start_weapon": "k
 const OLD_ALTAR_COSTS := {"vigor": [5, 10, 15], "gourd": [8, 16], "purse": [4, 8, 12]}
 
 
+## 设置（和存档分开放）：音量 0-1、低难度、改过的按键 {动作: [键码, ...]}
+var settings := {"master": 0.8, "music": 0.6, "sfx": 0.8, "easy": false, "keys": {}}
+var settings_path := "user://settings.cfg"
+const SFX_VOICES := 16
+const SFX_GAP := 0.035              # 同一个音效太密时（一把铜钱）跳过
+var _voices: Array[AudioStreamPlayer] = []
+var _voice := 0
+var _sfx_cache := {}
+var _sfx_last := {}
+var _bgm: AudioStreamPlayer
+var _bgm_name := ""
+var _bgm_tween: Tween
+
+
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	# 像素字体 Fusion Pixel（SIL OFL 1.1），12 像素的倍数最清晰
@@ -32,6 +48,8 @@ func _ready() -> void:
 	font = pixel
 	_setup_inputs()
 	load_save()
+	load_settings()
+	_setup_audio()
 
 
 func load_save() -> void:
@@ -54,6 +72,126 @@ func write_save() -> void:
 	for k: String in save.keys():
 		cfg.set_value("save", k, save[k])
 	cfg.save(save_path)
+
+
+# ---------- 设置 ----------
+
+func load_settings() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(settings_path) == OK:
+		for k: String in settings.keys():
+			settings[k] = cfg.get_value("settings", k, settings[k])
+	easy_mode = bool(settings["easy"])
+	for action: String in settings["keys"]:
+		rebind(action, settings["keys"][action], false)
+
+
+func write_settings() -> void:
+	settings["easy"] = easy_mode
+	var cfg := ConfigFile.new()
+	for k: String in settings.keys():
+		cfg.set_value("settings", k, settings[k])
+	cfg.save(settings_path)
+
+
+## 改键：把这个动作的键盘按键换成 keys（手柄不动）
+func rebind(action: String, keys: Array, save_it: bool = true) -> void:
+	if not InputMap.has_action(action):
+		return
+	for ev in InputMap.action_get_events(action):
+		if ev is InputEventKey:
+			InputMap.action_erase_event(action, ev)
+	_add_keys(action, keys)
+	if save_it:
+		settings["keys"][action] = keys
+		write_settings()
+
+
+## 这个动作现在的键盘按键名（界面上显示）
+func key_names(action: String) -> String:
+	var names := []
+	for ev in InputMap.action_get_events(action):
+		if ev is InputEventKey:
+			names.append(OS.get_keycode_string((ev as InputEventKey).physical_keycode))
+	return " / ".join(names)
+
+
+# ---------- 声音 ----------
+
+func _setup_audio() -> void:
+	for bus: String in ["Music", "SFX"]:
+		if AudioServer.get_bus_index(bus) < 0:
+			AudioServer.add_bus()
+			var i := AudioServer.bus_count - 1
+			AudioServer.set_bus_name(i, bus)
+			AudioServer.set_bus_send(i, "Master")
+	for i in range(SFX_VOICES):
+		var v := AudioStreamPlayer.new()
+		v.bus = "SFX"
+		add_child(v)
+		_voices.append(v)
+	_bgm = AudioStreamPlayer.new()
+	_bgm.bus = "Music"
+	add_child(_bgm)
+	apply_volume()
+
+
+func apply_volume() -> void:
+	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(float(settings["master"]), 0.0001)))
+	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Music"), linear_to_db(maxf(float(settings["music"]), 0.0001)))
+	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("SFX"), linear_to_db(maxf(float(settings["sfx"]), 0.0001)))
+
+
+## 放一个音效。pitch_var 是随机音高的幅度（同一个声音听起来不那么机械）
+func sfx(sound: String, volume_db: float = 0.0, pitch_var: float = 0.06) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - float(_sfx_last.get(sound, -1.0)) < SFX_GAP:
+		return
+	_sfx_last[sound] = now
+	var stream := _load_sound("res://assets/sfx/%s.wav" % sound)
+	if stream == null or _voices.is_empty():
+		return
+	var v := _voices[_voice]
+	_voice = (_voice + 1) % _voices.size()
+	v.stream = stream
+	v.volume_db = volume_db
+	v.pitch_scale = 1.0 + randf_range(-pitch_var, pitch_var)
+	v.play()
+
+
+## 换背景音乐（同一首不重来）；空字符串是停下
+func music(track: String) -> void:
+	if track == _bgm_name or _bgm == null:
+		return
+	_bgm_name = track
+	if _bgm_tween != null:
+		_bgm_tween.kill()
+	_bgm_tween = create_tween()
+	if _bgm.playing:
+		_bgm_tween.tween_property(_bgm, "volume_db", -40.0, 0.6)
+	_bgm_tween.tween_callback(func() -> void:
+		var s := _load_sound("res://assets/music/%s.wav" % track) if track != "" else null
+		_bgm.stop()
+		if s is AudioStreamWAV:
+			var w := s as AudioStreamWAV
+			w.loop_mode = AudioStreamWAV.LOOP_FORWARD
+			w.loop_begin = 0
+			w.loop_end = int(w.get_length() * w.mix_rate)
+		if s != null:
+			_bgm.stream = s
+			_bgm.volume_db = -40.0
+			_bgm.play())
+	_bgm_tween.tween_property(_bgm, "volume_db", 0.0, 0.8)
+
+
+func music_name() -> String:
+	return _bgm_name
+
+
+func _load_sound(path: String) -> AudioStream:
+	if not _sfx_cache.has(path):
+		_sfx_cache[path] = load(path) if ResourceLoader.exists(path) else null
+	return _sfx_cache[path]
 
 
 ## 兵器架：闯关时拿到过的武器解锁成出发武器

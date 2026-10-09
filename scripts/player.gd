@@ -648,6 +648,7 @@ func _state_drink(delta: float) -> void:
 		_drank = true
 		var amount := minf(max_hp * HEAL_RATIO * (1.0 + float(stats["gourd_heal"])), max_hp - hp)
 		hp += amount
+		Game.sfx("heal")
 		flash(Color(0.5, 1.0, 0.6), 0.2)
 		main.spawn_text(global_position + Vector2(0, -70), "+%d" % roundi(amount), Color(0.5, 1.0, 0.55))
 		main.spawn_spark(global_position + Vector2(0, -30), Color(0.5, 1.0, 0.6), 12)
@@ -742,6 +743,7 @@ func _art_wave(t: float, _delta: float) -> void:
 		w.info = art
 		w.position = global_position + Vector2(facing * 22.0, -28.0)
 		main.fx_root.add_child(w)
+		Game.sfx("wave")
 		main.spawn_slash(global_position + Vector2(facing * 9.0, -26.0), facing, 40.0, -2.2, 0.8, Color(0.7, 0.9, 1.0), 8.0)
 	if _art_tick + 1 >= count and t >= float(art["active"]):
 		_art_done = true
@@ -862,6 +864,7 @@ func _start_tool() -> void:
 	kit["paper"] = int(kit["paper"]) - int(d["paper"])
 	tool = d.duplicate()
 	tool["id"] = id
+	Game.sfx({"dart": "throw", "cracker": "throw", "hook": "hook", "smoke": "smoke", "flame": "flame"}.get(id, "throw"))
 	_tool_tick = -1
 	_zip_x = INF
 	hit_targets.clear()
@@ -930,6 +933,7 @@ func _tool_cracker() -> void:
 	var size: Vector2 = tool["size"]
 	var c := global_position + Vector2(facing * 40.0, -24.0)
 	var r := Rect2(c - size / 2.0, size)
+	Game.sfx("boom")
 	main.spawn_ring(c, Color(1.0, 0.55, 0.25), 40.0)
 	main.spawn_spark(c, Color(1.0, 0.75, 0.3), 18)
 	main.spawn_spark(c, Color(1.0, 0.35, 0.2), 10)
@@ -1003,6 +1007,7 @@ func _start_item() -> void:
 		kit["bar_i"] = clampi(int(kit["bar_i"]), 0, maxi(0, (kit["bar"] as Array).size() - 1))
 	_item_id = id
 	_item_done = false
+	Game.sfx("drink")
 	_enter(S.ITEM)
 
 
@@ -1087,6 +1092,7 @@ func _try_jump() -> void:
 		drop_through()   # 下+跳：从平台上跳下去
 		return
 	if is_on_floor():
+		Game.sfx("jump")
 		velocity.y = JUMP_VELOCITY
 		if running and absf(velocity.x) > WALK_SPEED:
 			velocity.x = signf(velocity.x) * move_speed() * RUN_JUMP
@@ -1094,6 +1100,7 @@ func _try_jump() -> void:
 		_squash = Vector2(0.85, 1.15)
 		main.spawn_dust(global_position, 0.0, 6)
 	elif air_jumps > 0:
+		Game.sfx("jump", 0.0, 0.1)
 		main.spawn_dust(global_position, 0.0, 4)
 		_spin_time = 0.0
 		air_jumps -= 1
@@ -1177,6 +1184,7 @@ func _start_dodge(dir: float) -> void:
 	dodge_cooldown = DODGE_COOLDOWN * maxf(cd, 0.3) + DODGE_TIME
 	invul_timer = DODGE_INVUL
 	_perfect_used = false
+	Game.sfx("dodge")
 	_enter(S.DODGE)
 	if is_on_floor():
 		main.spawn_dust(global_position, -dodge_dir, 6)
@@ -1188,6 +1196,7 @@ func _start_drink() -> void:
 		return
 	gourds -= 1
 	_drank = false
+	Game.sfx("drink")
 	_enter(S.DRINK)
 
 
@@ -1215,6 +1224,7 @@ func _start_art() -> void:
 	hit_targets.clear()
 	_enter(S.ART)
 	var col: Color = Arts.SCHOOL_COLORS[a["school"]]
+	Game.sfx("art")
 	flash(col, 0.12)
 	main.spawn_text(global_position + Vector2(0, -74), a["name"], col, 14)
 
@@ -1467,6 +1477,7 @@ func receive_enemy_hit(info: Dictionary, attacker: Node2D) -> String:
 	if invul_timer > 0.0:
 		if kind == "thrust" and state == S.DODGE and dodge_dir == -int(attacker.get("facing")):
 			gain_will("mikiri")
+			Game.sfx("mikiri")
 			return "mikiri"   # 看破：迎着突刺方向闪身
 		if state == S.DODGE and state_time <= PERFECT_DODGE and not _perfect_used and float(stats["perfect_slow"]) > 0.0:
 			_perfect_dodge()
@@ -1480,6 +1491,7 @@ func receive_enemy_hit(info: Dictionary, attacker: Node2D) -> String:
 			parry_timer = 0.0
 			parry_count += 1
 			gain_will("parry")
+			Game.sfx("parry")
 			if _kongo_t > 0.0:
 				will = minf(MAX_WILL, will + _kongo_will)
 			flash(Color(1.0, 0.95, 0.5), 0.15)
@@ -1493,8 +1505,10 @@ func receive_enemy_hit(info: Dictionary, attacker: Node2D) -> String:
 		add_posture(p * float(stance()["block_posture"]) * maxf(0.1, 1.0 + float(stats["block_posture"])))
 		if state != S.BROKEN:
 			velocity.x = -to_attacker * 165.0
+		Game.sfx("block")
 		return "block"
 	var dmg: float = float(info["dmg"]) * damage_taken_mult()
+	Game.sfx("hurt")
 	hp -= dmg
 	flash(Color(1.0, 0.3, 0.3), 0.15)
 	main.spawn_blood(global_position + Vector2(0, -28), -to_attacker, 10)
@@ -1552,6 +1566,7 @@ func _on_posture_full() -> void:
 	if state == S.DEAD:
 		return
 	_enter(S.BROKEN)
+	Game.sfx("posture_break")
 	parry_timer = 0.0
 	main.spawn_text(global_position + Vector2(0, -70), "破防", Color(1.0, 0.5, 0.2))
 
@@ -1569,6 +1584,7 @@ func _die() -> void:
 		_enter(S.FREE)
 		return
 	hp = 0.0
+	Game.sfx("death")
 	_enter(S.DEAD)
 	respawn_timer = RESPAWN_TIME
 	revive_progress = 0.0
@@ -1585,6 +1601,7 @@ func revive(ratio: float) -> void:
 	invul_timer = 1.0
 	velocity = Vector2.ZERO
 	_enter(S.FREE)
+	Game.sfx("heal")
 	flash(Color(0.6, 1.0, 0.7), 0.3)
 	main.spawn_text(global_position + Vector2(0, -70), "扶起", Color(0.6, 1.0, 0.7))
 	main.spawn_ring(global_position + Vector2(0, -26), Color(0.6, 1.0, 0.7), 34.0)
@@ -1604,6 +1621,7 @@ func respawn() -> void:
 
 func _spawn_slash() -> void:
 	var heavy: bool = attack["heavy"]
+	Game.sfx("slash_heavy" if heavy else "slash")
 	var center := global_position + Vector2(facing * 9.0, -26.0)
 	var big: bool = attack.get("stance", "") == "jodan"
 	var col := Color(1.0, 0.62, 0.3) if heavy or big else Color(1.0, 0.82, 0.55)   # 暖色刀光，重击偏橙

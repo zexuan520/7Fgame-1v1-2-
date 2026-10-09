@@ -459,6 +459,8 @@ func _start_move(key: String) -> void:
 	move_key = key
 	hit_index = 0
 	_feinted = false
+	if moves[key].get("unblockable", false):
+		Game.sfx("danger")   # 危
 	if target == null:
 		target = main.visible_player(global_position)
 	if target != null:
@@ -477,6 +479,8 @@ func _state_windup(delta: float) -> void:
 		# 假动作：举刀举到一半突然换招
 		_feinted = true
 		move_key = m["feint"]["into"]
+		if moves[move_key].get("unblockable", false):
+			Game.sfx("danger")
 		hit_index = 0
 		state_time = 0.0
 		main.spawn_dust(global_position, float(-facing), 4)
@@ -622,6 +626,7 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 	if data.get("shield", false) and from_front and state != S.ACTIVE and state != S.RECOVER and state != S.STAGGER:
 		if heavy:
 			main.spawn_text(global_position + Vector2(0, -80), "破盾", Color(1.0, 0.6, 0.2))
+			Game.sfx("guard_break")
 			main.spawn_impact(mid, Color(1.0, 0.6, 0.25), 1.5, false, p.facing)
 			main.hitstop(0.09)
 			main.shake(4.0)
@@ -631,6 +636,7 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 			_stagger(1.1)
 			return "guardbreak"
 		main.spawn_impact(mid + Vector2(-facing * 6.0, 0), Color(0.95, 0.85, 0.6), 0.7, false, p.facing)
+		Game.sfx("block", -4.0)
 		main.hitstop(0.03)
 		velocity.x = -facing * 40.0
 		block_streak += 1
@@ -648,6 +654,7 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 		if heavy:
 			# 重攻击破防
 			main.spawn_text(global_position + Vector2(0, -84), "破招", Color(1.0, 0.6, 0.2))
+			Game.sfx("guard_break")
 			main.spawn_impact(mid, Color(1.0, 0.6, 0.25), 1.5, false, p.facing)
 			main.shake(4.0)
 			_take_damage(dmg, p_amount)
@@ -655,6 +662,7 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 			_stagger(0.5)
 			return "guardbreak"
 		main.spawn_impact(mid, Color(0.8, 0.88, 1.0), 0.75, false, p.facing)
+		Game.sfx("block", -4.0)
 		main.hitstop(0.03)
 		add_posture(p_amount * 0.5)
 		if state == S.BROKEN:
@@ -673,6 +681,7 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 	var cut := Vector2(global_position.x - signf(global_position.x - p.global_position.x) * 6.0, global_position.y - body_size.y * 0.55)
 	main.spawn_impact(cut, Color(1.0, 0.8, 0.45), 1.3 if heavy else 0.95, false, p.facing)
 	main.spawn_blood(cut, float(p.facing), 16 if heavy else 11)
+	Game.sfx("hit_heavy" if heavy else "hit")
 	main.hitstop(0.09 if heavy else 0.05)
 	main.shake(4.5 if heavy else 2.5)
 	if heavy:
@@ -764,6 +773,7 @@ func _break() -> void:
 		return
 	posture = max_posture
 	main.spawn_text(global_position + Vector2(0, -88), "架势崩溃", Color(1.0, 0.25, 0.2))
+	Game.sfx("posture_break")
 	main.shake(3.0)
 	_enter(S.BROKEN)
 
@@ -782,6 +792,7 @@ func _die() -> void:
 
 func execute_by(p: Player) -> void:
 	lives -= 1
+	Game.sfx("execute")
 	main.spawn_text(global_position + Vector2(0, -88), "处决", Color(1.0, 0.1, 0.1), 22)
 	main.spawn_spark(global_position + Vector2(0, -30), Color(1.0, 0.1, 0.1), 24)
 	main.spawn_impact(global_position + Vector2(0, -32), Color(1.0, 0.3, 0.2), 2.2, true, p.facing)
@@ -818,6 +829,7 @@ func _state_intro(delta: float) -> void:
 		if p != null:
 			facing = 1 if p.global_position.x >= global_position.x else -1
 		main.hud.title_card(display_name(), String(data.get("title_sub", "第一层 · 山脚荒村")))
+		Game.sfx("boss")
 		main.shake(2.0)
 		main.spawn_dust(global_position, 0.0, 10)
 	if state_time >= INTRO_END:
@@ -862,6 +874,7 @@ func _spawn_fx() -> void:
 			a.dmg = float(info["dmg"]) * dmg_mult
 			a.posture = info["posture"]
 			a.star = info.get("style", "") == "star"
+			Game.sfx("throw" if a.star else "bow")
 			a.position = global_position + Vector2(facing * 14.0, -34.0)
 			main.fx_root.add_child(a)
 		"slash":

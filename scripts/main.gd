@@ -288,6 +288,7 @@ func _place_players(x: float) -> void:
 func _load_practice() -> void:
 	mode = "practice"
 	_build_room({"width": PRACTICE_W, "theme": "temple"})
+	Game.music("village")
 	for p in players:
 		p.global_position = P1_SPAWN if p.index == 1 else P2_SPAWN
 		p.spawn_pos = p.global_position
@@ -303,6 +304,7 @@ func _load_hub() -> void:
 	dead_wait = false
 	_death_timer = -1.0
 	_build_room(LevelData.room("temple"))
+	Game.music("hub")
 	_place_players(110.0)
 	for p in players:
 		if not p.is_alive():
@@ -393,6 +395,7 @@ func _load_room() -> void:
 	var def := r.room()
 	_close_rewards()
 	_build_room(def)
+	Game.music(room_music(def))
 	_place_players(ENTRY_X)
 	for p in players:
 		p.auto_respawn = false
@@ -433,6 +436,13 @@ func _load_room() -> void:
 	var line: Variant = def.get("line")
 	if line is Array:
 		hud.say(line[0], line[1], 3.0)
+
+
+## 这间房放哪首背景音乐：头目房一首，别的按场景
+func room_music(def: Dictionary) -> String:
+	if def.get("intro", false):
+		return "boss"
+	return {"bamboo_temple": "bamboo"}.get(String(def.get("theme", "village")), "village")
 
 
 ## 出口门画在哪儿：房间数据写了 exit_x 就在那儿（门右边可以藏密室），没写就贴着右墙
@@ -604,6 +614,7 @@ func _climb() -> void:
 func open_rewards(room_type: String, only: Player = null, kinds: Array = ["art", "mind", "up"], art_lv: int = 0) -> void:
 	var r := Game.run
 	rewards.clear()
+	Game.sfx("reward")
 	_reward_frame = Engine.get_process_frames()
 	for p in players:
 		if only != null and p != only:
@@ -689,6 +700,7 @@ func take_reward(p: Player, replace: int) -> void:
 		Arts.take(p.build, choice, replace)
 		_apply_player_stats(p, false)
 	var col := Arts.color(choice)
+	Game.sfx("ui_select")
 	spawn_text(at, Arts.describe(choice)[1], col, 12)
 	spawn_spark(p.global_position + Vector2(0, -30), col, 12)
 	rewards.erase(p.index)
@@ -799,6 +811,7 @@ func collect(kind: String, amount: int, p: Player) -> void:
 	r.bank[kind] = float(r.bank[kind]) + amount * mult
 	var whole := int(floor(float(r.bank[kind]) + 0.0001))
 	r.bank[kind] = float(r.bank[kind]) - whole
+	Game.sfx(kind, -6.0, 0.1)
 	if kind == "coin":
 		r.coins += whole
 	else:
@@ -933,6 +946,7 @@ func interact(it: Interactable, p: Player) -> void:
 				return
 			it.used = true
 			it.enabled = false
+			Game.sfx("chest")
 			var top := it.global_position + Vector2(0, -16)
 			spawn_pickups("coin", loot_amount("coin", randi_range(8, 16)), top, it.global_position.y)
 			if randf() < CHEST_GEAR and Game.run != null:
@@ -1145,6 +1159,7 @@ func _update_menu() -> void:
 			Talents.learn(c.x, c.y, c.z)
 			hud.bump("jade")
 			hud.menu_flash = 0.3
+			Game.sfx("ui_select")
 		else:
 			hud.menu_note = why
 			hud.menu_note_time = 1.4
@@ -1321,6 +1336,7 @@ func grant_memory(id: String, at: Vector2) -> void:
 	var got := Story.collect(id)
 	if got.is_empty():
 		return
+	Game.sfx("memory")
 	spawn_ring(at, Color(0.55, 0.85, 1.0), 34.0)
 	spawn_spark(at, Color(0.55, 0.85, 1.0), 16)
 	spawn_text(at + Vector2(0, -20), "记忆碎片", Color(0.6, 0.9, 1.0), 14)
@@ -1480,6 +1496,7 @@ func shop_do(row: Dictionary) -> void:
 	hud.menu_note = note
 	hud.menu_note_time = 1.6
 	hud.menu_flash = 0.3
+	Game.sfx("ui_select")
 
 
 # ---------- 破庙的设施（铁铺、药房、老钱的铺子、训练场） ----------
@@ -1525,6 +1542,7 @@ func _update_facility() -> void:
 		if why == "":
 			hud.bump("jade")
 			hud.menu_flash = 0.3
+			Game.sfx("ui_select")
 			for it in interactables:
 				if it.kind == "rack":
 					_refresh_rack(it)
@@ -1617,6 +1635,7 @@ func _update_codex() -> void:
 		if why == "":
 			hud.bump("jade")
 			hud.menu_flash = 0.3
+			Game.sfx("ui_select")
 		else:
 			hud.menu_note = why
 			hud.menu_note_time = 1.4
@@ -1670,6 +1689,7 @@ func _wave_x(want_left: bool, i: int) -> float:
 func _fade_then(f: Callable) -> void:
 	if _fade_dir != 0:
 		return
+	Game.sfx("door")
 	_fade_dir = 1
 	_after_fade = f
 

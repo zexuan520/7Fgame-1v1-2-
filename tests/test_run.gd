@@ -56,6 +56,9 @@ func _run() -> void:
 	_reset_save()
 	await _setup()
 	await test_kit()
+	_reset_save()
+	await _setup()
+	await test_audio()
 	test_room_layouts()
 	await _setup()
 	await test_features()
@@ -1410,3 +1413,40 @@ func test_kit() -> void:
 	_check(main.mode == "hub" and int(Game.save["jade"]) == before + 9, "归庙符回城，魂玉全部带回（+%d）" % (int(Game.save["jade"]) - before))
 	_check(p.kit["bar"] == [] and int(p.kit["paper"]) == Items.PAPER_START, "回破庙道具清空、纸人回到 10 个")
 	Game.save["hub"] = {}
+
+
+# ---------- 声音 ----------
+
+func test_audio() -> void:
+	print("声音：音效都在，音乐跟着场景换")
+	var used := {}
+	var re := RegEx.new()
+	re.compile("Game\\.sfx\\(\"([a-z_]+)\"")
+	for f: String in DirAccess.get_files_at("res://scripts"):
+		if not f.ends_with(".gd"):
+			continue
+		var text := FileAccess.get_file_as_string("res://scripts/" + f)
+		for m in re.search_all(text):
+			used[m.get_string(1)] = true
+	for k: String in ["coin", "jade", "throw", "hook", "smoke", "flame", "hit_heavy", "slash_heavy"]:
+		used[k] = true
+	var missing := []
+	for k: String in used:
+		if Game._load_sound("res://assets/sfx/%s.wav" % k) == null:
+			missing.append(k)
+	_check(used.size() >= 25 and missing.is_empty(), "用到的 %d 个音效都能加载 %s" % [used.size(), str(missing)])
+	for k: String in ["hub", "village", "bamboo", "boss"]:
+		_check(Game._load_sound("res://assets/music/%s.wav" % k) != null, "音乐 %s" % k)
+	_check(Game.music_name() == "hub", "破庙放破庙的曲子")
+	main.interact(_find("door", "action", "start_run"), _p())
+	await _wait_fade()
+	_check(Game.music_name() == "village", "荒村换荒村的曲子")
+	var r: Run = Game.run
+	r.row = r.rows.size() - 2
+	r.col = 0
+	main._go_next(0)
+	await _wait_fade()
+	_check(Game.music_name() == "boss", "头目房换头目的曲子")
+	Game.sfx("parry")
+	Game.sfx("parry")
+	_check(true, "连着放同一个音效不出错")

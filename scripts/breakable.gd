@@ -39,6 +39,7 @@ func hit(from_x: float) -> bool:
 	_shake = 0.2
 	main.spawn_spark(global_position + Vector2(0, -8), Color(0.95, 0.8, 0.5), 5)
 	if hp <= 0:
+		Game.sfx("pot")
 		_break(signf(global_position.x - from_x))
 	return true
 
