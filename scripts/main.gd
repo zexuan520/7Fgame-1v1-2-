@@ -17,6 +17,8 @@ const DEATH_DELAY := 2.4              # 全员倒下后多久出结算
 const HEAL_PICKUP := 0.15             # 罐子里的伤药回 15% 生命
 const GEAR_DROP := 0.05               # 杂兵掉装备的几率
 const CHEST_GEAR := 0.6               # 宝箱里有装备的几率
+const CHEST_ITEM := 0.35              # 宝箱里有道具的几率（给开箱的人）
+const PAPER_DROP := {"grunt": [0.35, 1], "elite": [1.0, 3], "boss": [1.0, 5]}   # 掉纸人：[几率, 几个]
 const REWARD_DELAY := 1.2             # 清完战斗房、精英房后多久弹出三选一
 const ELITE_MEMORY := 0.5             # 精英掉记忆碎片的几率
 const SHOP_X := 170.0                 # 商人货架从这里往右摆
@@ -291,7 +293,7 @@ func _load_practice() -> void:
 		p.spawn_pos = p.global_position
 		_apply_player_stats(p, true)
 	start_encounter(0)
-	hud.toast("练武场 · 数字键 1-5 换对手，F4 回破庙")
+	hud.toast("练武场 · 数字键 1-9 换对手，F4 回破庙")
 
 
 # ---------- 破庙 ----------
@@ -307,6 +309,7 @@ func _load_hub() -> void:
 			p.respawn()
 		p.gear = GearData.empty_loadout(String(Game.save["start_weapon"]))
 		p.build = Arts.new_build()
+		p.kit = Items.new_kit()
 		p.revives = 0
 		_apply_player_stats(p, true)
 		p.will = 0.0
@@ -374,6 +377,7 @@ func _start_run() -> void:
 	for p in players:
 		p.gear = Game.run.loadout(p.index)
 		p.build = Game.run.build(p.index)
+		p.kit = Game.run.kit(p.index)
 		_apply_player_stats(p, true)
 		p.will = 0.0
 		Game.run.revives[p.index] = int(p.stats["revive"])
@@ -712,6 +716,24 @@ func _finish_run(victory: bool) -> void:
 	_fade_then(_load_hub)
 
 
+## 给某个玩家一个道具（宝箱、奇遇）；道具栏满了换成两个纸人
+func give_item(p: Player, id: String, at: Vector2) -> void:
+	var d := Items.item(id)
+	if Items.add_to(p.kit["bar"], id):
+		spawn_text(at + Vector2(0, -16), d["name"], d["color"], 12)
+	else:
+		p.kit["paper"] = mini(Items.PAPER_MAX, int(p.kit["paper"]) + 2)
+		spawn_text(at + Vector2(0, -16), "道具栏满了 · 纸人 +2", Color(0.9, 0.88, 0.8), 12)
+
+
+## 练武场：副武器全给、纸人用不完，道具每样一个
+func _practice_kit() -> Dictionary:
+	var k := Items.new_kit(true)
+	for id: String in ["calm", "rage", "stone"]:
+		Items.add_to(k["bar"], id)
+	return k
+
+
 ## 敌人进入倒地时调用：掉铜钱和魂玉
 func on_enemy_killed(e: Enemy) -> void:
 	if mode != "room":
@@ -723,6 +745,10 @@ func on_enemy_killed(e: Enemy) -> void:
 		spawn_pickups("coin", int(drop["coins"]), at)
 	if drop.has("jade"):
 		spawn_pickups("jade", floor_jade(int(drop["jade"])), at)
+	# 纸人：杂兵偶尔掉一个，精英、头目掉几个
+	var pd: Array = PAPER_DROP[e.rank()]
+	if randf() < float(pd[0]):
+		spawn_pickups("paper", int(pd[1]), at)
 	# 精英有一半几率掉记忆碎片
 	if not e.is_grunt() and e.kind != "liu" and randf() < ELITE_MEMORY:
 		grant_memory(Story.next_fragment(), at)
@@ -761,6 +787,10 @@ func collect(kind: String, amount: int, p: Player) -> void:
 		p.hp += add
 		spawn_text(p.global_position + Vector2(0, -64), "+%d" % roundi(add), Color(0.5, 1.0, 0.55), 12)
 		spawn_spark(p.global_position + Vector2(0, -30), Color(0.5, 1.0, 0.6), 8)
+		return
+	if kind == "paper":
+		p.kit["paper"] = mini(Items.PAPER_MAX, int(p.kit["paper"]) + amount)
+		spawn_text(p.global_position + Vector2(0, -64), "纸人 +%d" % amount, Color(0.9, 0.88, 0.8), 12)
 		return
 	if Game.run == null:
 		return
@@ -869,6 +899,13 @@ func interact(it: Interactable, p: Player) -> void:
 			if Game.run.coins < cost:
 				spawn_text(at, "铜钱不够", Color(0.8, 0.75, 0.75), 12)
 				return
+			if spec.has("give") and not Items.add_to(p.kit["bar"], spec["give"]):
+				spawn_text(at, "道具栏满了", Color(0.8, 0.75, 0.75), 12)
+				return
+			if spec.has("paper"):
+				p.kit["paper"] = mini(Items.PAPER_MAX, int(p.kit["paper"]) + int(spec["paper"]))
+			if spec.get("rare", false):
+				Game.run.return_bought = true
 			Game.run.coins -= cost
 			Facilities.add_qian_spent(cost)   # 老钱的好感度
 			_apply_item(id)
@@ -903,6 +940,8 @@ func interact(it: Interactable, p: Player) -> void:
 				_drop_gear(item, it.global_position + Vector2(18, 0))
 			if randf() < 0.4:
 				spawn_pickups("heal", 1, top, it.global_position.y)
+			if Game.run != null and randf() < CHEST_ITEM:
+				give_item(p, Items.roll(Game.run.rng), top)
 			if randf() < 0.25:
 				spawn_pickups("jade", randi_range(1, 2), top, it.global_position.y)
 			spawn_spark(top, Color(1.0, 0.85, 0.4), 16)
@@ -1728,9 +1767,11 @@ func _spawn_player(index: int) -> Player:
 	if Game.run != null and mode != "practice":
 		p.gear = Game.run.loadout(index)
 		p.build = Game.run.build(index)
+		p.kit = Game.run.kit(index)
 		p.revives = int(Game.run.revives.get(index, 0))
 	else:
 		p.gear = GearData.empty_loadout(String(Game.save["start_weapon"]) if not Game.practice else "katana")
+		p.kit = _practice_kit() if Game.practice else Items.new_kit()
 	world.add_child(p)
 	players.append(p)
 	_apply_player_stats(p, true)
@@ -1767,6 +1808,40 @@ func get_players() -> Array[Player]:
 
 func get_enemies() -> Array[Enemy]:
 	return enemies
+
+
+## 敌人找目标用：躲在烟幕里的玩家看不见
+func visible_player(from: Vector2) -> Player:
+	var best: Player = null
+	var best_d := INF
+	for p in players:
+		if not p.is_alive() or p.smoke_t > 0.0:
+			continue
+		var d := absf(p.global_position.x - from.x)
+		if d < best_d:
+			best_d = d
+			best = p
+	return best
+
+
+## 归庙符现在能用吗：闯关中、这间清完了
+func can_return() -> bool:
+	return mode == "room" and Game.run != null and cleared and _fade_dir == 0 and not dead_wait
+
+
+## 归庙符：立刻回城，魂玉全部带回
+func use_return() -> void:
+	if can_return():
+		hud.title_card("归庙符", "一道光，回到了破庙")
+		_finish_run(true)
+
+
+func reforge_rng() -> RandomNumberGenerator:
+	if Game.run != null:
+		return Game.run.rng
+	var r := RandomNumberGenerator.new()
+	r.randomize()
+	return r
 
 
 func nearest_player(from: Vector2) -> Player:

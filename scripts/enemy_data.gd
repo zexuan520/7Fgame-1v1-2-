@@ -9,6 +9,7 @@ extends RefCounted
 ##   speed / guard          走路速度、被砍时举刀格挡的概率
 ##   shield                 举盾：正面的轻攻击全部挡下，要重击、回旋斩或绕到背后
 ##   passive                不走不打（训练场的木桩）
+##   beast / yokai          野兽（爆竹吓得僵直很久）/ 妖物（焰筒伤害翻倍）
 ##   body / look            判定框大小；外观（Puppet.Look 的字段）
 ##   prop                   手上额外画的东西：bow 弓 / shield 盾
 ##   idle                   [远处姿势, 近处姿势]；flourish 为 true 时会耍刀挑衅
@@ -72,7 +73,7 @@ const TYPES := {
 	# 跑得快、咬一口就跳开，几只一起围着你转。咬和扑都能弹反，弹反一下就僵直。
 	"dog": {
 		"name": "野狗", "rank": "grunt", "hp": 45.0, "posture": 40.0, "speed": 175.0, "guard": 0.0,
-		"body": Vector2(30, 22), "prop": "", "stomp_stagger": true,
+		"body": Vector2(30, 22), "prop": "", "stomp_stagger": true, "beast": true,
 		"look": {"fur": Color("6b5848"), "fur_dark": Color("40342c"), "fur_light": Color("927a62")},
 		"ai": {"attack_range": 78.0, "keep": [70.0, 120.0], "retreat": 0.45, "flank": true,
 			"picks": [["bite", 70], ["pounce", 30]],

@@ -2,14 +2,15 @@ class_name Player
 extends Fighter
 ## 主角：移动、二段跳、三段轻攻击、蓄力重攻击、格挡、弹反、闪身、处决、药罐、刃意招式、架势切换。
 ## 刃意招式和心法见 Arts：招式键单按 / 按住左右 / 按住下 各放一格。
+## 副武器和道具见 Items：副武器键、道具键单按用，按住下再按换一种。
 
-enum S { FREE, CHARGE, ATTACK, GUARD, DODGE, HITSTUN, BROKEN, EXECUTE, DEAD, DRINK, ART }
+enum S { FREE, CHARGE, ATTACK, GUARD, DODGE, HITSTUN, BROKEN, EXECUTE, DEAD, DRINK, ART, TOOL, ITEM }
 
 const MOVE_SPEED := 200.0           # 奔跑（双击 左/右）
 const WALK_SPEED := 120.0           # 平时走路
 const DOUBLE_TAP := 0.28            # 两次按同一个方向的间隔在这之内算双击
 const BUFFER_TIME := 0.2            # 输入缓冲：提前按的键在这段时间内有效，动作一结束马上接上
-const BUFFERED := ["attack", "guard", "dodge", "jump", "art", "heal", "stance"]
+const BUFFERED := ["attack", "guard", "dodge", "jump", "art", "heal", "stance", "tool", "item"]
 const JUMP_VELOCITY := -520.0
 const RUN_JUMP := 1.15              # 跑着起跳，水平速度再快 15%，跳得更远
 const AIR_ACCEL := 1100.0           # 空中按方向的加速度
@@ -109,6 +110,16 @@ var _air_attacks := 0
 var _dodge_end := -10.0
 var _stun_time := HITSTUN_TIME      # 这次挨打的僵直时间（被擒拿更久）
 var build: Dictionary = Arts.new_build()   # 这一局装的招式和心法（闯关时和 Game.run.builds 是同一个字典）
+var kit: Dictionary = Items.new_kit()      # 副武器、纸人、道具栏（闯关时和 Game.run.kits 是同一个字典）
+var tool: Dictionary = {}           # 正在放的副武器
+var _tool_tick := -1
+var _zip_x := INF                   # 钩索：拉到哪儿停
+var _item_id := ""                  # 正在用的道具
+var _item_done := false
+var _calm_t := 0.0                  # 静心丹：架势不涨
+var _rage_t := 0.0                  # 怒火散：攻击 +25%
+var smoke_t := 0.0                  # 烟幕弹：敌人看不见
+var _backstab := false              # 烟幕里砍出的第一刀是背刺
 var art: Dictionary = {}            # 正在放的招式（Arts.art() 按等级算好的数值）
 var _art_tick := -1
 var _art_done := false
@@ -360,6 +371,9 @@ func _physics_process(delta: float) -> void:
 	_counter_t = maxf(0.0, _counter_t - delta)
 	_pierce_t = maxf(0.0, _pierce_t - delta)
 	_dodge_buff_t = maxf(0.0, _dodge_buff_t - delta)
+	_calm_t = maxf(0.0, _calm_t - delta)
+	_rage_t = maxf(0.0, _rage_t - delta)
+	smoke_t = maxf(0.0, smoke_t - delta)
 	_kongo_t = maxf(0.0, _kongo_t - delta)
 	_sure_crit_t = maxf(0.0, _sure_crit_t - delta)
 	_combo_grace = maxf(0.0, _combo_grace - delta)
@@ -410,6 +424,8 @@ func _physics_process(delta: float) -> void:
 				respawn()
 		S.DRINK: _state_drink(delta)
 		S.ART: _state_art(delta)
+		S.TOOL: _state_tool(delta)
+		S.ITEM: _state_item(delta)
 
 	if state != S.DODGE:
 		apply_gravity(delta)
@@ -450,6 +466,16 @@ func _state_free(delta: float) -> void:
 		_start_art()
 	elif is_on_floor() and _pressed("heal"):
 		_start_drink()
+	elif _pressed("tool"):
+		if _held("down"):
+			cycle_sub()
+		else:
+			_start_tool()
+	elif _pressed("item"):
+		if _held("down"):
+			cycle_item()
+		elif is_on_floor():
+			_start_item()
 
 
 func _state_charge(delta: float) -> void:
@@ -795,6 +821,245 @@ func _art_flurry(t: float, _delta: float) -> void:
 				e.add_bleed(self)
 	if t >= float(art["active"]):
 		_art_done = true
+
+
+# ---------- 副武器（忍具）和道具，见 Items ----------
+
+func cycle_sub() -> void:
+	var subs: Array = kit["subs"]
+	if subs.size() <= 1:
+		return
+	kit["sub"] = posmod(int(kit["sub"]) + 1, subs.size())
+	main.spawn_text(global_position + Vector2(0, -74), Items.sub(subs[kit["sub"]])["name"], Color(0.85, 0.85, 0.9), 12)
+
+
+func cycle_item() -> void:
+	var bar: Array = kit["bar"]
+	if bar.size() <= 1:
+		return
+	kit["bar_i"] = posmod(int(kit["bar_i"]) + 1, bar.size())
+	main.spawn_text(global_position + Vector2(0, -74), Items.item(bar[kit["bar_i"]]["id"])["name"], Color(0.85, 0.85, 0.9), 12)
+
+
+func current_sub() -> String:
+	var subs: Array = kit["subs"]
+	return subs[clampi(int(kit["sub"]), 0, subs.size() - 1)] if not subs.is_empty() else ""
+
+
+func current_item() -> Dictionary:
+	var bar: Array = kit["bar"]
+	return bar[clampi(int(kit["bar_i"]), 0, bar.size() - 1)] if not bar.is_empty() else {}
+
+
+func _start_tool() -> void:
+	var id := current_sub()
+	if id == "":
+		return
+	var d := Items.sub(id)
+	if int(kit["paper"]) < int(d["paper"]):
+		main.spawn_text(global_position + Vector2(0, -70), "纸人不够", Color(0.7, 0.7, 0.75), 12)
+		return
+	kit["paper"] = int(kit["paper"]) - int(d["paper"])
+	tool = d.duplicate()
+	tool["id"] = id
+	_tool_tick = -1
+	_zip_x = INF
+	hit_targets.clear()
+	_enter(S.TOOL)
+
+
+func _state_tool(delta: float) -> void:
+	var t := state_time
+	match String(tool["id"]):
+		"dart":
+			velocity.x = move_toward(velocity.x, 0.0, 1300.0 * delta)
+			if _tool_tick < 0 and t >= 0.08:
+				_tool_tick = 0
+				var d := Dart.new()
+				d.main = main
+				d.owner_player = self
+				d.facing = facing
+				d.info = tool
+				d.position = global_position + Vector2(facing * 14.0, -32.0)
+				main.fx_root.add_child(d)
+			if t >= 0.28:
+				_enter(S.FREE)
+		"cracker":
+			velocity.x = move_toward(velocity.x, 0.0, 1300.0 * delta)
+			if _tool_tick < 0 and t >= 0.12:
+				_tool_tick = 0
+				_tool_cracker()
+			if t >= 0.4:
+				_enter(S.FREE)
+		"hook":
+			if _tool_tick < 0:
+				_tool_tick = 0
+				_tool_hook()
+				if state != S.TOOL:
+					return
+			velocity.y = 0.0
+			velocity.x = facing * float(tool["zip"])
+			if (facing > 0 and global_position.x >= _zip_x) or (facing < 0 and global_position.x <= _zip_x) or t >= 0.4:
+				velocity.x = facing * 80.0
+				_enter(S.FREE)
+		"smoke":
+			velocity.x = move_toward(velocity.x, 0.0, 1300.0 * delta)
+			if _tool_tick < 0 and t >= 0.05:
+				_tool_tick = 0
+				smoke_t = float(tool["time"])
+				_backstab = true
+				for k in range(3):
+					main.spawn_dust(global_position + Vector2(randf_range(-14, 14), 0), randf_range(-1, 1), 8)
+				main.spawn_ring(global_position + Vector2(0, -24), Color(0.7, 0.72, 0.76), 34.0)
+			if t >= 0.25:
+				_enter(S.FREE)
+		"flame":
+			velocity.x = move_toward(velocity.x, 0.0, 1300.0 * delta)
+			var ticks := int(tool["ticks"])
+			var tick := int((t - 0.1) / (float(tool["time"]) / ticks))
+			if t >= 0.1 and tick != _tool_tick and tick < ticks:
+				_tool_tick = tick
+				hit_targets.clear()
+				_tool_flame()
+			if t >= 0.1 + float(tool["time"]) + 0.1:
+				_enter(S.FREE)
+
+
+## 爆竹：身前炸开，野兽受惊僵直很久，别的敌人踉跄
+func _tool_cracker() -> void:
+	var size: Vector2 = tool["size"]
+	var c := global_position + Vector2(facing * 40.0, -24.0)
+	var r := Rect2(c - size / 2.0, size)
+	main.spawn_ring(c, Color(1.0, 0.55, 0.25), 40.0)
+	main.spawn_spark(c, Color(1.0, 0.75, 0.3), 18)
+	main.spawn_spark(c, Color(1.0, 0.35, 0.2), 10)
+	main.flash_screen(Color(1.0, 0.7, 0.4), 0.12)
+	main.shake(3.0)
+	for e: Enemy in main.get_enemies():
+		if not e.is_hittable() or not r.intersects(e.body_rect()):
+			continue
+		e.receive_player_hit({"dmg": tool["dmg"], "posture": tool["posture"], "heavy": false, "id": "cracker"}, self)
+		if e.data.get("beast", false):
+			e._stagger(float(tool["beast_stun"]))
+			main.spawn_text(e.global_position + Vector2(0, -e.body_size.y - 26.0), "受惊", Color(1.0, 0.75, 0.4), 12)
+		else:
+			e._stagger(float(tool["stun"]))
+
+
+## 钩索：钩住前面的敌人一下拉过去；前面没人就往上荡
+func _tool_hook() -> void:
+	var best: Enemy = null
+	var best_d := float(tool["range"])
+	for e: Enemy in main.get_enemies():
+		if not e.is_hittable():
+			continue
+		var dx := (e.global_position.x - global_position.x) * facing
+		if dx > 20.0 and dx < best_d and absf(e.global_position.y - global_position.y) < 80.0:
+			best = e
+			best_d = dx
+	var col := Color(0.8, 0.7, 0.5)
+	if best != null:
+		_zip_x = best.global_position.x - facing * (best.body_size.x * 0.5 + 20.0)
+		main.spawn_streak(global_position + Vector2(facing * 8.0, -30.0), facing, best_d, col)
+		invul_timer = maxf(invul_timer, 0.3)
+	else:
+		# 没敌人：钩住高处往上荡
+		velocity = Vector2(facing * 240.0, -640.0)
+		_air_carry = 240.0
+		main.spawn_streak(global_position + Vector2(facing * 8.0, -40.0), facing, 90.0, col)
+		_enter(S.FREE)
+
+
+## 焰筒：往前喷一下火，对妖物伤害翻倍
+func _tool_flame() -> void:
+	var size: Vector2 = tool["size"]
+	var r := front_rect(size.x / 2.0 + 6.0, size, 28.0)
+	var c := r.get_center()
+	for k in range(5):
+		main.spawn_spark(c + Vector2(randf_range(-size.x / 2.0, size.x / 2.0), randf_range(-10, 10)),
+			Color(1.0, randf_range(0.4, 0.8), 0.2), 3)
+	main.spawn_dust(global_position + Vector2(facing * 30.0, 0), float(facing), 3)
+	for e: Enemy in main.get_enemies():
+		if e in hit_targets or not e.is_hittable() or not r.intersects(e.body_rect()):
+			continue
+		hit_targets.append(e)
+		var mult := 2.0 if e.data.get("yokai", false) else 1.0
+		e.receive_player_hit({"dmg": float(tool["dmg"]) * mult, "posture": tool["posture"], "heavy": false, "id": "flame"}, self)
+
+
+func _start_item() -> void:
+	var slot := current_item()
+	if slot.is_empty():
+		main.spawn_text(global_position + Vector2(0, -70), "没有道具", Color(0.7, 0.7, 0.75), 12)
+		return
+	var id: String = slot["id"]
+	var why := _item_why_not(id)
+	if why != "":
+		main.spawn_text(global_position + Vector2(0, -70), why, Color(0.7, 0.7, 0.75), 12)
+		return
+	slot["n"] = int(slot["n"]) - 1
+	if int(slot["n"]) <= 0:
+		(kit["bar"] as Array).erase(slot)
+		kit["bar_i"] = clampi(int(kit["bar_i"]), 0, maxi(0, (kit["bar"] as Array).size() - 1))
+	_item_id = id
+	_item_done = false
+	_enter(S.ITEM)
+
+
+## 道具现在能不能用：不能返回原因
+func _item_why_not(id: String) -> String:
+	match id:
+		"return":
+			if not main.can_return():
+				return "清完敌人才能用"
+		"stone":
+			if _reforge_target() == "":
+				return "没有能重铸的装备"
+	return ""
+
+
+## 重铸石重铸哪一件：武器有词条就是武器，不然是品质最好的那件
+func _reforge_target() -> String:
+	if gear["weapon"] != null and int(gear["weapon"]["q"]) >= 1:
+		return "weapon"
+	var best := ""
+	for slot: String in GearData.SLOTS:
+		var it: Variant = gear[slot]
+		if it != null and int(it["q"]) >= 1 and (best == "" or int(it["q"]) > int(gear[best]["q"])):
+			best = slot
+	return best
+
+
+## 用道具：前摇 0.5 秒，被打中就白用了（和喝药一样）
+func _state_item(delta: float) -> void:
+	var dir := Input.get_axis(prefix + "left", prefix + "right")
+	velocity.x = move_toward(velocity.x, dir * 45.0, 900.0 * delta)
+	if not _item_done and state_time >= Items.USE_TIME:
+		_item_done = true
+		_use_item_effect(_item_id)
+	if state_time >= Items.USE_TIME + 0.15:
+		_enter(S.FREE)
+
+
+func _use_item_effect(id: String) -> void:
+	var d := Items.item(id)
+	var col: Color = d["color"]
+	flash(col, 0.2)
+	main.spawn_spark(global_position + Vector2(0, -30), col, 12)
+	main.spawn_text(global_position + Vector2(0, -74), d["name"], col, 12)
+	match id:
+		"calm":
+			_calm_t = float(d["time"])
+		"rage":
+			_rage_t = float(d["time"])
+		"stone":
+			var slot := _reforge_target()
+			if slot != "":
+				GearData.reforge(gear[slot], main.reforge_rng())
+				main._apply_player_stats(self, false)
+				main.spawn_text(global_position + Vector2(0, -88), "重铸 " + GearData.display_name(gear[slot]), col, 12)
+		"return":
+			main.use_return()
 
 
 func _state_dodge(_delta: float) -> void:
@@ -1147,6 +1412,16 @@ func strike(atk: Dictionary, e: Enemy) -> Dictionary:
 		mult += float(stats["combo_end"])
 	if bool(atk.get("heavy", false)) and atk.get("id", "") in ["heavy", "plunge"]:
 		mult += float(stats["heavy_dmg"])
+	if _rage_t > 0.0:
+		mult += float(Items.item("rage")["atk"])
+	var backstab := false
+	if _backstab and smoke_t > 0.0:
+		# 烟幕里砍出的第一刀：背刺
+		backstab = true
+		mult *= 1.0 + float(Items.sub("smoke")["backstab"])
+		_backstab = false
+		smoke_t = 0.0
+		main.spawn_text(e.global_position + Vector2(0, -e.body_size.y - 30.0), "背刺", Color(0.85, 0.85, 0.95), 14)
 	var counter := false
 	if _counter_t > 0.0 and not atk.has("ticks"):
 		mult += 0.6
@@ -1164,7 +1439,7 @@ func strike(atk: Dictionary, e: Enemy) -> Dictionary:
 	return {
 		"dmg": float(atk["dmg"]) * mult,
 		"posture": float(atk["posture"]) * (1.0 + float(stats["pdmg"])),
-		"heavy": bool(atk["heavy"]) or bool(atk.get("pierce", false)) or _pierce_t > 0.0,
+		"heavy": bool(atk["heavy"]) or bool(atk.get("pierce", false)) or _pierce_t > 0.0 or backstab,
 		"crit": crit, "counter": counter,
 	}
 
@@ -1238,6 +1513,13 @@ func receive_enemy_hit(info: Dictionary, attacker: Node2D) -> String:
 			velocity = Vector2(-to_attacker * 260.0, -240.0)   # 被抓起来摔出去
 		_enter(S.HITSTUN)
 	return "hit"
+
+
+## 静心丹：架势不涨
+func add_posture(amount: float) -> void:
+	if _calm_t > 0.0:
+		return
+	super.add_posture(amount)
 
 
 ## 心法“流云”：完美闪避放慢时间
@@ -1403,6 +1685,15 @@ func _target_pose() -> Dictionary:
 			return POSES["broken"] if _stun_time > 0.5 else POSES["hit"]
 		S.DEAD:
 			return POSES["kneel"]
+		S.TOOL:
+			match String(tool.get("id", "")):
+				"dart": return POSES["raise2"] if t < 0.08 else POSES["cut2"]
+				"cracker": return POSES["raise3"] if t < 0.12 else POSES["cut3"]
+				"hook": return POSES["cut3"]
+				"smoke": return POSES["dodge"]
+			return POSES["raise3"] if t < 0.1 else POSES["cut3"]
+		S.ITEM:
+			return POSES["drink"] if t < Items.USE_TIME else POSES["relaxed"]
 		S.DRINK:
 			if t < 0.22:
 				return Puppet.lerp_pose(POSES["relaxed"], POSES["drink"], t / 0.22)
@@ -1635,7 +1926,8 @@ func _spring_params() -> Vector2:
 		S.GUARD: return Vector2(13.0, 0.6) if parry_timer > 0.0 else Vector2(9.0, 0.8)
 		S.DODGE: return Vector2(9.0, 0.8)
 		S.HITSTUN: return Vector2(9.0, 0.45)
-		S.DRINK: return Vector2(6.0, 0.85)
+		S.DRINK, S.ITEM: return Vector2(6.0, 0.85)
+		S.TOOL: return Vector2(11.0, 0.6)
 		S.DEAD, S.BROKEN: return Vector2(5.0, 0.8)
 	if not is_on_floor():
 		return Vector2(7.0, 0.7)
@@ -1725,6 +2017,11 @@ func _draw() -> void:
 	elif state == S.BROKEN:
 		tint = Color(0.2, 0.2, 0.25, 0.35)
 	var alpha := 0.6 if state == S.DODGE else 1.0
+	if smoke_t > 0.0:
+		alpha = 0.35   # 烟幕里看不清
+		for k in range(4):
+			var a := clock * 1.5 + k * 1.6
+			draw_circle(Vector2(cos(a) * 12.0, -24.0 + sin(a * 1.3) * 10.0), 9.0, Color(0.65, 0.68, 0.72, 0.25))
 
 	# 头带飘带画在身体后面
 	if _scarf.size() > 1 and state != S.DEAD:

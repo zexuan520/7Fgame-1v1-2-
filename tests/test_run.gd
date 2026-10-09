@@ -53,6 +53,9 @@ func _run() -> void:
 	_reset_save()
 	await _setup()
 	await test_facilities()
+	_reset_save()
+	await _setup()
+	await test_kit()
 	test_room_layouts()
 	await _setup()
 	await test_features()
@@ -1348,3 +1351,62 @@ func test_facilities() -> void:
 	_check(bool(Game.save["hub"]["herbalist"]) and main.enemies.size() == 2, "出手相救：僧兵围上来，白芦记下了")
 	Game.save["hub"] = {}
 	Game.save["arts"] = []
+
+
+# ---------- 副武器和道具 ----------
+
+func test_kit() -> void:
+	print("纸人、道具：商人卖、精英掉、归庙符回城、铁铺解锁忍具")
+	var p := _p()
+	_check(p.kit["subs"] == ["dart"] and int(p.kit["paper"]) == Items.PAPER_START, "一开始只有飞镖，纸人 10 个")
+	Game.save["boss_kills"] = {"liu": 1}
+	Game.save["jade"] = 100
+	for row: Dictionary in Facilities.rows("forge"):
+		if row["id"] == "sub:cracker":
+			_check(Facilities.buy(row) == "", "铁铺解锁爆竹（30 魂玉）")
+	main.interact(_find("door", "action", "start_run"), p)
+	await _wait_fade()
+	var r: Run = Game.run
+	_check(p.kit == r.kit(1) and (p.kit["subs"] as Array).has("cracker"), "出发带着飞镖和爆竹")
+	# 商人：卖道具、纸人
+	var col: int = r.node()["next"][0]
+	r.rows[1][col]["type"] = "shop"
+	r.rows[1][col]["room"] = "merchant"
+	r.shop_stock["0_1_%d" % col] = ["refill", "calm", "paper"]
+	main._go_next(col)
+	await _wait_fade()
+	r.coins = 100
+	main.interact(_find("item", "id", "calm"), p)
+	_check(p.current_item().get("id", "") == "calm" and r.coins == 75, "买静心丹放进道具栏")
+	p.kit["paper"] = 3
+	main.interact(_find("item", "id", "paper"), p)
+	_check(int(p.kit["paper"]) == 8, "买纸人 +5")
+	# 精英必掉 3 个纸人
+	var col2: int = r.node()["next"][0]
+	r.rows[r.row + 1][col2]["type"] = "elite"
+	r.rows[r.row + 1][col2]["room"] = "shrine_ronin"
+	main._go_next(col2)
+	await _wait_fade()
+	var paper := int(p.kit["paper"])
+	_kill_all()
+	await _frames(320)   # 纸人从房间那头飞过来
+	_check(int(p.kit["paper"]) >= paper + 3, "精英掉 3 个纸人（%d → %d）" % [paper, int(p.kit["paper"])])
+	main._close_rewards()
+	# 归庙符：清完敌人才能用，回城魂玉全部带回
+	Items.add_to(p.kit["bar"], "return")
+	p.kit["bar_i"] = (p.kit["bar"] as Array).size() - 1
+	var dog: Enemy = main.spawn_enemy("dog", Vector2(1300, 300))   # 屋里还有敌人
+	main.waves = [[]]
+	main.cleared = false
+	await _press("p1_item")
+	_check(p.state != Player.S.ITEM and p.current_item()["id"] == "return", "没清完用不了")
+	dog._die()
+	await _frames(10)
+	r.jade = 9
+	var before := int(Game.save["jade"])
+	await _press("p1_item")
+	await _frames(40)
+	await _wait_fade()
+	_check(main.mode == "hub" and int(Game.save["jade"]) == before + 9, "归庙符回城，魂玉全部带回（+%d）" % (int(Game.save["jade"]) - before))
+	_check(p.kit["bar"] == [] and int(p.kit["paper"]) == Items.PAPER_START, "回破庙道具清空、纸人回到 10 个")
+	Game.save["hub"] = {}

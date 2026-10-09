@@ -107,6 +107,14 @@ func _run() -> void:
 	await test_hakai()
 	await _setup_kind("jakko")
 	await test_jakko()
+	await _setup_kind("dog")
+	await test_tool_dart()
+	await _setup_kind("dog")
+	await test_tool_cracker()
+	await _setup()
+	await test_tool_hook_smoke_flame()
+	await _setup()
+	await test_items()
 	print("")
 	if failures == 0:
 		print("全部测试通过")
@@ -1181,3 +1189,112 @@ func test_jakko() -> void:
 	await _frames(25)
 	_check(e.move_key == "quick", "然后突然快斩（%s）" % e.move_key)
 	_check((e.data["phases"] as Array).size() == 3 and e.data["title_sub"] == "第二层 · 竹林古寺", "三个阶段，登场写第二层")
+
+
+# ---------- 副武器和道具（Items） ----------
+
+## 把副武器选到 id
+func _pick_sub(id: String) -> void:
+	p.kit["sub"] = (p.kit["subs"] as Array).find(id)
+
+
+func test_tool_dart() -> void:
+	print("飞镖：打下空中的野狗")
+	_pick_sub("dart")
+	var paper: int = p.kit["paper"]
+	e.global_position = Vector2(470, 286)   # 刚扑起来，离地不高
+	e.velocity = Vector2(0, -220)
+	await _tap("p1_tool")
+	await _frames(12)
+	_check(int(p.kit["paper"]) == paper - 1, "耗一个纸人")
+	_check(e.state == Enemy.S.STAGGER or e.state == Enemy.S.DYING, "空中的野狗被打下来（状态 %d）" % e.state)
+	_check(e.hp < e.max_hp, "掉血")
+
+
+func test_tool_cracker() -> void:
+	print("爆竹：吓住野狗")
+	_pick_sub("cracker")
+	await _tap("p1_tool")
+	await _frames(12)
+	_check(e.state == Enemy.S.STAGGER and e.stagger_time >= 1.5, "野狗受惊僵直很久（%.1f 秒）" % e.stagger_time)
+	await _frames(40)
+	p.kit["paper"] = 1
+	await _tap("p1_tool")
+	await _frames(2)
+	_check(p.state != Player.S.TOOL, "纸人不够放不出来")
+
+
+func test_tool_hook_smoke_flame() -> void:
+	print("钩索、烟幕弹、焰筒")
+	_freeze_windup()
+	e.global_position = Vector2(620, 300)
+	_pick_sub("hook")
+	await _tap("p1_tool")
+	await _frames(30)
+	_check(p.global_position.x > 560.0, "钩索一下拉到敌人跟前（x %.0f）" % p.global_position.x)
+	# 前面没人：往上荡
+	await _setup()
+	e.global_position = Vector2(200, 300)
+	_freeze_windup()
+	_pick_sub("hook")
+	await _tap("p1_tool")
+	await _frames(6)
+	_check(p.velocity.y < -300.0 and not p.is_on_floor(), "前面没人就往上荡")
+	# 烟幕弹：敌人看不见，第一刀背刺
+	await _setup()
+	_pick_sub("smoke")
+	await _tap("p1_tool")
+	await _frames(10)
+	_check(p.smoke_t > 2.0 and main.visible_player(e.global_position) == null, "烟幕里敌人找不到人")
+	var hit: Dictionary = p.strike(Moves.get_move("slash1"), e)
+	_check(is_equal_approx(float(hit["dmg"]), 40.0) and hit["heavy"], "第一刀背刺：伤害翻倍、破格挡（%.0f）" % float(hit["dmg"]))
+	_check(p.smoke_t == 0.0 and main.visible_player(e.global_position) == p, "背刺之后烟就散了")
+	# 焰筒：烧四下
+	await _setup()
+	_freeze_windup()
+	_pick_sub("flame")
+	await _tap("p1_tool")
+	await _frames(60)
+	_check(is_equal_approx(e.max_hp - e.hp, 36.0), "焰筒烧四下 9×4（%.0f）" % (e.max_hp - e.hp))
+	# 换副武器
+	_pick_sub("dart")
+	await _tap_with("p1_tool", "p1_down")
+	_check(p.current_sub() == "cracker", "按住下 + 副武器键换下一种（%s）" % p.current_sub())
+
+
+func test_items() -> void:
+	print("道具：静心丹、怒火散、重铸石，被打断就白用")
+	_check((p.kit["bar"] as Array).size() == 3, "练武场道具栏里有三样")
+	p.kit["bar_i"] = 0
+	await _tap("p1_item")
+	await _frames(40)
+	_check(p._calm_t > 9.0, "静心丹生效")
+	p.add_posture(30.0)
+	_check(p.posture == 0.0, "架势不涨")
+	_check((p.kit["bar"] as Array).size() == 2 and p.current_item()["id"] == "rage", "用掉了，选到下一样")
+	await _tap("p1_item")
+	await _frames(40)
+	var dmg: float = p.strike(Moves.get_move("slash1"), e)["dmg"]
+	_check(is_equal_approx(dmg, 25.0), "怒火散：攻击 +25%%（%.0f）" % dmg)
+	p.gear["weapon"] = GearData.make("weapon", "katana", 2, main.reforge_rng())
+	var before := str(p.gear["weapon"]["affixes"])
+	await _tap("p1_item")
+	await _frames(40)
+	_check(str(p.gear["weapon"]["affixes"]) != before, "重铸石重抽了武器词条")
+	_check((p.kit["bar"] as Array).is_empty(), "道具用完了")
+	# 被打断：白用
+	Items.add_to(p.kit["bar"], "rage")
+	p._rage_t = 0.0
+	e._start_move("quick")
+	await _wait_windup_end(0, 0.1)
+	await _tap("p1_item")
+	await _frames(40)
+	_check(p._rage_t == 0.0 and (p.kit["bar"] as Array).is_empty(), "用到一半挨刀，这一下白用了")
+	# 道具栏：4 格、每格 3 个
+	var bar := []
+	for i in range(3):
+		Items.add_to(bar, "calm")
+	_check(not Items.add_to(bar, "calm"), "一格最多叠 3 个")
+	for id: String in ["rage", "stone", "return"]:
+		Items.add_to(bar, id)
+	_check(bar.size() == 4 and not Items.add_to(bar, "paper_x") , "最多 4 格")

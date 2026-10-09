@@ -12,6 +12,7 @@ const HELP := [
 	["2P", "←/→ 移动  ↑ 跳  ↓ 下  小键盘1 攻击 2 格挡 3 闪身 4 药罐 5 招式 6 换架势"],
 	["连招", "连按攻击五连  下+攻击 升龙斩  空中攻击 空中斩  空中下+攻击 落雷斩  闪身中攻击 闪身突刺"],
 	["招式", "招式键单按 / 按住←→ / 按住↓ 放三格招式，耗刃意  清完战斗、精英房三选一"],
+	["忍具", "1P P 副武器 Y 道具  2P 小键盘7/V 副武器 8/C 道具  手柄 RT/LT  按住↓再按 换一种"],
 	["手柄", "A 跳  X 攻击  RB 格挡  B 闪身  Y 药罐  LB 招式  十字键上 换架势"],
 	["闯关", "站在门、货物、香炉、装备前按 下 互动  Tab 地图/装备  清完敌人出口才开"],
 	["其他", "F2 2P 加入/退出  F1 低难度  F3 判定框  F4 练武场  F5 破庙里魂玉+50（调试）  Esc 退出"],
@@ -285,6 +286,25 @@ func _draw_player_panel(font: Font, p: Player, at: Vector2) -> void:
 			msg = "濒死 · 同伴按住↓扶"
 		_text(font, msg, at + Vector2(110, 54), Color(1, 0.4, 0.4), 12)
 	_draw_build_strip(font, p, at + Vector2(0, 76))
+	_draw_kit(font, p, at + Vector2(0, 108))
+
+
+## 招式格子下面：副武器和纸人、选中的道具（按住下 + 副武器 / 道具键换）
+func _draw_kit(font: Font, p: Player, at: Vector2) -> void:
+	var sid := p.current_sub()
+	if sid != "":
+		var sd := Items.sub(sid)
+		var enough := int(p.kit["paper"]) >= int(sd["paper"])
+		Icons.draw(self, "paper", at + Vector2(5, 6), Color.WHITE)
+		_text(font, "%s ×%d" % [sd["short"], int(p.kit["paper"])], at + Vector2(12, 11),
+			Color(0.9, 0.88, 0.82) if enough else Color(0.6, 0.5, 0.5), 12)
+	var slot := p.current_item()
+	if not slot.is_empty():
+		var d := Items.item(slot["id"])
+		Icons.draw(self, slot["id"], at + Vector2(90, 6), d["color"])
+		var more: int = (p.kit["bar"] as Array).size()
+		_text(font, "%s ×%d%s" % [d["short"], int(slot["n"]), (" +%d" % (more - 1)) if more > 1 else ""],
+			at + Vector2(98, 11), Color(0.9, 0.88, 0.82), 12)
 
 
 ## 面板下面：三个招式格子（单按 / ←→ / ↓），刃意够放的那格亮起来；再下面一排心法
@@ -366,7 +386,7 @@ func _draw_boss_bar(font: Font, e: Enemy) -> void:
 
 
 func _draw_help(font: Font) -> void:
-	var r := Rect2(24, 202, 592, 122)
+	var r := Rect2(24, 186, 592, 138)
 	_frame(r)
 	draw_rect(r, Color(0.05, 0.04, 0.08, 0.92))
 	for i in range(HELP.size()):
@@ -394,7 +414,7 @@ func _text_centered(font: Font, s: String, pos: Vector2, col: Color, size: int) 
 # ---------- 铜钱、魂玉 ----------
 
 func _draw_purse(font: Font) -> void:
-	var at := Vector2(14, 128)
+	var at := Vector2(14, 142)
 	if Game.run != null and main.mode == "room":
 		_purse_row(font, "coin", Game.run.coins, at)
 		_purse_row(font, "jade", Game.run.jade, at + Vector2(0, 14))

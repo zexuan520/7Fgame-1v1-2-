@@ -171,6 +171,30 @@ static func draw(c: CanvasItem, id: String, at: Vector2, col: Color) -> void:
 			c.draw_rect(Rect2(p + Vector2(0, -1), Vector2(2, 1)), col)
 			c.draw_rect(Rect2(p + Vector2(0, 0), Vector2(1, 2)), col)
 			c.draw_rect(Rect2(p + Vector2(0, 3), Vector2(1, 1)), hi)
+		"paper":
+			# 纸人：一张剪成人形的白纸
+			c.draw_rect(Rect2(p + Vector2(-2, -6), Vector2(4, 4)), o)
+			c.draw_rect(Rect2(p + Vector2(-4, -2), Vector2(8, 3)), o)
+			c.draw_rect(Rect2(p + Vector2(-2, -2), Vector2(4, 8)), o)
+			c.draw_rect(Rect2(p + Vector2(-1, -5), Vector2(2, 2)), Color("ece6d6"))
+			c.draw_rect(Rect2(p + Vector2(-3, -1), Vector2(6, 1)), Color("ece6d6"))
+			c.draw_rect(Rect2(p + Vector2(-1, -1), Vector2(2, 6)), Color("ece6d6"))
+			c.draw_rect(Rect2(p + Vector2(-1, -4), Vector2(1, 1)), Color("c0302a"))
+		"calm", "rage", "stone", "return":
+			# 道具：小药包 / 石头 / 符
+			if id == "return":
+				c.draw_rect(Rect2(p + Vector2(-3, -6), Vector2(6, 12)), o)
+				c.draw_rect(Rect2(p + Vector2(-2, -5), Vector2(4, 10)), col)
+				c.draw_rect(Rect2(p + Vector2(-1, -3), Vector2(2, 6)), Color("a02020"))
+			elif id == "stone":
+				c.draw_circle(p, 5.0, o)
+				c.draw_circle(p, 4.0, col)
+				c.draw_rect(Rect2(p + Vector2(-2, -2), Vector2(2, 1)), hi)
+			else:
+				c.draw_circle(p + Vector2(0, 1), 5.0, o)
+				c.draw_circle(p + Vector2(0, 1), 4.0, col)
+				c.draw_rect(Rect2(p + Vector2(-2, -5), Vector2(4, 2)), Color("e0d4b4"))
+				c.draw_rect(Rect2(p + Vector2(-1, 0), Vector2(1, 1)), hi)
 		"scroll":
 			# 一卷招式：两头卷轴，中间一道字
 			c.draw_rect(Rect2(p + Vector2(-5, -4), Vector2(10, 8)), o)

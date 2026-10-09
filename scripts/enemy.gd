@@ -356,7 +356,7 @@ func _state_idle(delta: float) -> void:
 	if data.get("passive", false):
 		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 		return
-	target = main.nearest_player(global_position)
+	target = main.visible_player(global_position)   # 躲在烟幕里的看不见
 	if target == null:
 		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 		return
@@ -460,7 +460,7 @@ func _start_move(key: String) -> void:
 	hit_index = 0
 	_feinted = false
 	if target == null:
-		target = main.nearest_player(global_position)
+		target = main.visible_player(global_position)
 	if target != null:
 		facing = 1 if target.global_position.x >= global_position.x else -1
 	_enter(S.WINDUP)
@@ -523,7 +523,7 @@ func _next_hit() -> void:
 	var hits: Array = m["hits"]
 	if hit_index + 1 < hits.size():
 		hit_index += 1
-		target = main.nearest_player(global_position)
+		target = main.visible_player(global_position)
 		if target != null:
 			facing = 1 if target.global_position.x >= global_position.x else -1
 		_enter(S.WINDUP)

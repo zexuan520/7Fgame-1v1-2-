@@ -13,7 +13,7 @@ const UNLOCK_TEXT := {
 	"qian": "在老钱那里累计花 %d 铜钱",
 }
 
-## 铁铺（铁匠阿强）：出发武器的品质、武器图谱（直接挂上兵器架）、出发防具
+## 铁铺（铁匠阿强）：出发武器的品质、武器图谱（直接挂上兵器架）、忍具（副武器，价格在 Items.SUBS）、出发防具
 const FORGE := {
 	"weapon_q": [30, 80, 160],                 # 出发武器升到良品、精品、绝品的价格
 	"weapon_unlock": 40,                       # 打一把新武器挂上兵器架
@@ -73,6 +73,12 @@ static func rows(kind: String) -> Array:
 					var wd: Dictionary = GearData.WEAPONS[w]
 					out.append({"id": "weapon:" + w, "label": "武器图谱 · %s" % wd["name"],
 						"sub": "打一把挂上兵器架：%s" % wd["trait_desc"], "cost": int(FORGE["weapon_unlock"])})
+			var subs: Array = d.get("subs", [])
+			for id: String in Items.SUBS:
+				var sd: Dictionary = Items.SUBS[id]
+				if int(sd["unlock"]) > 0 and not subs.has(id):
+					out.append({"id": "sub:" + id, "label": "忍具 · %s" % sd["name"],
+						"sub": "%s（每次耗纸人 %d）" % [sd["desc"], int(sd["paper"])], "cost": int(sd["unlock"])})
 			for slot: String in FORGE["armor"]:
 				var a: Array = FORGE["armor"][slot]
 				var have := bool(d.get("armor_" + slot, false))
@@ -122,6 +128,10 @@ static func buy(row: Dictionary) -> String:
 			Game.unlock_weapon(parts[1])
 		"armor":
 			d["armor_" + parts[1]] = true
+		"sub":
+			var subs: Array = d.get("subs", [])
+			subs.append(parts[1])
+			d["subs"] = subs
 		"gourd":
 			d["gourd"] = int(d.get("gourd", 0)) + 1
 		"heal":

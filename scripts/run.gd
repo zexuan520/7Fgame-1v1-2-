@@ -20,6 +20,8 @@ var bank := {"coin": 0.0, "jade": 0.0}   # 加成后不满 1 的零头，攒够�
 var shop_gear := {}                 # 商人房间卖的装备：房间坐标 → [装备, ...]（买过的设成 null）
 var builds := {}                    # 每个玩家这一局的招式和心法：玩家序号 → Arts.new_build()
 var events_done := {}               # 选过的奇遇：房间坐标 → true
+var kits := {}                      # 每个玩家这一局的副武器、纸人、道具栏：玩家序号 → Items.new_kit()
+var return_bought := false          # 归庙符每局最多买一张
 var shop_arts := {}                 # 商人摊上的招式卷：房间坐标 → 招式 id（卖掉了是 ""）
 var shop_refreshes := {}            # 商人刷新过几次：房间坐标 → 次数
 var rng := RandomNumberGenerator.new()
@@ -214,6 +216,9 @@ func stock() -> Array:
 		var fixed: String = LevelData.SHOP["fixed"]
 		var keys: Array = LevelData.SHOP_ITEMS.keys()
 		keys.erase(fixed)
+		for k: String in keys.duplicate():
+			if LevelData.SHOP_ITEMS[k].get("rare", false) and (return_bought or rng.randf() >= LevelData.RARE_CHANCE):
+				keys.erase(k)
 		var picked := [fixed]
 		while picked.size() < 1 + int(LevelData.SHOP["consumables"]) and not keys.is_empty():
 			picked.append(keys.pop_at(rng.randi_range(0, keys.size() - 1)))
@@ -268,6 +273,13 @@ func shop_gear_list() -> Array:
 			list.append(GearData.roll(rng, GearData.weights_for("shop", row, int(Talents.run_value("luck")))))
 		shop_gear[id] = list
 	return shop_gear[id]
+
+
+## 某个玩家这一局的副武器、纸人和道具栏
+func kit(index: int) -> Dictionary:
+	if not kits.has(index):
+		kits[index] = Items.new_kit()
+	return kits[index]
 
 
 ## 某个玩家这一局的招式和心法（第一次要的时候只带回旋斩）

@@ -335,6 +335,7 @@ const SHOP := {
 }
 
 ## 商人的消耗品，用铜钱买，只在这一局有效
+const RARE_CHANCE := 0.25           # rare 的货（归庙符）每次进店有这么大几率摆出来，每局最多买一张
 const SHOP_ITEMS := {
 	"refill": {"name": "补药", "desc": "药罐补满", "cost": 20},
 	"heal": {"name": "金疮药", "desc": "回复 50% 生命", "cost": 15},
@@ -342,6 +343,12 @@ const SHOP_ITEMS := {
 	"amulet": {"name": "铁护符", "desc": "生命上限 +30", "cost": 35},
 	"gourd": {"name": "空药罐", "desc": "药罐 +1", "cost": 40},
 	"guard_charm": {"name": "镇心符", "desc": "架势上限 +20", "cost": 30},
+	# 道具（放进买的人的道具栏，见 Items）和纸人；rare 的只是偶尔摆出来
+	"calm": {"name": "静心丹", "desc": "道具：10 秒内架势不涨", "cost": 25, "give": "calm"},
+	"rage": {"name": "怒火散", "desc": "道具：15 秒内攻击 +25%", "cost": 25, "give": "rage"},
+	"stone": {"name": "重铸石", "desc": "道具：重抽武器词条", "cost": 30, "give": "stone"},
+	"return": {"name": "归庙符", "desc": "道具：清完敌人时立刻回城，魂玉全部带回", "cost": 60, "give": "return", "rare": true},
+	"paper": {"name": "纸人", "desc": "副武器用的纸人 +5", "cost": 15, "paper": 5},
 }
 
 ## 土地庙：上香一次，回满生命、补满药罐
