@@ -69,6 +69,8 @@ func _run() -> void:
 	await _setup()
 	await test_cancels_and_buffer()
 	await _setup()
+	await test_combo_flow()
+	await _setup()
 	await test_walk_and_run()
 	await _setup()
 	await test_run_jump()
@@ -579,6 +581,79 @@ func test_dash_attack() -> void:
 	_check(p.attack.get("id") == "dash", "闪身中按攻击出闪身突刺")
 	await _frames(25)
 	_check(e.hp < e.max_hp, "冲过去刺中（hp %.0f）" % e.hp)
+
+
+## 等这一刀收完（回到 FREE）
+func _wait_free() -> void:
+	for i in range(10):
+		if p.state != Player.S.FREE:
+			break
+		await _frames(1)
+	for i in range(90):
+		if p.state == Player.S.FREE:
+			return
+		await _frames(1)
+
+
+func test_combo_flow() -> void:
+	print("连段衔接")
+	e.global_position = Vector2(700, 300)
+	# 一刀收完稍停一下再按，接第二刀，不从第一刀重来
+	await _tap("p1_attack")
+	await _wait_free()
+	await _frames(8)
+	await _tap("p1_attack")
+	await _frames(4)
+	_check(p.state == Player.S.ATTACK and p.attack.get("id", "") == "slash2", "收刀后 0.15 秒内再按，接上撩（%s）" % p.attack.get("id", ""))
+	await _wait_free()
+	await _frames(40)
+	await _tap("p1_attack")
+	await _frames(4)
+	_check(p.attack.get("id", "") == "slash1", "停太久就从横斩重新开始")
+	# 后摇后半段按方向可以直接走开
+	for i in range(60):
+		if p.state == Player.S.ATTACK and p.attack_phase == 2:
+			break
+		await _frames(1)
+	Input.action_press("p1_right")
+	var left_at := -1.0
+	for i in range(30):
+		await _frames(1)
+		if p.state == Player.S.FREE:
+			left_at = p.state_time
+			break
+	await _frames(6)
+	_check(p.state == Player.S.FREE and p.velocity.x > 60.0, "后摇里按方向就能走开（%.0f）" % p.velocity.x)
+	Input.action_release("p1_right")
+	await _frames(40)
+	# 连段中按反方向：下一刀转身砍
+	p.facing = 1
+	await _tap("p1_attack")
+	await _frames(3)
+	Input.action_press("p1_left")
+	await _tap("p1_attack")
+	for i in range(40):
+		await _frames(1)
+		if p.attack.get("id", "") == "slash2":
+			break
+	Input.action_release("p1_left")
+	_check(p.facing == -1 and p.attack.get("id", "") == "slash2", "连段中按反方向，第二刀转身砍")
+	await _frames(60)
+	# 跑着出刀带着冲劲
+	p.global_position = Vector2(150, 300)
+	p.facing = 1
+	await _tap("p1_right")
+	await _frames(3)
+	Input.action_press("p1_right")
+	await _frames(25)
+	await _tap("p1_attack")
+	Input.action_release("p1_right")
+	var top := 0.0
+	for i in range(20):
+		await _frames(1)
+		if p.state == Player.S.ATTACK and p.attack_phase == 1:
+			top = maxf(top, p.velocity.x)
+	_check(top > 140.0, "跑着出刀往前冲（%.0f）" % top)
 
 
 func test_cancels_and_buffer() -> void:

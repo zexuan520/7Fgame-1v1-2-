@@ -47,6 +47,8 @@ const ART := {"cost": 40.0, "windup": 0.14, "active": 0.42, "recover": 0.3, "tic
 
 # 攻击招式全部在 Moves.LIST 里（地面五连、重劈、升龙斩、空中斩、落雷斩、闪身突刺）
 const AIR_ATTACKS := 2              # 每次跳起最多两下空中攻击（落雷斩不算）
+const COMBO_GRACE := 0.35           # 一刀收完之后这么久内再按攻击，接着连段往下砍，不从第一刀重来
+const MOVE_CANCEL := 0.45           # 后摇过了这个比例，按方向就能走开（不用等收刀）
 const DASH_WINDOW := 0.2            # 闪身结束后多久内按攻击还能出闪身突刺
 
 var index := 1
@@ -78,6 +80,10 @@ var weapon: Dictionary = GearData.weapon_stats(GearData.starter("katana"))
 var revives := 0                    # 不动“不死身”：这一局还能站起来几次
 var frozen := false                 # 开着天赋界面时站着不动
 var running := false                # 双击方向键后奔跑，松开方向键变回走路
+var _combo_next := ""               # 连段断开后还能接的下一招
+var _combo_grace := 0.0
+var _charge_next := "slash1"        # 松开攻击键时出哪一刀
+var _entry_speed := 0.0             # 跑着出刀时带进来的速度
 var _air_carry := 0.0               # 起跳时带进空中的水平速度，空中不会被压回走路速度
 var _tap := {"left": -10.0, "right": -10.0}
 var _buf := {}                      # 输入缓冲：动作 → 按下的时刻
@@ -320,6 +326,7 @@ func _physics_process(delta: float) -> void:
 	_counter_t = maxf(0.0, _counter_t - delta)
 	_pierce_t = maxf(0.0, _pierce_t - delta)
 	_dodge_buff_t = maxf(0.0, _dodge_buff_t - delta)
+	_combo_grace = maxf(0.0, _combo_grace - delta)
 	flash_timer = maxf(0.0, flash_timer - delta)
 	if state != S.DEAD and state != S.BROKEN:
 		tick_posture(delta)
@@ -406,7 +413,7 @@ func _state_free(delta: float) -> void:
 
 func _state_charge(delta: float) -> void:
 	charge_time += delta
-	velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
+	velocity.x = move_toward(velocity.x, 0.0, 500.0 * delta)
 	if _pressed("guard"):
 		_start_guard()
 	elif dodge_cooldown <= 0.0 and _pressed("dodge"):
@@ -417,7 +424,7 @@ func _state_charge(delta: float) -> void:
 	elif charge_time >= charge_needed():
 		_start_move("heavy")
 	elif not _held("attack"):
-		_start_move("slash1")
+		_start_move(_charge_next)
 
 
 func _state_attack(delta: float) -> void:
@@ -454,7 +461,9 @@ func _state_attack(delta: float) -> void:
 		attack_phase = 1
 		state_time = 0.0
 		hit_targets.clear()
-		velocity.x = facing * float(attack.get("lunge", 105.0))   # 出刀时向前踏一步
+		# 出刀时向前踏一步；跑着出刀保住一部分冲劲
+		velocity.x = facing * maxf(float(attack.get("lunge", 105.0)), _entry_speed)
+		_entry_speed = 0.0
 		if attack.has("vy"):
 			velocity.y = float(attack["vy"])
 		_spawn_slash()
@@ -481,8 +490,20 @@ func _state_attack(delta: float) -> void:
 			else:
 				combo_queued = false
 		elif state_time >= recover:
-			combo_step = 0
-			_enter(S.FREE)
+			_end_attack()
+		elif state_time >= recover * MOVE_CANCEL and is_on_floor() \
+				and absf(Input.get_axis(prefix + "left", prefix + "right")) > 0.1:
+			_end_attack()   # 后摇后半段按方向就能走开
+
+
+## 收招：记住连段下一招，短时间内再按攻击接着砍
+func _end_attack() -> void:
+	var n: String = attack.get("next", "")
+	if int(attack.get("combo", -1)) >= 0 and n != "" and not n.begins_with("air"):
+		_combo_next = n
+		_combo_grace = COMBO_GRACE
+	combo_step = 0
+	_enter(S.FREE)
 
 
 ## 连段里下一招：地面按住下是升龙斩，空中按住下是落雷斩，否则接表里的 next
@@ -657,6 +678,8 @@ func _attack_pressed() -> void:
 	if clock - _dodge_end < DASH_WINDOW:
 		_start_move("dash")
 		return
+	_charge_next = _combo_next if _combo_grace > 0.0 and _combo_next != "" else "slash1"
+	_combo_grace = 0.0
 	charge_time = 0.0
 	_enter(S.CHARGE)
 
@@ -670,12 +693,19 @@ func _start_move(id: String) -> void:
 
 func _start_attack(data: Dictionary, step: int) -> void:
 	var st := stance()
+	# 连段中按反方向，下一刀转身砍
+	var dir := Input.get_axis(prefix + "left", prefix + "right")
+	if absf(dir) > 0.1 and state != S.DODGE:
+		facing = 1 if dir > 0.0 else -1
+	_entry_speed = absf(velocity.x) if signf(velocity.x) == float(facing) else 0.0
 	if step == 0 and not bool(data["heavy"]):
 		data = Stance.first_strike(data, st)
 	elif not bool(data["heavy"]):
 		data = data.duplicate()
 	if not bool(data["heavy"]):
 		data["recover"] = float(data["recover"]) * float(st["recover"])
+	if step > 0 and state == S.ATTACK:
+		data["windup"] = float(data["windup"]) * 0.75   # 连段里接的下一刀起手更快
 	data = _weapon_scaled(data)
 	attack = data
 	combo_step = step
@@ -802,7 +832,7 @@ func _check_attack_hits() -> void:
 				e.velocity.y = float(attack["launch"])
 				e._stagger(0.8)
 			if result == "blocked":
-				velocity.x = -facing * 135.0
+				velocity.x = -facing * 70.0   # 被挡开退一小步，下一刀还够得着
 			elif result == "guardbreak":
 				main.hitstop(0.06)
 
@@ -1109,8 +1139,12 @@ func _target_pose() -> Dictionary:
 				if attack.get("plunge", false):
 					return POSES["plunge_fall"]
 				return Puppet.lerp_pose(POSES[keys[0]], POSES[keys[1]], t / (active * 0.6))
+			# 后摇：先把出手的架子定住一下（收势），再慢慢回到架势；已经按了下一刀就一直定在出手姿势，
+			# 直接从这里接下一招的起手，刀不会先缩回去再出来
+			if combo_queued or t < recover * 0.35:
+				return POSES[keys[1]]
 			var after: Dictionary = _stance_pose(true) if is_on_floor() else POSES["fall"]
-			return Puppet.lerp_pose(POSES[keys[1]], after, pow(t / recover, 2.0))
+			return Puppet.lerp_pose(POSES[keys[1]], after, pow((t - recover * 0.35) / (recover * 0.65), 1.5))
 		S.GUARD:
 			return POSES["parry"] if parry_timer > 0.0 else POSES["guard"]
 		S.DODGE:
