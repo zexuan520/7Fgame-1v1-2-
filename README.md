@@ -4,7 +4,7 @@
 
 ## 怎么运行
 
-1. 安装 [Godot 4.3](https://godotengine.org/download)（标准版即可，不需要 .NET 版；4.3 以上的 4.x 也行）。
+1. 安装 [Godot 4.7.2](https://godotengine.org/download)（标准版即可，不需要 .NET 版；4.3 以上的 4.x 也能运行）。
 2. 拉取本分支：`git clone -b claude/combat-prototype-00zxtn https://github.com/zexuan520/7Fgame-1v1-2-.git`
 3. 打开 Godot → 「导入」→ 选择仓库里的 `project.godot` → 「导入并编辑」。
 4. 按 F5（或右上角 ▶）运行。
