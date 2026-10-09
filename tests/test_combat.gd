@@ -37,6 +37,8 @@ func _run() -> void:
 	await _setup()
 	await test_stances()
 	await _setup()
+	await test_sheath_when_no_enemy()
+	await _setup()
 	await test_coop_scaling()
 	print("")
 	if failures == 0:
@@ -232,6 +234,17 @@ func test_art() -> void:
 	_check(is_equal_approx(e.max_hp - e.hp, 44.0), "伤害 22×2 = 44（实际 %.1f）" % (e.max_hp - e.hp))
 
 
+func test_sheath_when_no_enemy() -> void:
+	print("平时收刀，敌人靠近拔刀")
+	e.visible = false   # 先让敌人不在场
+	p._fl_next = 999.0  # 不耍刀
+	await _frames(240)
+	_check(p.is_sheathed(), "附近没敌人时刀收在鞘里")
+	e.visible = true
+	await _frames(40)
+	_check(not p.is_sheathed(), "敌人靠近时拔刀")
+
+
 func _hold_enemy() -> void:
 	e.state = Enemy.S.WINDUP
 	e.move_key = "sweep"
@@ -243,14 +256,14 @@ func test_stances() -> void:
 	await _tap("p1_stance")
 	await _frames(2)
 	_check(p.stance()["id"] == "iai", "按架势键切到拔刀式（实际 %s）" % p.stance()["id"])
-	await _frames(30)
+	await _frames(60)
 	_check(p.is_sheathed(), "拔刀式站着时刀在鞘里")
 	_hold_enemy()
 	await _tap("p1_attack")
 	await _frames(20)
 	_check(is_equal_approx(e.max_hp - e.hp, 30.0), "居合第一刀伤害 20×1.5 = 30（实际 %.1f）" % (e.max_hp - e.hp))
 	_check(not p.is_sheathed(), "砍完刀在手上")
-	await _frames(90)
+	await _frames(130)
 	_check(p.is_sheathed(), "过一会儿收刀入鞘")
 
 	await _setup()
