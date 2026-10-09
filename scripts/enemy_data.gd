@@ -18,6 +18,7 @@ extends RefCounted
 ##   phases                 每管血一个阶段：speed 出招时间倍率（越小越快），picks/far 覆盖 ai 里的，
 ##                          line 进入这一阶段时说的话，aura 身上冒的气的颜色
 ##   intro / death_line     登场台词、死亡台词（头目）
+##   intro_meets            第几次见面换一套登场台词 {次数: [[谁, 话], ...]}（见 Story.intro_for）
 ##
 ## 招式字段：
 ##   kind                   slash 可弹反 / sweep 下段（跳） / thrust 突刺（看破） / grab 擒拿（闪开）
@@ -151,6 +152,10 @@ const TYPES := {
 			"pants_light": Color("40567a"), "hair": Color("26262e"), "belt": Color("33476b"),
 			"band": Color("e8ecf0"), "cape_color": Color("2f4766"), "skin": Color("e2b294")},
 		"intro": [["柳江远", "……又是来找那把刀的人吗。"], ["柳江远", "这条河，我守了二十年。"]],
+		"intro_meets": {
+			3: [["柳江远", "又是你。你手上的印，比上回深了。"], ["柳江远", "我问过很多人为何上山。今天也问你。"]],
+			5: [["柳江远", "第五回了。"], ["柳江远", "……你出刀的样子，越来越像他。来吧。"]],
+		},
 		"death_line": ["柳江远", "原来……水也会断。"],
 		"ai": {"attack_range": 96.0, "keep": [50.0, 88.0],
 			"picks": [["flow", 40], ["quick", 15], ["feint", 15], ["grab", 15], ["sweep", 15]],

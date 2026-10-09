@@ -13,7 +13,9 @@ var run: Run = null               # 正在进行的一局；null 时在破庙
 var last_result := {}             # 上一局的结算，回到破庙时显示
 var save_path := "user://save.cfg"
 ## 存档：魂玉、天赋等级、兵器架上解锁的武器、招式谱上加进掉落池的招式和心法、统计
+## memories 拿到的记忆碎片，meets 每个头目见过几次
 var save := {"jade": 0, "talents": {}, "weapons": ["katana"], "start_weapon": "katana", "arts": [],
+	"memories": [], "meets": {},
 	"runs": 0, "clears": 0, "deaths": 0, "best_row": 0}
 ## 旧版破庙供台的价格：读到旧存档时把供奉过的魂玉退回来（供台换成了天赋树）
 const OLD_ALTAR_COSTS := {"vigor": [5, 10, 15], "gourd": [8, 16], "purse": [4, 8, 12]}

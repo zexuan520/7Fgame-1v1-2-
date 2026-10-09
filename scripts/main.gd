@@ -18,6 +18,7 @@ const HEAL_PICKUP := 0.15             # 罐子里的伤药回 15% 生命
 const GEAR_DROP := 0.05               # 杂兵掉装备的几率
 const CHEST_GEAR := 0.6               # 宝箱里有装备的几率
 const REWARD_DELAY := 1.2             # 清完战斗房、精英房后多久弹出三选一
+const ELITE_MEMORY := 0.5             # 精英掉记忆碎片的几率
 
 var arena_w := PRACTICE_W             # 当前房间宽度，镜头和墙都按它来
 var mode := "practice"                # practice 练武场 / hub 破庙 / room 闯关中的房间
@@ -51,7 +52,13 @@ var focus_gear := {}                  # 玩家序号 → 正站在跟前的地�
 ## 双人时各选各的，谁选完谁先能动；两个人都选完门才能进
 var rewards := {}
 var _reward_timer := -1.0             # 倒数到 0 弹出三选一
+var _reward_frame := -1               # 三选一弹出的那一帧（这一帧的按键是别的界面的，不算）
 var _reward_type := ""
+var event_player: Player = null       # 奇遇界面开着（谁打开的谁来选）
+var event_it: Interactable = null
+var event_cursor := 0
+var memory_player: Player = null      # 破庙忆境开着
+var memory_cursor := 0
 var codex_player: Player = null       # 破庙招式谱开着
 var codex_cursor := Vector2i.ZERO     # 招式谱光标：列（0 招式 1 心法）、行
 var _fade_dir := 0                    # 1 正在变黑，-1 正在变亮
@@ -289,6 +296,8 @@ func _load_hub() -> void:
 	_add_interactable("talent", 452.0, "", "talent", Color("5ed6a8"))
 	var rack := _add_interactable("rack", 600.0, "兵器架", "rack", Color("c9a24a"))
 	_refresh_rack(rack)
+	var pool := _add_interactable("memory", 376.0, "忆境", "memory", Color("8ac8e0"))
+	pool.sub = "拼合记忆碎片 · %d 片" % Story.collected().size()
 	var codex := _add_interactable("codex", 190.0, "招式谱", "codex", Color("d8b878"))
 	codex.sub = "用魂玉把招式、心法加进掉落池"
 	var fd := LevelData.floor_data(0)
@@ -362,6 +371,18 @@ func _load_room() -> void:
 					g.data["shop_index"] = (r.shop_gear_list() as Array).find(item)
 				x += 84.0
 			_add_npc("merchant", x + 30.0)
+		"event":
+			var eid: String = r.node()["event"]
+			var ev := Events.get_event(eid)
+			var x := arena_w * 0.5
+			if ev.has("npc"):
+				_add_npc(ev["npc"], x + 14.0).lines = []
+			var it := _add_interactable("event", x, "" if ev.has("npc") else String(ev["name"]), "event", Color("c8a8f0"),
+				{"id": eid, "prop": ev.get("prop", "")})
+			it.sub = String(ev["name"]) if ev.has("npc") else ""
+			if r.events_done.has(r.room_id()):
+				it.used = true
+				it.enabled = false
 		"rest":
 			var it := _add_interactable("rest", arena_w * 0.5, "土地庙", "rest", Color("7fb2e0"))
 			it.sub = "回满生命，补满药罐"
@@ -414,7 +435,7 @@ func _spawn_wave(i: int, intro: bool = false) -> void:
 		var e := spawn_enemy(s[0], pos)
 		e.perch = s.size() > 2   # 写了高度的守在高处
 		if intro:
-			e.start_intro()
+			e.start_intro(Story.meet(e.kind))
 		elif i == 0:
 			e.aggro = false
 		else:
@@ -490,6 +511,9 @@ func _on_room_cleared() -> void:
 		_reward_timer = REWARD_DELAY
 	if r.is_last_room():
 		Game.save["clears"] = int(Game.save["clears"]) + 1
+		# 头目的身世：打败几次给第几片
+		var boss: String = r.room()["waves"][0][0][0]
+		grant_memory(Story.boss_fragment(boss, int(Game.save["clears"])), at)
 		var it := _add_interactable("door", exit_x() - 60.0, "回破庙", "temple", Color("e0a050"), {"action": "victory"})
 		it.sub = "第二层 · 尚未开放"
 		it.set_enabled(true)
@@ -511,11 +535,15 @@ func _open_later(it: Interactable) -> void:
 
 # ---------- 清房奖励：三选一 ----------
 
-func open_rewards(room_type: String) -> void:
+## 弹出三选一。only 不为空时只给这一个人（奇遇里），kinds、art_lv 见 Arts.roll_choices
+func open_rewards(room_type: String, only: Player = null, kinds: Array = ["art", "mind", "up"], art_lv: int = 0) -> void:
 	var r := Game.run
 	rewards.clear()
+	_reward_frame = Engine.get_process_frames()
 	for p in players:
-		rewards[p.index] = {"choices": Arts.roll_choices(r.rng, p.build, room_type, r.row), "cursor": 0,
+		if only != null and p != only:
+			continue
+		rewards[p.index] = {"choices": Arts.roll_choices(r.rng, p.build, room_type, r.row, kinds, art_lv), "cursor": 0,
 			"replace": -1, "type": room_type}
 		p.frozen = true
 	hud.show_map = false
@@ -536,6 +564,8 @@ func _unfreeze(p: Player) -> void:
 
 
 func _update_rewards() -> void:
+	if Engine.get_process_frames() == _reward_frame:
+		return
 	for idx: int in rewards.keys():
 		var p: Player = null
 		for q in players:
@@ -619,6 +649,9 @@ func on_enemy_killed(e: Enemy) -> void:
 		spawn_pickups("coin", int(drop["coins"]), at)
 	if drop.has("jade"):
 		spawn_pickups("jade", int(drop["jade"]), at)
+	# 精英有一半几率掉记忆碎片
+	if not e.is_grunt() and e.kind != "liu" and randf() < ELITE_MEMORY:
+		grant_memory(Story.next_fragment(), at)
 	for p in players:
 		if p.is_alive() and float(p.stats["kill_heal"]) > 0.0:
 			p.heal(p.max_hp * float(p.stats["kill_heal"]))
@@ -698,7 +731,7 @@ func _update_interact() -> void:
 		best.highlight = true
 		if best.kind == "gear":
 			focus_gear[p.index] = best
-		if menu_player != null or codex_player != null or not rewards.is_empty():
+		if menu_open():
 			continue
 		if Input.is_action_just_pressed(p.prefix + "down") and p.state == Player.S.FREE and p.is_on_floor():
 			interact(best, p)
@@ -772,6 +805,13 @@ func interact(it: Interactable, p: Player) -> void:
 			open_talents(p)
 		"codex":
 			open_codex(p)
+		"event":
+			if it.enabled:
+				open_event(it, p)
+			else:
+				spawn_text(at, "已经选过了", Color(0.8, 0.75, 0.75), 12)
+		"memory":
+			open_memories(p)
 		"rack":
 			var list: Array = Game.save["weapons"]
 			var i := list.find(Game.save["start_weapon"])
@@ -958,6 +998,202 @@ func _menu_step(c: Vector3i, d: int) -> Vector3i:
 	return Vector3i(flat / 3, c.y, flat % 3)
 
 
+## 有界面开着（天赋、招式谱、奇遇、忆境、三选一）：这时候不能和别的东西互动
+func menu_open() -> bool:
+	return menu_player != null or codex_player != null or event_player != null or memory_player != null \
+		or not rewards.is_empty()
+
+
+# ---------- 奇遇 ----------
+
+func open_event(it: Interactable, p: Player) -> void:
+	event_player = p
+	event_it = it
+	event_cursor = 0
+	for q in players:
+		q.frozen = true
+	hud.show_map = false
+	hud.show_gear = false
+	hud.show_build = false
+
+
+func close_event() -> void:
+	if event_player == null:
+		return
+	event_player = null
+	event_it = null
+	for q in players:
+		_unfreeze(q)
+
+
+func _update_event() -> void:
+	var p := event_player
+	if not is_instance_valid(p) or not is_instance_valid(event_it):
+		close_event()
+		return
+	var opts: Array = Events.get_event(event_it.data["id"])["options"]
+	var pr := p.prefix
+	if Input.is_action_just_pressed(pr + "jump") or Input.is_action_just_pressed(pr + "left"):
+		event_cursor = posmod(event_cursor - 1, opts.size())
+	elif Input.is_action_just_pressed(pr + "down") or Input.is_action_just_pressed(pr + "right"):
+		event_cursor = posmod(event_cursor + 1, opts.size())
+	if Input.is_action_just_pressed(pr + "attack"):
+		choose_event(event_cursor)
+	elif Input.is_action_just_pressed(pr + "guard") or Input.is_action_just_pressed(pr + "dodge"):
+		close_event()
+
+
+## 选定奇遇的第 i 个选项：付代价、掷成败、拿收获
+func choose_event(i: int) -> void:
+	var p := event_player
+	var it := event_it
+	var ev := Events.get_event(it.data["id"])
+	var opt: Dictionary = ev["options"][i]
+	if opt.get("leave", false):
+		close_event()
+		return
+	var why := Events.why_not(opt, p, Game.run)
+	if why != "":
+		hud.menu_note = why
+		hud.menu_note_time = 1.4
+		return
+	close_event()
+	it.used = true
+	it.enabled = false
+	Game.run.events_done[Game.run.room_id()] = true
+	_pay_event(opt.get("cost", {}), p)
+	var ok := true
+	if opt.has("chance"):
+		ok = Game.run.rng.randf() < float(opt["chance"])
+	var who: String = ev.get("who", "")
+	hud.say(who, String(opt.get("say", "")) if ok else String(opt.get("fail_say", "")), 3.5)
+	_gain_event(opt.get("gain", {}) if ok else opt.get("fail", {}), p, it.global_position)
+
+
+func _pay_event(cost: Dictionary, p: Player) -> void:
+	var r := Game.run
+	if cost.has("hp"):
+		var lose := p.max_hp * float(cost["hp"])
+		p.hp = maxf(1.0, p.hp - lose)
+		p.flash(Color(1.0, 0.3, 0.3), 0.2)
+		spawn_blood(p.global_position + Vector2(0, -28), float(p.facing), 10)
+	if cost.has("max_hp"):
+		r.buffs["hp"] = float(r.buffs["hp"]) - float(cost["max_hp"])
+		_apply_player_stats(p, false)
+		p.hp = minf(p.hp, p.max_hp)
+	if cost.has("coins"):
+		r.coins -= int(cost["coins"])
+		hud.bump("coin")
+	if cost.has("coins_half"):
+		r.coins -= r.coins / 2
+		hud.bump("coin")
+	if cost.has("jade"):
+		r.jade -= int(cost["jade"])
+		hud.bump("jade")
+	if cost.has("gourd"):
+		p.gourds -= int(cost["gourd"])
+	if cost.has("will"):
+		p.will = 0.0
+
+
+func _gain_event(g: Dictionary, p: Player, at: Vector2) -> void:
+	var r := Game.run
+	var top := at + Vector2(0, -40)
+	if g.has("coins"):
+		spawn_pickups("coin", int(g["coins"]), top)
+	if g.has("jade"):
+		spawn_pickups("jade", int(g["jade"]), top)
+	if g.has("heal"):
+		p.heal(p.max_hp * float(g["heal"]))
+		spawn_spark(p.global_position + Vector2(0, -30), Color(0.5, 1.0, 0.6), 12)
+	if g.has("gourds"):
+		p.gourds = mini(p.max_gourds, p.gourds + int(g["gourds"]))
+	if g.has("max_hp"):
+		r.buffs["hp"] = float(r.buffs["hp"]) + float(g["max_hp"])
+		_apply_player_stats(p, false)
+	if g.has("gear"):
+		_drop_gear(GearData.roll(r.rng, _only_quality(int(g["gear"]))), at + Vector2(30, 0))
+	if g.has("memory"):
+		grant_memory(Story.next_fragment(), top)
+	if g.has("ambush"):
+		_ambush(g["ambush"], p)
+	if g.has("pick"):
+		var kinds: Array = ["art", "mind", "up"] if g["pick"] == "any" else [g["pick"]]
+		open_rewards("event", p, kinds, int(g.get("pick_lv", 1)))
+
+
+## 只出某一个品质的权重表（GearData.roll 用）
+func _only_quality(q: int) -> Array:
+	var w := [0.0, 0.0, 0.0, 0.0, 0.0]
+	w[clampi(q, 0, 4)] = 1.0
+	return w
+
+
+## 埋伏：敌人从玩家身边冒出来，门锁上，打完才开
+func _ambush(spawns: Array, p: Player) -> void:
+	waves = [[]]
+	wave = 0
+	cleared = false
+	for it in interactables:
+		if it.kind == "door":
+			it.set_enabled(false)
+	for s: Array in spawns:
+		var x := clampf(p.global_position.x + float(s[1]), 40.0, arena_w - 40.0)
+		var e := spawn_enemy(s[0], Vector2(x, FLOOR_Y))
+		e.attack_cooldown = 1.2
+		spawn_dust(e.global_position, 0.0, 10)
+		spawn_ring(e.global_position + Vector2(0, -24), Color(1.0, 0.4, 0.3), 30.0)
+	hud.toast("有埋伏！")
+	shake(3.0)
+
+
+## 拿到一片记忆：存档里记下，头上冒字
+func grant_memory(id: String, at: Vector2) -> void:
+	var got := Story.collect(id)
+	if got.is_empty():
+		return
+	spawn_ring(at, Color(0.55, 0.85, 1.0), 34.0)
+	spawn_spark(at, Color(0.55, 0.85, 1.0), 16)
+	spawn_text(at + Vector2(0, -20), "记忆碎片", Color(0.6, 0.9, 1.0), 14)
+	hud.toast("记忆碎片 · %s %d/%d（回破庙在忆境里看）" % got)
+	flash_screen(Color(0.5, 0.8, 1.0), 0.15)
+
+
+# ---------- 破庙的忆境 ----------
+
+func open_memories(p: Player) -> void:
+	memory_player = p
+	memory_cursor = 0
+	for q in players:
+		q.frozen = true
+	hud.show_gear = false
+	hud.show_build = false
+
+
+func close_memories() -> void:
+	if memory_player == null:
+		return
+	memory_player = null
+	for q in players:
+		_unfreeze(q)
+
+
+func _update_memories() -> void:
+	var p := memory_player
+	if not is_instance_valid(p):
+		close_memories()
+		return
+	var n := Story.MEMORIES.size()
+	var pr := p.prefix
+	if Input.is_action_just_pressed(pr + "jump") or Input.is_action_just_pressed(pr + "left"):
+		memory_cursor = posmod(memory_cursor - 1, n)
+	elif Input.is_action_just_pressed(pr + "down") or Input.is_action_just_pressed(pr + "right"):
+		memory_cursor = posmod(memory_cursor + 1, n)
+	elif Input.is_action_just_pressed(pr + "guard") or Input.is_action_just_pressed(pr + "dodge") \
+			or Input.is_action_just_pressed(pr + "attack"):
+		close_memories()
+
+
 # ---------- 破庙的招式谱 ----------
 
 func open_codex(p: Player) -> void:
@@ -970,6 +1206,8 @@ func open_codex(p: Player) -> void:
 
 
 func close_codex() -> void:
+	if codex_player == null:
+		return
 	codex_player = null
 	for q in players:
 		_unfreeze(q)
@@ -1370,6 +1608,10 @@ func _process(delta: float) -> void:
 		_update_menu()
 	elif codex_player != null:
 		_update_codex()
+	elif event_player != null:
+		_update_event()
+	elif memory_player != null:
+		_update_memories()
 	if not rewards.is_empty():
 		_update_rewards()
 	if mode == "practice":
@@ -1425,9 +1667,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			close_talents()
 			get_viewport().set_input_as_handled()
 		return
-	if codex_player != null:
+	if codex_player != null or event_player != null or memory_player != null:
 		if event.is_action_pressed("toggle_map") or event.is_action_pressed("quit"):
 			close_codex()
+			close_event()
+			close_memories()
 			get_viewport().set_input_as_handled()
 		return
 	if not rewards.is_empty():

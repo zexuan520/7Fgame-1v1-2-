@@ -8,8 +8,9 @@ extends RefCounted
 ##   rows                   地图从左到右每一列可能出现的房间类型。每列是一组候选，
 ##                          [类型, 权重] 抽 count 个（同列不重复，"fight" 可以重复）
 ##   pools                  每种房间类型能抽到的房间
+##   events                 这一层的奇遇房能碰到哪些奇遇（见 Events），一局里不重复
 ##
-## 房间类型：start 起点 / fight 战斗 / elite 精英 / shop 商人 / rest 土地庙 / boss 头目
+## 房间类型：start 起点 / fight 战斗 / elite 精英 / shop 商人 / rest 土地庙 / event 奇遇 / boss 头目
 ##
 ## 房间字段：
 ##   name                   显示名
@@ -34,9 +35,9 @@ const FLOORS := [
 		"rows": [
 			{"count": 1, "types": [["start", 1]]},
 			{"count": 2, "types": [["fight", 1]]},
-			{"count": 3, "types": [["fight", 3], ["shop", 1], ["rest", 1]]},
+			{"count": 3, "types": [["fight", 3], ["shop", 1], ["rest", 1], ["event", 2]]},
 			{"count": 3, "types": [["fight", 3], ["elite", 2]]},
-			{"count": 3, "types": [["fight", 2], ["shop", 2], ["rest", 2]]},
+			{"count": 3, "types": [["fight", 2], ["shop", 2], ["rest", 2], ["event", 2]]},
 			{"count": 2, "types": [["fight", 2], ["elite", 1]]},
 			{"count": 1, "types": [["rest", 1]]},
 			{"count": 1, "types": [["boss", 1]]},
@@ -47,8 +48,10 @@ const FLOORS := [
 			"elite": ["shrine_ronin", "bandit_camp"],
 			"shop": ["merchant"],
 			"rest": ["roadside_shrine"],
+			"event": ["mountain_fork", "fallen_shrine", "bamboo_deep"],
 			"boss": ["river"],
 		},
+		"events": ["blood_altar", "wounded_ronin", "gambler", "grave_mound", "hermit", "mirror"],
 	},
 ]
 
@@ -159,6 +162,17 @@ const ROOMS := {
 		"props": [["bamboo", 60.0], ["hay", 130.0], ["note", 190.0, 0.0, "shrine"], ["urn", 250.0],
 			["stone_lantern", 300.0], ["stone_lantern", 420.0], ["jar", 470.0], ["grave", 520.0], ["bamboo", 600.0]]},
 
+	# ---------- 奇遇（中间站着这间的奇遇，见 Events） ----------
+	"mountain_fork": {"name": "山道岔口", "width": 720.0, "theme": "village", "mood": "fog", "seed": 15,
+		"props": [["bamboo", 40.0], ["sign", 150.0], ["stone_lantern", 230.0], ["hay", 520.0], ["jar", 520.0, 28.0],
+			["woodpile", 600.0], ["bamboo", 680.0]]},
+	"fallen_shrine": {"name": "倒塌的祠堂", "width": 720.0, "theme": "village", "mood": "night", "seed": 16,
+		"props": [["wall", 120.0], ["urn", 200.0], ["banner", 250.0], ["stone_lantern", 480.0], ["grave", 560.0],
+			["jar", 590.0], ["bamboo", 660.0]]},
+	"bamboo_deep": {"name": "竹林深处", "width": 720.0, "theme": "village", "mood": "bamboo", "seed": 17,
+		"props": [["bamboo", 60.0], ["bamboo", 150.0], ["urn", 220.0], ["bamboo", 520.0], ["jar", 560.0],
+			["bamboo", 610.0], ["bamboo", 690.0]]},
+
 	# ---------- 头目 ----------
 	"river": {"name": "断水河畔", "width": 840.0, "theme": "river", "seed": 13,
 		"waves": [[["liu", 600.0]]], "intro": true},
@@ -182,6 +196,7 @@ const NODE_TYPES := {
 	"elite": {"label": "精英", "color": Color("d0453a")},
 	"shop": {"label": "商人", "color": Color("6fc28a")},
 	"rest": {"label": "土地庙", "color": Color("7fb2e0")},
+	"event": {"label": "奇遇", "color": Color("b07cf0")},
 	"boss": {"label": "头目", "color": Color("9a7cff")},
 }
 

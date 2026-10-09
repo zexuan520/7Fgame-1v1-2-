@@ -39,6 +39,7 @@ var rng := RandomNumberGenerator.new()
 var _feinted := false
 var _retreat_t := 0.0
 var _intro_said := 0
+var intro_lines: Array = []  # 这次登场说的话
 var _keep_jitter := 0.0     # 每个敌人想站的距离稍微错开，不会挤在一个点上
 var aggro := true           # false 时站着不动，等玩家走近（房间里的第一波）
 var perch := false          # 守在高处不走动（站在屋顶、望楼上的弓手）
@@ -189,9 +190,11 @@ func reset() -> void:
 
 
 ## 头目登场：背对玩家站着，说两句话再转身
-func start_intro() -> void:
+## 头目登场；meets 是第几次见面（按次数换台词，见 Story.intro_for），练武场是 0
+func start_intro(meets: int = 0) -> void:
 	facing = 1
 	_intro_said = 0
+	intro_lines = Story.intro_for(data, meets)
 	_enter(S.INTRO)
 
 
@@ -795,7 +798,7 @@ func _state_intro(delta: float) -> void:
 	var p: Player = main.nearest_player(global_position)
 	if p != null and absf(p.global_position.x - global_position.x) < 90.0 and state_time < INTRO_TURN:
 		state_time = INTRO_TURN
-	var lines: Array = data.get("intro", [])
+	var lines: Array = intro_lines
 	var at := [0.5, 2.3]
 	if _intro_said < lines.size() and _intro_said < at.size() and state_time >= at[_intro_said] and state_time < INTRO_TURN:
 		var line: Array = lines[_intro_said]

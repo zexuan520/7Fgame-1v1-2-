@@ -5,7 +5,7 @@ extends Node2D
 
 const RANGE := 26.0
 
-var kind := "door"          # door 门 / item 货物 / rest 土地庙 / chest 宝箱 / note 遗骸 / gear 装备 / talent 天赋 / rack 兵器架 / codex 招式谱
+var kind := "door"          # door 门 / item 货物 / rest 土地庙 / chest 宝箱 / note 遗骸 / gear 装备 / talent 天赋 / rack 兵器架 / codex 招式谱 / event 奇遇 / memory 忆境
 var label := ""             # 头上的字
 var sub := ""               # 小字（价格、说明）
 var icon := ""              # 图标：门是房间类型，货物是货物 id
@@ -32,6 +32,8 @@ func prompt() -> String:
 		"talent": return "↓ 点天赋"
 		"rack": return "↓ 换出发武器"
 		"codex": return "↓ 翻招式谱"
+		"event": return "↓ 查看" if enabled else "已经选过了"
+		"memory": return "↓ 入忆境"
 		"gear":
 			var price := int(data.get("price", 0))
 			return "↓ 买下换上 · %d 铜钱" % price if price > 0 else "↓ 换上"
@@ -54,6 +56,8 @@ func _draw() -> void:
 		"gear": _draw_gear()
 		"rack": _draw_rack()
 		"codex": _draw_codex()
+		"event": _draw_event()
+		"memory": _draw_memory()
 		"rest": _draw_shrine()
 		"chest": _draw_chest()
 		"note": _draw_note()
@@ -67,6 +71,10 @@ func _draw() -> void:
 	elif kind == "talent":
 		top = -86.0
 	elif kind == "rack" or kind == "codex":
+		top = -62.0
+	elif kind == "event":
+		top = -90.0 if label == "" else -70.0
+	elif kind == "memory":
 		top = -62.0
 	var a := 1.0 if highlight else 0.75
 	var show_sub := sub != "" and (highlight or kind == "door" or kind == "rest") and kind != "gear"
@@ -226,6 +234,71 @@ func _draw_rack() -> void:
 		draw_set_transform(at, -PI / 2.0, Vector2.ONE)
 		Icons.draw(self, "w_" + id, Vector2.ZERO, Color(1, 1, 1) if cur else Color(0.6, 0.58, 0.6))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+# ---------- 奇遇摆的东西 ----------
+
+## 有人的奇遇（浪人、赌客、隐士）人由 Npc 画，这里不画；摆着东西的画东西
+func _draw_event() -> void:
+	var o := Color("0c080a")
+	match String(data.get("prop", "")):
+		"altar":
+			# 血祭石：一块黑石头，顶上一摊暗红，底下压着断刀
+			draw_colored_polygon(PackedVector2Array([Vector2(-20, 0), Vector2(-16, -30), Vector2(-4, -38), Vector2(12, -34),
+				Vector2(20, -12), Vector2(22, 0)]), o)
+			draw_colored_polygon(PackedVector2Array([Vector2(-18, -1), Vector2(-14, -28), Vector2(-4, -36), Vector2(11, -32),
+				Vector2(18, -12), Vector2(20, -1)]), Color("2e2830"))
+			var red := Color(0.55, 0.06, 0.08) if enabled else Color(0.25, 0.1, 0.1)
+			draw_colored_polygon(PackedVector2Array([Vector2(-10, -30), Vector2(-2, -35), Vector2(8, -31), Vector2(0, -27)]), red)
+			draw_rect(Rect2(-1, -27, 2, 14), red)
+			for k in range(3):
+				var x := -14.0 + k * 13.0
+				draw_line(Vector2(x, 0), Vector2(x + 8, -9 - k), Color("a8b0bc"), 1.0)
+			if enabled:
+				for k in range(3):
+					draw_circle(Vector2(0, -24), 10.0 + k * 6.0, Color(0.8, 0.1, 0.1, 0.04 + 0.02 * sin(time * 3.0)))
+		"mound":
+			# 无名坟：土堆，插着一把刀，刀穗是新的
+			draw_colored_polygon(PackedVector2Array([Vector2(-26, 0), Vector2(-14, -14), Vector2(0, -18), Vector2(14, -14), Vector2(26, 0)]), o)
+			draw_colored_polygon(PackedVector2Array([Vector2(-24, 0), Vector2(-13, -12), Vector2(0, -16), Vector2(13, -12), Vector2(24, 0)]),
+				Color("4a3a2a") if enabled else Color("3a2a1e"))
+			draw_line(Vector2(2, -14), Vector2(4, -44), o, 3.0)
+			draw_line(Vector2(2, -14), Vector2(4, -44), Color("b8c0cc"), 1.0)
+			draw_rect(Rect2(1, -48, 6, 2), Color("c9a227"))
+			draw_line(Vector2(4, -46), Vector2(9 + sin(time * 2.0), -38), Color("c0392b"), 1.0)
+			draw_rect(Rect2(-12, -4, 7, 3), Color("6a5a4a"))
+		"mirror":
+			# 碎铜镜：挂在一截枯枝上，裂成几瓣，一闪一闪
+			draw_line(Vector2(-14, 0), Vector2(-10, -62), o, 4.0)
+			draw_line(Vector2(-14, 0), Vector2(-10, -62), Color("4a3a2a"), 2.0)
+			draw_line(Vector2(-11, -56), Vector2(8, -60), Color("4a3a2a"), 2.0)
+			draw_line(Vector2(4, -59), Vector2(4, -50), Color("8a7a5a"), 1.0)
+			draw_circle(Vector2(4, -38), 12.0, o)
+			draw_circle(Vector2(4, -38), 11.0, Color("8a6a3a"))
+			draw_circle(Vector2(4, -38), 9.0, Color("a8b8c0") if enabled else Color("5a6066"))
+			draw_line(Vector2(-3, -44), Vector2(6, -37), o, 1.0)
+			draw_line(Vector2(6, -37), Vector2(3, -29), o, 1.0)
+			draw_line(Vector2(6, -37), Vector2(12, -40), o, 1.0)
+			if enabled:
+				draw_circle(Vector2(1, -42), 2.0, Color(1, 1, 1, 0.5 + 0.4 * sin(time * 4.0)))
+
+
+# ---------- 忆境 ----------
+
+## 一口石盆，水里泛着蓝光；拿到的记忆越多光越亮
+func _draw_memory() -> void:
+	var o := Color("0c080a")
+	draw_rect(Rect2(-18, -16, 36, 16), o)
+	draw_rect(Rect2(-17, -15, 34, 15), Color("4a4450"))
+	draw_rect(Rect2(-17, -15, 34, 2), Color("6a6470"))
+	draw_rect(Rect2(-14, -14, 28, 3), Color("1a3a4a"))
+	var n := Story.collected().size()
+	var glow := 0.05 + minf(n, 15) * 0.008 + 0.02 * sin(time * 2.0)
+	for k in range(4):
+		draw_circle(Vector2(0, -14), 8.0 + k * 6.0, Color(0.4, 0.8, 1.0, glow))
+	for k in range(mini(n, 6)):
+		var a := time * 0.8 + k * 1.05
+		draw_rect(Rect2(Vector2(cos(a) * 10.0, -20 + sin(a * 1.3) * 4.0 - k), Vector2(1, 1)), Color(0.7, 0.95, 1.0, 0.8))
 
 
 # ---------- 招式谱 ----------

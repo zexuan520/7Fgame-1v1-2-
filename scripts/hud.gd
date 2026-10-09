@@ -156,6 +156,10 @@ func _draw() -> void:
 		_draw_talents(font)
 	if main.codex_player != null:
 		_draw_codex(font)
+	if main.event_player != null and is_instance_valid(main.event_it):
+		_draw_event(font)
+	if main.memory_player != null:
+		_draw_memories(font)
 	if not main.rewards.is_empty():
 		_draw_rewards(font)
 	if show_help:
@@ -729,7 +733,7 @@ func _draw_rewards(font: Font) -> void:
 		var box := Rect2(x, 34, w, 284)
 		draw_rect(box, Color(0.04, 0.03, 0.06, 0.95))
 		_frame(box)
-		var title := "精英奖励" if rw["type"] == "elite" else "清场奖励"
+		var title: String = {"elite": "精英奖励", "event": "奇遇"}.get(rw["type"], "清场奖励")
 		if main.get_players().size() > 1:
 			title = "%dP · %s" % [idx, title]
 		_text_centered(font, title + " · 三选一", Vector2(x + w / 2.0, 52), p.color.lightened(0.3) if main.get_players().size() > 1 else Color(0.95, 0.9, 0.8), 12)
@@ -892,3 +896,83 @@ func _draw_codex(font: Font) -> void:
 	if menu_note_time > 0.0:
 		_text(font, menu_note, Vector2(info.end.x - 8, info.position.y + 14), Color(1.0, 0.85, 0.5), 12, true)
 	_text(font, "←→ 换列  跳/下 选  攻击 加进掉落池  格挡/闪身 离开", Vector2(box.position.x + 14, box.end.y - 6), Color(0.7, 0.68, 0.74), 12)
+
+
+# ---------- 奇遇、忆境 ----------
+
+## 奇遇：一段话，下面几个选项（付不起的灰掉）
+func _draw_event(font: Font) -> void:
+	draw_rect(Rect2(0, 0, 640, 360), Color(0, 0, 0, 0.45))
+	var it: Interactable = main.event_it
+	var ev := Events.get_event(it.data["id"])
+	var p: Player = main.event_player
+	var box := Rect2(110, 40, 420, 270)
+	draw_rect(box, Color(0.04, 0.03, 0.06, 0.95))
+	_frame(box)
+	_text_centered(font, "奇遇 · " + String(ev["name"]), Vector2(320, 58), Color(0.85, 0.75, 1.0), 12)
+	var y := 78.0
+	for l: String in _wrap(font, ev["text"], box.size.x - 30.0):
+		_text(font, l, Vector2(box.position.x + 15, y), Color(0.92, 0.9, 0.86), 12)
+		y += 14.0
+	y += 6.0
+	var opts: Array = ev["options"]
+	for i in range(opts.size()):
+		var opt: Dictionary = opts[i]
+		var why := "" if opt.get("leave", false) else Events.why_not(opt, p, Game.run)
+		var r := Rect2(box.position.x + 12, y, box.size.x - 24, 36)
+		var sel: bool = i == main.event_cursor
+		draw_rect(r, Color(0.2, 0.14, 0.26) if sel else Color(0.09, 0.07, 0.11))
+		var edge := Color(1.0, 0.95, 0.75).lerp(Color(0.7, 0.55, 1.0), 0.3 + 0.2 * sin(_time * 6.0)) if sel else Color(0.35, 0.32, 0.38)
+		draw_rect(r, edge, false, 2.0 if sel else 1.0)
+		var name_c := Color(0.98, 0.95, 0.9) if why == "" else Color(0.5, 0.48, 0.52)
+		_text(font, opt["label"], r.position + Vector2(10, 14), name_c, 12)
+		if why != "":
+			_text(font, why, Vector2(r.end.x - 8, r.position.y + 14), Color(0.85, 0.55, 0.5), 12, true)
+		_text(font, _wrap(font, Events.describe(opt), r.size.x - 20.0)[0], r.position + Vector2(10, 29),
+			Color(0.75, 0.72, 0.8) if why == "" else Color(0.45, 0.43, 0.48), 12)
+		y += 40.0
+	if menu_note_time > 0.0:
+		_text_centered(font, menu_note, Vector2(320, box.end.y - 22), Color(1.0, 0.85, 0.5), 12)
+	_text(font, "跳/下 选  攻击 确定  格挡 离开", Vector2(box.position.x + 12, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)
+	if main.get_players().size() > 1:
+		_text(font, "%dP 在选" % p.index, Vector2(box.end.x - 10, box.end.y - 8), p.color.lightened(0.3), 12, true)
+
+
+## 忆境：左边一列记忆（几片 / 三片），右边是选中那段拼出来的话
+func _draw_memories(font: Font) -> void:
+	draw_rect(Rect2(0, 0, 640, 360), Color(0, 0, 0, 0.5))
+	var box := Rect2(30, 30, 580, 290)
+	draw_rect(box, Color(0.03, 0.04, 0.07, 0.96))
+	_frame(box)
+	_text_centered(font, "忆境", Vector2(320, 48), Color(0.75, 0.9, 1.0), 12)
+	var cur: int = main.memory_cursor
+	for i in range(Story.MEMORIES.size()):
+		var m: Dictionary = Story.MEMORIES[i]
+		var n := Story.count_in(m)
+		var total := (m["frags"] as Array).size()
+		var r := Rect2(box.position.x + 12, 62 + i * 30, 150, 26)
+		var sel := i == cur
+		draw_rect(r, Color(0.1, 0.18, 0.24) if sel else Color(0.07, 0.07, 0.1))
+		if sel:
+			draw_rect(r, Color(0.7, 0.9, 1.0).lerp(Color(0.3, 0.6, 0.8), 0.3 + 0.2 * sin(_time * 6.0)), false, 2.0)
+		var title: String = m["title"] if n > 0 else "？？？"
+		_text(font, title, r.position + Vector2(8, 17), Color(0.85, 0.95, 1.0) if n == total else Color(0.6, 0.66, 0.72), 12)
+		for k in range(total):
+			draw_rect(Rect2(r.end.x - 10 - (total - 1 - k) * 7, r.position.y + 10, 5, 7),
+				Color(0.55, 0.85, 1.0) if Story.has(Story.frag_id(m["id"], k)) else Color(0.2, 0.22, 0.26))
+	# 右边：这一段记忆
+	var m2: Dictionary = Story.MEMORIES[cur]
+	var tx := box.position.x + 180.0
+	var y := 74.0
+	var shown := Story.count_in(m2) > 0
+	_text(font, m2["title"] if shown else "还没有想起来", Vector2(tx, y), Color(0.75, 0.9, 1.0), 12)
+	y += 20.0
+	for k in range((m2["frags"] as Array).size()):
+		var line: String = m2["frags"][k] if Story.has(Story.frag_id(m2["id"], k)) else "……"
+		for wl: String in _wrap(font, line, box.end.x - tx - 16.0):
+			_text(font, wl, Vector2(tx, y), Color(0.9, 0.9, 0.92) if line != "……" else Color(0.4, 0.42, 0.46), 12)
+			y += 14.0
+		y += 8.0
+	var hint := "精英、奇遇会掉记忆碎片" if m2.get("boss", "") == "" else "打败这位头目，每次想起一段"
+	_text(font, hint, Vector2(tx, box.end.y - 26), Color(0.55, 0.6, 0.66), 12)
+	_text(font, "跳/下 选  格挡 离开", Vector2(box.position.x + 12, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)

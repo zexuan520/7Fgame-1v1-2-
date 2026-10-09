@@ -1,12 +1,13 @@
 class_name Npc
 extends Node2D
-## 不打架的人：行脚商人、破庙的老和尚、拾骨婆。玩家走近时说一句话。
+## 不打架的人：行脚商人、破庙的老和尚、拾骨婆，奇遇里的受伤浪人、赌客、隐士。玩家走近时说一句话。
+## 破庙的人说什么随轮回变化（见 Story.NPC_LINES）。
 
 var main: Node
 var npc_name := ""
 var lines: Array = []       # 走近时轮流说
 var look := Puppet.Look.new()
-var pack := ""              # merchant 背货架 / monk 拿念珠 / granny 拄拐、腰上挂骨头
+var pack := ""              # merchant 背货架 / monk 拿念珠 / granny 拄拐、腰上挂骨头 / ronin_w 跪坐捂伤 / gambler 蹲着摇骰 / hermit 盘坐
 var facing := -1
 var time := 0.0
 var _said := 0
@@ -48,6 +49,32 @@ func setup(kind: String) -> void:
 		look.belt = Color("6a5a3a")
 		look.skin = Color("d8a888")
 		look.skin_dark = Color("a8785e")
+		lines = Story.npc_lines("granny", lines)
+	elif kind == "ronin_w":
+		npc_name = "受伤的浪人"
+		look.cloth = Color("4a3a4a")
+		look.cloth_dark = Color("2e242e")
+		look.cloth_light = Color("6a566a")
+		look.band = Color("8a2a2a")
+		look.saya = true
+		look.sword_len = 22.0
+	elif kind == "gambler":
+		npc_name = "赌客"
+		look.hat = true
+		look.hat_color = Color("4a4a3a")
+		look.hat_dark = Color("2e2e24")
+		look.cloth = Color("6a3a2a")
+		look.cloth_dark = Color("4a261a")
+		look.cloth_light = Color("8a5a3a")
+		look.band = Color("c9a24a")
+	elif kind == "hermit":
+		npc_name = "隐士"
+		look.cloth = Color("6a6a5a")
+		look.cloth_dark = Color("4a4a3e")
+		look.cloth_light = Color("8a8a76")
+		look.hair = Color("d8d4cc")
+		look.band = Color("d8d4cc")
+		look.belt = Color("5a4a3a")
 	else:
 		npc_name = "老僧"
 		lines = ["回来了就好。魂玉供在台上，下次能走得更远。", "那把刀在河对岸。柳施主守了它二十年。", "死不可怕，怕的是忘了为什么出发。"]
@@ -62,6 +89,7 @@ func setup(kind: String) -> void:
 		look.hair = Color("d8a888")      # 光头
 		look.band = Color("d8a888")
 		look.belt = Color("c9a24a")
+		lines = Story.npc_lines("monk", lines)
 
 
 func _process(delta: float) -> void:
@@ -93,6 +121,16 @@ func _draw() -> void:
 	var p := Puppet.breathe(Player.POSES["relaxed"], time, 0.8)
 	if pack == "monk":
 		p = Puppet.breathe(Player.POSES["drink"], time * 0.5, 0.4)
+	elif pack == "ronin_w":
+		p = Puppet.breathe(Player.POSES["kneel"], time * 0.6, 0.6)
+	elif pack == "hermit":
+		p = Puppet.breathe(Player.POSES["kneel"], time * 0.3, 0.3).duplicate()
+		p["lean"] = 0.0
+		p["head"] = 0.1
+	elif pack == "gambler":
+		p = p.duplicate()
+		p["crouch"] = 6.0
+		p["arm_f"] = Vector2(0.4 + 0.25 * sin(time * 9.0), 0.9)   # 摇骰子
 	elif pack == "granny":
 		# 弯着腰
 		p = p.duplicate()

@@ -162,6 +162,20 @@ static func draw(c: CanvasItem, id: String, at: Vector2, col: Color) -> void:
 			c.draw_line(p + Vector2(-4, 3), p + Vector2(4, -3), Color("e0d8c0"), 2.0)
 			for e: Vector2 in [Vector2(-5, 3), Vector2(-4, 5), Vector2(5, -3), Vector2(4, -5)]:
 				c.draw_circle(p + e, 1.6, Color("e0d8c0"))
+		"event":
+			# 问号
+			c.draw_rect(Rect2(p + Vector2(-3, -5), Vector2(6, 2)), o)
+			c.draw_rect(Rect2(p + Vector2(-2, -5), Vector2(4, 1)), col)
+			c.draw_rect(Rect2(p + Vector2(2, -4), Vector2(2, 3)), col)
+			c.draw_rect(Rect2(p + Vector2(-3, -4), Vector2(1, 1)), col)
+			c.draw_rect(Rect2(p + Vector2(0, -1), Vector2(2, 1)), col)
+			c.draw_rect(Rect2(p + Vector2(0, 0), Vector2(1, 2)), col)
+			c.draw_rect(Rect2(p + Vector2(0, 3), Vector2(1, 1)), hi)
+		"memory":
+			# 一片碎镜子
+			c.draw_colored_polygon(PackedVector2Array([p + Vector2(-3, -5), p + Vector2(4, -3), p + Vector2(2, 5), p + Vector2(-4, 2)]), o)
+			c.draw_colored_polygon(PackedVector2Array([p + Vector2(-2, -4), p + Vector2(3, -2), p + Vector2(1, 4), p + Vector2(-3, 1)]), col)
+			c.draw_rect(Rect2(p + Vector2(-1, -2), Vector2(1, 2)), hi)
 		"purse":
 			for i in range(3):
 				draw(c, "coin", p + Vector2(-4 + i * 4, 2 - (i % 2) * 3), col)

@@ -206,18 +206,25 @@ static func unlock(kind: String, id: String) -> String:
 
 ## 抽三个奖励：新招式、心法、招式强化、铜钱。精英房：新招式直接 2 级，铜钱给得多，
 ## 而且只要还有别的可选就不出铜钱
-static func roll_choices(rng: RandomNumberGenerator, build: Dictionary, room_type: String, row: int) -> Array:
+## kinds 只抽这几种（奇遇里“献血换招式”只给招式）；art_lv 新招式几级（不写按房间：精英 2 级）
+static func roll_choices(rng: RandomNumberGenerator, build: Dictionary, room_type: String, row: int,
+		kinds: Array = ["art", "mind", "up"], art_lv: int = 0) -> Array:
 	var elite := room_type == "elite"
+	if art_lv <= 0:
+		art_lv = ELITE_ART_LEVEL if elite else 1
 	var cands := []
-	for id: String in ARTS:
-		if in_pool("art", id) and not has_art(build, id):
-			cands.append({"kind": "art", "id": id, "lv": ELITE_ART_LEVEL if elite else 1})
-	for id: String in MINDS:
-		if in_pool("mind", id) and not (build["minds"] as Array).has(id):
-			cands.append({"kind": "mind", "id": id})
-	for s: Variant in build["arts"]:
-		if s != null and int(s["lv"]) < max_level(s["id"]):
-			cands.append({"kind": "up", "id": s["id"], "lv": int(s["lv"]) + 1})
+	if kinds.has("art"):
+		for id: String in ARTS:
+			if in_pool("art", id) and not has_art(build, id):
+				cands.append({"kind": "art", "id": id, "lv": art_lv})
+	if kinds.has("mind"):
+		for id: String in MINDS:
+			if in_pool("mind", id) and not (build["minds"] as Array).has(id):
+				cands.append({"kind": "mind", "id": id})
+	if kinds.has("up"):
+		for s: Variant in build["arts"]:
+			if s != null and int(s["lv"]) < max_level(s["id"]):
+				cands.append({"kind": "up", "id": s["id"], "lv": int(s["lv"]) + 1})
 	var out := []
 	while out.size() < 3 and not cands.is_empty():
 		var total := 0
@@ -231,7 +238,7 @@ static func roll_choices(rng: RandomNumberGenerator, build: Dictionary, room_typ
 				break
 	# 战斗房：第三个有一半是铜钱；不够三个也拿铜钱补
 	var coin := {"kind": "coin", "amount": int(REWARD_COINS["elite" if elite else "fight"]) + row * 2}
-	if not elite and out.size() == 3 and rng.randf() < 0.5:
+	if room_type == "fight" and out.size() == 3 and rng.randf() < 0.5:
 		out[2] = coin
 	if out.size() < 3:
 		out.append(coin)

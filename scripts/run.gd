@@ -19,6 +19,7 @@ var revives := {}                   # 不动“不死身”：玩家序号 → �
 var bank := {"coin": 0.0, "jade": 0.0}   # 加成后不满 1 的零头，攒够了再进钱袋
 var shop_gear := {}                 # 商人房间卖的装备：房间坐标 → [装备, ...]（买过的设成 null）
 var builds := {}                    # 每个玩家这一局的招式和心法：玩家序号 → Arts.new_build()
+var events_done := {}               # 选过的奇遇：房间坐标 → true
 var rng := RandomNumberGenerator.new()
 
 
@@ -84,12 +85,16 @@ func _generate() -> void:
 	var fd := floor_data()
 	var pools: Dictionary = fd["pools"]
 	var used := {}
+	var used_events := {}
 	rows.clear()
 	for spec: Dictionary in fd["rows"]:
 		var types := _pick_types(spec)
 		var r := []
 		for t: String in types:
-			r.append({"type": t, "room": _pick_room(pools[t], used), "next": [], "visited": false})
+			var nd := {"type": t, "room": _pick_room(pools[t], used), "next": [], "visited": false}
+			if t == "event":
+				nd["event"] = _pick_room(fd["events"], used_events)   # 奇遇房里碰到哪件奇遇，一局不重复
+			r.append(nd)
 		rows.append(r)
 	_connect()
 

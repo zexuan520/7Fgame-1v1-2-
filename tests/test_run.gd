@@ -3,7 +3,7 @@ extends Node
 ##   godot --headless --path . res://tests/test_run.tscn
 ## 验证岔路地图、平台和楼梯、砸罐子开宝箱、破庙出发、房间锁门和波次、掉钱、商人、土地庙、死亡带回 60% 魂玉、打败柳江远、
 ## 装备掉落和换装、武器手感、防具减伤、饰品、流血、商人卖装备、兵器架、拾骨婆天赋、旧存档供台退魂玉、
-## 清房三选一（招式、心法、强化、铜钱、替换、双人各选各的、死了清空）、招式谱。
+## 清房三选一（招式、心法、强化、铜钱、替换、双人各选各的、死了清空）、招式谱、奇遇、记忆碎片和忆境、NPC 和头目台词。
 
 var main: Node
 var failures := 0
@@ -35,6 +35,12 @@ func _run() -> void:
 	await test_codex()
 	await _setup()
 	await test_rewards()
+	_reset_save()
+	await _setup()
+	await test_events()
+	_reset_save()
+	await _setup()
+	await test_story()
 	test_room_layouts()
 	await _setup()
 	await test_features()
@@ -81,6 +87,10 @@ func _reset_save() -> void:
 	Game.save["weapons"] = ["katana"]
 	Game.save["start_weapon"] = "katana"
 	Game.save["arts"] = []
+	Game.save["memories"] = []
+	Game.save["meets"] = {}
+	Game.save["clears"] = 0
+	Game.save["runs"] = 0
 
 
 func _check(cond: bool, name: String) -> void:
@@ -725,6 +735,8 @@ func test_boss_victory() -> void:
 	await _wait_fade()
 	_check(main.mode == "hub" and int(Game.save["jade"]) == before + got, "通关魂玉全部带回（+%d）" % (int(Game.save["jade"]) - before))
 	_check(int(Game.save["clears"]) >= 1, "记一次通关")
+	_check(int(Game.save["meets"].get("liu", 0)) == 1, "记一次见到柳江远")
+	_check(Story.has("liu_0"), "第一次打败柳江远，想起他的第一段身世")
 
 
 # ---------- 招式和心法 ----------
@@ -809,6 +821,7 @@ func _offer(type: String, choices: Array) -> void:
 	main.open_rewards(type)
 	for idx: int in main.rewards:
 		main.rewards[idx]["choices"] = choices.duplicate(true)
+	await _frames(1)   # 弹出的那一帧按键不算
 
 
 func test_rewards() -> void:
@@ -823,25 +836,25 @@ func test_rewards() -> void:
 	_check(main.rewards.has(1) and (main.rewards[1]["choices"] as Array).size() == 3, "清完战斗房弹出三选一")
 	_check(p.frozen, "选的时候人站住")
 	var three := [{"kind": "art", "id": "kuujin", "lv": 1}, {"kind": "mind", "id": "fudoshin"}, {"kind": "coin", "amount": 15}]
-	_offer("fight", three)
+	await _offer("fight", three)
 	await _press("p1_attack")
 	_check(main.rewards.is_empty() and not p.frozen, "按攻击选定，界面关掉")
 	_check(p.build["arts"][1] != null and p.build["arts"][1]["id"] == "kuujin", "空刃斩装进第二格（←→）")
-	_offer("fight", three)
+	await _offer("fight", three)
 	await _press("p1_right")
 	await _press("p1_attack")
 	_check(p.build["minds"] == ["fudoshin"] and is_equal_approx(float(p.stats["parry_rebound"]), 0.3), "心法装上，数值生效")
 	var before := r.coins
-	_offer("fight", three)
+	await _offer("fight", three)
 	await _press("p1_left")
 	await _press("p1_attack")
 	_check(r.coins == before + 15, "选铜钱进钱袋（%d → %d）" % [before, r.coins])
-	_offer("fight", [{"kind": "up", "id": "kuujin", "lv": 2}])
+	await _offer("fight", [{"kind": "up", "id": "kuujin", "lv": 2}])
 	await _press("p1_attack")
 	_check(int(p.build["arts"][1]["lv"]) == 2, "强化空刃斩到 2 级")
 	# 格子满了：先选换掉哪个，格挡能退回去
 	p.build["arts"][2] = {"id": "houzan", "lv": 1}
-	_offer("elite", [{"kind": "art", "id": "kongo", "lv": 2}])
+	await _offer("elite", [{"kind": "art", "id": "kongo", "lv": 2}])
 	await _press("p1_attack")
 	_check(main.rewards.has(1) and int(main.rewards[1]["replace"]) == 0, "三格满了，先选换掉哪个")
 	await _press("p1_guard")
@@ -854,7 +867,7 @@ func test_rewards() -> void:
 	var p2: Player = main._spawn_player(2)
 	await _frames(2)
 	_check(p2.build == r.build(2) and p2.build != p.build, "2P 有自己的招式")
-	_offer("fight", [{"kind": "mind", "id": "zanshin"}, {"kind": "mind", "id": "fudoshin"}, {"kind": "coin", "amount": 15}])
+	await _offer("fight", [{"kind": "mind", "id": "zanshin"}, {"kind": "mind", "id": "fudoshin"}, {"kind": "coin", "amount": 15}])
 	_check(main.rewards.size() == 2, "两个人各有一份")
 	await _press("p1_attack")
 	_check(not main.rewards.has(1) and main.rewards.has(2) and not p.frozen and p2.frozen, "1P 选完能动，2P 还在选")
@@ -884,3 +897,139 @@ func test_rewards() -> void:
 	await _wait_fade()
 	_check(main.mode == "hub" and Arts.art_count(p.build) == 1 and (p.build["minds"] as Array).is_empty(), "回破庙后招式心法清空")
 	_check(is_equal_approx(float(p.stats["parry_rebound"]), 0.0), "心法数值也没了")
+
+
+# ---------- 奇遇和剧情 ----------
+
+## 下一间换成指定奇遇的奇遇房，走进去
+func _enter_event(eid: String) -> void:
+	var r: Run = Game.run
+	var col: int = r.node()["next"][0]
+	var nd: Dictionary = r.rows[r.row + 1][col]
+	nd["type"] = "event"
+	nd["room"] = "mountain_fork"
+	nd["event"] = eid
+	main._go_next(col)
+	await _wait_fade()
+	await _frames(5)
+
+
+func test_events() -> void:
+	print("奇遇")
+	var with_event := 0
+	var dup := false
+	for i in range(200):
+		var rr := Run.create(0, i)
+		var evs := []
+		for row: Array in rr.rows:
+			for nd: Dictionary in row:
+				if nd["type"] == "event":
+					evs.append(nd["event"])
+		if not evs.is_empty():
+			with_event += 1
+		for e: String in evs:
+			if evs.count(e) > 1:
+				dup = true
+	_check(with_event > 100, "多数地图上有奇遇房（%d/200）" % with_event)
+	_check(not dup, "一局里奇遇不重复")
+	var p := _p()
+	main.interact(_find("door", "action", "start_run"), p)
+	await _wait_fade()
+	var r: Run = Game.run
+	# 血祭石：扣 25% 生命，只给招式的三选一
+	await _enter_event("blood_altar")
+	var it := _find("event")
+	_check(it != null and it.enabled and main.cleared and _find("door").enabled, "奇遇房中间摆着血祭石，门开着")
+	main.interact(it, p)
+	_check(main.event_player == p and p.frozen, "打开奇遇，人站住")
+	await _press("p1_attack")
+	_check(main.event_player == null and is_equal_approx(p.hp, p.max_hp * 0.75), "割掌献血扣 25%% 生命（%.0f）" % p.hp)
+	var all_art := true
+	for c: Dictionary in main.rewards.get(1, {}).get("choices", []):
+		if c["kind"] != "art" and c["kind"] != "coin":
+			all_art = false
+	_check(main.rewards.has(1) and all_art and main.rewards[1]["type"] == "event", "弹出只有招式的三选一")
+	await _press("p1_attack")
+	_check(Arts.art_count(p.build) == 2, "拿到一个新招式")
+	_check(not it.enabled and r.events_done.has(r.room_id()), "选过了就不能再选")
+	main.interact(it, p)
+	_check(main.event_player == null, "再按下打不开")
+	# 赌客：铜钱不够押不了，离开不算选过
+	await _enter_event("gambler")
+	r.coins = 5
+	it = _find("event")
+	_check(it != null and it.label == "" and it.sub == "路边赌客", "赌客是个人站着")
+	main.interact(it, p)
+	await _press("p1_attack")
+	_check(main.event_player == p and main.hud.menu_note == "铜钱不够", "铜钱不够押不了")
+	await _press("p1_guard")
+	_check(main.event_player == null and it.enabled, "离开不算选过，回头还能来")
+	# 无名坟：挖坟有埋伏，门锁上，打完才开
+	await _enter_event("grave_mound")
+	it = _find("event")
+	main.interact(it, p)
+	await _press("p1_down")
+	await _press("p1_attack")
+	await _frames(3)
+	_check(main.enemies.size() == 3 and not main.cleared and not _find("door").enabled, "挖坟冒出三个敌人，门锁上")
+	_kill_all()
+	await _frames(120)
+	_check(main.cleared and _find("door").enabled, "打完门开了")
+	_check(r.jade >= 5, "坟里的魂玉到手（%d）" % r.jade)
+	# 受伤的浪人：分他一罐药，换一片记忆
+	await _enter_event("wounded_ronin")
+	var gourds := p.gourds
+	main.interact(_find("event"), p)
+	await _press("p1_attack")
+	_check(p.gourds == gourds - 1 and Story.has("blade_0"), "分一罐药，拿到第一片记忆")
+	# 碎铜镜：刃意清空、扣 10% 生命，再拿一片记忆
+	await _enter_event("mirror")
+	p.will = 60.0
+	var hp := p.hp
+	main.interact(_find("event"), p)
+	await _press("p1_attack")
+	_check(p.will == 0.0 and is_equal_approx(p.hp, hp - p.max_hp * 0.1) and Story.has("blade_1"), "照镜子：刃意清空、扣血，又想起一片")
+	# 选项文字
+	_check(Events.describe(Events.get_event("gambler")["options"][0]) == "铜钱 -15  →  铜钱 +40（50% 成功）", "选项说明：%s" % Events.describe(Events.get_event("gambler")["options"][0]))
+
+
+func test_story() -> void:
+	print("记忆碎片和剧情")
+	_check(Story.next_fragment() == "blade_0", "第一片是“断刃”")
+	var got := Story.collect("blade_0")
+	_check(got == ["断刃", 1, 3] and Story.next_fragment() == "blade_1", "拿到一片，下一片接着给同一段")
+	_check(Story.collect("blade_0").is_empty(), "拿过的不重复记")
+	Story.collect("blade_1")
+	Story.collect("blade_2")
+	_check(Story.next_fragment() == "five_0", "一段拼完给下一段")
+	_check(Story.boss_fragment("liu", 1) == "liu_0" and Story.boss_fragment("liu", 4) == "", "柳江远的身世按打败次数给")
+	var cfg := ConfigFile.new()
+	_check(cfg.load(Game.save_path) == OK and (cfg.get_value("save", "memories", []) as Array).size() == 3, "写进存档")
+	# 忆境
+	var it := _find("memory")
+	_check(it != null, "破庙里有忆境")
+	main.interact(it, _p())
+	_check(main.memory_player == _p() and _p().frozen, "打开忆境")
+	await _press("p1_down")
+	_check(main.memory_cursor == 1, "往下选下一段")
+	await _press("p1_guard")
+	_check(main.memory_player == null and not _p().frozen, "格挡离开")
+	# NPC 台词随轮回变化
+	var mem: Array = Game.save["memories"]
+	Game.save["memories"] = []
+	Game.save["runs"] = 0
+	var base := ["老话"]
+	_check(Story.npc_lines("granny", base) == base, "第一次来只说老话")
+	Game.save["runs"] = 3
+	var lines := Story.npc_lines("granny", base)
+	_check(lines.size() == 2 and lines[0] != "老话", "出发三次后先说新的（%s）" % lines[0])
+	Game.save["memories"] = mem
+	# 头目见面次数换台词
+	var liu: Dictionary = EnemyData.TYPES["liu"]
+	_check(Story.intro_for(liu, 1) == liu["intro"] and Story.intro_for(liu, 2) == liu["intro"], "头两次是原来的登场台词")
+	_check(Story.intro_for(liu, 3) == liu["intro_meets"][3] and Story.intro_for(liu, 4) == liu["intro_meets"][3], "第三、四次换一套")
+	_check(Story.intro_for(liu, 7) == liu["intro_meets"][5], "第五次以后再换")
+	# 精英掉记忆
+	main.grant_memory(Story.next_fragment(), Vector2(300, 200))
+	_check(Story.has("five_0"), "掉落的记忆碎片记下来")
+	Game.save["runs"] = 0
