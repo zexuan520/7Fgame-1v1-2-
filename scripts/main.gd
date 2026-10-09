@@ -364,7 +364,7 @@ func _make_exits() -> void:
 		var col: int = exits[i][0]
 		var nd: Dictionary = exits[i][1]
 		var tdef: Dictionary = LevelData.NODE_TYPES[nd["type"]]
-		var x := arena_w - 46.0 - (n - 1 - i) * 92.0
+		var x := arena_w - 70.0 - (n - 1 - i) * 100.0   # 离右墙留出门匾上字的宽度
 		var it := _add_interactable("door", x, tdef["label"], nd["type"], tdef["color"], {"action": "next", "col": col})
 		it.sub = LevelData.room(nd["room"])["name"]
 		it.enabled = cleared

@@ -4,7 +4,11 @@ extends Fighter
 
 enum S { FREE, CHARGE, ATTACK, GUARD, DODGE, HITSTUN, BROKEN, EXECUTE, DEAD, DRINK, ART }
 
-const MOVE_SPEED := 190.0
+const MOVE_SPEED := 200.0           # 奔跑（双击 左/右）
+const WALK_SPEED := 120.0           # 平时走路
+const DOUBLE_TAP := 0.28            # 两次按同一个方向的间隔在这之内算双击
+const BUFFER_TIME := 0.2            # 输入缓冲：提前按的键在这段时间内有效，动作一结束马上接上
+const BUFFERED := ["attack", "guard", "dodge", "jump", "art", "heal", "stance"]
 const JUMP_VELOCITY := -520.0
 const HEAVY_CHARGE_TIME := 0.6      # 长按 0.6 秒出重攻击
 const DODGE_SPEED := 420.0
@@ -70,6 +74,9 @@ var stats: Dictionary = GearData.base_stats()     # 装备 + 天赋 + 商人加�
 var weapon: Dictionary = GearData.weapon_stats(GearData.starter("katana"))
 var revives := 0                    # 不动“不死身”：这一局还能站起来几次
 var frozen := false                 # 开着天赋界面时站着不动
+var running := false                # 双击方向键后奔跑，松开方向键变回走路
+var _tap := {"left": -10.0, "right": -10.0}
+var _buf := {}                      # 输入缓冲：动作 → 按下的时刻
 var auto_respawn := true            # 练武场倒下 3 秒自动复活；闯关时要清完房间才复活
 var stance_index := 0               # 当前架势（见 Stance.LIST）
 var _switch_t := -1.0               # 切换架势的转刀动画
@@ -116,9 +123,9 @@ static func _build_poses() -> void:
 	if not POSES.is_empty():
 		return
 	POSES["idle"] = Puppet.pose({})
-	# 放松持刀：刀尖斜向下
+	# 放松持刀：刀背扛在肩上，刀尖朝后上方（不拖地）
 	POSES["relaxed"] = Puppet.pose({"crouch": 1.2, "lean": 0.04, "foot_f": Vector2(5, 0), "foot_b": Vector2(-4, 0),
-		"arm_f": Vector2(0.25, 0.6), "arm_b": Vector2(-0.12, 0.2), "sword": 0.55})
+		"arm_f": Vector2(0.55, 2.75), "arm_b": Vector2(-0.12, 0.2), "sword": -2.45})
 	# 戒备：敌人靠近时，双手持刀刀尖指向对方
 	POSES["ready"] = Puppet.pose({"crouch": 2.8, "lean": 0.16, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
 		"arm_f": Vector2(0.95, 1.55), "arm_b": Vector2(0.75, 1.45), "sword": 1.45})
@@ -265,8 +272,28 @@ func is_alive() -> bool:
 	return state != S.DEAD
 
 
+## 这个键刚按过（输入缓冲里还有）：用掉它返回 true。动作做不了的时候不要调用，让它留在缓冲里
 func _pressed(action: String) -> bool:
-	return Input.is_action_just_pressed(prefix + action)
+	if not _buf.has(action):
+		return Input.is_action_just_pressed(prefix + action)
+	if clock - float(_buf[action]) <= BUFFER_TIME:
+		_buf[action] = -10.0
+		return true
+	return false
+
+
+func _record_inputs() -> void:
+	for a: String in BUFFERED:
+		if Input.is_action_just_pressed(prefix + a):
+			_buf[a] = clock
+	# 双击方向键奔跑
+	for d: String in ["left", "right"]:
+		if Input.is_action_just_pressed(prefix + d):
+			if clock - float(_tap[d]) <= DOUBLE_TAP:
+				running = true
+			_tap[d] = clock
+	if absf(Input.get_axis(prefix + "left", prefix + "right")) < 0.1:
+		running = false
 
 
 func _held(action: String) -> bool:
@@ -280,6 +307,7 @@ func _enter(s: S) -> void:
 
 func _physics_process(delta: float) -> void:
 	clock += delta
+	_record_inputs()
 	state_time += delta
 	parry_timer = maxf(0.0, parry_timer - delta)
 	dodge_cooldown = maxf(0.0, dodge_cooldown - delta)
@@ -351,7 +379,7 @@ func _state_free(delta: float) -> void:
 		_try_jump()
 	if _pressed("guard"):
 		_start_guard()
-	elif _pressed("dodge") and dodge_cooldown <= 0.0:
+	elif dodge_cooldown <= 0.0 and _pressed("dodge"):
 		_start_dodge(dir)
 	elif _pressed("attack"):
 		_attack_pressed()
@@ -359,7 +387,7 @@ func _state_free(delta: float) -> void:
 		switch_stance(1)
 	elif _pressed("art"):
 		_start_art()
-	elif _pressed("heal") and is_on_floor():
+	elif is_on_floor() and _pressed("heal"):
 		_start_drink()
 
 
@@ -368,8 +396,11 @@ func _state_charge(delta: float) -> void:
 	velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 	if _pressed("guard"):
 		_start_guard()
-	elif _pressed("dodge") and dodge_cooldown <= 0.0:
+	elif dodge_cooldown <= 0.0 and _pressed("dodge"):
 		_start_dodge(Input.get_axis(prefix + "left", prefix + "right"))
+	elif _pressed("jump"):
+		_enter(S.FREE)
+		_try_jump()
 	elif charge_time >= charge_needed():
 		_start_move("heavy")
 	elif not _held("attack"):
@@ -385,13 +416,22 @@ func _state_attack(delta: float) -> void:
 		velocity.y = minf(velocity.y, 30.0)   # 空中出刀时停一下，不往下掉
 	if _pressed("attack"):
 		combo_queued = true
-	# 格挡和闪身可以取消攻击（前摇和后摇时）
-	if attack_phase != 1:
+	# 格挡、闪身随时能取消轻攻击（重攻击和落雷斩出刀那一下不行）；跳在前摇和后摇时能取消
+	var locked: bool = attack_phase == 1 and (bool(attack["heavy"]) or plunge)
+	if not locked:
 		if _pressed("guard"):
 			_start_guard()
 			return
-		if _pressed("dodge") and dodge_cooldown <= 0.0:
+		if dodge_cooldown <= 0.0 and _pressed("dodge"):
 			_start_dodge(Input.get_axis(prefix + "left", prefix + "right"))
+			return
+	if attack_phase != 1 and not plunge and (is_on_floor() or air_jumps > 0) and _pressed("jump"):
+		_enter(S.FREE)
+		_try_jump()
+		return
+	if attack_phase == 2 and _pressed("art"):
+		_start_art()
+		if state == S.ART:
 			return
 
 	var windup: float = attack["windup"]
@@ -487,7 +527,7 @@ func _state_guard(delta: float) -> void:
 	if _pressed("attack"):
 		_attack_pressed()
 		return
-	if _pressed("dodge") and dodge_cooldown <= 0.0:
+	if dodge_cooldown <= 0.0 and _pressed("dodge"):
 		_start_dodge(dir)
 		return
 	if _pressed("jump"):
@@ -784,7 +824,7 @@ func apply_loadout(s: Dictionary) -> void:
 
 
 func move_speed() -> float:
-	return MOVE_SPEED * maxf(0.5, 1.0 + float(stats["move"]))
+	return (MOVE_SPEED if running else WALK_SPEED) * maxf(0.5, 1.0 + float(stats["move"]))
 
 
 func charge_needed() -> float:
@@ -1074,7 +1114,7 @@ func _run_pose() -> Dictionary:
 		"crouch": 2.2 + absf(s) * 1.6, "lean": 0.34 + absf(s) * 0.04, "head": -0.1,
 		"foot_f": Vector2(6.5 * s, -maxf(0.0, 4.5 * c)),
 		"foot_b": Vector2(-6.5 * s, -maxf(0.0, -4.5 * c)),
-		"arm_f": Vector2(-0.5 + 0.25 * s, 0.1), "sword": -1.0 + 0.15 * s,   # 刀拖在身后
+		"arm_f": Vector2(0.55 + 0.08 * s, 2.7), "sword": -2.4 + 0.08 * s,   # 刀扛在肩上
 		"arm_b": Vector2(0.9 * -s, 1.2 + 0.4 * -s),
 	})
 	if is_sheathed():
@@ -1082,11 +1122,30 @@ func _run_pose() -> Dictionary:
 		run["arm_f"] = Vector2(0.9 * s, 1.2 + 0.4 * s)
 		run["sword"] = 0.5
 		run["sheathed"] = 1.0
+	if not running:
+		run = _walk_pose(run)
 	# 刚起步、快停下时只迈小步，和站姿混合
-	var k := clampf(absf(velocity.x) / MOVE_SPEED, 0.0, 1.0)
+	var k := clampf(absf(velocity.x) / (MOVE_SPEED if running else WALK_SPEED), 0.0, 1.0)
 	if k < 0.999:
 		return Puppet.lerp_pose(_idle_pose(), run, smoothstep(0.0, 1.0, k))
 	return run
+
+
+## 走路：步子小、身子直，手臂（或扛着的刀）跟着轻轻晃
+func _walk_pose(run: Dictionary) -> Dictionary:
+	var ph := _run_phase
+	var s := sin(ph)
+	var c := cos(ph)
+	var w := run.duplicate()
+	w["crouch"] = 1.3 + absf(s) * 0.5
+	w["lean"] = 0.1
+	w["head"] = 0.0
+	w["foot_f"] = Vector2(4.5 * s, -maxf(0.0, 2.2 * c))
+	w["foot_b"] = Vector2(-4.5 * s, -maxf(0.0, -2.2 * c))
+	w["arm_b"] = Vector2(0.4 * -s, 0.6 + 0.2 * -s)
+	if is_sheathed():
+		w["arm_f"] = Vector2(0.4 * s, 0.6 + 0.2 * s)
+	return w
 
 
 ## 当前架势的姿势；drawn 为 true 时拔刀式也按出鞘算（刚砍完）

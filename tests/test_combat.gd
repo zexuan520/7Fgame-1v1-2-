@@ -66,6 +66,10 @@ func _run() -> void:
 	await test_air_and_plunge()
 	await _setup()
 	await test_dash_attack()
+	await _setup()
+	await test_cancels_and_buffer()
+	await _setup()
+	await test_walk_and_run()
 	print("")
 	if failures == 0:
 		print("全部测试通过")
@@ -572,3 +576,70 @@ func test_dash_attack() -> void:
 	_check(p.attack.get("id") == "dash", "闪身中按攻击出闪身突刺")
 	await _frames(25)
 	_check(e.hp < e.max_hp, "冲过去刺中（hp %.0f）" % e.hp)
+
+
+func test_cancels_and_buffer() -> void:
+	print("攻击中随时格挡、闪身、跳，输入缓冲")
+	e.global_position = Vector2(700, 300)
+	# 轻攻击出刀那一下按格挡：马上进格挡
+	await _tap("p1_attack")
+	await _frames(3)
+	var phase_ok := false
+	for i in range(30):
+		if p.state == Player.S.ATTACK and p.attack_phase == 1:
+			phase_ok = true
+			break
+		await _frames(1)
+	await _tap("p1_guard")
+	await _frames(1)
+	_check(phase_ok and p.state == Player.S.GUARD, "轻攻击出刀时按格挡，立刻格挡（状态 %d）" % p.state)
+	Input.action_release("p1_guard")
+	await _frames(30)
+	# 后摇里按跳：直接跳起来
+	await _tap("p1_attack")
+	for i in range(40):
+		if p.state == Player.S.ATTACK and p.attack_phase == 2:
+			break
+		await _frames(1)
+	await _tap("p1_jump")
+	await _frames(3)
+	_check(p.velocity.y < 0.0 and not p.is_on_floor(), "攻击后摇按跳，直接起跳")
+	await _frames(60)
+	# 重劈出刀时按格挡：动作锁住，但这一下留在缓冲里，砍完马上格挡
+	p._start_move("heavy")
+	for i in range(30):
+		if p.attack_phase == 1:
+			break
+		await _frames(1)
+	Input.action_press("p1_guard")
+	await _frames(1)
+	_check(p.state == Player.S.ATTACK, "重劈出刀那一下不能被打断")
+	var guarded := false
+	for i in range(30):
+		await _frames(1)
+		if p.state == Player.S.GUARD:
+			guarded = true
+			break
+	Input.action_release("p1_guard")
+	_check(guarded, "提前按的格挡留在缓冲里，砍完马上接上")
+
+
+func test_walk_and_run() -> void:
+	print("走路和奔跑")
+	e.global_position = Vector2(780, 300)
+	p.global_position = Vector2(200, 300)
+	Input.action_press("p1_right")
+	await _frames(30)
+	var walk := p.velocity.x
+	Input.action_release("p1_right")
+	await _frames(20)
+	_check(absf(walk - Player.WALK_SPEED) < 1.0, "按住方向是走路（%.0f）" % walk)
+	await _tap("p1_right")
+	await _frames(3)
+	Input.action_press("p1_right")
+	await _frames(30)
+	var run := p.velocity.x
+	_check(p.running and absf(run - Player.MOVE_SPEED) < 1.0, "双击方向键奔跑（%.0f）" % run)
+	Input.action_release("p1_right")
+	await _frames(3)
+	_check(not p.running, "松开方向键就不跑了")
