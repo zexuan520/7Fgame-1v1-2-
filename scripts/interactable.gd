@@ -5,7 +5,7 @@ extends Node2D
 
 const RANGE := 26.0
 
-var kind := "door"          # door 门 / item 货物 / rest 土地庙 / chest 宝箱 / note 遗骸 / gear 装备 / talent 天赋 / rack 兵器架 / codex 招式谱 / event 奇遇 / memory 忆境
+var kind := "door"          # door 门 / item 货物 / rest 土地庙 / chest 宝箱 / note 遗骸 / gear 装备 / talent 天赋 / rack 兵器架 / codex 招式谱 / event 奇遇 / memory 忆境 / scroll 招式卷 / service 老钱的服务
 var label := ""             # 头上的字
 var sub := ""               # 小字（价格、说明）
 var icon := ""              # 图标：门是房间类型，货物是货物 id
@@ -34,6 +34,8 @@ func prompt() -> String:
 		"codex": return "↓ 翻招式谱"
 		"event": return "↓ 查看" if enabled else "已经选过了"
 		"memory": return "↓ 入忆境"
+		"scroll": return "↓ 买下" if enabled else "卖完了"
+		"service": return "↓ 找老钱"
 		"gear":
 			var price := int(data.get("price", 0))
 			return "↓ 买下换上 · %d 铜钱" % price if price > 0 else "↓ 换上"
@@ -52,7 +54,7 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	match kind:
 		"door": _draw_door()
-		"item": _draw_item()
+		"item", "scroll": _draw_item()
 		"gear": _draw_gear()
 		"rack": _draw_rack()
 		"codex": _draw_codex()
@@ -76,6 +78,8 @@ func _draw() -> void:
 		top = -90.0 if label == "" else -70.0
 	elif kind == "memory":
 		top = -62.0
+	elif kind == "service":
+		top = -96.0
 	var a := 1.0 if highlight else 0.75
 	var show_sub := sub != "" and (highlight or kind == "door" or kind == "rest") and kind != "gear"
 	if highlight:

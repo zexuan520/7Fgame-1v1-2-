@@ -171,6 +171,14 @@ static func draw(c: CanvasItem, id: String, at: Vector2, col: Color) -> void:
 			c.draw_rect(Rect2(p + Vector2(0, -1), Vector2(2, 1)), col)
 			c.draw_rect(Rect2(p + Vector2(0, 0), Vector2(1, 2)), col)
 			c.draw_rect(Rect2(p + Vector2(0, 3), Vector2(1, 1)), hi)
+		"scroll":
+			# 一卷招式：两头卷轴，中间一道字
+			c.draw_rect(Rect2(p + Vector2(-5, -4), Vector2(10, 8)), o)
+			c.draw_rect(Rect2(p + Vector2(-4, -3), Vector2(8, 6)), Color("e0d4b4"))
+			c.draw_rect(Rect2(p + Vector2(-6, -5), Vector2(2, 10)), col.darkened(0.2))
+			c.draw_rect(Rect2(p + Vector2(4, -5), Vector2(2, 10)), col.darkened(0.2))
+			c.draw_rect(Rect2(p + Vector2(-1, -2), Vector2(1, 4)), Color("3a2a20"))
+			c.draw_rect(Rect2(p + Vector2(1, -2), Vector2(1, 3)), Color("3a2a20"))
 		"memory":
 			# 一片碎镜子
 			c.draw_colored_polygon(PackedVector2Array([p + Vector2(-3, -5), p + Vector2(4, -3), p + Vector2(2, 5), p + Vector2(-4, 2)]), o)

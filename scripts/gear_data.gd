@@ -197,6 +197,17 @@ static func make(slot: String, base_id: String, q: int, rng: RandomNumberGenerat
 	return item
 
 
+## 商人重铸：底子和品质不变，词条（传说的专属机制也算）重抽一遍，尽量和原来不一样
+static func reforge(item: Dictionary, rng: RandomNumberGenerator) -> void:
+	var old := str(item["affixes"]) + str(item["mech"])
+	for i in range(8):
+		var fresh := make(item["slot"], item["base"], int(item["q"]), rng)
+		item["affixes"] = fresh["affixes"]
+		item["mech"] = fresh["mech"]
+		if str(item["affixes"]) + str(item["mech"]) != old:
+			return
+
+
 ## 随机一件装备。slot 为空时随机部位；weights 是五种品质的权重
 static func roll(rng: RandomNumberGenerator, weights: Array, slot: String = "") -> Dictionary:
 	if slot == "":

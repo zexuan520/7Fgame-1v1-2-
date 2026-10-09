@@ -160,6 +160,8 @@ func _draw() -> void:
 		_draw_event(font)
 	if main.memory_player != null:
 		_draw_memories(font)
+	if main.shop_player != null:
+		_draw_shop(font)
 	if not main.rewards.is_empty():
 		_draw_rewards(font)
 	if show_help:
@@ -735,16 +737,17 @@ func _draw_rewards(font: Font) -> void:
 		var box := Rect2(x, 34, w, 284)
 		draw_rect(box, Color(0.04, 0.03, 0.06, 0.95))
 		_frame(box)
-		var title: String = {"elite": "精英奖励", "event": "奇遇"}.get(rw["type"], "清场奖励")
+		var title: String = {"elite": "精英奖励", "event": "奇遇", "shop": "老钱的招式卷"}.get(rw["type"], "清场奖励")
 		if main.get_players().size() > 1:
 			title = "%dP · %s" % [idx, title]
-		_text_centered(font, title + " · 三选一", Vector2(x + w / 2.0, 52), p.color.lightened(0.3) if main.get_players().size() > 1 else Color(0.95, 0.9, 0.8), 12)
+		_text_centered(font, title + ("" if rw["type"] == "shop" else " · 三选一"), Vector2(x + w / 2.0, 52), p.color.lightened(0.3) if main.get_players().size() > 1 else Color(0.95, 0.9, 0.8), 12)
 		var choices: Array = rw["choices"]
 		var cur := int(rw["cursor"])
 		if int(rw["replace"]) < 0:
 			for i in range(choices.size()):
 				_reward_card(font, choices[i], Rect2(x + 10, 62 + i * 70, w - 20, 64), i == cur)
-			_text(font, "←→ 选  攻击 确定", Vector2(x + 10, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)
+			var tip := "攻击 买下（%d 铜钱）  格挡 不买了" % int(rw["price"]) if rw.has("price") else "←→ 选  攻击 确定"
+			_text(font, tip, Vector2(x + 10, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)
 		else:
 			var choice: Dictionary = choices[cur]
 			_reward_card(font, choice, Rect2(x + 10, 62, w - 20, 64), true)
@@ -978,3 +981,45 @@ func _draw_memories(font: Font) -> void:
 	var hint := "精英、奇遇会掉记忆碎片" if m2.get("boss", "") == "" else "打败这位头目，每次想起一段"
 	_text(font, hint, Vector2(tx, box.end.y - 26), Color(0.55, 0.6, 0.66), 12)
 	_text(font, "跳/下 选  格挡 离开", Vector2(box.position.x + 12, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)
+
+
+## 老钱：强化招式、重铸装备、卖出装备、刷新货架
+func _draw_shop(font: Font) -> void:
+	draw_rect(Rect2(0, 0, 640, 360), Color(0, 0, 0, 0.45))
+	var p: Player = main.shop_player
+	var rows: Array = main.shop_rows(p)
+	var box := Rect2(90, 26, 460, 300)
+	draw_rect(box, Color(0.04, 0.03, 0.06, 0.95))
+	_frame(box)
+	_text_centered(font, "老钱 · 磨刀、重铸、收货", Vector2(320, 44), Color(0.95, 0.85, 0.6), 12)
+	_purse_row(font, "coin", Game.run.coins, Vector2(box.end.x - 60, 40))
+	# 一屏放 8 行，光标往下走时整页往上推
+	var per := 8
+	var first := clampi(main.shop_cursor - per + 1, 0, maxi(0, rows.size() - per))
+	for i in range(first, mini(rows.size(), first + per)):
+		var row: Dictionary = rows[i]
+		var r := Rect2(box.position.x + 12, 54 + (i - first) * 24, box.size.x - 24, 21)
+		var sel: bool = i == main.shop_cursor
+		var price := int(row.get("price", 0))
+		var can: bool = Game.run.coins >= price
+		draw_rect(r, Color(0.22, 0.17, 0.1) if sel else Color(0.09, 0.07, 0.11))
+		if sel:
+			draw_rect(r, Color(1.0, 0.95, 0.75).lerp(Color(0.9, 0.7, 0.3), 0.3 + 0.2 * sin(_time * 6.0)), false, 2.0)
+		var col := Color(0.95, 0.92, 0.86) if can else Color(0.5, 0.48, 0.52)
+		_text(font, row["label"], r.position + Vector2(8, 15), col, 12)
+		if row["do"] == "sell":
+			_text(font, "+%d 铜钱" % int(row["gain"]), Vector2(r.end.x - 8, r.position.y + 15), Color(0.6, 1.0, 0.7), 12, true)
+		else:
+			_text(font, "%d 铜钱" % price, Vector2(r.end.x - 8, r.position.y + 15), Color(1.0, 0.8, 0.45) if can else Color(0.85, 0.5, 0.45), 12, true)
+	if rows.size() > per:
+		_text(font, "%d / %d" % [main.shop_cursor + 1, rows.size()], Vector2(box.end.x - 12, 54 + per * 24 + 10), Color(0.6, 0.58, 0.62), 12, true)
+	# 下面：选中那一行的说明
+	var info := Rect2(box.position.x + 12, 54 + per * 24 + 16, box.size.x - 24, 32)
+	draw_rect(info, Color(0.08, 0.06, 0.1))
+	var sub: String = rows[main.shop_cursor]["sub"]
+	var lines: Array = _wrap(font, sub, info.size.x - 16.0)
+	for k in range(mini(lines.size(), 2)):
+		_text(font, lines[k], info.position + Vector2(8, 13 + k * 13), Color(0.8, 0.78, 0.82), 12)
+	if menu_note_time > 0.0:
+		_text_centered(font, menu_note, Vector2(320, box.end.y - 22), Color(1.0, 0.85, 0.5), 12)
+	_text(font, "跳/下 选  攻击 确定  格挡 离开", Vector2(box.position.x + 12, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)

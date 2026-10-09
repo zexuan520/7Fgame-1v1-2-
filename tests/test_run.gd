@@ -44,6 +44,9 @@ func _run() -> void:
 	_reset_save()
 	await _setup()
 	await test_coop_revive()
+	_reset_save()
+	await _setup()
+	await test_shop_services()
 	test_room_layouts()
 	await _setup()
 	await test_features()
@@ -1086,3 +1089,77 @@ func test_coop_revive() -> void:
 	main._remove_player(2)
 	main._finish_run(false)
 	await _wait_fade()
+
+
+# ---------- 商人老钱 ----------
+
+func test_shop_services() -> void:
+	print("商人老钱：货架、招式卷、强化、重铸、卖出、刷新")
+	Game.save["arts"] = []
+	var p := _p()
+	main.interact(_find("door", "action", "start_run"), p)
+	await _wait_fade()
+	var r: Run = Game.run
+	var col: int = r.node()["next"][0]
+	r.rows[r.row + 1][col]["type"] = "shop"
+	r.rows[r.row + 1][col]["room"] = "merchant"
+	main._go_next(col)
+	await _wait_fade()
+	var items: Array = main.interactables.filter(func(it: Interactable) -> bool: return it.kind == "item")
+	var gears: Array = main.interactables.filter(func(it: Interactable) -> bool: return it.kind == "gear")
+	var scroll := _find("scroll")
+	_check(items.size() == 3 and items[0].data["id"] == "refill", "三样消耗品，第一格固定是补药")
+	_check(scroll != null and gears.size() == 2, "一卷招式、两件装备")
+	_check(not Arts.has_art(p.build, scroll.data["id"]), "招式卷是还没装的招式（%s）" % scroll.data["id"])
+	# 招式卷：装上才付钱
+	r.coins = 100
+	var art_id: String = scroll.data["id"]
+	main.interact(scroll, p)
+	_check(Arts.has_art(p.build, art_id) and r.coins == 55 and not scroll.enabled, "买下招式卷，装进空格，45 铜钱")
+	# 格子满了：要选换掉哪个，不换可以不买
+	r.refresh_shop()
+	main._build_shop()
+	r.shop_arts[r.room_id()] = ""
+	p.build["arts"] = [{"id": "whirl", "lv": 1}, {"id": art_id, "lv": 1}, {"id": "issen", "lv": 1}]
+	var other := "kuujin" if art_id != "kuujin" else "kongo"
+	scroll = main._add_interactable("scroll", 500.0, "", "scroll", Color.WHITE, {"id": other, "shop": true})
+	r.coins = 100
+	main.interact(scroll, p)
+	_check(main.rewards.has(1) and r.coins == 100, "格子满了先问换哪个，还没扣钱")
+	await _frames(1)
+	await _press("p1_guard")
+	_check(not main.rewards.has(1) and r.coins == 100 and not p.frozen, "格挡不买了，钱还在")
+	# 服务
+	p.build["arts"] = [{"id": "whirl", "lv": 1}, null, null]
+	p.gear["head"] = GearData.make("head", "kasa", 2, r.rng)
+	main._apply_player_stats(p, false)
+	main.interact(_find("service"), p)
+	_check(main.shop_player == p and p.frozen, "找老钱，打开服务")
+	var rows: Array = main.shop_rows(p)
+	_check(rows[0]["do"] == "up" and rows[-1]["do"] == "refresh", "能强化、重铸、卖出、刷新（%d 项）" % rows.size())
+	r.coins = 200
+	await _press("p1_attack")
+	_check(int(p.build["arts"][0]["lv"]) == 2 and r.coins == 170, "强化回旋斩到 2 级，30 铜钱")
+	var before := str(p.gear["head"]["affixes"])
+	var idx := -1
+	for i in range(rows.size()):
+		if rows[i]["do"] == "reforge" and rows[i]["slot"] == "head":
+			idx = i
+	main.shop_do(main.shop_rows(p)[idx])
+	_check(str(p.gear["head"]["affixes"]) != before and r.coins == 145, "重铸斗笠，词条变了，25 铜钱")
+	for row: Dictionary in main.shop_rows(p):
+		if row["do"] == "sell" and row["slot"] == "head":
+			main.shop_do(row)
+	_check(p.gear["head"] == null and r.coins == 145 + 17, "卖出精品斗笠，原价 55 的 30%% 是 17（%d）" % (r.coins - 145))
+	var old_stock := str(r.stock())
+	_check(r.refresh_cost() == 75, "前面刷过一次，这次 75")
+	r.coins = 200
+	main.shop_do(main.shop_rows(p)[-1])
+	_check(r.coins == 125 and r.refresh_cost() == 113, "刷新花 75，下次再 ×1.5（%d）" % r.refresh_cost())
+	_check(_find("scroll") != null and _find("scroll").enabled, "刷新后又有招式卷")
+	r.coins = 10
+	main.shop_do(main.shop_rows(p)[-1])
+	_check(r.coins == 10 and main.hud.menu_note == "铜钱不够", "钱不够刷新不了")
+	await _press("p1_guard")
+	_check(main.shop_player == null and not p.frozen, "格挡离开")
+	_check(old_stock != "" and r.stock()[0] == "refill", "刷新后补药还在第一格")

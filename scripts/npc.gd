@@ -20,8 +20,9 @@ func setup(kind: String) -> void:
 	look.saya = false
 	look.sword_len = 0.0
 	if kind == "merchant":
-		npc_name = "行脚商人"
-		lines = ["客官，路上不太平，买点东西防身？", "铜钱留着也带不回去，不如花了。", "前面河边那位……我劝你别去。"]
+		npc_name = "老钱"
+		lines = ["客官，路上不太平，买点东西防身？", "铜钱留着也带不回去，不如花了。", "刀钝了？拿来，我给你磨磨。",
+			"前面河边那位……我劝你别去。"]
 		look.hat = true
 		look.hat_color = Color("a8905a")
 		look.hat_dark = Color("6e5a36")

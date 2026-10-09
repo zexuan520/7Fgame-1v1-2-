@@ -155,9 +155,9 @@ const ROOMS := {
 		"waves": [[["ronin", 420.0], ["archer", 620.0, 100.0], ["dog", 1350.0], ["dog", 1500.0]], [["dog", 960.0], ["dog", 40.0]]]},
 
 	# ---------- 商人、土地庙 ----------
-	"merchant": {"name": "行脚商人", "width": 720.0, "theme": "village", "mood": "night", "seed": 11,
-		"props": [["bamboo", 40.0], ["barrel_d", 100.0], ["fire", 150.0], ["lantern", 205.0], ["woodpile", 600.0],
-			["cart", 640.0]]},
+	"merchant": {"name": "行脚商人", "width": 960.0, "theme": "village", "mood": "night", "seed": 11,
+		"props": [["bamboo", 40.0], ["barrel_d", 80.0], ["fire", 120.0], ["lantern", 740.0], ["woodpile", 860.0],
+			["cart", 910.0]]},
 	"roadside_shrine": {"name": "路边土地庙", "width": 720.0, "theme": "village", "mood": "fog", "seed": 12,
 		"props": [["bamboo", 60.0], ["hay", 130.0], ["note", 190.0, 0.0, "shrine"], ["urn", 250.0],
 			["stone_lantern", 300.0], ["stone_lantern", 420.0], ["jar", 470.0], ["grave", 520.0], ["bamboo", 600.0]]},
@@ -210,7 +210,18 @@ const CLEAR_JADE := {"fight": 1, "elite": 2}
 const REWARD_ROOMS := ["fight", "elite"]
 const DEATH_KEEP := 0.6
 
-## 商人：每次进店从这里抽 3 样，用铜钱买，只在这一局有效
+## 商人老钱（设计文档第 11 节）：货架六格——固定一格补药、两格别的消耗品、一卷招式、两件装备（行者“随缘”再多一件）；
+## 服务：强化招式（升一级）、重铸装备（重抽词条）、卖出装备（原价 30%）、刷新货架（首次 50 铜钱，每刷一次 ×1.5）
+const SHOP := {
+	"fixed": "refill", "consumables": 2, "gear": 2,
+	"art_price": [0, 45, 70],          # 招式卷：一级 45、二级 70（下标是等级）
+	"upgrade": [0, 30, 50],            # 招式从 N 级升到 N+1 级的价格（下标是当前等级）
+	"reforge": [0, 15, 25, 35, 50],    # 重铸价格（按品质；凡品没有词条，不能重铸）
+	"sell": 0.3,                       # 卖出：原价 30%
+	"refresh": 50, "refresh_mult": 1.5,
+}
+
+## 商人的消耗品，用铜钱买，只在这一局有效
 const SHOP_ITEMS := {
 	"refill": {"name": "补药", "desc": "药罐补满", "cost": 20},
 	"heal": {"name": "金疮药", "desc": "回复 50% 生命", "cost": 15},

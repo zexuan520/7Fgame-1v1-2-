@@ -20,6 +20,8 @@ var bank := {"coin": 0.0, "jade": 0.0}   # 加成后不满 1 的零头，攒够�
 var shop_gear := {}                 # 商人房间卖的装备：房间坐标 → [装备, ...]（买过的设成 null）
 var builds := {}                    # 每个玩家这一局的招式和心法：玩家序号 → Arts.new_build()
 var events_done := {}               # 选过的奇遇：房间坐标 → true
+var shop_arts := {}                 # 商人摊上的招式卷：房间坐标 → 招式 id（卖掉了是 ""）
+var shop_refreshes := {}            # 商人刷新过几次：房间坐标 → 次数
 var rng := RandomNumberGenerator.new()
 
 
@@ -185,23 +187,61 @@ func _norm(i: int, n: int) -> float:
 
 # ---------- 商人 ----------
 
+## 消耗品：固定一格补药，再随机两样
 func stock() -> Array:
 	var id := room_id()
 	if not shop_stock.has(id):
+		var fixed: String = LevelData.SHOP["fixed"]
 		var keys: Array = LevelData.SHOP_ITEMS.keys()
-		var picked := []
-		while picked.size() < 3 and not keys.is_empty():
+		keys.erase(fixed)
+		var picked := [fixed]
+		while picked.size() < 1 + int(LevelData.SHOP["consumables"]) and not keys.is_empty():
 			picked.append(keys.pop_at(rng.randi_range(0, keys.size() - 1)))
 		shop_stock[id] = picked
 	return shop_stock[id]
 
 
-## 商人摊上的装备：一件，行者“随缘”多一件
+## 摊上的招式卷：掉落池里、大家都还没装的招式（都装了就随便一个）；卖掉了是 ""
+func shop_art() -> String:
+	var id := room_id()
+	if not shop_arts.has(id):
+		var pool := []
+		var any := []
+		for a: String in Arts.ARTS:
+			if a == Arts.STARTER or not Arts.in_pool("art", a):
+				continue
+			any.append(a)
+			var owned := false
+			for b: Dictionary in builds.values():
+				if Arts.has_art(b, a):
+					owned = true
+			if not owned:
+				pool.append(a)
+		var from := pool if not pool.is_empty() else any
+		shop_arts[id] = from[rng.randi_range(0, from.size() - 1)] if not from.is_empty() else ""
+	return shop_arts[id]
+
+
+## 刷新货架：消耗品、招式卷、装备全部换一遍
+func refresh_shop() -> void:
+	var id := room_id()
+	shop_stock.erase(id)
+	shop_arts.erase(id)
+	shop_gear.erase(id)
+	shop_refreshes[id] = int(shop_refreshes.get(id, 0)) + 1
+
+
+## 刷新一次多少铜钱（还没打折）
+func refresh_cost() -> int:
+	return roundi(float(LevelData.SHOP["refresh"]) * pow(float(LevelData.SHOP["refresh_mult"]), int(shop_refreshes.get(room_id(), 0))))
+
+
+## 商人摊上的装备：两件，行者“随缘”多一件
 func shop_gear_list() -> Array:
 	var id := room_id()
 	if not shop_gear.has(id):
 		var list := []
-		for i in range(1 + int(Talents.run_value("shop_extra"))):
+		for i in range(int(LevelData.SHOP["gear"]) + int(Talents.run_value("shop_extra"))):
 			list.append(GearData.roll(rng, GearData.weights_for("shop", row, int(Talents.run_value("luck")))))
 		shop_gear[id] = list
 	return shop_gear[id]

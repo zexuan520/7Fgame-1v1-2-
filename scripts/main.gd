@@ -19,6 +19,9 @@ const GEAR_DROP := 0.05               # 杂兵掉装备的几率
 const CHEST_GEAR := 0.6               # 宝箱里有装备的几率
 const REWARD_DELAY := 1.2             # 清完战斗房、精英房后多久弹出三选一
 const ELITE_MEMORY := 0.5             # 精英掉记忆碎片的几率
+const SHOP_X := 170.0                 # 商人货架从这里往右摆
+const SHOP_STEP := 84.0
+const SHOP_NPC_X := 800.0             # 老钱站的地方（找他强化、重铸、卖出、刷新）
 
 var arena_w := PRACTICE_W             # 当前房间宽度，镜头和墙都按它来
 var mode := "practice"                # practice 练武场 / hub 破庙 / room 闯关中的房间
@@ -57,6 +60,8 @@ var _reward_type := ""
 var event_player: Player = null       # 奇遇界面开着（谁打开的谁来选）
 var event_it: Interactable = null
 var event_cursor := 0
+var shop_player: Player = null        # 老钱的服务界面开着
+var shop_cursor := 0
 var memory_player: Player = null      # 破庙忆境开着
 var memory_cursor := 0
 var codex_player: Player = null       # 破庙招式谱开着
@@ -357,20 +362,10 @@ func _load_room() -> void:
 	var t := r.room_type()
 	match t:
 		"shop":
-			var stock := r.stock()
-			var x := 250.0
-			for id: String in stock:
-				var spec: Dictionary = LevelData.SHOP_ITEMS[id]
-				var it := _add_interactable("item", x, spec["name"], id, Color("e0b860"), {"id": id})
-				it.sub = "%s · %d 铜钱" % [spec["desc"], shop_price(int(spec["cost"]))]
-				x += 84.0
-			for item: Variant in r.shop_gear_list():
-				if item != null:
-					var g := _add_gear(item, Vector2(x, FLOOR_Y))
-					g.data["price"] = shop_price(GearData.PRICES[int(item["q"])])
-					g.data["shop_index"] = (r.shop_gear_list() as Array).find(item)
-				x += 84.0
-			_add_npc("merchant", x + 30.0)
+			_build_shop()
+			_add_npc("merchant", SHOP_NPC_X)
+			var svc := _add_interactable("service", SHOP_NPC_X, "", "service", Color("e0b860"))
+			svc.sub = "强化 · 重铸 · 卖出 · 刷新"
 		"event":
 			var eid: String = r.node()["event"]
 			var ev := Events.get_event(eid)
@@ -590,6 +585,9 @@ func _update_rewards() -> void:
 					rw["replace"] = 0
 				else:
 					take_reward(p, -1)
+			elif rw.has("price") and (Input.is_action_just_pressed(pr + "guard") or Input.is_action_just_pressed(pr + "dodge")):
+				rewards.erase(idx)   # 招式卷：不买了
+				_unfreeze(p)
 		else:
 			var n := Arts.MAX_ARTS if choice["kind"] == "art" else Arts.MAX_MINDS
 			rw["replace"] = posmod(int(rw["replace"]) + step, n)
@@ -604,6 +602,15 @@ func take_reward(p: Player, replace: int) -> void:
 	var rw: Dictionary = rewards[p.index]
 	var choice: Dictionary = rw["choices"][rw["cursor"]]
 	var at := p.global_position + Vector2(0, -74)
+	if rw.has("price"):
+		# 老钱的招式卷：装上了才付钱
+		Game.run.coins -= int(rw["price"])
+		Game.run.shop_arts[Game.run.room_id()] = ""
+		hud.bump("coin")
+		for it in interactables:
+			if it.kind == "scroll":
+				it.enabled = false
+				it.sub = "已买下"
 	if choice["kind"] == "coin":
 		Game.run.coins += int(choice["amount"])
 		hud.bump("coin")
@@ -849,6 +856,10 @@ func interact(it: Interactable, p: Player) -> void:
 				spawn_text(at, "已经选过了", Color(0.8, 0.75, 0.75), 12)
 		"memory":
 			open_memories(p)
+		"scroll":
+			_buy_scroll(it, p)
+		"service":
+			open_shop(p)
 		"rack":
 			var list: Array = Game.save["weapons"]
 			var i := list.find(Game.save["start_weapon"])
@@ -946,6 +957,7 @@ func _take_gear(it: Interactable, p: Player) -> void:
 		Game.run.coins -= price
 		var list: Array = Game.run.shop_gear_list()
 		list[int(it.data["shop_index"])] = null
+		it.data.erase("shop")
 		hud.bump("coin")
 	var slot := GearData.target_slot(p.gear, item)
 	var old: Variant = p.gear[slot]
@@ -1038,7 +1050,7 @@ func _menu_step(c: Vector3i, d: int) -> Vector3i:
 ## 有界面开着（天赋、招式谱、奇遇、忆境、三选一）：这时候不能和别的东西互动
 func menu_open() -> bool:
 	return menu_player != null or codex_player != null or event_player != null or memory_player != null \
-		or not rewards.is_empty()
+		or shop_player != null or not rewards.is_empty()
 
 
 # ---------- 奇遇 ----------
@@ -1194,6 +1206,159 @@ func grant_memory(id: String, at: Vector2) -> void:
 	spawn_text(at + Vector2(0, -20), "记忆碎片", Color(0.6, 0.9, 1.0), 14)
 	hud.toast("记忆碎片 · %s %d/%d（回破庙在忆境里看）" % got)
 	flash_screen(Color(0.5, 0.8, 1.0), 0.15)
+
+
+# ---------- 商人老钱 ----------
+
+## 摆货架：消耗品、招式卷、装备（刷新时先撤掉旧的再摆）
+func _build_shop() -> void:
+	var r := Game.run
+	for it in interactables.duplicate():
+		if it.data.has("shop"):
+			interactables.erase(it)
+			it.queue_free()
+	var x := SHOP_X
+	for id: String in r.stock():
+		var spec: Dictionary = LevelData.SHOP_ITEMS[id]
+		var it := _add_interactable("item", x, spec["name"], id, Color("e0b860"), {"id": id, "shop": true})
+		it.sub = "%s · %d 铜钱" % [spec["desc"], shop_price(int(spec["cost"]))]
+		x += SHOP_STEP
+	var art_id := r.shop_art()
+	if art_id != "":
+		var a: Dictionary = Arts.ARTS[art_id]
+		var sc := _add_interactable("scroll", x, a["name"], "scroll", Arts.SCHOOL_COLORS[a["school"]], {"id": art_id, "shop": true})
+		sc.sub = "%s · 刃意 %d · %d 铜钱" % [a["school"], int(a["cost"]), shop_price(int(LevelData.SHOP["art_price"][1]))]
+	x += SHOP_STEP
+	var list: Array = r.shop_gear_list()
+	for i in range(list.size()):
+		if list[i] != null:
+			var g := _add_gear(list[i], Vector2(x, FLOOR_Y))
+			g.data["price"] = shop_price(GearData.PRICES[int(list[i]["q"])])
+			g.data["shop_index"] = i
+			g.data["shop"] = true
+		x += SHOP_STEP
+
+
+## 买招式卷：已经会了就是升一级；格子满了先选换掉哪个（不换可以不买）。装上了才扣钱
+func _buy_scroll(it: Interactable, p: Player) -> void:
+	if not it.enabled:
+		return
+	var id: String = it.data["id"]
+	var price := shop_price(int(LevelData.SHOP["art_price"][1]))
+	var at := it.global_position + Vector2(0, -60)
+	if Game.run.coins < price:
+		spawn_text(at, "铜钱不够", Color(0.8, 0.75, 0.75), 12)
+		return
+	var choice := {"kind": "art", "id": id, "lv": 1}
+	var slot := Arts.art_slot(p.build, id)
+	if slot >= 0:
+		var lv := int(p.build["arts"][slot]["lv"])
+		if lv >= Arts.max_level(id):
+			spawn_text(at, "已经练到顶了", Color(0.8, 0.75, 0.75), 12)
+			return
+		choice = {"kind": "up", "id": id, "lv": lv + 1}
+	rewards[p.index] = {"choices": [choice], "cursor": 0, "replace": -1, "type": "shop", "price": price}
+	_reward_frame = Engine.get_process_frames()
+	p.frozen = true
+	if not Arts.needs_replace(p.build, choice):
+		take_reward(p, -1)
+
+
+func open_shop(p: Player) -> void:
+	shop_player = p
+	shop_cursor = 0
+	for q in players:
+		q.frozen = true
+	hud.show_map = false
+	hud.show_gear = false
+	hud.show_build = false
+
+
+func close_shop() -> void:
+	if shop_player == null:
+		return
+	shop_player = null
+	for q in players:
+		_unfreeze(q)
+
+
+## 老钱能做的事，每行 {do: up 强化 / reforge 重铸 / sell 卖出 / refresh 刷新, label, sub, price（卖出是 gain）}
+func shop_rows(p: Player) -> Array:
+	var rows := []
+	var shop: Dictionary = LevelData.SHOP
+	for s: Variant in p.build["arts"]:
+		if s != null and int(s["lv"]) < Arts.max_level(s["id"]):
+			var lv := int(s["lv"])
+			rows.append({"do": "up", "id": s["id"], "price": shop_price(int(shop["upgrade"][lv])),
+				"label": "强化 %s %s → %s" % [Arts.ARTS[s["id"]]["name"], Arts.LEVEL_NAMES[lv], Arts.LEVEL_NAMES[lv + 1]],
+				"sub": Arts.level_desc(s["id"], lv + 1)})
+	for slot: String in GearData.SLOTS:
+		var item: Variant = p.gear[slot]
+		if item != null and int(item["q"]) >= 1:
+			rows.append({"do": "reforge", "slot": slot, "price": shop_price(int(shop["reforge"][int(item["q"])])),
+				"label": "重铸 %s（%s）" % [GearData.display_name(item), GearData.quality(item)["name"]],
+				"sub": "  ".join(GearData.describe(item).slice(-((item["affixes"] as Array).size() + (item["mech"] as Array).size())))})
+	for slot: String in GearData.SLOTS:
+		var item: Variant = p.gear[slot]
+		if slot != "weapon" and item != null:
+			rows.append({"do": "sell", "slot": slot, "gain": roundi(GearData.PRICES[int(item["q"])] * float(shop["sell"])),
+				"label": "卖出 %s（%s）" % [GearData.display_name(item), GearData.quality(item)["name"]],
+				"sub": "这一格就空了"})
+	rows.append({"do": "refresh", "price": shop_price(Game.run.refresh_cost()), "label": "刷新货架",
+		"sub": "消耗品、招式卷、装备全部换一遍，下次更贵"})
+	return rows
+
+
+func _update_shop() -> void:
+	var p := shop_player
+	if not is_instance_valid(p):
+		close_shop()
+		return
+	var rows := shop_rows(p)
+	var pr := p.prefix
+	if Input.is_action_just_pressed(pr + "jump") or Input.is_action_just_pressed(pr + "left"):
+		shop_cursor = posmod(shop_cursor - 1, rows.size())
+	elif Input.is_action_just_pressed(pr + "down") or Input.is_action_just_pressed(pr + "right"):
+		shop_cursor = posmod(shop_cursor + 1, rows.size())
+	shop_cursor = mini(shop_cursor, rows.size() - 1)
+	if Input.is_action_just_pressed(pr + "attack"):
+		shop_do(rows[shop_cursor])
+	elif Input.is_action_just_pressed(pr + "guard") or Input.is_action_just_pressed(pr + "dodge"):
+		close_shop()
+
+
+## 做老钱的一项服务
+func shop_do(row: Dictionary) -> void:
+	var p := shop_player
+	var r := Game.run
+	var price := int(row.get("price", 0))
+	if r.coins < price:
+		hud.menu_note = "铜钱不够"
+		hud.menu_note_time = 1.4
+		return
+	r.coins -= price
+	var note := ""
+	match String(row["do"]):
+		"up":
+			Arts.take(p.build, {"kind": "up", "id": row["id"]})
+			note = "%s 升了一级" % Arts.ARTS[row["id"]]["name"]
+		"reforge":
+			GearData.reforge(p.gear[row["slot"]], r.rng)
+			note = "重铸好了"
+		"sell":
+			var item: Dictionary = p.gear[row["slot"]]
+			p.gear[row["slot"]] = null
+			r.coins += int(row["gain"])
+			note = "卖了 %s，%d 铜钱" % [GearData.display_name(item), int(row["gain"])]
+		"refresh":
+			r.refresh_shop()
+			_build_shop()
+			note = "货架换了一遍"
+	_apply_player_stats(p, false)
+	hud.bump("coin")
+	hud.menu_note = note
+	hud.menu_note_time = 1.6
+	hud.menu_flash = 0.3
 
 
 # ---------- 破庙的忆境 ----------
@@ -1649,6 +1814,8 @@ func _process(delta: float) -> void:
 		_update_event()
 	elif memory_player != null:
 		_update_memories()
+	elif shop_player != null:
+		_update_shop()
 	if not rewards.is_empty():
 		_update_rewards()
 	if mode == "practice":
@@ -1705,11 +1872,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			close_talents()
 			get_viewport().set_input_as_handled()
 		return
-	if codex_player != null or event_player != null or memory_player != null:
+	if codex_player != null or event_player != null or memory_player != null or shop_player != null:
 		if event.is_action_pressed("toggle_map") or event.is_action_pressed("quit"):
 			close_codex()
 			close_event()
 			close_memories()
+			close_shop()
 			get_viewport().set_input_as_handled()
 		return
 	if not rewards.is_empty():
