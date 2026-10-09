@@ -98,6 +98,15 @@ func _generate() -> void:
 	var pools: Dictionary = fd["pools"]
 	var used := {}
 	var used_events := {}
+	# 只发生一次的剧情奇遇：做过了就不再抽；还没做的排在最前面先碰到
+	var events := []
+	var first := []
+	for id: String in fd.get("events", []):
+		var once: String = Events.get_event(id).get("once", "")
+		if once == "":
+			events.append(id)
+		elif not bool(Game.save["hub"].get(once, false)):
+			first.append(id)
 	rows.clear()
 	for spec: Dictionary in fd["rows"]:
 		var types := _pick_types(spec)
@@ -105,7 +114,8 @@ func _generate() -> void:
 		for t: String in types:
 			var nd := {"type": t, "room": _pick_room(pools[t], used), "next": [], "visited": false}
 			if t == "event":
-				nd["event"] = _pick_room(fd["events"], used_events)   # 奇遇房里碰到哪件奇遇，一局不重复
+				# 奇遇房里碰到哪件奇遇，一局不重复
+				nd["event"] = first.pop_front() if not first.is_empty() else _pick_room(events, used_events)
 			r.append(nd)
 		rows.append(r)
 	_connect()
@@ -228,6 +238,9 @@ func shop_art() -> String:
 			if not owned:
 				pool.append(a)
 		var from := pool if not pool.is_empty() else any
+		var picked := Facilities.picked_art()
+		if picked != "" and shop_refreshes.get(id, 0) == 0:
+			from = [picked]   # 老钱的定向商品：第一次摆出来的一定是它
 		shop_arts[id] = from[rng.randi_range(0, from.size() - 1)] if not from.is_empty() else ""
 	return shop_arts[id]
 
@@ -270,5 +283,6 @@ func loadout(index: int) -> Dictionary:
 		var g := GearData.empty_loadout(String(Game.save["start_weapon"]))
 		if int(Talents.run_value("start_charm")) > 0:
 			g["charm1"] = GearData.roll(rng, [0.0, 1.0, 0.0, 0.0, 0.0], "charm")
+		Facilities.start_gear(g, rng)   # 铁铺、老钱铺子
 		gear[index] = g
 	return gear[index]

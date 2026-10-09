@@ -20,6 +20,8 @@ extends RefCounted
 ##                       gear 掉一件装备（品质 0-4）/ memory 记忆碎片 / ambush 冒出来的敌人 [[种类, 离玩家多远], ...]
 ##     chance            成功几率（不写就是一定成功）；失败时拿 fail 里的
 ##     say / fail_say    选完说的话
+##   once                只发生一次的剧情奇遇：存档 hub 里这个标记有了就不再出现；没有之前，这一层第一间奇遇房一定是它
+##   gain 里的 rescue    把存档 hub 里这个标记打上（救下白芦 → 药房开张）
 
 const EVENTS := {
 	"blood_altar": {"name": "血祭石", "who": "", "prop": "altar",
@@ -68,6 +70,13 @@ const EVENTS := {
 			{"label": "请教心法", "cost": {"hp": 0.2}, "gain": {"pick": "mind"},
 				"say": "他拿竹枝在你身上点了几下，疼得你一身冷汗。「记住这个疼。」"},
 			{"label": "离开", "leave": true},
+		]},
+	"herbalist": {"name": "被围的药师", "who": "白芦", "npc": "herbalist", "once": "herbalist",
+		"text": "一个背着药篓的姑娘缩在石灯笼后面，几个僧兵正围上去。「……别过来！」",
+		"options": [
+			{"label": "出手相救", "cost": {}, "gain": {"rescue": "herbalist", "ambush": [["sohei", -130.0], ["sohei", 150.0]]},
+				"say": "「多谢……我叫白芦，是个药师。等你回了山下的破庙，我去找你。」"},
+			{"label": "绕开走", "leave": true},
 		]},
 	"mirror": {"name": "碎铜镜", "who": "", "prop": "mirror",
 		"text": "挂在枯树上的一面铜镜，裂成几瓣。每一瓣里映出的你，脸都不一样。",
@@ -137,6 +146,8 @@ static func _gain_text(g: Dictionary) -> String:
 		parts.append("生命上限 +%d" % int(g["max_hp"]))
 	if g.has("ambush"):
 		parts.append("会有埋伏")
+	if g.has("rescue"):
+		parts.append("救下她")
 	return "、".join(parts)
 
 

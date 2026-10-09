@@ -162,6 +162,8 @@ func _draw() -> void:
 		_draw_memories(font)
 	if main.shop_player != null:
 		_draw_shop(font)
+	if main.facility_player != null:
+		_draw_facility(font)
 	if not main.rewards.is_empty():
 		_draw_rewards(font)
 	if show_help:
@@ -1023,3 +1025,45 @@ func _draw_shop(font: Font) -> void:
 	if menu_note_time > 0.0:
 		_text_centered(font, menu_note, Vector2(320, box.end.y - 22), Color(1.0, 0.85, 0.5), 12)
 	_text(font, "跳/下 选  攻击 确定  格挡 离开", Vector2(box.position.x + 12, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)
+
+
+## 破庙设施：铁铺、药房、老钱的铺子（魂玉）
+const FACILITY_TITLES := {"forge": "阿强的铁铺", "pharmacy": "白芦的药房", "qian": "老钱的铺子"}
+
+
+func _draw_facility(font: Font) -> void:
+	draw_rect(Rect2(0, 0, 640, 360), Color(0, 0, 0, 0.45))
+	var rows: Array = Facilities.rows(main.facility_kind)
+	var box := Rect2(90, 26, 460, 300)
+	draw_rect(box, Color(0.04, 0.03, 0.06, 0.95))
+	_frame(box)
+	_text_centered(font, FACILITY_TITLES.get(main.facility_kind, ""), Vector2(320, 44), Color(0.95, 0.85, 0.6), 12)
+	_purse_row(font, "jade", int(Game.save["jade"]), Vector2(box.end.x - 60, 40))
+	var per := 8
+	var cur: int = mini(main.facility_cursor, rows.size() - 1)
+	var first := clampi(cur - per + 1, 0, maxi(0, rows.size() - per))
+	for i in range(first, mini(rows.size(), first + per)):
+		var row: Dictionary = rows[i]
+		var r := Rect2(box.position.x + 12, 54 + (i - first) * 24, box.size.x - 24, 21)
+		var sel := i == cur
+		var cost := int(row["cost"])
+		var done: bool = row.get("done", false)
+		var can: bool = not done and int(Game.save["jade"]) >= cost
+		draw_rect(r, Color(0.12, 0.2, 0.17) if sel else Color(0.09, 0.07, 0.11))
+		if sel:
+			draw_rect(r, Color(1.0, 0.95, 0.75).lerp(Color(0.4, 0.9, 0.7), 0.3 + 0.2 * sin(_time * 6.0)), false, 2.0)
+		_text(font, row["label"], r.position + Vector2(8, 15), Color(0.95, 0.92, 0.86) if can or cost == 0 else Color(0.5, 0.48, 0.52), 12)
+		var price := "已有" if done else ("免费" if cost == 0 else "%d 魂玉" % cost)
+		var pc := Color(0.6, 0.62, 0.6) if done else (Color(0.5, 1.0, 0.8) if can else Color(0.85, 0.5, 0.45))
+		_text(font, price, Vector2(r.end.x - 8, r.position.y + 15), pc, 12, true)
+	if rows.size() > per:
+		_text(font, "%d / %d" % [cur + 1, rows.size()], Vector2(box.end.x - 12, 54 + per * 24 + 10), Color(0.6, 0.58, 0.62), 12, true)
+	var info := Rect2(box.position.x + 12, 54 + per * 24 + 16, box.size.x - 24, 32)
+	draw_rect(info, Color(0.08, 0.06, 0.1))
+	if not rows.is_empty():
+		var lines: Array = _wrap(font, String(rows[cur]["sub"]), info.size.x - 16.0)
+		for k in range(mini(lines.size(), 2)):
+			_text(font, lines[k], info.position + Vector2(8, 13 + k * 13), Color(0.8, 0.78, 0.82), 12)
+	if menu_note_time > 0.0:
+		_text_centered(font, menu_note, Vector2(320, box.end.y - 22), Color(1.0, 0.85, 0.5), 12)
+	_text(font, "跳/下 选  攻击 买下  格挡 离开", Vector2(box.position.x + 12, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)

@@ -51,6 +51,29 @@ func setup(kind: String) -> void:
 		look.skin = Color("d8a888")
 		look.skin_dark = Color("a8785e")
 		lines = Story.npc_lines("granny", lines)
+	elif kind == "smith":
+		npc_name = "阿强"
+		lines = ["刀是吃饭的家伙，别省那几颗魂玉。", "河边那把刀……我年轻时见过一回。", "打铁跟打架一样，火候到了才下锤。"]
+		look.cloth = Color("6a4a3a")
+		look.cloth_dark = Color("4a3226")
+		look.cloth_light = Color("8a6a52")
+		look.collar = Color("3a2a22")
+		look.hair = Color("2a1a14")
+		look.band = Color("8a6a3a")
+		look.belt = Color("3a2a22")
+		look.skin = Color("c88a62")
+		look.skin_dark = Color("9a6446")
+		look.width = 1.25
+	elif kind == "herbalist":
+		npc_name = "白芦"
+		lines = ["喝药别太急，被打断了就白喝了。", "山上那些人身上的印……我也治不好。", "药罐多一个，就多一条命。"]
+		look.cloth = Color("6a8a6a")
+		look.cloth_dark = Color("4a6a4a")
+		look.cloth_light = Color("8aaa8a")
+		look.collar = Color("e0d8c0")
+		look.hair = Color("2a2024")
+		look.band = Color("d8d0b0")
+		look.belt = Color("8a6a3a")
 	elif kind == "ronin_w":
 		npc_name = "受伤的浪人"
 		look.cloth = Color("4a3a4a")
@@ -122,6 +145,12 @@ func _draw() -> void:
 	var p := Puppet.breathe(Player.POSES["relaxed"], time, 0.8)
 	if pack == "monk":
 		p = Puppet.breathe(Player.POSES["drink"], time * 0.5, 0.4)
+	elif pack == "smith":
+		# 抡锤：举起来再砸下去
+		p = p.duplicate()
+		var k := 0.5 + 0.5 * sin(time * 3.0)
+		p["arm_f"] = Vector2(lerpf(0.8, 2.6, k), lerpf(1.2, 3.0, k))
+		p["lean"] = lerpf(0.25, -0.05, k)
 	elif pack == "ronin_w":
 		p = Puppet.breathe(Player.POSES["kneel"], time * 0.6, 0.6)
 	elif pack == "hermit":

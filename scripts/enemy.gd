@@ -353,6 +353,9 @@ func _spring_params() -> Vector2:
 # ---------- AI ----------
 
 func _state_idle(delta: float) -> void:
+	if data.get("passive", false):
+		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
+		return
 	target = main.nearest_player(global_position)
 	if target == null:
 		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)

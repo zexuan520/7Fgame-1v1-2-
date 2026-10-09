@@ -245,6 +245,13 @@ func _paint_near(c: CanvasItem) -> void:
 			c.draw_colored_polygon(PackedVector2Array([
 				Vector2(x + 3, y), Vector2(x + 3 + side * 20, y - 7), Vector2(x + 3 + side * 17, y - 2),
 			]), col.lightened(0.08))
+	# 破庙加宽了：右边再补一丛竹子
+	if arena_w > 800.0:
+		var edge := span(0.6)
+		for i in range(4):
+			var x := edge - 70.0 + i * 15.0
+			c.draw_rect(Rect2(x, 0, 6, floor_y), Color("16271f") if i % 2 == 0 else Color("1c3327"))
+			c.draw_rect(Rect2(x + 4, 0, 1, floor_y), Color("2c4a37"))
 	# 石灯笼
 	for x in [120.0, 470.0, 760.0]:
 		_stone_lantern(c, Vector2(x, floor_y))

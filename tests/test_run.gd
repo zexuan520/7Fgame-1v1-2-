@@ -50,6 +50,9 @@ func _run() -> void:
 	_reset_save()
 	await _setup()
 	await test_climb()
+	_reset_save()
+	await _setup()
+	await test_facilities()
 	test_room_layouts()
 	await _setup()
 	await test_features()
@@ -99,6 +102,7 @@ func _reset_save() -> void:
 	Game.save["memories"] = []
 	Game.save["meets"] = {}
 	Game.save["boss_kills"] = {}
+	Game.save["hub"] = {}
 	Game.save["best_floor"] = 0
 	Game.save["clears"] = 0
 	Game.save["runs"] = 0
@@ -1232,3 +1236,115 @@ func test_climb() -> void:
 	await _wait_fade()
 	_check(main.mode == "hub" and int(Game.save["jade"]) == before + jade, "回城魂玉全部带回（+%d）" % jade)
 	_check(int(Game.save["best_floor"]) == 2, "记下最远到第二层")
+
+
+# ---------- 破庙设施 ----------
+
+func _facility(kind: String) -> Interactable:
+	return _find("facility", "kind", kind)
+
+
+func test_facilities() -> void:
+	print("破庙设施：铁铺、药房、老钱的铺子、训练场")
+	var p := _p()
+	_check(main.arena_w == 1200.0, "破庙加宽到 1200")
+	_check(_facility("forge") != null and not _facility("forge").enabled, "铁铺没开张（%s）" % _facility("forge").sub)
+	_check(not _facility("pharmacy").enabled and not _facility("qian").enabled, "药房、老钱的铺子没开张")
+	_check(_facility("training") != null and _facility("training").enabled, "训练场一开始就有")
+	# 打败柳江远以后铁铺开张
+	Game.save["boss_kills"] = {"liu": 1}
+	await _setup()
+	p = _p()
+	_check(_facility("forge").enabled, "打败柳江远后铁铺开张")
+	_check(Game.save["hub"].get("announced", []).has("forge"), "阿强第一次开张说一句")
+	Game.save["jade"] = 200
+	main.interact(_facility("forge"), p)
+	_check(main.facility_player == p and p.frozen, "打开铁铺")
+	await _press("p1_attack")
+	_check(int(Game.save["hub"]["weapon_q"]) == 1 and int(Game.save["jade"]) == 170, "出发武器打到良品，30 魂玉")
+	var rows := Facilities.rows("forge")
+	var spear := -1
+	var head := -1
+	for i in range(rows.size()):
+		if rows[i]["id"] == "weapon:spear":
+			spear = i
+		if rows[i]["id"] == "armor:head":
+			head = i
+	_check(Facilities.buy(rows[spear]) == "" and (Game.save["weapons"] as Array).has("spear"), "武器图谱：长枪挂上兵器架")
+	_check(Facilities.buy(rows[head]) == "", "出发带斗笠")
+	await _press("p1_guard")
+	_check(main.facility_player == null and not p.frozen, "格挡离开")
+	# 药房：救下白芦以后开张
+	Game.save["hub"]["herbalist"] = true
+	Game.save["jade"] = 200
+	await _setup()
+	p = _p()
+	_check(_facility("pharmacy").enabled, "救下白芦后药房开张")
+	var g0 := p.max_gourds
+	_check(Facilities.buy(Facilities.rows("pharmacy")[0]) == "", "买药罐 +1")
+	main._apply_player_stats(p, true)
+	_check(p.max_gourds == g0 + 1, "药罐多一个（%d）" % p.max_gourds)
+	Facilities.buy(Facilities.rows("pharmacy")[1])
+	main._apply_player_stats(p, true)
+	_check(is_equal_approx(float(p.stats["gourd_heal"]), 0.05), "回复量 +5%")
+	Game.save["jade"] = 0
+	_check(Facilities.buy(Facilities.rows("pharmacy")[0]) == "魂玉不够", "魂玉不够买不了")
+	# 老钱的铺子：在他那里花够 300 铜钱
+	Game.save["hub"]["qian_spent"] = 290
+	await _setup()
+	_check(not _facility("qian").enabled, "花了 290 还不够")
+	Facilities.add_qian_spent(10)
+	await _setup()
+	p = _p()
+	_check(_facility("qian").enabled, "花够 300 老钱来破庙开店")
+	Game.save["jade"] = 100
+	Game.save["arts"] = ["issen"]
+	for row: Dictionary in Facilities.rows("qian"):
+		if row["id"] == "pick:issen" or row["id"] == "charm:wind_bell":
+			Facilities.buy(row)
+	_check(Facilities.picked_art() == "issen" and Game.save["hub"]["charm"] == "wind_bell", "定向商品选一心，饰品图谱买风铃")
+	# 出发：铁铺和老钱铺子的东西都带上
+	main.interact(_find("door", "action", "start_run"), p)
+	await _wait_fade()
+	_check(int(p.gear["weapon"]["q"]) == 1 and (p.gear["weapon"]["affixes"] as Array).size() == 1, "出发武器是良品，带一条词条")
+	_check(p.gear["head"] != null and p.gear["head"]["base"] == "kasa", "出发戴着斗笠")
+	_check(p.gear["charm1"] != null and p.gear["charm1"]["base"] == "wind_bell", "出发带着风铃")
+	var r: Run = Game.run
+	var col: int = r.node()["next"][0]
+	r.rows[1][col]["type"] = "shop"
+	r.rows[1][col]["room"] = "merchant"
+	main._go_next(col)
+	await _wait_fade()
+	_check(_find("scroll") != null and _find("scroll").data["id"] == "issen", "老钱货架上的招式卷是定向的一心")
+	var spent := int(Game.save["hub"]["qian_spent"])
+	r.coins = 100
+	main.interact(_find("item"), p)
+	_check(int(Game.save["hub"]["qian_spent"]) > spent, "在老钱那里花钱记进好感")
+	# 第二层救白芦：没救之前第一间奇遇房一定是她，救了以后不再出现
+	Game.save["hub"]["herbalist"] = false
+	var first_ok := true
+	var never := true
+	for i in range(60):
+		var rr := Run.create(1, i)
+		var evs := []
+		for row: Array in rr.rows:
+			for nd: Dictionary in row:
+				if nd["type"] == "event":
+					evs.append(nd["event"])
+		if not evs.is_empty() and evs[0] != "herbalist":
+			first_ok = false
+	Game.save["hub"]["herbalist"] = true
+	for i in range(60):
+		var rr := Run.create(1, i)
+		for row: Array in rr.rows:
+			for nd: Dictionary in row:
+				if nd.get("event", "") == "herbalist":
+					never = false
+	_check(first_ok and never, "白芦：没救前第二层第一间奇遇是她，救了以后不再出现")
+	Game.save["hub"]["herbalist"] = false
+	await _enter_event("herbalist")
+	main.interact(_find("event"), p)
+	await _press("p1_attack")
+	_check(bool(Game.save["hub"]["herbalist"]) and main.enemies.size() == 2, "出手相救：僧兵围上来，白芦记下了")
+	Game.save["hub"] = {}
+	Game.save["arts"] = []

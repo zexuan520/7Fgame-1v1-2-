@@ -22,6 +22,13 @@ const ELITE_MEMORY := 0.5             # 精英掉记忆碎片的几率
 const SHOP_X := 170.0                 # 商人货架从这里往右摆
 const SHOP_STEP := 84.0
 const SHOP_NPC_X := 800.0             # 老钱站的地方（找他强化、重铸、卖出、刷新）
+## 破庙的设施：[种类, x, 站着的人, 名字, 说明, 第一次开张时说的话]（见 Facilities）
+const HUB_FACILITIES := [
+	["forge", 720.0, "smith", "铁铺", "打出发的武器、防具", "听说你把河边那位打下来了？行，我这炉子给你开。"],
+	["pharmacy", 850.0, "herbalist", "药房", "药罐次数、回复量", "我说过会来找你的。药我来配，你只管往山上走。"],
+	["qian", 970.0, "merchant", "老钱的铺子", "定向商品、饰品图谱", "客官是熟客了，我干脆在庙里摆个摊。"],
+	["training", 1080.0, "", "训练场", "木桩和练过的对手（F4 回来）", ""],
+]
 
 var arena_w := PRACTICE_W             # 当前房间宽度，镜头和墙都按它来
 var mode := "practice"                # practice 练武场 / hub 破庙 / room 闯关中的房间
@@ -62,6 +69,9 @@ var event_it: Interactable = null
 var event_cursor := 0
 var shop_player: Player = null        # 老钱的服务界面开着
 var shop_cursor := 0
+var facility_player: Player = null    # 破庙设施的界面开着
+var facility_kind := ""
+var facility_cursor := 0
 var memory_player: Player = null      # 破庙忆境开着
 var memory_cursor := 0
 var codex_player: Player = null       # 破庙招式谱开着
@@ -309,6 +319,7 @@ func _load_hub() -> void:
 	pool.sub = "拼合记忆碎片 · %d 片" % Story.collected().size()
 	var codex := _add_interactable("codex", 190.0, "招式谱", "codex", Color("d8b878"))
 	codex.sub = "用魂玉把招式、心法加进掉落池"
+	_add_facilities()
 	var fd := LevelData.floor_data(0)
 	var gate := _add_interactable("door", arena_w - 56.0, "出发", "start", Color("e0a050"), {"action": "start_run"})
 	gate.sub = "%s · %s" % [fd["sub"], fd["name"]]
@@ -321,6 +332,26 @@ func _load_hub() -> void:
 		Game.last_result = {}
 	else:
 		hud.room_banner("破庙", "据点")
+
+
+## 破庙的设施：铁铺、药房、老钱的铺子开张了就站着人，没开张只摆着东西、写着怎么开张；训练场的木桩一直在
+func _add_facilities() -> void:
+	for f: Array in HUB_FACILITIES:
+		var kind: String = f[0]
+		var open := Facilities.unlocked(kind)
+		var who := ""
+		if open and f[2] != "":
+			who = _add_npc(f[2], float(f[1]) + 18.0).npc_name
+		var it := _add_interactable("facility", f[1], "" if open and f[2] != "" else String(f[3]), kind, Color("e0b860"),
+			{"kind": kind, "open": open})
+		it.sub = String(f[4]) if open else Facilities.lock_text(kind)
+		it.enabled = open
+		var ann: Array = Game.save["hub"].get("announced", [])
+		if open and kind != "training" and not ann.has(kind):
+			ann.append(kind)
+			Game.save["hub"]["announced"] = ann
+			Game.write_save()
+			hud.say(who, String(f[5]), 4.0)
 
 
 ## 兵器架：出发时带哪把武器（闯关时拿到过的武器才会挂上来）
@@ -640,6 +671,7 @@ func take_reward(p: Player, replace: int) -> void:
 	if rw.has("price"):
 		# 老钱的招式卷：装上了才付钱
 		Game.run.coins -= int(rw["price"])
+		Facilities.add_qian_spent(int(rw["price"]))   # 老钱的好感度
 		Game.run.shop_arts[Game.run.room_id()] = ""
 		hud.bump("coin")
 		for it in interactables:
@@ -838,6 +870,7 @@ func interact(it: Interactable, p: Player) -> void:
 				spawn_text(at, "铜钱不够", Color(0.8, 0.75, 0.75), 12)
 				return
 			Game.run.coins -= cost
+			Facilities.add_qian_spent(cost)   # 老钱的好感度
 			_apply_item(id)
 			(Game.run.stock() as Array).erase(id)
 			it.enabled = false
@@ -896,6 +929,13 @@ func interact(it: Interactable, p: Player) -> void:
 			_buy_scroll(it, p)
 		"service":
 			open_shop(p)
+		"facility":
+			if not it.enabled:
+				spawn_text(at, String(it.sub), Color(0.8, 0.75, 0.75), 12)
+			elif it.data["kind"] == "training":
+				go_training()
+			else:
+				open_facility(String(it.data["kind"]), p)
 		"rack":
 			var list: Array = Game.save["weapons"]
 			var i := list.find(Game.save["start_weapon"])
@@ -936,6 +976,7 @@ func _apply_player_stats(p: Player, refill: bool) -> void:
 	var st := GearData.totals(p.gear)
 	if mode != "practice":
 		Talents.apply(st)
+		Facilities.apply_stats(st)
 	Arts.apply_minds(st, p.build)
 	st["atk"] = float(st["atk"]) + float(b.get("dmg", 0.0))
 	st["hp"] = float(st["hp"]) + float(b.get("hp", 0.0))
@@ -991,6 +1032,7 @@ func _take_gear(it: Interactable, p: Player) -> void:
 			spawn_text(at, "铜钱不够", Color(0.8, 0.75, 0.75), 12)
 			return
 		Game.run.coins -= price
+		Facilities.add_qian_spent(price)   # 老钱的好感度
 		var list: Array = Game.run.shop_gear_list()
 		list[int(it.data["shop_index"])] = null
 		it.data.erase("shop")
@@ -1086,7 +1128,7 @@ func _menu_step(c: Vector3i, d: int) -> Vector3i:
 ## 有界面开着（天赋、招式谱、奇遇、忆境、三选一）：这时候不能和别的东西互动
 func menu_open() -> bool:
 	return menu_player != null or codex_player != null or event_player != null or memory_player != null \
-		or shop_player != null or not rewards.is_empty()
+		or shop_player != null or facility_player != null or not rewards.is_empty()
 
 
 # ---------- 奇遇 ----------
@@ -1202,6 +1244,9 @@ func _gain_event(g: Dictionary, p: Player, at: Vector2) -> void:
 		grant_memory(Story.next_fragment(), top)
 	if g.has("ambush"):
 		_ambush(g["ambush"], p)
+	if g.has("rescue"):
+		Game.save["hub"][g["rescue"]] = true
+		Game.write_save()
 	if g.has("pick"):
 		var kinds: Array = ["art", "mind", "up"] if g["pick"] == "any" else [g["pick"]]
 		open_rewards("event", p, kinds, int(g.get("pick_lv", 1)))
@@ -1373,6 +1418,7 @@ func shop_do(row: Dictionary) -> void:
 		hud.menu_note_time = 1.4
 		return
 	r.coins -= price
+	Facilities.add_qian_spent(price)   # 老钱的好感度
 	var note := ""
 	match String(row["do"]):
 		"up":
@@ -1395,6 +1441,62 @@ func shop_do(row: Dictionary) -> void:
 	hud.menu_note = note
 	hud.menu_note_time = 1.6
 	hud.menu_flash = 0.3
+
+
+# ---------- 破庙的设施（铁铺、药房、老钱的铺子、训练场） ----------
+
+func open_facility(kind: String, p: Player) -> void:
+	facility_player = p
+	facility_kind = kind
+	facility_cursor = 0
+	for q in players:
+		q.frozen = true
+	hud.show_gear = false
+	hud.show_build = false
+
+
+func close_facility() -> void:
+	if facility_player == null:
+		return
+	facility_player = null
+	for q in players:
+		_unfreeze(q)
+		_apply_player_stats(q, true)
+
+
+func _update_facility() -> void:
+	var p := facility_player
+	if not is_instance_valid(p):
+		close_facility()
+		return
+	var rows := Facilities.rows(facility_kind)
+	if rows.is_empty():
+		close_facility()
+		return
+	var pr := p.prefix
+	if Input.is_action_just_pressed(pr + "jump") or Input.is_action_just_pressed(pr + "left"):
+		facility_cursor = posmod(facility_cursor - 1, rows.size())
+	elif Input.is_action_just_pressed(pr + "down") or Input.is_action_just_pressed(pr + "right"):
+		facility_cursor = posmod(facility_cursor + 1, rows.size())
+	facility_cursor = mini(facility_cursor, rows.size() - 1)
+	if Input.is_action_just_pressed(pr + "attack"):
+		var why := Facilities.buy(rows[facility_cursor])
+		hud.menu_note = why if why != "" else "好了"
+		hud.menu_note_time = 1.4
+		if why == "":
+			hud.bump("jade")
+			hud.menu_flash = 0.3
+			for it in interactables:
+				if it.kind == "rack":
+					_refresh_rack(it)
+	elif Input.is_action_just_pressed(pr + "guard") or Input.is_action_just_pressed(pr + "dodge"):
+		close_facility()
+
+
+## 训练场：去练武场（木桩和练过的对手，F4 回破庙）
+func go_training() -> void:
+	Game.practice = true
+	get_tree().reload_current_scene()
 
 
 # ---------- 破庙的忆境 ----------
@@ -1856,6 +1958,8 @@ func _process(delta: float) -> void:
 		_update_memories()
 	elif shop_player != null:
 		_update_shop()
+	elif facility_player != null:
+		_update_facility()
 	if not rewards.is_empty():
 		_update_rewards()
 	if mode == "practice":
@@ -1912,12 +2016,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			close_talents()
 			get_viewport().set_input_as_handled()
 		return
-	if codex_player != null or event_player != null or memory_player != null or shop_player != null:
+	if codex_player != null or event_player != null or memory_player != null or shop_player != null or facility_player != null:
 		if event.is_action_pressed("toggle_map") or event.is_action_pressed("quit"):
 			close_codex()
 			close_event()
 			close_memories()
 			close_shop()
+			close_facility()
 			get_viewport().set_input_as_handled()
 		return
 	if not rewards.is_empty():

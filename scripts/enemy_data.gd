@@ -8,6 +8,7 @@ extends RefCounted
 ##   hp / posture           每管血的生命、架势上限
 ##   speed / guard          走路速度、被砍时举刀格挡的概率
 ##   shield                 举盾：正面的轻攻击全部挡下，要重击、回旋斩或绕到背后
+##   passive                不走不打（训练场的木桩）
 ##   body / look            判定框大小；外观（Puppet.Look 的字段）
 ##   prop                   手上额外画的东西：bow 弓 / shield 盾
 ##   idle                   [远处姿势, 近处姿势]；flourish 为 true 时会耍刀挑衅
@@ -213,6 +214,21 @@ const TYPES := {
 		},
 	},
 
+	# ---------- 训练场：稻草木桩 ----------
+	# 不走不打，血和架势都厚，练连招、压架势、处决用
+	"dummy": {
+		"name": "稻草木桩", "rank": "elite", "hp": 3000.0, "posture": 300.0, "speed": 0.0, "guard": 0.0, "passive": true,
+		"body": Vector2(28, 54), "prop": "", "idle": ["idle", "idle"],
+		"look": {"scale": 1.05, "hat": false, "width": 1.1, "sword_len": 0.0,
+			"cloth": Color("c8a85a"), "cloth_dark": Color("9a7a3a"), "cloth_light": Color("e0c880"),
+			"collar": Color("9a7a3a"), "pants": Color("6a4a2a"), "pants_dark": Color("4a3220"),
+			"pants_light": Color("8a6a42"), "hair": Color("c8a85a"), "band": Color("8a2a2a"), "belt": Color("6a4a2a"),
+			"skin": Color("c8a85a"), "skin_dark": Color("9a7a3a")},
+		"ai": {"attack_range": 0.0, "keep": [0.0, 0.0], "picks": []},
+		"phases": [{"speed": 1.0}],
+		"moves": {},
+	},
+
 	# ========== 第二层：竹林古寺 ==========
 
 	# ---------- 杂兵：僧兵 ----------
@@ -395,6 +411,7 @@ const ENCOUNTERS := [
 	{"name": "僧兵与忍者", "spawns": [["sohei", 480.0], ["sohei", 560.0], ["shinobi", 700.0], ["shinobi", 740.0]]},
 	{"name": "破戒僧", "spawns": [["hakai", 540.0]]},
 	{"name": "头目 · 禅刃 · 寂光", "spawns": [["jakko", 600.0]], "intro": true},
+	{"name": "稻草木桩", "spawns": [["dummy", 520.0]]},
 ]
 
 

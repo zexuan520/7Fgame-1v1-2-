@@ -5,7 +5,7 @@ extends Node2D
 
 const RANGE := 26.0
 
-var kind := "door"          # door 门 / item 货物 / rest 土地庙 / chest 宝箱 / note 遗骸 / gear 装备 / talent 天赋 / rack 兵器架 / codex 招式谱 / event 奇遇 / memory 忆境 / scroll 招式卷 / service 老钱的服务
+var kind := "door"          # door 门 / item 货物 / rest 土地庙 / chest 宝箱 / note 遗骸 / gear 装备 / talent 天赋 / rack 兵器架 / codex 招式谱 / event 奇遇 / memory 忆境 / scroll 招式卷 / service 老钱的服务 / facility 破庙设施
 var label := ""             # 头上的字
 var sub := ""               # 小字（价格、说明）
 var icon := ""              # 图标：门是房间类型，货物是货物 id
@@ -36,6 +36,10 @@ func prompt() -> String:
 		"memory": return "↓ 入忆境"
 		"scroll": return "↓ 买下" if enabled else "卖完了"
 		"service": return "↓ 找老钱"
+		"facility":
+			if not enabled:
+				return "还没开张"
+			return "↓ 去练武场" if data.get("kind") == "training" else "↓ 看看"
 		"gear":
 			var price := int(data.get("price", 0))
 			return "↓ 买下换上 · %d 铜钱" % price if price > 0 else "↓ 换上"
@@ -60,6 +64,7 @@ func _draw() -> void:
 		"codex": _draw_codex()
 		"event": _draw_event()
 		"memory": _draw_memory()
+		"facility": _draw_facility()
 		"rest": _draw_shrine()
 		"chest": _draw_chest()
 		"note": _draw_note()
@@ -80,6 +85,8 @@ func _draw() -> void:
 		top = -62.0
 	elif kind == "service":
 		top = -96.0
+	elif kind == "facility":
+		top = -96.0 if label == "" else -66.0
 	var a := 1.0 if highlight else 0.75
 	var show_sub := sub != "" and (highlight or kind == "door" or kind == "rest") and kind != "gear"
 	if highlight:
@@ -285,6 +292,64 @@ func _draw_event() -> void:
 			draw_line(Vector2(6, -37), Vector2(12, -40), o, 1.0)
 			if enabled:
 				draw_circle(Vector2(1, -42), 2.0, Color(1, 1, 1, 0.5 + 0.4 * sin(time * 4.0)))
+
+
+# ---------- 破庙设施 ----------
+
+## 铁铺：铁砧和炉子；药房：药柜和晾着的草药；老钱的铺子：一辆货车；训练场：稻草木桩
+func _draw_facility() -> void:
+	var o := Color("0c080a")
+	var open: bool = data.get("open", false)
+	match String(data.get("kind", "")):
+		"forge":
+			# 炉子在后面，开张了有火
+			draw_rect(Rect2(-34, -40, 26, 40), o)
+			draw_rect(Rect2(-33, -39, 24, 39), Color("4a3a36"))
+			draw_rect(Rect2(-28, -20, 14, 12), Color("120a0a"))
+			if open:
+				var f := 0.7 + 0.3 * sin(time * 9.0)
+				draw_rect(Rect2(-27, -19, 12, 10), Color(1.0, 0.45, 0.1, f))
+				for k in range(3):
+					draw_circle(Vector2(-21, -14), 8.0 + k * 6.0, Color(1.0, 0.4, 0.1, 0.05 * f))
+			# 铁砧
+			draw_rect(Rect2(-6, -6, 18, 6), o)
+			draw_rect(Rect2(-2, -12, 10, 7), o)
+			draw_rect(Rect2(-8, -16, 24, 5), o)
+			draw_rect(Rect2(-7, -15, 22, 3), Color("6a6e78"))
+			draw_rect(Rect2(-7, -15, 22, 1), Color("a8aebb"))
+		"pharmacy":
+			# 药柜：一格一格的小抽屉，顶上晾着草药
+			draw_rect(Rect2(-22, -44, 44, 44), o)
+			draw_rect(Rect2(-21, -43, 42, 43), Color("5a3a24"))
+			for r in range(4):
+				for c in range(4):
+					draw_rect(Rect2(-19 + c * 10, -41 + r * 10, 8, 8), Color("7a5232"))
+					draw_rect(Rect2(-16 + c * 10, -38 + r * 10, 2, 1), Color("c9a24a"))
+			for k in range(5):
+				draw_line(Vector2(-18 + k * 9, -46), Vector2(-17 + k * 9, -54), Color("5a8a3a") if open else Color("4a4a3a"), 2.0)
+		"qian":
+			# 货车：车板、两个轮子、盖着布的货
+			draw_rect(Rect2(-28, -18, 56, 6), o)
+			draw_rect(Rect2(-27, -17, 54, 4), Color("6a4a2a"))
+			for x in [-18.0, 18.0]:
+				draw_circle(Vector2(x, -6), 7.0, o)
+				draw_circle(Vector2(x, -6), 5.0, Color("4a3220"))
+				draw_circle(Vector2(x, -6), 1.5, Color("8a6a42"))
+			draw_rect(Rect2(-24, -34, 48, 17), o)
+			draw_rect(Rect2(-23, -33, 46, 16), Color("6a3a3a") if open else Color("3e3036"))
+			draw_rect(Rect2(-23, -33, 46, 2), Color("8a5050") if open else Color("4e4046"))
+		"training":
+			# 稻草木桩：一根木杆，绑着稻草，横着一根当手臂
+			draw_rect(Rect2(-3, -52, 6, 52), o)
+			draw_rect(Rect2(-2, -51, 4, 51), Color("6a4a2a"))
+			draw_rect(Rect2(-16, -40, 32, 5), o)
+			draw_rect(Rect2(-15, -39, 30, 3), Color("6a4a2a"))
+			draw_rect(Rect2(-9, -34, 18, 20), o)
+			draw_rect(Rect2(-8, -33, 16, 18), Color("c8a85a"))
+			for k in range(4):
+				draw_rect(Rect2(-8, -31 + k * 5, 16, 1), Color("9a7a3a"))
+			draw_circle(Vector2(0, -48), 6.0, o)
+			draw_circle(Vector2(0, -48), 5.0, Color("c8a85a"))
 
 
 # ---------- 忆境 ----------

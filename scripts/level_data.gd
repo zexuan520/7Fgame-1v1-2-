@@ -77,7 +77,7 @@ const FLOORS := [
 			"event": ["zen_garden", "ruined_gate"],
 			"boss": ["zen_hall"],
 		},
-		"events": ["blood_altar", "wounded_ronin", "gambler", "grave_mound", "hermit", "mirror"],
+		"events": ["herbalist", "blood_altar", "wounded_ronin", "gambler", "grave_mound", "hermit", "mirror"],
 		"scale": {"hp": 1.4, "dmg": 1.2, "jade": 1.3},
 	},
 ]
@@ -288,7 +288,7 @@ const ROOMS := {
 		"waves": [[["jakko", 600.0]]], "intro": true},
 
 	# ---------- 据点 ----------
-	"temple": {"name": "破庙", "width": 800.0, "theme": "temple", "seed": 0},
+	"temple": {"name": "破庙", "width": 1200.0, "theme": "temple", "seed": 0},
 }
 
 ## 遗骸、遗书上写的字（站在前面按 下 查看）
