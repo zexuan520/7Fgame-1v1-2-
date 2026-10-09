@@ -56,6 +56,9 @@ static func base_pose() -> Dictionary:
 		"arm_b": Vector2(-0.2, 0.4),
 		"sword": 1.9,
 		"dx": 0.0,                     # 整体前后偏移
+		"blur": 0.0,                   # 刀转起来时的残影间隔（弧度，带方向）
+		"sword_at": Vector2.ZERO,      # 刀脱手时刀柄的位置（抛刀）
+		"sword_free": 0.0,             # 0 刀在手里，1 刀在 sword_at
 	}
 
 
@@ -250,7 +253,12 @@ static func draw(ci: CanvasItem, p: Dictionary, look: Look, facing: int,
 	_draw_head(ci, head, pal, look)
 
 	# 刀
-	_draw_sword(ci, j["hand_f"], float(p["sword"]), pal, look)
+	var hand_f: Vector2 = j["hand_f"]
+	var grip := hand_f.lerp(p.get("sword_at", hand_f), float(p.get("sword_free", 0.0)))
+	var blur := float(p.get("blur", 0.0))
+	if absf(blur) > 0.02:
+		_draw_sword_blur(ci, grip, float(p["sword"]), blur, pal, look)
+	_draw_sword(ci, grip, float(p["sword"]), pal, look)
 
 	# 前手（盖在刀柄上）
 	_draw_arm(ci, j["shoulder"], j["elbow_f"], j["hand_f"], pal, false, sway_k, w)
@@ -396,6 +404,22 @@ static func _draw_sword(ci: CanvasItem, hand: Vector2, angle: float, pal: _Pal, 
 	# 护手
 	ci.draw_line(guard - n * 3.0, guard + n * 3.0, pal.outline, 3.0)
 	ci.draw_line(guard - n * 2.2, guard + n * 2.2, pal.c(look.tsuba), 1.5)
+
+
+## 转刀残影：刀身后面拖几道越来越淡的刀影，看起来像一圈刀光
+static func _draw_sword_blur(ci: CanvasItem, grip: Vector2, angle: float, blur: float, pal: _Pal, look: Look) -> void:
+	for k in range(1, 6):
+		var d := _dir(angle - blur * k)
+		var col := pal.c(look.blade_edge)
+		col.a *= 0.42 * (1.0 - k / 6.0)
+		ci.draw_line(grip + d * 4.0, grip + d * look.sword_len, col, 2.0)
+	# 刀尖划出的弧线
+	var arc := PackedVector2Array()
+	for k in range(0, 7):
+		arc.append(grip + _dir(angle - blur * k * 0.85) * (look.sword_len + 0.5))
+	var ac := pal.c(look.blade_edge)
+	ac.a *= 0.5
+	ci.draw_polyline(arc, ac, 1.0)
 
 
 static func _draw_cape(ci: CanvasItem, j: Dictionary, pal: _Pal, sway_k: float) -> void:

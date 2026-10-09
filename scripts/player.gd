@@ -58,6 +58,11 @@ var _scarf: Array[Vector2] = []     # 围巾各节的世界坐标
 var _was_on_floor := true
 var _ghost_timer := 0.0
 var _squash := Vector2.ONE
+var _fl_kind := ""                  # 正在耍的花刀动作（见 Flourish）
+var _fl_t := 0.0
+var _fl_next := 2.5                 # 站多久后耍下一个
+var _fl_last := ""
+var _victory := ""                  # 处决之后要耍的收势动作
 var _idle_time := 0.0               # 站着不动多久了，用来触发闲置小动作
 var _land_timer := 0.0
 var _spin_time := -1.0              # 二段跳翻身
@@ -370,6 +375,7 @@ func _start_execute(target: Enemy) -> void:
 	facing = 1 if target.global_position.x >= global_position.x else -1
 	_enter(S.EXECUTE)
 	target.execute_by(self)
+	_victory = "overhead" if target.lives <= 0 else "wheel"
 
 
 func _check_attack_hits() -> void:
@@ -546,20 +552,36 @@ func _idle_pose() -> Dictionary:
 	# 敌人靠近时进入戒备，远离时放松
 	var base := Puppet.lerp_pose(POSES["relaxed"], POSES["ready"], _ready_blend)
 	var p := Puppet.breathe(base, clock, 1.0 - _ready_blend * 0.4)
-	# 站久了做闲置小动作：甩刀、伸展、回头，轮流来
-	if _ready_blend < 0.1 and _idle_time > 3.0:
-		var cycle := fmod(_idle_time - 3.0, 5.0)
-		var which := int((_idle_time - 3.0) / 5.0) % 3
-		var r: Dictionary = POSES["relaxed"]
-		var track: Array
-		match which:
-			0: track = [[0.0, r], [0.35, POSES["chiburi_up"]], [0.5, POSES["chiburi_down"]], [1.0, POSES["chiburi_down"]], [1.5, r]]
-			1: track = [[0.0, r], [0.6, POSES["stretch"]], [1.3, POSES["stretch"]], [1.9, r]]
-			_: track = [[0.0, r], [0.4, POSES["look_back"]], [1.6, POSES["look_back"]], [2.0, r]]
-		var last: float = track[track.size() - 1][0]
-		if cycle < last:
-			return Puppet.breathe(Puppet.sample(track, cycle), clock, 0.6)
+	if _fl_kind != "":
+		return Flourish.sample(_fl_kind, _fl_t, Puppet.breathe(POSES["relaxed"], clock, 0.6))
 	return p
+
+
+## 站着没事时轮流耍花刀；处决之后耍一个收势；一动就打断
+func _update_flourish(delta: float) -> void:
+	var idle := state == S.FREE and is_on_floor() and absf(velocity.x) < 10.0
+	if not idle:
+		_fl_kind = ""
+		if state != S.EXECUTE:
+			_victory = ""
+		return
+	if _fl_kind == "":
+		if _victory != "":
+			_start_flourish(_victory)
+			_victory = ""
+		elif _ready_blend < 0.1 and _idle_time > _fl_next:
+			_start_flourish(Flourish.pick(Flourish.PLAYER_IDLE, _fl_last))
+		return
+	_fl_t += delta
+	if _fl_t >= Flourish.duration(_fl_kind):
+		_fl_kind = ""
+		_fl_next = _idle_time + randf_range(1.2, 2.5)
+
+
+func _start_flourish(kind: String) -> void:
+	_fl_kind = kind
+	_fl_last = kind
+	_fl_t = 0.0
 
 
 func _update_art(delta: float) -> void:
@@ -578,6 +600,8 @@ func _update_art(delta: float) -> void:
 	_ready_blend = move_toward(_ready_blend, want, delta * 3.0)
 	if want > 0.0:
 		_idle_time = 0.0
+		_fl_next = 2.5
+	_update_flourish(delta)
 	if facing != _prev_facing:
 		_squash = Vector2(0.82, 1.08)   # 转身
 		_prev_facing = facing

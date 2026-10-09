@@ -50,6 +50,10 @@ var look := Puppet.Look.new()
 var _pose: Dictionary = {}
 var _clock := 0.0
 var _stalk := 0.0           # 0 扛刀放松，1 压低戒备
+var _fl_kind := ""          # 正在做的挑衅/耍刀动作（见 Flourish）
+var _fl_t := 0.0
+var _fl_wait := 1.5
+var _fl_last := ""
 
 static var POSES := {}
 
@@ -66,7 +70,7 @@ static func _build_poses() -> void:
 		"sword": 1.75, "foot_f": Vector2(9, 0), "foot_b": Vector2(-8, 0)})
 	# 远处：刀扛在肩上，身体放松
 	POSES["shoulder"] = Puppet.pose({"crouch": 0.8, "lean": -0.04, "foot_f": Vector2(4, 0), "foot_b": Vector2(-4, 0),
-		"arm_f": Vector2(2.3, 3.7), "arm_b": Vector2(-0.15, 0.15), "sword": 4.25, "head": 0.05})
+		"arm_f": Vector2(0.75, 3.0), "arm_b": Vector2(-0.15, 0.15), "sword": 4.1, "head": 0.05})
 	# 近处：压低身体，刀尖低垂，伺机出手
 	POSES["stalk"] = Puppet.pose({"crouch": 3.2, "lean": 0.26, "foot_f": Vector2(7, 0), "foot_b": Vector2(-6, 0),
 		"arm_f": Vector2(0.7, 1.15), "arm_b": Vector2(0.5, 1.1), "sword": 0.95, "head": -0.12})
@@ -210,6 +214,7 @@ func _physics_process(delta: float) -> void:
 	_clock += delta
 	var near := target != null and absf(target.global_position.x - global_position.x) < 200.0
 	_stalk = move_toward(_stalk, 1.0 if near else 0.0, delta * 2.5)
+	_update_flourish(delta)
 	var rate := 50.0 if state == S.ACTIVE else 18.0
 	_pose = Puppet.lerp_pose(_pose, _target_pose(), 1.0 - exp(-rate * delta))
 	queue_redraw()
@@ -492,8 +497,34 @@ func _target_pose() -> Dictionary:
 	return POSES["stalk"]
 
 
+## 走着走着会扛刀敲肩、转刀、压斗笠、勾手挑衅；一出招就打断
+func _update_flourish(delta: float) -> void:
+	if state != S.IDLE:
+		_fl_kind = ""
+		return
+	if _fl_kind == "":
+		_fl_wait -= delta
+		if _fl_wait <= 0.0:
+			_fl_kind = Flourish.pick(Flourish.ENEMY_NEAR if _stalk > 0.5 else Flourish.ENEMY_FAR, _fl_last)
+			_fl_last = _fl_kind
+			_fl_t = 0.0
+		return
+	_fl_t += delta
+	if _fl_t >= Flourish.duration(_fl_kind):
+		_fl_kind = ""
+		_fl_wait = rng.randf_range(1.5, 3.5)
+
+
 ## 待机/走动：远处扛刀晃着走，近处压低身体横移
 func _idle_pose() -> Dictionary:
+	var p := _move_pose()
+	if _fl_kind != "":
+		var base := Puppet.lerp_pose(POSES["shoulder"], POSES["stalk"], _stalk)
+		return Flourish.overlay(p, Flourish.sample(_fl_kind, _fl_t, base))
+	return p
+
+
+func _move_pose() -> Dictionary:
 	var base := Puppet.lerp_pose(POSES["shoulder"], POSES["stalk"], _stalk)
 	var speed := absf(velocity.x)
 	if speed < 5.0:
