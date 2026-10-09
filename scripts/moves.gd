@@ -5,7 +5,7 @@ extends RefCounted
 ##
 ## 字段：
 ##   name                  显示名
-##   raise / cut           蓄力姿势、出手姿势
+##   raise / cut / follow  蓄力姿势、出手姿势、收势姿势（刀顺着劲继续走到哪，没写就停在出手姿势）
 ##   windup/active/recover 前摇 / 判定 / 后摇（秒）
 ##   dmg / posture         伤害、架势伤害
 ##   reach/size/height     判定框（同 Fighter.front_rect）；around 为 true 时框在身体正中，前后都打
@@ -25,16 +25,16 @@ extends RefCounted
 
 const LIST := {
 	# ---------- 地面五连：横斩 → 上撩 → 竖劈 → 突刺 → 旋风斩 ----------
-	"slash1": {"name": "横斩", "raise": "yoko_raise", "cut": "yoko_cut", "combo": 0, "next": "slash2",
+	"slash1": {"name": "横斩", "raise": "yoko_raise", "cut": "yoko_cut", "follow": "yoko_follow", "combo": 0, "next": "slash2",
 		"windup": 0.07, "active": 0.08, "recover": 0.20, "dmg": 20.0, "posture": 20.0,
 		"reach": 33.0, "size": Vector2(54, 30), "height": 28.0, "heavy": false, "fx": ["flat", 40.0]},
-	"slash2": {"name": "上撩", "raise": "raise2", "cut": "cut2", "combo": 1, "next": "slash3",
+	"slash2": {"name": "上撩", "raise": "raise2", "cut": "cut2", "follow": "follow2", "combo": 1, "next": "slash3",
 		"windup": 0.07, "active": 0.08, "recover": 0.20, "dmg": 20.0, "posture": 20.0,
 		"reach": 33.0, "size": Vector2(51, 36), "height": 30.0, "heavy": false, "fx": ["slash", 36.0, 0.9, -1.8, 7.0]},
-	"slash3": {"name": "竖劈", "raise": "raise1", "cut": "cut1", "combo": 2, "next": "slash4",
+	"slash3": {"name": "竖劈", "raise": "raise1", "cut": "cut1", "follow": "follow1", "combo": 2, "next": "slash4",
 		"windup": 0.09, "active": 0.08, "recover": 0.22, "dmg": 22.0, "posture": 24.0,
 		"reach": 34.0, "size": Vector2(54, 40), "height": 30.0, "heavy": false, "fx": ["slash", 42.0, -2.3, 0.7, 8.0]},
-	"slash4": {"name": "突刺", "raise": "raise3", "cut": "cut3", "combo": 3, "next": "slash5", "lunge": 240.0,
+	"slash4": {"name": "突刺", "raise": "raise3", "cut": "cut3", "follow": "follow3", "combo": 3, "next": "slash5", "lunge": 240.0,
 		"windup": 0.08, "active": 0.10, "recover": 0.24, "dmg": 24.0, "posture": 26.0,
 		"reach": 42.0, "size": Vector2(66, 24), "height": 28.0, "heavy": false, "fx": ["streak", 72.0]},
 	"slash5": {"name": "旋风斩", "raise": "art_prep", "cut": "art_spin", "combo": 4, "lunge": 170.0, "spin": true,
@@ -42,7 +42,7 @@ const LIST := {
 		"reach": 0.0, "size": Vector2(100, 44), "height": 26.0, "heavy": false, "fx": ["spin"]},
 
 	# 长按蓄力：重劈
-	"heavy": {"name": "重劈", "raise": "charge", "cut": "smash", "combo": -1,
+	"heavy": {"name": "重劈", "raise": "charge", "cut": "smash", "follow": "follow_heavy", "combo": -1,
 		"windup": 0.12, "active": 0.10, "recover": 0.40, "dmg": 30.0, "posture": 60.0,
 		"reach": 39.0, "size": Vector2(69, 45), "height": 30.0, "heavy": true, "fx": ["slash", 44.0, -2.4, 0.9, 14.0]},
 

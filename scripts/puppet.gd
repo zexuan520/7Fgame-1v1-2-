@@ -65,6 +65,8 @@ static func base_pose() -> Dictionary:
 		"sword_at": Vector2.ZERO,      # 刀脱手时刀柄的位置（抛刀）
 		"sword_free": 0.0,             # 0 刀在手里，1 刀在 sword_at
 		"sheathed": 0.0,               # 大于 0.5 时刀收在鞘里（拔刀式）
+		"twist": 0.0,                  # 上身扭转：负数蓄力时把肩膀往后拧，正数出刀时把肩膀送出去
+		"grip": 0.0,                   # 1 = 双手握刀：后手自动握在刀柄上（太刀、野太刀、长枪）
 	}
 
 
@@ -106,20 +108,22 @@ class Spring:
 	const ANGLE := ["sword", "lean", "head"]
 	var pose: Dictionary = {}
 	var vel: Dictionary = {}
+	## 每个关节的频率倍数（没写的按 1）。出刀时腿和腰快、刀慢一点，就是"身体先动，刀被带出去"
+	var lag: Dictionary = {}
 
 	func reset(p: Dictionary) -> void:
 		pose = p.duplicate()
 		vel = {}
 
 	func step(target: Dictionary, freq: float, zeta: float, dt: float) -> Dictionary:
-		var w := TAU * freq
-		var n := maxi(1, ceili(dt * w / 0.3))   # 分几小步算，频率高也稳定
-		var h := dt / n
 		for k: String in target:
 			var t = target[k]
 			if not pose.has(k) or k in SNAP:
 				pose[k] = t
 				continue
+			var w := TAU * freq * float(lag.get(k, 1.0))
+			var n := maxi(1, ceili(dt * w / 0.3))   # 分几小步算，频率高也稳定
+			var h := dt / n
 			if t is float or t is int:
 				var ang := k in ANGLE
 				var x: float = pose[k]
@@ -186,8 +190,19 @@ static func _ik(start: Vector2, end: Vector2, l1: float, l2: float) -> Vector2:
 	return start + Vector2.from_angle(to.angle() - a) * l1
 
 
-## 计算各关节位置（朝右、未缩放）
-static func solve(p: Dictionary) -> Dictionary:
+## 手臂 IK：肘关节取朝下的那一侧（垂着的胳膊肘不会往上翻）
+static func _ik_arm(start: Vector2, end: Vector2, l1: float, l2: float) -> Vector2:
+	var to := end - start
+	var d := clampf(to.length(), 0.01, l1 + l2 - 0.01)
+	var a := acos(clampf((l1 * l1 + d * d - l2 * l2) / (2.0 * l1 * d), -1.0, 1.0))
+	var e1 := start + Vector2.from_angle(to.angle() - a) * l1
+	var e2 := start + Vector2.from_angle(to.angle() + a) * l1
+	return e1 if e1.y > e2.y else e2
+
+
+## 计算各关节位置（朝右、未缩放）。grip_len 是双手握刀时两只手隔多远（沿刀柄），0 表示不双手握；
+## 正数：前手握刀柄末端、后手握在护手下面（刀跟着往前挪一点，两只拳头都看得见）；负数：后手握在前手后面（长枪）
+static func solve(p: Dictionary, grip_len: float = 4.5) -> Dictionary:
 	var crouch: float = p["crouch"]
 	var lean: float = p["lean"]
 	var dx: float = float(p["dx"]) * U
@@ -196,14 +211,28 @@ static func solve(p: Dictionary) -> Dictionary:
 	var neck := hip + up * TORSO
 	var hl := lean + float(p["head"])
 	var head := neck + Vector2(sin(hl), -cos(hl)) * 6.5
-	var shoulder := hip + up * (TORSO - 3.0)
+	# 扭腰转肩：前肩往前送/往后拧，后肩跟着转
+	var tw := float(p.get("twist", 0.0))
+	var side := Vector2(-up.y, up.x) * -1.0
+	if side.x < 0.0:
+		side = -side
+	var shoulder := hip + up * (TORSO - 3.0) + side * tw * 2.2
 	var arm_f: Vector2 = p["arm_f"]
 	var arm_b: Vector2 = p["arm_b"]
 	var elbow_f := shoulder + _dir(arm_f.x) * UPPER_ARM
 	var hand_f := elbow_f + _dir(arm_f.y) * LOWER_ARM
-	var sh_b := shoulder + Vector2(-1.5, 0)
+	var sh_b := shoulder + Vector2(-1.5 + tw * 2.0 - absf(tw) * 0.5, -absf(tw) * 0.5)
 	var elbow_b := sh_b + _dir(arm_b.x) * UPPER_ARM
 	var hand_b := elbow_b + _dir(arm_b.y) * LOWER_ARM
+	var g := clampf(float(p.get("grip", 0.0)), 0.0, 1.0) if grip_len != 0.0 else 0.0
+	var grip_at := hand_f
+	if g > 0.0:
+		# 双手握刀：后手握到刀柄上，肘关节用 IK 算
+		var sd := _dir(float(p["sword"]))
+		hand_b = hand_b.lerp(hand_f + sd * grip_len, g)
+		elbow_b = elbow_b.lerp(_ik_arm(sh_b, hand_b, UPPER_ARM, LOWER_ARM), g)
+		if grip_len > 0.0:
+			grip_at = hand_f + sd * grip_len * g
 	var foot_f: Vector2 = p["foot_f"]
 	var foot_b: Vector2 = p["foot_b"]
 	foot_f = foot_f * U + Vector2(dx, 0)
@@ -212,16 +241,24 @@ static func solve(p: Dictionary) -> Dictionary:
 	var knee_b := _ik(hip - Vector2(1.5, 0), foot_b, THIGH, SHIN)
 	return {
 		"hip": hip, "neck": neck, "head": head, "shoulder": shoulder, "shoulder_b": sh_b,
-		"elbow_f": elbow_f, "hand_f": hand_f, "elbow_b": elbow_b, "hand_b": hand_b,
+		"elbow_f": elbow_f, "hand_f": hand_f, "elbow_b": elbow_b, "hand_b": hand_b, "grip_at": grip_at,
 		"knee_f": knee_f, "foot_f": foot_f, "knee_b": knee_b, "foot_b": foot_b,
 		"up": up,
 	}
 
 
+## 各种兵器双手握时两只手的间距（见 solve）
+static func grip_of(look: Look) -> float:
+	match look.weapon:
+		"dual", "fist": return 0.0
+		"spear": return -10.0
+	return 4.0
+
+
 ## 刀尖位置（本地坐标，已考虑朝向和缩放），用来画闪光
 static func sword_tip(p: Dictionary, look: Look, facing: int) -> Vector2:
-	var j := solve(p)
-	var hand: Vector2 = j["hand_f"]
+	var j := solve(p, grip_of(look))
+	var hand: Vector2 = j["grip_at"]
 	var tip := hand + _dir(float(p["sword"])) * look.sword_len
 	return Vector2(tip.x * facing, tip.y) * look.scale
 
@@ -247,7 +284,8 @@ static func draw_lit(ci: CanvasItem, p: Dictionary, look: Look, facing: int, rim
 static func draw(ci: CanvasItem, p: Dictionary, look: Look, facing: int,
 		offset: Vector2 = Vector2.ZERO, mono_or_tint: Color = Color(0, 0, 0, 0), alpha: float = 1.0,
 		rotation: float = 0.0, squash: Vector2 = Vector2.ONE, sway: float = 0.0) -> void:
-	var j := solve(p)
+	var grip_len := grip_of(look)
+	var j := solve(p, grip_len)
 	var sc := look.scale
 	ci.draw_set_transform(offset, rotation, Vector2(facing * sc * squash.x, sc * squash.y))
 	var pal := _Pal.new(look, mono_or_tint, alpha)
@@ -282,8 +320,9 @@ static func draw(ci: CanvasItem, p: Dictionary, look: Look, facing: int,
 	_draw_leg(ci, hip + Vector2(1.5, 0), j["knee_f"], j["foot_f"], pal, false, w)
 
 	# 躯干（和服上衣）
+	var tw := float(p.get("twist", 0.0))
 	var waist := 6.0 * w
-	var shoulder_w := 7.0 * w
+	var shoulder_w := 7.0 * w * (1.0 + absf(tw) * 0.18)
 	var top := neck - up * 1.0
 	var torso := PackedVector2Array([
 		hip - fwd * waist + up * 1.0, hip + fwd * waist + up * 1.0,
@@ -292,8 +331,10 @@ static func draw(ci: CanvasItem, p: Dictionary, look: Look, facing: int,
 	_outline(ci, torso, pal.outline)
 	_fill(ci, torso, pal.c(look.cloth))
 	# 背面阴影
+	# 背面阴影：肩膀往后拧时露出更多后背，送出去时露出前胸
+	var bk := clampf(1.5 - tw * 3.0, -2.5, 5.5)
 	var back := PackedVector2Array([
-		hip - fwd * waist + up * 1.0, hip - fwd * 1.0 + up * 1.0, top - fwd * 1.5, top - fwd * shoulder_w,
+		hip - fwd * waist + up * 1.0, hip - fwd * 1.0 + up * 1.0, top - fwd * bk, top - fwd * shoulder_w,
 	])
 	_fill(ci, back, pal.c(look.cloth_dark))
 	# 前胸受光
@@ -326,11 +367,20 @@ static func draw(ci: CanvasItem, p: Dictionary, look: Look, facing: int,
 	var hand_f: Vector2 = j["hand_f"]
 	var carried := sheathed and (look.weapon == "spear" or look.weapon == "nodachi")
 	if not sheathed and not carried and look.weapon != "fist":
-		var grip := hand_f.lerp(p.get("sword_at", hand_f), float(p.get("sword_free", 0.0)))
+		var grip: Vector2 = (j["grip_at"] as Vector2).lerp(p.get("sword_at", hand_f), float(p.get("sword_free", 0.0)))
 		var blur := float(p.get("blur", 0.0))
 		if absf(blur) > 0.02:
 			_draw_sword_blur(ci, grip, float(p["sword"]), blur, pal, look)
 		_draw_sword(ci, grip, float(p["sword"]), pal, look)
+		# 双手握刀：后手的小臂和拳头压在刀柄上，看得出是两只手一起发力
+		if grip_len != 0.0 and float(p.get("grip", 0.0)) >= 0.5 and float(p.get("sword_free", 0.0)) < 0.5:
+			var hb: Vector2 = j["hand_b"]
+			var eb: Vector2 = j["elbow_b"]
+			var fore := _seg(eb.lerp(hb, 0.35), hb, 3.2, 2.8)
+			_outline(ci, fore, pal.outline)
+			_fill(ci, fore, pal.c(look.skin_dark))
+			ci.draw_circle(hb, 2.6, pal.outline)
+			ci.draw_circle(hb, 1.8, pal.c(look.skin_dark))
 
 	# 前手（盖在刀柄上）
 	_draw_arm(ci, j["shoulder"], j["elbow_f"], j["hand_f"], pal, false, sway_k, w)

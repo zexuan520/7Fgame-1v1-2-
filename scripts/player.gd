@@ -47,6 +47,9 @@ const ART := {"cost": 40.0, "windup": 0.14, "active": 0.42, "recover": 0.3, "tic
 
 # 攻击招式全部在 Moves.LIST 里（地面五连、重劈、升龙斩、空中斩、落雷斩、闪身突刺）
 const AIR_ATTACKS := 2              # 每次跳起最多两下空中攻击（落雷斩不算）
+## 出刀时各关节跟得多快：脚和腰先到位、肩膀跟上、手再跟上、刀最后被甩出去（像鞭子一样一节带一节）
+const SWING_LAG := {"crouch": 1.6, "dx": 1.6, "foot_f": 1.7, "foot_b": 1.7, "lean": 1.35, "twist": 1.3, "head": 1.1,
+	"arm_f": 1.0, "arm_b": 1.0, "sword": 0.82}
 const COMBO_GRACE := 0.35           # 一刀收完之后这么久内再按攻击，接着连段往下砍，不从第一刀重来
 const MOVE_CANCEL := 0.45           # 后摇过了这个比例，按方向就能走开（不用等收刀）
 const DASH_WINDOW := 0.2            # 闪身结束后多久内按攻击还能出闪身突刺
@@ -138,7 +141,7 @@ static func _build_poses() -> void:
 		"arm_f": Vector2(0.55, 2.75), "arm_b": Vector2(-0.12, 0.2), "sword": -2.45})
 	# 戒备：敌人靠近时，双手持刀刀尖指向对方
 	POSES["ready"] = Puppet.pose({"crouch": 2.8, "lean": 0.16, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
-		"arm_f": Vector2(0.95, 1.55), "arm_b": Vector2(0.75, 1.45), "sword": 1.45})
+		"arm_f": Vector2(0.95, 1.55), "arm_b": Vector2(0.75, 1.45), "sword": 1.45, "grip": 1.0})
 	# 闲置小动作：甩刀（血振）
 	POSES["chiburi_up"] = Puppet.pose({"crouch": 1.5, "lean": -0.05, "foot_f": Vector2(5, 0), "foot_b": Vector2(-4, 0),
 		"arm_f": Vector2(1.9, 2.5), "arm_b": Vector2(-0.2, 0.3), "sword": 2.7})
@@ -154,54 +157,68 @@ static func _build_poses() -> void:
 	# ---------- 架势（起手式），见 Stance ----------
 	# 正眼放低：双手在腰前，刀尖略低于水平指向对方，不硬举
 	POSES["st_seigan"] = Puppet.pose({"crouch": 2.9, "lean": 0.16, "head": 0.04, "foot_f": Vector2(6, 0), "foot_b": Vector2(-7, 0),
-		"arm_f": Vector2(0.35, 1.15), "arm_b": Vector2(0.25, 1.0), "sword": 1.25})
+		"arm_f": Vector2(0.35, 1.15), "arm_b": Vector2(0.25, 1.0), "sword": 1.25, "grip": 1.0})
 	POSES["st_iai"] = Puppet.pose({"crouch": 4.5, "lean": 0.32, "head": 0.05, "foot_f": Vector2(8, 0), "foot_b": Vector2(-8, 0),
 		"arm_f": Vector2(0.2, 1.55), "arm_b": Vector2(0.35, 1.25), "sword": 0.5, "sheathed": 1.0})
 	# 刀在鞘里站着：双手自然垂下
 	POSES["relaxed_sheathed"] = Puppet.pose({"crouch": 1.0, "lean": 0.03, "foot_f": Vector2(5, 0), "foot_b": Vector2(-4, 0),
 		"arm_f": Vector2(0.08, 0.3), "arm_b": Vector2(-0.1, 0.12), "sword": 0.5, "sheathed": 1.0})
 	POSES["iai_cut"] = Puppet.pose({"crouch": 4.2, "lean": 0.38, "foot_f": Vector2(11, 0), "foot_b": Vector2(-7, 0),
-		"arm_f": Vector2(1.55, 1.6), "arm_b": Vector2(-0.9, -0.6), "sword": 1.62})
+		"arm_f": Vector2(1.55, 1.6), "arm_b": Vector2(-0.9, -0.6), "sword": 1.62, "twist": 0.9})
 	POSES["st_jodan"] = Puppet.pose({"crouch": 2.4, "lean": -0.04, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
-		"arm_f": Vector2(2.55, 2.95), "arm_b": Vector2(2.35, 2.75), "sword": 4.15})
+		"arm_f": Vector2(2.55, 2.95), "arm_b": Vector2(2.35, 2.75), "sword": 4.15, "grip": 1.0, "twist": -0.3})
 	POSES["st_gedan"] = Puppet.pose({"crouch": 3.0, "lean": 0.2, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
-		"arm_f": Vector2(0.35, 0.8), "arm_b": Vector2(0.25, 0.7), "sword": 0.95})
+		"arm_f": Vector2(0.35, 0.8), "arm_b": Vector2(0.25, 0.7), "sword": 0.95, "grip": 1.0})
 	POSES["st_hasso"] = Puppet.pose({"crouch": 2.6, "lean": 0.06, "foot_f": Vector2(5, 0), "foot_b": Vector2(-6, 0),
-		"arm_f": Vector2(0.75, 2.7), "arm_b": Vector2(0.55, 2.35), "sword": 3.75})
+		"arm_f": Vector2(0.75, 2.7), "arm_b": Vector2(0.55, 2.35), "sword": 3.75, "grip": 1.0, "twist": -0.4})
 	POSES["st_waki"] = Puppet.pose({"crouch": 3.2, "lean": 0.18, "foot_f": Vector2(7, 0), "foot_b": Vector2(-6, 0),
-		"arm_f": Vector2(-0.45, -0.15), "arm_b": Vector2(-0.3, 0.05), "sword": -1.25})
+		"arm_f": Vector2(-0.45, -0.15), "arm_b": Vector2(-0.3, 0.05), "sword": -1.25, "grip": 1.0, "twist": -0.5})
 	# 喝药：后手把药罐举到嘴边，仰头
 	POSES["drink"] = Puppet.pose({"crouch": 1.0, "lean": -0.12, "head": -0.4, "foot_f": Vector2(5, 0), "foot_b": Vector2(-4, 0),
 		"arm_f": Vector2(0.2, 0.5), "arm_b": Vector2(1.9, 3.7), "sword": 0.5})
-	# 回旋斩：蓄势压低，转的时候双臂平伸、刀横着
-	POSES["art_prep"] = Puppet.pose({"crouch": 5.0, "lean": 0.3, "head": 0.1, "foot_f": Vector2(8, 0), "foot_b": Vector2(-8, 0),
-		"arm_f": Vector2(-0.9, -0.6), "arm_b": Vector2(-0.5, 0.2), "sword": -1.3})
+	# 回旋斩：蓄势压低、上身拧到底，转的时候松开后手、双臂平伸
+	POSES["art_prep"] = Puppet.pose({"crouch": 5.5, "lean": 0.3, "head": -0.05, "foot_f": Vector2(9, 0), "foot_b": Vector2(-7, 0),
+		"arm_f": Vector2(-0.6, -1.0), "arm_b": Vector2(-0.5, 0.2), "sword": -1.45, "grip": 1.0, "twist": -1.0})
 	POSES["art_spin"] = Puppet.pose({"crouch": 4.0, "lean": 0.05, "foot_f": Vector2(7, 0), "foot_b": Vector2(-7, 0),
-		"arm_f": Vector2(1.57, 1.57), "arm_b": Vector2(-1.4, -1.5), "sword": 1.57})
+		"arm_f": Vector2(1.57, 1.57), "arm_b": Vector2(-1.4, -1.5), "sword": 1.57, "twist": 0.6})
 	# 倒下：先跪地
 	POSES["kneel"] = Puppet.pose({"crouch": 8.0, "lean": 0.45, "head": 0.45, "foot_f": Vector2(7, 0), "foot_b": Vector2(-4, 0),
 		"arm_f": Vector2(0.3, 0.2), "arm_b": Vector2(0.1, 0.0), "sword": 0.9})
 	POSES["guard"] = Puppet.pose({"crouch": 2.5, "lean": 0.15, "foot_f": Vector2(5, 0), "foot_b": Vector2(-6, 0),
-		"arm_f": Vector2(1.1, 2.4), "arm_b": Vector2(0.7, 1.9), "sword": 2.75})
+		"arm_f": Vector2(1.1, 2.4), "arm_b": Vector2(0.7, 1.9), "sword": 2.75, "grip": 1.0})
 	POSES["parry"] = Puppet.pose({"crouch": 3.0, "lean": 0.3, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
-		"arm_f": Vector2(1.5, 2.6), "arm_b": Vector2(0.9, 2.0), "sword": 2.45})
-	# 轻攻击三段：每段一个举刀姿势和一个出刀姿势
-	POSES["raise1"] = Puppet.pose({"lean": -0.1, "arm_f": Vector2(2.7, 3.0), "arm_b": Vector2(2.4, 2.8), "sword": 3.7,
-		"foot_f": Vector2(5, 0), "foot_b": Vector2(-5, 0)})
-	POSES["cut1"] = Puppet.pose({"lean": 0.4, "crouch": 3.0, "foot_f": Vector2(8, 0), "foot_b": Vector2(-6, 0),
-		"arm_f": Vector2(1.3, 1.5), "arm_b": Vector2(1.0, 1.4), "sword": 1.75})
-	POSES["raise2"] = Puppet.pose({"lean": 0.25, "crouch": 3.0, "arm_f": Vector2(0.2, 0.5), "arm_b": Vector2(0.2, 0.4),
-		"sword": 0.4, "foot_f": Vector2(6, 0), "foot_b": Vector2(-5, 0)})
-	POSES["cut2"] = Puppet.pose({"lean": -0.05, "arm_f": Vector2(2.4, 2.8), "arm_b": Vector2(2.0, 2.4), "sword": 2.9,
-		"foot_f": Vector2(7, 0), "foot_b": Vector2(-5, 0)})
-	POSES["raise3"] = Puppet.pose({"lean": -0.15, "crouch": 3.0, "arm_f": Vector2(-0.6, 1.2), "arm_b": Vector2(-0.4, 0.6),
-		"sword": 1.57, "foot_f": Vector2(4, 0), "foot_b": Vector2(-7, 0)})
-	POSES["cut3"] = Puppet.pose({"lean": 0.45, "crouch": 4.0, "arm_f": Vector2(1.5, 1.57), "arm_b": Vector2(-0.6, -0.3),
-		"sword": 1.57, "foot_f": Vector2(10, 0), "foot_b": Vector2(-7, 0)})
-	POSES["charge"] = Puppet.pose({"crouch": 5.0, "lean": -0.15, "arm_f": Vector2(3.0, 3.4), "arm_b": Vector2(2.8, 3.2),
-		"sword": 4.0, "foot_f": Vector2(6, 0), "foot_b": Vector2(-7, 0)})
-	POSES["smash"] = Puppet.pose({"crouch": 5.0, "lean": 0.55, "arm_f": Vector2(1.1, 0.9), "arm_b": Vector2(0.9, 0.8),
-		"sword": 1.0, "foot_f": Vector2(9, 0), "foot_b": Vector2(-7, 0)})
+		"arm_f": Vector2(1.5, 2.6), "arm_b": Vector2(0.9, 2.0), "sword": 2.45, "grip": 1.0, "twist": 0.4})
+	# ---------- 出刀：像人一样全身发力 ----------
+	# 每一刀三个姿势：蓄力（重心压到后脚、腰往后拧、刀拉到身后）→ 出手（蹬地、扭腰把肩膀送出去、
+	# 双手带刀）→ 收势（刀顺着劲继续走，人跟着前倾）。头往反方向转一点，眼睛一直盯着前面。
+	# 竖劈：双手举过头，刀背贴到后脑；劈下去时整个人压下去，前脚踏出
+	POSES["raise1"] = Puppet.pose({"crouch": 2.4, "lean": -0.16, "head": 0.12, "foot_f": Vector2(8, 0), "foot_b": Vector2(-5, 0),
+		"arm_f": Vector2(2.75, 3.25), "arm_b": Vector2(2.4, 2.8), "sword": 4.3, "grip": 1.0, "twist": -0.55})
+	POSES["cut1"] = Puppet.pose({"crouch": 5.0, "lean": 0.5, "head": -0.3, "dx": 2.0, "foot_f": Vector2(11, 0), "foot_b": Vector2(-9, 0),
+		"arm_f": Vector2(1.35, 1.3), "arm_b": Vector2(1.0, 1.4), "sword": 1.4, "grip": 1.0, "twist": 0.75})
+	POSES["follow1"] = Puppet.pose({"crouch": 5.6, "lean": 0.55, "head": -0.32, "dx": 2.2, "foot_f": Vector2(11, 0), "foot_b": Vector2(-9, 0),
+		"arm_f": Vector2(1.05, 0.85), "arm_b": Vector2(1.0, 1.4), "sword": 0.8, "grip": 1.0, "twist": 0.6})
+	# 上撩：刀从身后下方贴地拖上来，人从低处站起来，刀一路撩过头顶
+	POSES["raise2"] = Puppet.pose({"crouch": 5.2, "lean": 0.32, "head": -0.18, "dx": -0.5, "foot_f": Vector2(9, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(-0.05, -0.45), "arm_b": Vector2(0.2, 0.4), "sword": -0.75, "grip": 1.0, "twist": -0.8})
+	POSES["cut2"] = Puppet.pose({"crouch": 1.6, "lean": -0.08, "head": 0.05, "dx": 1.5, "foot_f": Vector2(9, 0), "foot_b": Vector2(-6, -1),
+		"arm_f": Vector2(2.25, 2.7), "arm_b": Vector2(2.0, 2.4), "sword": 2.95, "grip": 1.0, "twist": 0.8})
+	POSES["follow2"] = Puppet.pose({"crouch": 1.3, "lean": -0.16, "head": 0.1, "dx": 1.7, "foot_f": Vector2(9, 0), "foot_b": Vector2(-6, -1),
+		"arm_f": Vector2(2.6, 3.15), "arm_b": Vector2(2.0, 2.4), "sword": 3.65, "grip": 1.0, "twist": 0.55})
+	# 突刺：后手把刀柄收到腰侧、刀尖对准，蹬后脚把整个人连刀送出去
+	POSES["raise3"] = Puppet.pose({"crouch": 4.2, "lean": -0.12, "head": 0.1, "dx": -1.5, "foot_f": Vector2(7, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(-0.35, 1.35), "arm_b": Vector2(-0.4, 0.6), "sword": 1.6, "grip": 1.0, "twist": -0.9})
+	POSES["cut3"] = Puppet.pose({"crouch": 4.5, "lean": 0.5, "head": -0.32, "dx": 3.0, "foot_f": Vector2(12, 0), "foot_b": Vector2(-10, 0),
+		"arm_f": Vector2(1.52, 1.6), "arm_b": Vector2(-0.6, -0.3), "sword": 1.6, "grip": 1.0, "twist": 1.0})
+	POSES["follow3"] = Puppet.pose({"crouch": 4.8, "lean": 0.46, "head": -0.3, "dx": 3.2, "foot_f": Vector2(12, 0), "foot_b": Vector2(-10, 0),
+		"arm_f": Vector2(1.35, 1.65), "arm_b": Vector2(-0.6, -0.3), "sword": 1.68, "grip": 1.0, "twist": 0.7})
+	# 重劈：刀举得更高、更往后，劈下去时膝盖压到底
+	POSES["charge"] = Puppet.pose({"crouch": 5.2, "lean": -0.2, "head": 0.15, "dx": -1.2, "foot_f": Vector2(8, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(2.95, 3.45), "arm_b": Vector2(2.8, 3.2), "sword": 4.55, "grip": 1.0, "twist": -0.8})
+	POSES["smash"] = Puppet.pose({"crouch": 7.0, "lean": 0.62, "head": -0.38, "dx": 3.0, "foot_f": Vector2(12, 0), "foot_b": Vector2(-10, 0),
+		"arm_f": Vector2(1.15, 0.85), "arm_b": Vector2(0.9, 0.8), "sword": 0.85, "grip": 1.0, "twist": 0.9})
+	POSES["follow_heavy"] = Puppet.pose({"crouch": 7.4, "lean": 0.66, "head": -0.4, "dx": 3.2, "foot_f": Vector2(12, 0), "foot_b": Vector2(-10, 0),
+		"arm_f": Vector2(0.95, 0.55), "arm_b": Vector2(0.9, 0.8), "sword": 0.45, "grip": 1.0, "twist": 0.7})
 	POSES["dodge"] = Puppet.pose({"crouch": 6.0, "lean": 0.7, "foot_f": Vector2(6, -2), "foot_b": Vector2(-7, 0),
 		"arm_f": Vector2(-0.6, -0.3), "arm_b": Vector2(-0.9, -0.6), "sword": -0.8})
 	POSES["backstep"] = Puppet.pose({"crouch": 5.0, "lean": -0.3, "foot_f": Vector2(5, -1), "foot_b": Vector2(-6, 0),
@@ -216,16 +233,18 @@ static func _build_poses() -> void:
 	POSES["fall"] = Puppet.pose({"crouch": 0.0, "foot_f": Vector2(3, -1), "foot_b": Vector2(-4, -2),
 		"arm_f": Vector2(-0.7, -1.1), "sword": -1.5, "arm_b": Vector2(1.0, 1.9), "lean": 0.05})
 	# ---------- 招式（见 Moves）----------
-	# 横斩：刀先拉到身后放平，再整个横扫到身前
-	POSES["yoko_raise"] = Puppet.pose({"crouch": 3.2, "lean": -0.12, "head": 0.05, "foot_f": Vector2(6, 0), "foot_b": Vector2(-7, 0),
-		"arm_f": Vector2(-0.5, -1.3), "arm_b": Vector2(0.2, 0.6), "sword": -1.6})
-	POSES["yoko_cut"] = Puppet.pose({"crouch": 3.2, "lean": 0.38, "foot_f": Vector2(10, 0), "foot_b": Vector2(-7, 0),
-		"arm_f": Vector2(1.45, 1.8), "arm_b": Vector2(0.6, 1.0), "sword": 2.05})
+	# 横斩：腰往后拧，刀拉到身后放平；出手时转腰带肩，刀平着扫到身前，收势时手顺势抬起
+	POSES["yoko_raise"] = Puppet.pose({"crouch": 4.4, "lean": -0.06, "head": 0.1, "dx": -1.0, "foot_f": Vector2(8, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(-0.35, -1.25), "arm_b": Vector2(0.2, 0.6), "sword": -1.6, "grip": 1.0, "twist": -0.9})
+	POSES["yoko_cut"] = Puppet.pose({"crouch": 3.6, "lean": 0.4, "head": -0.28, "dx": 2.0, "foot_f": Vector2(11, 0), "foot_b": Vector2(-9, 0),
+		"arm_f": Vector2(1.5, 1.65), "arm_b": Vector2(0.6, 1.0), "sword": 1.72, "grip": 1.0, "twist": 0.9})
+	POSES["yoko_follow"] = Puppet.pose({"crouch": 3.4, "lean": 0.34, "head": -0.24, "dx": 2.2, "foot_f": Vector2(11, 0), "foot_b": Vector2(-9, 0),
+		"arm_f": Vector2(1.75, 2.35), "arm_b": Vector2(0.6, 1.0), "sword": 2.45, "grip": 1.0, "twist": 0.65})
 	# 升龙斩：蹲低刀尖拖在身后，再连人带刀往上撩
 	POSES["rise_prep"] = Puppet.pose({"crouch": 7.5, "lean": 0.25, "head": 0.1, "foot_f": Vector2(7, 0), "foot_b": Vector2(-7, 0),
-		"arm_f": Vector2(0.0, -0.5), "arm_b": Vector2(0.3, 0.7), "sword": -0.4})
+		"arm_f": Vector2(0.0, -0.5), "arm_b": Vector2(0.3, 0.7), "sword": -0.5, "grip": 1.0, "twist": -0.8})
 	POSES["rise_cut"] = Puppet.pose({"crouch": 0.0, "lean": -0.15, "head": -0.2, "foot_f": Vector2(3, -7), "foot_b": Vector2(-3, -3),
-		"arm_f": Vector2(2.7, 3.0), "arm_b": Vector2(2.3, 2.7), "sword": 3.1})
+		"arm_f": Vector2(2.7, 3.0), "arm_b": Vector2(2.3, 2.7), "sword": 3.1, "grip": 1.0, "twist": 0.7})
 	# 空中斩：腿收起来
 	POSES["air_raise1"] = _tuck(POSES["raise1"])
 	POSES["air_cut1"] = _tuck(POSES["cut1"])
@@ -236,9 +255,9 @@ static func _build_poses() -> void:
 	pr["lean"] = -0.2
 	POSES["plunge_raise"] = pr
 	POSES["plunge_fall"] = Puppet.pose({"crouch": 0.5, "lean": 0.15, "head": 0.25, "foot_f": Vector2(3, -4), "foot_b": Vector2(-3, -6),
-		"arm_f": Vector2(0.6, 0.15), "arm_b": Vector2(0.5, 0.1), "sword": 0.05})
+		"arm_f": Vector2(0.6, 0.15), "arm_b": Vector2(0.5, 0.1), "sword": 0.05, "grip": 1.0})
 	POSES["plunge_land"] = Puppet.pose({"crouch": 8.0, "lean": 0.5, "head": 0.3, "foot_f": Vector2(9, 0), "foot_b": Vector2(-8, 0),
-		"arm_f": Vector2(0.9, 0.3), "arm_b": Vector2(0.6, 0.2), "sword": 0.15})
+		"arm_f": Vector2(0.9, 0.3), "arm_b": Vector2(0.6, 0.2), "sword": 0.15, "grip": 1.0, "twist": 0.5})
 	# 闪身突刺：身体压得很低，刀往前送到底
 	var dc: Dictionary = POSES["cut3"].duplicate()
 	dc["lean"] = 0.6
@@ -1141,10 +1160,12 @@ func _target_pose() -> Dictionary:
 				return Puppet.lerp_pose(POSES[keys[0]], POSES[keys[1]], t / (active * 0.6))
 			# 后摇：先把出手的架子定住一下（收势），再慢慢回到架势；已经按了下一刀就一直定在出手姿势，
 			# 直接从这里接下一招的起手，刀不会先缩回去再出来
+			# 收势：刀顺着劲再走一段（follow），人跟着前倾，然后才收回来
+			var fol: Dictionary = POSES[attack.get("follow", keys[1])]
 			if combo_queued or t < recover * 0.35:
-				return POSES[keys[1]]
+				return Puppet.lerp_pose(POSES[keys[1]], fol, t / (recover * 0.3))
 			var after: Dictionary = _stance_pose(true) if is_on_floor() else POSES["fall"]
-			return Puppet.lerp_pose(POSES[keys[1]], after, pow((t - recover * 0.35) / (recover * 0.65), 1.5))
+			return Puppet.lerp_pose(fol, after, pow((t - recover * 0.35) / (recover * 0.65), 1.5))
 		S.GUARD:
 			return POSES["parry"] if parry_timer > 0.0 else POSES["guard"]
 		S.DODGE:
@@ -1249,6 +1270,7 @@ func _idle_pose() -> Dictionary:
 ## 纳刀：手往前伸、刀转成和鞘平行，再把手收回鞘口，刀身顺着鞘滑进去
 func _noto_pose(base: Dictionary) -> Dictionary:
 	var p := base.duplicate()
+	p["grip"] = 0.0   # 拔刀、纳刀都是单手
 	var j := Puppet.solve(p)
 	var up: Vector2 = j["up"]
 	var fwd := Vector2(-up.y, up.x) * -1.0
@@ -1271,6 +1293,7 @@ func _noto_pose(base: Dictionary) -> Dictionary:
 ## 拔刀：手先握住鞘口的刀柄，往前一抽，刀顺着鞘的方向拔出来再转到架势
 func _batto_pose(target: Dictionary) -> Dictionary:
 	var p := target.duplicate()
+	p["grip"] = 0.0   # 拔刀、纳刀都是单手
 	var j := Puppet.solve(p)
 	var up: Vector2 = j["up"]
 	var fwd := Vector2(-up.y, up.x) * -1.0
@@ -1417,6 +1440,7 @@ func _update_art(delta: float) -> void:
 
 	# 姿势用弹簧追目标：不同动作用不同的松紧
 	var sp := _spring_params()
+	_spring.lag = SWING_LAG if state == S.ATTACK and attack_phase < 2 and not attack.get("spin", false) else {}
 	_pose = _spring.step(_target_pose(), sp.x, sp.y, delta)
 	_squash = _squash.lerp(Vector2.ONE, 1.0 - exp(-14.0 * delta))
 
