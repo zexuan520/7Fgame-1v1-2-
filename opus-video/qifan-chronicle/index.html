@@ -1,0 +1,533 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>起凡编年史 · 像素网吧到高清时代</title>
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-sc/400.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-sc/700.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-sans-sc/900.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-serif-sc/700.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/noto-serif-sc/900.css">
+<link rel="stylesheet" href="../../node_modules/@fontsource/ma-shan-zheng/400.css">
+<style>
+  :root { --red: #c4302b; --gold: #e2b65c; --gold2: #fff1c9; --ink: #f4ead8; --dim: #8f8aa6; --led: #ff3b4e; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #000; color: var(--ink); font-family: "Noto Sans SC", sans-serif; }
+  #gl { position: absolute; inset: 0; width: 1080px; height: 1920px; }
+  #dom { position: absolute; inset: 0; overflow: hidden; background: #050407; display: none; }
+  .sc { position: absolute; inset: 0; display: none; }
+  .abs { position: absolute; }
+  #flash { position: absolute; inset: 0; background: #fff; opacity: 0; pointer-events: none; }
+
+  /* ---------- 第二幕：电竞舞台 ---------- */
+  .stage-bg { position: absolute; inset: 0; background:
+      radial-gradient(1200px 500px at 50% 112%, rgba(196,48,43,.45), transparent 70%),
+      radial-gradient(900px 700px at 50% 30%, rgba(40,30,80,.55), transparent 75%), #050407; }
+  .ledgrid { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(255,255,255,.06) 1.6px, transparent 2px); background-size: 12px 12px; }
+  .beam { position: absolute; top: -200px; width: 260px; height: 2400px; transform-origin: 50% 0; background: linear-gradient(180deg, rgba(255,230,190,.32), rgba(255,230,190,0) 80%); filter: blur(8px); mix-blend-mode: screen; }
+  .floor { position: absolute; left: -200px; right: -200px; bottom: 0; height: 520px; background: linear-gradient(180deg, transparent, rgba(196,48,43,.18)); }
+  .led { font: 900 150px/1.05 "Noto Sans SC"; color: #fff; letter-spacing: -2px;
+         -webkit-mask: radial-gradient(circle, #000 3.4px, transparent 4px) 0 0 / 9px 9px; mask: radial-gradient(circle, #000 3.4px, transparent 4px) 0 0 / 9px 9px;
+         text-shadow: 0 0 30px rgba(255,59,78,.9); }
+  .led-glow { position: absolute; font: 900 150px/1.05 "Noto Sans SC"; color: var(--led); filter: blur(26px); opacity: .7; letter-spacing: -2px; }
+  .kick { font: 900 30px "Noto Sans SC"; letter-spacing: 12px; color: var(--gold); }
+  .big { font: 900 300px/1 "Noto Sans SC"; letter-spacing: -10px; color: #fff; }
+  .big small { font-size: 120px; letter-spacing: 0; color: var(--gold); }
+  .t1 { font: 900 96px/1.15 "Noto Sans SC"; color: #fff; }
+  .t1 em { font-style: normal; color: var(--gold); }
+  .t2 { font: 700 44px/1.5 "Noto Sans SC"; color: rgba(244,234,216,.85); }
+  .t2 b { color: var(--gold); }
+  .fine { font: 400 26px/1.5 "Noto Sans SC"; color: var(--dim); }
+  .card { position: absolute; border: 2px solid rgba(226,182,92,.7); background: linear-gradient(135deg, rgba(196,48,43,.35), rgba(10,8,14,.85)); padding: 34px 40px; }
+  .node { position: absolute; display: flex; align-items: center; justify-content: space-between; padding: 0 40px; height: 128px;
+          border: 2px solid rgba(255,59,78,.75); background: rgba(255,59,78,.08); box-shadow: 0 0 30px rgba(255,59,78,.25) inset; }
+  .node .n { font: 900 70px "Noto Sans SC"; color: #fff; }
+  .node .d { font: 700 34px "Noto Sans SC"; color: rgba(244,234,216,.85); }
+  .wire { position: absolute; width: 4px; background: var(--led); box-shadow: 0 0 14px var(--led); transform-origin: 50% 100%; }
+
+  /* ---------- 第三幕：高清国风 ---------- */
+  .ink-bg { position: absolute; inset: 0; background: radial-gradient(900px 900px at 50% 40%, #2a1c14, #0c0807 75%); }
+  .world { position: absolute; left: 540px; top: 1180px; transform-style: preserve-3d; }
+  .persp { position: absolute; inset: 0; perspective: 1500px; perspective-origin: 50% 62%; }
+  .hd { position: absolute; width: 900px; height: 506px; margin: -253px 0 0 -450px; border: 3px solid rgba(226,182,92,.8); box-shadow: 0 40px 90px rgba(0,0,0,.7); background-size: cover; backface-visibility: hidden; }
+  .serif { font-family: "Noto Serif SC", serif; }
+  .brush { font-family: "Ma Shan Zheng", serif; }
+  .shade-top { position: absolute; left: 0; right: 0; top: 0; height: 760px; background: linear-gradient(180deg, rgba(8,5,4,.92) 40%, transparent); }
+  .shade-bot { position: absolute; left: 0; right: 0; bottom: 0; height: 900px; background: linear-gradient(0deg, rgba(8,5,4,.95) 45%, transparent); }
+  .cover { position: absolute; background-size: cover; background-position: center; }
+</style></head><body>
+<canvas id="gl" width="1080" height="1920"></canvas>
+
+<div id="dom">
+  <!-- 镜头 7 · 2011 11对战平台 -->
+  <section class="sc" data-s="36" data-e="42">
+    <div class="stage-bg"></div><div class="ledgrid"></div>
+    <div class="beam" id="b7a" style="left:120px"></div><div class="beam" id="b7b" style="left:700px"></div>
+    <div class="abs kick" id="k7" style="left:90px;top:330px">第二幕 · 电竞时代</div>
+    <div class="abs big" id="y7" style="left:80px;top:400px">2011</div>
+    <div class="abs led-glow" id="g7" style="left:90px;top:760px">11对战平台</div>
+    <div class="abs led" id="l7" style="left:90px;top:760px">11对战平台</div>
+    <div class="abs t2" id="s7" style="left:94px;top:940px">War3 对战 · <b>DotA 天梯</b></div>
+    <div class="card" id="c7" style="left:90px;top:1110px;width:780px">
+      <div class="fine" style="color:var(--gold)">2012 年 9 月</div>
+      <div style="font:900 120px/1.1 'Noto Sans SC'"><span id="n7">80</span><span style="font-size:56px;color:var(--gold)"> 万</span></div>
+      <div class="t2" style="font-size:34px">DotA 最高同时在线</div>
+    </div>
+  </section>
+
+  <!-- 镜头 8 · 2012 巅峰 -->
+  <section class="sc" data-s="42" data-e="48">
+    <div class="stage-bg"></div><div class="ledgrid"></div>
+    <div class="beam" id="b8a" style="left:60px"></div><div class="beam" id="b8b" style="left:760px"></div><div class="beam" id="b8c" style="left:410px"></div>
+    <div class="abs kick" id="k8" style="left:90px;top:560px">2012 · 巅峰时刻</div>
+    <div class="abs big" id="n8" style="left:70px;top:640px;font-size:380px">45<small>万+</small></div>
+    <div class="abs t1" id="t8" style="left:90px;top:1080px;font-size:84px">起凡平台<br><em>最高同时在线</em></div>
+    <div class="abs fine" id="f8" style="left:94px;top:1320px">据百度百科记载</div>
+    <div class="abs" id="bar8" style="left:90px;top:1400px;height:14px;width:0;background:linear-gradient(90deg,var(--red),var(--gold));box-shadow:0 0 30px var(--gold)"></div>
+  </section>
+
+  <!-- 镜头 9 · WCG 2011 -->
+  <section class="sc" data-s="48" data-e="54">
+    <div class="stage-bg"></div><div class="ledgrid"></div>
+    <div class="abs kick" id="k9" style="left:90px;top:300px">WCG 2011 · 中国区选拔</div>
+    <div class="abs t1" id="t9" style="left:90px;top:360px;font-size:88px">《群雄逐鹿》<br>登上 <em>WCG</em></div>
+    <div class="node" id="n9a" style="left:90px;top:1300px;width:900px"><span class="d">全国选拔</span><span class="n">数百支</span></div>
+    <div class="node" id="n9b" style="left:150px;top:1130px;width:780px"><span class="d">决出</span><span class="n">16 强</span></div>
+    <div class="node" id="n9c" style="left:210px;top:960px;width:660px"><span class="d">线上鏖战</span><span class="n">12 队</span></div>
+    <div class="node" id="n9d" style="left:270px;top:790px;width:540px;border-color:var(--gold);background:rgba(226,182,92,.12)"><span class="d">中国区总决赛</span><span class="n" style="color:var(--gold)">2 席</span></div>
+  </section>
+
+  <!-- 镜头 10 · 2013 / 2014 -->
+  <section class="sc" data-s="54" data-e="60">
+    <div class="stage-bg"></div><div class="ledgrid"></div>
+    <div class="card" id="c10a" style="left:90px;top:330px;width:830px;height:520px">
+      <div class="kick">2013.07.31</div>
+      <div class="t1" style="margin-top:24px">《三国争霸<em>2</em>》</div>
+      <div class="t2" style="margin-top:16px">独立客户端的 <b>MOBA</b> 续作</div>
+    </div>
+    <div class="card" id="c10b" style="left:90px;top:900px;width:830px;height:540px">
+      <div class="kick">2014</div>
+      <div class="t1" style="margin-top:24px;font-size:80px">群雄逐鹿冠军联赛</div>
+      <div style="margin-top:20px;font:900 150px/1 'Noto Sans SC'"><span id="n10">100</span><span style="font-size:60px;color:var(--gold)"> 万元</span></div>
+      <div class="t2" style="font-size:32px;margin-top:8px">联赛总奖金</div>
+    </div>
+    <div class="abs" id="spot10" style="left:0;top:0;width:1080px;height:1920px;background:radial-gradient(500px 360px at 540px 950px, #2a0c0a, #050407 70%);opacity:0"></div>
+    <div class="abs serif" id="y10" style="left:0;width:1080px;top:860px;text-align:center;font-weight:900;font-size:150px;color:var(--gold);opacity:0;text-shadow:0 0 50px rgba(226,182,92,.7)">2019</div>
+  </section>
+
+  <!-- 镜头 11 · 2019 群雄逐鹿HD -->
+  <section class="sc" data-s="60" data-e="70">
+    <div class="ink-bg"></div>
+    <div class="persp"><div class="world" id="w11">
+      <div class="hd" data-x="-420" data-y="-640" data-z="-3200" data-r="18" style="background-image:url(source/assets/hd-hujiang.png)"></div>
+      <div class="hd" data-x="440" data-y="-280" data-z="-2600" data-r="-16" style="background-image:url(source/assets/hd-celue.png)"></div>
+      <div class="hd" data-x="-460" data-y="320" data-z="-2000" data-r="14" style="background-image:url(source/assets/hd-chengzhang.png)"></div>
+      <div class="hd" data-x="460" data-y="560" data-z="-1400" data-r="-14" style="background-image:url(source/assets/hd-300jifen.png)"></div>
+      <div class="hd" data-x="-420" data-y="-420" data-z="-800" data-r="12" style="background-image:url(source/assets/hd-zizou.png)"></div>
+      <div class="hd" id="hero11" data-x="0" data-y="40" data-z="-4200" data-r="0" style="background-image:url(source/assets/hd-10v10.png)"></div>
+    </div></div>
+    <div class="shade-top" id="sh11" style="height:1000px;background:linear-gradient(180deg,rgba(12,8,7,1) 76%,transparent)"></div>
+    <div class="abs kick" id="k11" style="left:90px;top:300px">第三幕 · 高清国风</div>
+    <div class="abs serif" id="y11" style="left:84px;top:350px;font-weight:900;font-size:150px;color:var(--gold)">2019.09.25</div>
+    <div class="abs serif t1" id="t11" style="left:90px;top:540px;font-size:80px">《群雄逐鹿HD》<br><em>WeGame 公测</em></div>
+    <div class="abs brush" id="m11" style="left:90px;top:1500px;font-size:96px;color:#fff;text-shadow:0 0 30px #000">群雄十年 · 经典重铸</div>
+  </section>
+
+  <!-- 镜头 12 · 群雄武道会 -->
+  <section class="sc" data-s="70" data-e="76">
+    <div class="ink-bg"></div>
+    <div class="abs kick" id="k12" style="left:90px;top:300px">赛事延续</div>
+    <div class="abs serif t1" id="t12" style="left:90px;top:360px;font-size:110px">群雄<em>武道会</em></div>
+    <img class="abs" id="i12a" src="source/assets/wudaohui-2021.png" style="left:70px;top:610px;width:520px">
+    <img class="abs" id="i12b" src="source/assets/wudaohui-2023.png" style="left:420px;top:900px;width:540px">
+    <div class="card" id="c12" style="left:90px;top:1300px;width:830px">
+      <div class="kick">2023 春季赛</div>
+      <div style="font:900 110px/1.1 'Noto Serif SC';margin-top:10px"><span id="n12">5</span><span style="font-size:52px;color:var(--gold)"> 万元</span></div>
+      <div class="t2" style="font-size:32px">冠军奖金</div>
+    </div>
+  </section>
+
+  <!-- 镜头 13 · 2026 -->
+  <section class="sc" data-s="76" data-e="84">
+    <div class="cover" id="kv13" style="left:-600px;top:240px;width:2280px;height:1920px;background-image:url(source/assets/sgzb-2026-keyart.jpg);background-position:42% 50%"></div>
+    <div class="shade-bot"></div><div class="shade-top" style="height:620px;background:linear-gradient(180deg,rgba(8,5,4,.9) 50%,transparent)"></div>
+    <div class="cover" id="lu13" style="left:0;top:1060px;width:1080px;height:253px;background-image:url(source/assets/zhuhou-taodong-lineup.jpg);border-top:2px solid var(--gold);border-bottom:2px solid var(--gold)"></div>
+    <div class="abs serif" id="y13" style="left:84px;top:230px;font-weight:900;font-size:200px;color:var(--gold);text-shadow:0 0 40px rgba(0,0,0,.8)">2026</div>
+    <div class="abs serif t1" id="t13" style="left:90px;top:1350px;font-size:80px;text-shadow:0 4px 30px #000">二十年，平台<em>仍在运行</em></div>
+  </section>
+  <div id="flash"></div>
+</div>
+
+<script>
+/* ================= 公共工具 ================= */
+const clamp = (x, a = 0, b = 1) => Math.max(a, Math.min(b, x));
+const lerp = (a, b, x) => a + (b - a) * x;
+const ease = x => { x = clamp(x); return x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
+const eout = x => 1 - Math.pow(1 - clamp(x), 3);
+function spring(x, w = 15, z = .72) {
+  if (x <= 0) return 0;
+  const wd = w * Math.sqrt(1 - z * z);
+  return 1 - Math.exp(-z * w * x) * (Math.cos(wd * x) + (z * w / wd) * Math.sin(wd * x));
+}
+const hash = n => { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+const BEAT = .5;
+window.CUES = [];   // 音效时间表：{t, kind}
+const cue = (t, kind) => window.CUES.push({ t: +t.toFixed(3), kind });
+
+/* ================= 素材 ================= */
+const IMG = {};
+const assetList = ['sgzb-old-header.jpg', 'hero-a.png', 'hero-b.png', 'qxzl-10v10-keyart.jpg', 'logo-sgzb.png'];
+const loads = assetList.map(n => new Promise(res => { const im = new Image(); im.onload = res; im.onerror = () => { console.error('missing', n); res(); }; im.src = 'source/assets/' + n; IMG[n] = im; }));
+const domImgs = [...document.querySelectorAll('img')].map(im => im.complete ? Promise.resolve() : new Promise(r => { im.onload = im.onerror = r; }));
+const bgUrls = ['hd-hujiang.png', 'hd-celue.png', 'hd-chengzhang.png', 'hd-300jifen.png', 'hd-zizou.png', 'hd-10v10.png', 'sgzb-2026-keyart.jpg', 'zhuhou-taodong-lineup.jpg'];
+const bgLoads = bgUrls.map(n => new Promise(r => { const im = new Image(); im.onload = im.onerror = r; im.src = 'source/assets/' + n; }));
+
+/* ================= 第一幕：像素画面（逻辑单位 u：270×480，1u = 4 逻辑像素） ================= */
+const pc = document.createElement('canvas');
+let c = pc.getContext('2d', { willReadFrequently: true });
+const tc = document.createElement('canvas'); const tctx = tc.getContext('2d', { willReadFrequently: true });
+let K = 4;   // 像素格大小（逻辑像素）：4 / 2 / 1
+function setRes(k) {
+  K = k;
+  const w = 1080 / k, h = 1920 / k;
+  if (pc.width !== w) { pc.width = w; pc.height = h; tc.width = w; tc.height = h; }
+  c.setTransform(4 / k, 0, 0, 4 / k, 0, 0);   // 绘制用 u 坐标
+  c.imageSmoothingEnabled = k === 1;
+}
+const R = (x, y, w, h, col) => { c.fillStyle = col; c.fillRect(x, y, w, h); };
+// 像素字：低分辨率时按 alpha 阈值变硬边
+function ptext(str, x, y, size, color, align = 'left', weight = 900, font = 'Noto Sans SC') {
+  if (K === 1) { c.font = `${weight} ${size}px "${font}"`; c.textAlign = align; c.textBaseline = 'top'; c.fillStyle = color; c.fillText(str, x, y); return; }
+  const s = 4 / K;
+  tctx.setTransform(1, 0, 0, 1, 0, 0); tctx.clearRect(0, 0, tc.width, tc.height);
+  tctx.setTransform(s, 0, 0, s, 0, 0);
+  tctx.font = `${weight} ${size}px "${font}"`; tctx.textAlign = align; tctx.textBaseline = 'top'; tctx.fillStyle = '#fff'; tctx.fillText(str, x, y);
+  const m = tctx.measureText(str);
+  const x0 = Math.max(0, Math.floor((align === 'center' ? x - m.width / 2 : align === 'right' ? x - m.width : x) * s) - 2);
+  const y0 = Math.max(0, Math.floor(y * s) - 2);
+  const w = Math.min(tc.width - x0, Math.ceil(m.width * s) + 6), h = Math.min(tc.height - y0, Math.ceil(size * 1.4 * s) + 4);
+  if (w <= 0 || h <= 0) return;
+  const d = tctx.getImageData(x0, y0, w, h).data;
+  c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.fillStyle = color;
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (d[(j * w + i) * 4 + 3] > 110) c.fillRect(x0 + i, y0 + j, 1, 1);
+  c.restore();
+}
+// 图片按当前像素格画出（低分辨率画布 + 最近邻 = 像素化）
+function pimg(im, x, y, w, h, sx = 0, sy = 0, sw, sh) { if (!im || !im.naturalWidth) return; c.drawImage(im, sx, sy, sw ?? im.naturalWidth, sh ?? im.naturalHeight, x, y, w, h); }
+const typed = (str, t0, t, cps = 9) => str.slice(0, Math.max(0, Math.floor((t - t0) * cps)));
+
+/* ---------- 网吧场景（镜头 1 / 14 共用） ---------- */
+function drawCafe(t, ending) {
+  const f = Math.floor(t * 10) / 10;
+  R(0, 0, 270, 480, '#0b0a17');
+  for (let i = 0; i < 3; i++) R(20 + i * 90, 10, 50, 3, ending ? 'rgba(80,90,120,.4)' : `rgba(200,220,255,${.5 + .2 * Math.sin(f * 3 + i)})`);
+  R(70, 26, 130, 30, '#1a0d1f');
+  const neon = ending ? .25 : (Math.sin(f * 7) > -.6 ? 1 : .55);
+  ptext('网吧 · 通宵', 135, 30, 20, `rgba(255,70,110,${neon})`, 'center');
+  for (let i = 0; i < 5; i++) {
+    R(4 + i * 56, 74, 46, 34, '#1b1930');
+    const on = ending ? (i === 2 ? 1 : clamp(1 - (t - 84.4 - i * .25) / .2)) : 1;
+    R(7 + i * 56, 77, 40, 26, `rgba(${60 + i * 20},${120 + i * 10},180,${(.35 + .15 * Math.sin(f * 2 + i)) * on})`);
+  }
+  // 主显示器
+  R(18, 118, 234, 192, '#c9c2ad'); R(22, 122, 226, 184, '#ddd6c0'); R(30, 128, 210, 160, '#111');
+  R(115, 310, 40, 10, '#bdb6a1'); R(85, 320, 100, 8, '#a9a28e');
+  R(220, 294, 6, 4, f % 1 < .5 ? '#3f3' : '#161');
+  R(0, 330, 270, 6, '#2a2238'); R(40, 338, 160, 16, '#3a3550'); for (let i = 0; i < 14; i++) R(46 + i * 11, 341, 8, 4, '#59537a');
+  R(214, 326, 34, 22, '#e8e0cc'); R(214, 326, 34, 5, '#d23b2a');
+  for (let k = 0; k < 3; k++) R(220 + k * 9, 312 - ((t * 14 + k * 5) % 14), 2, 6, 'rgba(255,255,255,.3)');
+}
+function drawMiniMap(x, y, s, t, t0, n) {   // 群雄逐鹿小地图（s = 边长，u）
+  R(x, y, s, s, '#2f5a2a');
+  for (let i = 0; i < 70; i++) R(x + hash(i) * s, y + hash(i + 99) * s, 2, 2, hash(i + 7) < .5 ? '#3a6b33' : '#264a22');
+  for (let k = -5; k < 6; k++) for (let i = 0; i < 140; i++) { const u = i / 140; R(x + u * s + k, y + u * s, 1.5, 1.5, '#4f8fd0'); }
+  const dl = clamp((t - t0) / 1.2);  // 三路描出
+  const m = 10, L = s - 2 * m;
+  for (let i = 0; i < L * dl; i += 2) { R(x + m + i, y + m, 2, 3, '#e2b65c'); R(x + m, y + m + i, 3, 2, '#e2b65c'); R(x + m + i, y + s - m - 3, 2, 3, '#e2b65c'); R(x + s - m - 3, y + m + i, 3, 2, '#e2b65c'); }
+  for (let i = 0; i < 70 * dl; i++) { const u = i / 70; R(x + m + u * L - 1, y + s - m - u * L - 1, 3, 3, '#e2b65c'); }
+  R(x + 2, y + s - 22, 20, 20, '#d33'); R(x + s - 22, y + 2, 20, 20, '#36c');
+  const p = ease((t - t0 - 1) / 1.8);
+  for (let k = 0; k < n; k++) {
+    const a = k % 5, b = Math.floor(k / 5), j = Math.sin(t * 9 + k) * .8;
+    const u1 = lerp(.12, .44, p) - b * .05, u2 = lerp(.88, .56, p) + b * .05;
+    R(x + m + u1 * L - 2 + (a - 2) * 6 + j, y + s - m - u1 * L - 2 + (a - 2) * 6, 4, 4, '#ff5b4f');
+    R(x + m + u2 * L - 2 + (a - 2) * 6 - j, y + s - m - u2 * L - 2 + (a - 2) * 6, 4, 4, '#6fb7ff');
+  }
+  if (p > .9) { const q = (t * 6) % 1; R(x + s / 2 - 10 * q - 2, y + s / 2 - 10 * q - 2, 20 * q + 4, 20 * q + 4, `rgba(255,246,192,${1 - q})`); }
+}
+
+/* ---------- 第一幕各镜头 ---------- */
+function act1(t) {
+  // 镜头 1：网吧全景，4s 起推向主显示器
+  if (t < 6) {
+    const z = 1 + .34 * ease((t - 3.6) / 2.2);   // 推到屏幕宽度
+    const cx = 135, cy = 208;
+    c.save(); c.translate(cx, cy); c.scale(z, z); c.translate(-cx, -cy);
+    drawCafe(t, false);
+    // 屏幕里预告：起凡平台登录 logo 闪烁
+    R(34, 132, 202, 152, '#0e1a33');
+    ptext('起凡', 135, 175, 40, `rgba(255,207,74,${.6 + .4 * Math.sin(t * 4)})`, 'center');
+    ptext('LOADING...', 135, 235, 12, '#7fd6ff', 'center', 700);
+    c.restore();
+    const a = clamp((t - .6) / .4) * clamp((3.6 - t) / .4);
+    if (a > 0) { R(0, 380, 270, 64, `rgba(0,0,0,${.6 * a})`); ptext('那一年，网吧的灯彻夜不灭', 135, 398, 18, `rgba(244,234,216,${a})`, 'center'); }
+    return;
+  }
+  // 镜头 2：DOS 开机打字
+  if (t < 12) {
+    R(0, 0, 270, 480, '#020a04');
+    const lines = [['C:\\> QIFAN.EXE', 6.3, '#59ff7a', 12], ['2006 · 上海', 7.2, '#ffcf4a', 34], ['起凡 成立', 8.4, '#f4ead8', 30], ['目标：', 9.5, '#59ff7a', 18], ['做中国人自己的', 9.9, '#f4ead8', 22], ['原创竞技游戏', 10.7, '#ff4670', 26]];
+    let y = 120;
+    for (const [s, t0, col, sz] of lines) { const v = typed(s, t0, t, s.length > 10 ? 14 : 9); if (v) ptext(v, 22, y, sz, col, 'left'); y += sz + 22; }
+    if (Math.floor(t * 2.5) % 2 === 0) R(22, y - 8, 12, 4, '#59ff7a');
+    return;
+  }
+  // 镜头 3：2007.05 三国争霸
+  if (t < 20) {
+    const lt = t - 12;
+    R(0, 0, 270, 480, '#120808');
+    const hd = IMG['sgzb-old-header.jpg'];
+    const reveal = ease(lt / 1);   // 头图从中间展开
+    const hh = 70;   // 头图 1660×430，按宽 310u 等比缩放后高 80u，裁成 70u 的横条
+    c.save(); c.beginPath(); c.rect(0, 70 + hh / 2 * (1 - reveal), 270, hh * reveal); c.clip();
+    pimg(hd, -30 + lt * 2, 65, 310, 310 * 430 / 1660); c.restore();
+    R(0, 68, 270, 2, '#ffcf4a'); R(0, 70 + hh, 270, 2, '#ffcf4a');
+    const yr = ease((lt - .6) / .5);
+    if (yr > 0) ptext('2007', 135, 160 + (1 - yr) * 10, 52, '#ffcf4a', 'center');
+    if (lt > 1.1) ptext('五月 ·《三国争霸》上线', 135, 222, 19, '#f4ead8', 'center');
+    if (lt > 1.8) ptext('5V5 · 蜀魏对垒', 135, 252, 18, '#ff8a5c', 'center');
+    if (lt > 2.6) ptext(`最高同时在线 ${Math.round(20 * eout((lt - 2.6) / 1.2))} 万`, 135, 284, 18, '#7fd6ff', 'center');
+    const hx = 1 - spring(lt - 3.4, 11, .8);
+    pimg(IMG['hero-a.png'], -4 - hx * 140, 318, 132, 85);
+    pimg(IMG['hero-b.png'], 142 + hx * 140, 318, 132, 80);
+    return;
+  }
+  // 镜头 4：2007.07 平台登录窗
+  if (t < 24) {
+    const lt = t - 20;
+    R(0, 0, 270, 480, '#0d5a8a');
+    for (let i = 0; i < 12; i++) R(0, i * 40 + ((lt * 20) % 40), 270, 1, 'rgba(255,255,255,.06)');
+    const pop = spring(lt, 16, .7);
+    const wx = 20, wy = 120, ww = 230, wh = 200 * Math.min(1, pop);
+    R(wx + 4, wy + 4, ww, wh, 'rgba(0,0,0,.35)'); R(wx, wy, ww, wh, '#d4d0c8');
+    if (pop > .5) {
+      R(wx, wy, ww, 20, '#0a246a'); R(wx, wy, ww * .6, 20, '#3a6ea5');
+      ptext('起凡游戏平台', wx + 6, wy + 3, 13, '#fff', 'left', 900);
+      R(wx + ww - 18, wy + 4, 13, 12, '#d4d0c8'); ptext('x', wx + ww - 14, wy + 3, 11, '#000', 'left', 900);
+      ptext('2007 · 七月 正式上线', 135, wy + 34, 18, '#0a246a', 'center');
+      R(wx + 20, wy + 70, ww - 40, 18, '#fff'); R(wx + 20, wy + 70, ww - 40, 1, '#808080');
+      ptext('玩家账号 ' + typed('chibi_1v1', 20.6, t, 10), wx + 24, wy + 72, 12, '#000', 'left', 700);
+      const pr = ease((lt - 1.2) / 1.4);
+      R(wx + 20, wy + 104, ww - 40, 14, '#fff'); R(wx + 20, wy + 104, (ww - 40) * pr, 14, '#2a5fd8');
+      for (let i = 0; i < (ww - 40) * pr; i += 10) R(wx + 20 + i + 8, wy + 104, 2, 14, '#fff');
+      ptext(pr < 1 ? `登录中 ${Math.round(pr * 100)}%` : '登录成功', 135, wy + 126, 12, '#333', 'center', 700);
+      if (lt > 2.8) { const q = spring(lt - 2.8, 18, .6); R(30, wy + 150, 210 * Math.min(1.05, q), 40, '#fff8d6'); R(30, wy + 150, 4, 40, '#e2b65c');
+        if (q > .7) ptext('国内首款原创电竞游戏平台', 135, wy + 162, 15, '#7a1712', 'center'); }
+    }
+    return;
+  }
+  // 镜头 5：2008.12 群雄逐鹿
+  if (t < 32) {
+    const lt = t - 24;
+    R(0, 0, 270, 480, '#081008');
+    if (lt < 4.2) {
+      ptext('2008 · 十二月', 20, 64, 22, '#ffcf4a', 'left');
+      drawMiniMap(20, 100, 230, t, 24.3, 10);
+      ptext('《群雄逐鹿》', 20, 346, 30, '#f4ead8', 'left');
+      ptext('首创 10V10', 20, 388, 26, '#ff4670', 'left');
+    } else {
+      const k2 = lt - 4.2;
+      const kv = IMG['qxzl-10v10-keyart.jpg'];
+      const zz = 1 + k2 * .03;
+      c.save(); c.beginPath(); c.rect(0, 70, 270, 220); c.clip();
+      pimg(kv, -8 - k2 * 3, 70 - 30 * (zz - 1), 470 * zz, 470 * 878 / 1920 * zz); c.restore();
+      R(0, 68, 270, 2, '#ffcf4a'); R(0, 290, 270, 2, '#ffcf4a');
+      ptext('二十人同图鏖战', 20, 312, 26, '#f4ead8', 'left');
+      ptext('从网吧，打到了全国', 20, 352, 20, '#ffcf4a', 'left');
+      if (lt > 6.4) {   // 升级中
+        const q = clamp((lt - 6.4) / 1.4);
+        R(20, 404, 230, 16, '#222'); R(20, 404, 230 * q, 16, '#59ff7a');
+        ptext(`画面升级中 ${Math.round(q * 100)}%`, 135, 426, 13, '#59ff7a', 'center', 900);
+      }
+    }
+    return;
+  }
+  // 镜头 6：分辨率升级（与第二幕开场「2011」位置对齐）
+  {
+    R(0, 0, 270, 480, '#050407');
+    ptext('第二幕 · 电竞时代', 22.5, 82.5, 7.5, '#e2b65c', 'left', 900);
+    ptext('2011', 20, 100, 75, '#ffffff', 'left');
+  }
+}
+
+/* ---------- 结尾：回到网吧 ---------- */
+function ending(t) {
+  const lt = t - 84;
+  const z = 1.34 - .34 * ease(lt / 1.2);   // 从屏幕拉回网吧
+  const cx = 135, cy = 208;
+  c.save(); c.translate(cx, cy); c.scale(z, z); c.translate(-cx, -cy);
+  drawCafe(t, true);
+  R(34, 132, 202, 152, '#06120a');
+  if (lt > 1.2) ptext(typed('你的本命武将', 85.2, t, 7), 46, 160, 22, '#59ff7a', 'left');
+  if (lt > 2.4) ptext(typed('是谁？', 86.4, t, 6), 46, 192, 22, '#59ff7a', 'left');
+  if (lt > 3.6 && Math.floor(t * 2.5) % 2 === 0) R(46, 228, 10, 3, '#59ff7a');
+  c.restore();
+  if (lt > 3.4) { const a = clamp((lt - 3.4) / .6); ptext('起于凡 · 而非凡', 135, 392, 24, `rgba(255,207,74,${a})`, 'center'); ptext('2006 — 2026', 135, 428, 14, `rgba(244,234,216,${a * .8})`, 'center', 700); }
+}
+
+/* ================= WebGL CRT ================= */
+const gl = document.getElementById('gl').getContext('webgl2', { preserveDrawingBuffer: true });
+const VS = `#version 300 es
+in vec2 p; out vec2 uv; void main(){ uv = p * .5 + .5; uv.y = 1. - uv.y; gl_Position = vec4(p, 0, 1); }`;
+const FS = `#version 300 es
+precision highp float; in vec2 uv; out vec4 o;
+uniform sampler2D tex; uniform float t, crt, flash, power; uniform vec2 texel;
+vec2 curve(vec2 u, float k){ u = u * 2. - 1.; vec2 off = abs(u.yx) / vec2(6.5, 4.5); u += u * off * off * k; return u * .5 + .5; }
+vec3 samp(vec2 u){ return texture(tex, u).rgb; }
+void main(){
+  vec2 u = curve(uv, crt);
+  // 关机：先压成横线再缩成点
+  float sy = mix(1., .004, clamp(power * 1.6, 0., 1.)), sx = mix(1., .002, clamp(power * 2.4 - 1.4, 0., 1.));
+  u = (u - .5) / vec2(sx, sy) + .5;
+  if (u.x < 0. || u.x > 1. || u.y < 0. || u.y > 1.) { o = vec4(0, 0, 0, 1); return; }
+  float ca = .0014 * crt;
+  vec3 col = vec3(samp(u + vec2(ca, 0)).r, samp(u).g, samp(u - vec2(ca, 0)).b);
+  vec3 glow = vec3(0); for (int i = -3; i <= 3; i++) for (int j = -3; j <= 3; j++) glow += samp(u + vec2(float(i), float(j)) * texel * 1.6);
+  col += glow / 49. * .55 * crt;
+  float sl = mix(1., .76 + .24 * sin(u.y * 480. * 6.2832), crt);
+  col *= sl;
+  float m = mod(gl_FragCoord.x, 3.);
+  vec3 mask = m < 1. ? vec3(1.08, .92, .92) : m < 2. ? vec3(.92, 1.08, .92) : vec3(.92, .92, 1.08);
+  col *= mix(vec3(1), mask, crt);
+  col *= 1. + .035 * crt * sin(t * 50. + u.y * 8.);
+  vec2 v = u * (1. - u.yx); col *= mix(1., pow(clamp(v.x * v.y * 15., 0., 1.), .28), crt);
+  col = mix(col * (1. + .12 * crt), vec3(1), flash);
+  col += power > 0. ? vec3(power * 1.5) : vec3(0);
+  o = vec4(col, 1);
+}`;
+function shader(type, src) { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog = gl.createProgram(); gl.attachShader(prog, shader(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(prog); gl.useProgram(prog);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer()); gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+const ploc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(ploc); gl.vertexAttribPointer(ploc, 2, gl.FLOAT, false, 0, 0);
+gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v);
+const U = n => gl.getUniformLocation(prog, n);
+function drawGL(t, crt, flash, power) {
+  gl.viewport(0, 0, 1080, 1920);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, pc);
+  gl.uniform1f(U('t'), t); gl.uniform1f(U('crt'), crt); gl.uniform1f(U('flash'), flash); gl.uniform1f(U('power'), power);
+  gl.uniform2f(U('texel'), 1 / pc.width, 1 / pc.height);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4); gl.finish();
+}
+
+/* ================= 第二、三幕：DOM ================= */
+const $ = id => document.getElementById(id);
+const scenes = [...document.querySelectorAll('#dom .sc')].map(el => ({ el, s: +el.dataset.s, e: +el.dataset.e }));
+function show(id, lt, d, opt = {}) {   // 通用进场：弹簧位移 + 透明度
+  const el = $(id); if (!el) return;
+  const k = spring(lt - d, opt.w ?? 15, opt.z ?? .74);
+  const dx = opt.dx ?? 0, dy = opt.dy ?? 70, sc = opt.sc ?? 0;
+  el.style.opacity = clamp((lt - d) / .25).toFixed(3);
+  el.style.transform = `translate(${(1 - k) * dx}px, ${(1 - k) * dy}px) scale(${1 + (1 - k) * sc})`;
+}
+function beams(ids, lt, speed = .6) { ids.forEach((id, i) => { const el = $(id); if (el) el.style.transform = `rotate(${Math.sin(lt * speed + i * 2.1) * 24 + (i - 1) * 8}deg)`; }); }
+function count(id, to, lt, d, dur = 1.2) { const el = $(id); if (el) el.firstChild ? (el.textContent = Math.round(to * eout((lt - d) / dur))) : 0; }
+
+function act23(t) {
+  for (const sc of scenes) sc.el.style.display = t >= sc.s && t < sc.e ? 'block' : 'none';
+  // 镜头 7
+  if (t < 42) { const lt = t - 36;
+    $('y7').style.opacity = 1; $('y7').style.transform = `translateY(${-spring(lt - 1.2, 12, .85) * 0}px)`;
+    $('k7').style.opacity = 1;
+    show('l7', lt, .6, { dy: 0, sc: .25, w: 12, z: .8 }); $('g7').style.opacity = clamp((lt - .6) / .3) * (.55 + .2 * Math.sin(lt * 9));
+    show('s7', lt, 1.3); show('c7', lt, 2.0, { dx: -200, dy: 0 }); count('n7', 80, lt, 2.2);
+    beams(['b7a', 'b7b'], lt);
+  }
+  // 镜头 8
+  else if (t < 48) { const lt = t - 42;
+    show('k8', lt, 0); show('n8', lt, .2, { dy: 0, sc: .4, w: 10, z: .9 });
+    $('n8').innerHTML = Math.round(45 * eout((lt - .2) / 1.4)) + '<small>万+</small>';
+    show('t8', lt, 1.4); show('f8', lt, 1.9);
+    $('bar8').style.width = (900 * ease((lt - 1.6) / 1.2)) + 'px';
+    beams(['b8a', 'b8b', 'b8c'], lt, 1.1);
+  }
+  // 镜头 9
+  else if (t < 54) { const lt = t - 48;
+    show('k9', lt, 0); show('t9', lt, .2);
+    ['n9a', 'n9b', 'n9c', 'n9d'].forEach((id, i) => show(id, lt, .9 + i * .6, { dy: 60, sc: .08 }));
+    $('n9d').style.boxShadow = lt > 3 ? `0 0 ${40 + 20 * Math.sin(lt * 6)}px rgba(226,182,92,.6)` : 'none';
+  }
+  // 镜头 10（含熄灯转场）
+  else if (t < 60) { const lt = t - 54;
+    show('c10a', lt, 0, { dx: -300, dy: 0 }); show('c10b', lt, 1.2, { dx: 300, dy: 0 }); count('n10', 100, lt, 1.5);
+    const off = clamp((lt - 4.2) / .9);
+    $('spot10').style.opacity = off; $('y10').style.opacity = clamp((lt - 4.9) / .4);
+    $('y10').style.transform = `scale(${1.3 - .3 * spring(lt - 4.9, 10, .9)})`;
+  }
+  // 镜头 11：3D 卡片墙穿行
+  else if (t < 70) { const lt = t - 60;
+    const cam = 3850 * ease(lt / 7.5);
+    const sway = Math.sin(lt * .5) * 6;
+    $('w11').style.transform = `translateZ(${cam}px) rotateY(${sway * (1 - ease(lt / 7.5))}deg) rotateX(${4 * (1 - ease(lt / 7.5))}deg)`;
+    $('w11').querySelectorAll('.hd').forEach(card => {
+      const x = +card.dataset.x, y = +card.dataset.y, z = +card.dataset.z, r = +card.dataset.r;
+      const isHero = card.id === 'hero11';
+      const hx = isHero ? 0 : x, hy = isHero ? 40 : y;
+      card.style.transform = `translate3d(${hx}px, ${hy}px, ${z}px) rotateY(${r}deg)`;
+      const depth = z + cam;   // 越过镜头的卡片隐藏
+      card.style.opacity = isHero ? 1 : clamp((900 - depth) / 400);
+    });
+    show('k11', lt, .3); show('y11', lt, .6, { dy: 0, sc: .2, w: 10, z: .9 }); show('t11', lt, 1.2); show('m11', lt, 6.2, { dy: 40 });
+    $('sh11').style.opacity = 1;
+  }
+  // 镜头 12
+  else if (t < 76) { const lt = t - 70;
+    show('k12', lt, 0); show('t12', lt, .2);
+    show('i12a', lt, .7, { dx: -500, dy: 0, w: 14, z: .6 }); show('i12b', lt, 1.3, { dx: 500, dy: 0, w: 14, z: .6 });
+    show('c12', lt, 2.3); count('n12', 5, lt, 2.5, .8);
+  }
+  // 镜头 13
+  else { const lt = t - 76;
+    $('kv13').style.transform = `scale(${1.04 + lt * .012}) translateX(${-lt * 6}px)`;
+    $('lu13').style.backgroundPosition = `${lerp(0, 100, lt / 8)}% 50%`;
+    show('lu13', lt, 1.6, { dy: 0, sc: 0, dx: 0 });
+    show('t13', lt, .3); show('y13', lt, 2.4, { dy: 0, sc: .3, w: 10, z: .9 });
+  }
+  // 场景切换闪白
+  let fl = 0; for (const b of [36, 60]) if (t >= b && t < b + .35) fl = Math.max(fl, 1 - (t - b) / .35);
+  $('flash').style.opacity = (fl * .8).toFixed(3);
+}
+
+/* ================= 主时间轴 ================= */
+window.TOTAL = 92;
+window.render = function (t) {
+  const dom = $('dom'), glc = $('gl');
+  if (t >= 36 && t < 84) { dom.style.display = 'block'; glc.style.display = 'none'; act23(t); return; }
+  dom.style.display = 'none'; glc.style.display = 'block';
+  // 像素格大小与 CRT 强度
+  let k = 4, crt = 1;
+  if (t >= 32) { k = t < 32.8 ? 4 : t < 33.6 ? 2 : 1; crt = 1 - ease((t - 32.6) / 2.2); }
+  setRes(k);
+  c.clearRect(0, 0, 270, 480);
+  if (t < 84) act1(t); else ending(t);
+  // 闪白：镜头切换处
+  let flash = 0;
+  for (const b of [6, 12, 20, 24, 32.8, 33.6]) if (t >= b && t < b + .3) flash = Math.max(flash, (1 - (t - b) / .3) * (b > 32 ? .5 : .85));
+  if (t >= 84 && t < 84.3) flash = Math.max(flash, 1 - (t - 84) / .3);
+  const power = t > 90.9 ? clamp((t - 90.9) / .8) : 0;
+  drawGL(t, crt, flash, power);
+};
+
+/* ================= 音效时间表（与画面关键帧一致） ================= */
+[[6, 'boot'], [12, 'hit'], [12.6, 'yearhit'], [15.4, 'land'], [20, 'pop'], [22.8, 'ding'], [24, 'hit'], [27.2, 'clash'], [28.2, 'hit'],
+ [32, 'riser'], [32.8, 'step'], [33.6, 'step'], [36, 'boom'], [36.6, 'led'], [38, 'stab'], [42, 'boom'], [42.2, 'stab'], [48, 'whoosh'],
+ [48.9, 'stab'], [49.5, 'stab'], [50.1, 'stab'], [50.7, 'stabhi'], [54, 'whoosh'], [55.2, 'whoosh'], [58.2, 'lightsoff'], [58.9, 'boomsoft'],
+ [60, 'boom'], [60.6, 'taiko'], [66.2, 'taiko'], [70, 'whoosh'], [70.7, 'taiko'], [71.3, 'taiko'], [72.3, 'ding'], [76, 'boom'], [78.4, 'taiko'],
+ [84, 'boot'], [91, 'poweroff']].forEach(([t, k]) => cue(t, k));
+// 打字音：镜头 2 与结尾
+for (const [s, t0, cps] of [['C:\\> QIFAN.EXE', 6.3, 14], ['2006 · 上海', 7.2, 9], ['起凡 成立', 8.4, 9], ['目标：', 9.5, 9], ['做中国人自己的', 9.9, 9], ['原创竞技游戏', 10.7, 9], ['chibi_1v1', 20.6, 10], ['你的本命武将', 85.2, 7], ['是谁？', 86.4, 6]])
+  for (let i = 0; i < s.length; i++) cue(t0 + i / cps, 'type');
+
+window.ready = false;
+Promise.all([...loads, ...domImgs, ...bgLoads, document.fonts.ready,
+  document.fonts.load('900 40px "Noto Sans SC"', '网吧通宵那一年的灯彻夜不灭起凡成立目标做中国人自己原创竞技游戏上海五月三国争霸上线蜀魏对垒最高同时在线万游戏平台七月正式玩家账号登录中成功国内首款电竞十二月群雄逐鹿首创二十人同图鏖战从打到了全升级画面第二幕时代你本命武将是谁于而非凡'),
+  document.fonts.load('400 40px "Ma Shan Zheng"', '群雄十年经典重铸'),
+  document.fonts.load('900 40px "Noto Serif SC"', '0123456789.《》群雄逐鹿HDWeGame公测武道会万元二十年平台仍在运行第三幕高清国风')]).then(() => { window.render(0); window.ready = true; });
+</script></body></html>

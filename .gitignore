@@ -3,3 +3,6 @@ video/out/*.png
 video/out/*.wav
 video/out/cues.json
 video/out/*-preview.mp4
+opus-video/*/audio/*.wav
+opus-video/*/audio/cues.json
+opus-video/*/qa/s-*.png

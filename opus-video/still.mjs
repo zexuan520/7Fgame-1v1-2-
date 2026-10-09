@@ -34,11 +34,14 @@ await p.waitForFunction('typeof window.render === "function" && (window.ready ==
 await p.evaluate(() => document.fonts.ready);
 
 if (!out.endsWith('.mp4')) {
-  // 渲两遍：第一遍触发字形子集加载
-  await p.evaluate(t => window.render(t), +when);
-  await p.evaluate(() => document.fonts.ready);
-  await p.evaluate(t => window.render(t), +when);
-  await p.screenshot({ path: out });
+  // 支持多个时间点：when = "2,5.5,9"，输出 out 里的 {t} 会被替换成时间
+  for (const tt of when.split(',').map(Number)) {
+    // 渲两遍：第一遍触发字形子集加载
+    await p.evaluate(t => window.render(t), tt);
+    await p.evaluate(() => document.fonts.ready);
+    await p.evaluate(t => window.render(t), tt);
+    await p.screenshot({ path: out.includes('{t}') ? out.replace('{t}', tt) : out });
+  }
 } else {
   const [s, d] = when.split(':').map(Number);
   const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-framerate', '30', '-c:v', 'mjpeg', '-i', '-',
