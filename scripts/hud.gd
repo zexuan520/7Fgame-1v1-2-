@@ -1,6 +1,7 @@
 class_name Hud
 extends Node2D
-## 屏幕界面：左上角玩家状态，底部敌人名字和血条，按 H 打开的操作说明。
+## 屏幕界面：左上角玩家状态和铜钱魂玉，顶上的小地图，底部敌人名字和血条，
+## Tab 打开的整张地图，按 H 打开的操作说明，死亡结算，换房间的黑屏。
 
 const GOLD := Color("c9a24a")
 const GOLD_DARK := Color("6b5426")
@@ -11,8 +12,8 @@ const HELP := [
 	["2P", "←/→ 移动  ↑ 跳  ↓ 下  小键盘1 攻击 2 格挡 3 闪身 4 药罐 5 回旋斩 6 换架势"],
 	["招式", "连按攻击五连  下+攻击 升龙斩  空中攻击 空中斩  空中下+攻击 落雷斩  闪身中攻击 闪身突刺"],
 	["手柄", "A 跳  X 攻击  RB 格挡  B 闪身  Y 药罐  LB 回旋斩  十字键上 换架势"],
-	["对手", "1 浪人  2 野狗群  3 盾兵与弓手  4 荒村混战  5 头目·柳江远"],
-	["其他", "F2 2P 加入/退出  F1 低难度  F3 判定框  R 重置  Esc 退出"],
+	["闯关", "站在门、货物、香炉、供台前按 下 互动  Tab 地图  清完敌人出口才开"],
+	["其他", "F2 2P 加入/退出  F1 低难度  F3 判定框  F4 练武场（数字键换对手）  Esc 退出"],
 ]
 
 var main: Node
@@ -29,6 +30,36 @@ var _title_sub := ""
 var _title_time := 0.0
 
 const TITLE_TIME := 2.6
+const BANNER_TIME := 2.8
+
+var show_map := false
+var fade := 0.0             # 换房间时的黑屏
+var _banner := ""           # 进房间时顶上的房间名
+var _banner_sub := ""
+var _banner_time := 0.0
+var _bump := {"coin": 0.0, "jade": 0.0}
+var _death: Run = null      # 结算画面显示的那一局
+var _death_time := 0.0
+
+
+func room_banner(title: String, sub: String) -> void:
+	_banner = title
+	_banner_sub = sub
+	_banner_time = BANNER_TIME
+
+
+## 铜钱、魂玉数字跳一下
+func bump(kind: String) -> void:
+	_bump[kind] = 0.25
+
+
+func show_death(run: Run) -> void:
+	_death = run
+	_death_time = 0.0
+
+
+func hide_death() -> void:
+	_death = null
 
 
 ## 屏幕下方字幕
@@ -59,6 +90,10 @@ func _process(delta: float) -> void:
 	_toast_time = maxf(0.0, _toast_time - delta)
 	_line_time = maxf(0.0, _line_time - delta)
 	_title_time = maxf(0.0, _title_time - delta)
+	_banner_time = maxf(0.0, _banner_time - delta)
+	_death_time += delta
+	for k: String in _bump:
+		_bump[k] = maxf(0.0, float(_bump[k]) - delta)
 	queue_redraw()
 
 
@@ -76,6 +111,14 @@ func _draw() -> void:
 			_draw_boss_bar(font, e)
 			break
 
+	_draw_purse(font)
+	if Game.run != null and main.mode == "room":
+		_draw_minimap(font)
+	if _banner_time > 0.0:
+		var t := BANNER_TIME - _banner_time
+		var ba := clampf(t / 0.3, 0.0, 1.0) * clampf(_banner_time / 0.5, 0.0, 1.0)
+		_text_centered(font, _banner, Vector2(320, 52), Color(0.98, 0.94, 0.85, ba), 24)
+		_text_centered(font, _banner_sub, Vector2(320, 66), Color(GOLD, ba), 12)
 	if _title_time > 0.0:
 		_draw_title(font)
 	if _line_time > 0.0:
@@ -90,10 +133,17 @@ func _draw() -> void:
 		var a := clampf(_toast_time / 0.4, 0.0, 1.0)
 		_text_centered(font, _toast, Vector2(320, 70), Color(1, 0.95, 0.8, a), 12)
 
+	if show_map and Game.run != null:
+		_draw_map(font)
 	if show_help:
 		_draw_help(font)
 	else:
-		_text(font, "H 操作说明", Vector2(640 - 8, 354), Color(0.8, 0.78, 0.85, 0.45), 12, true)
+		var hint := "H 操作说明" + ("  Tab 地图" if Game.run != null else "")
+		_text(font, hint, Vector2(640 - 8, 354), Color(0.8, 0.78, 0.85, 0.45), 12, true)
+	if _death != null:
+		_draw_death(font)
+	if fade > 0.0:
+		draw_rect(Rect2(0, 0, 640, 360), Color(0.02, 0.01, 0.03, fade))
 
 
 func _frame(r: Rect2) -> void:
@@ -184,14 +234,15 @@ func _draw_player_panel(font: Font, p: Player, at: Vector2) -> void:
 	_frame(wi_r)
 	_will(wi_r, p.will / Player.MAX_WILL, p.will >= float(Player.ART["cost"]))
 	# 药罐
-	for i in range(Player.MAX_GOURDS):
+	for i in range(p.max_gourds):
 		_gourd(at + Vector2(140 + i * 9, 36), i < p.gourds)
 	# 弹反次数
 	_text(font, "弹反 × %d" % p.parry_count, at + Vector2(32, 40), Color(0.95, 0.85, 0.55), 12)
 	# 当前架势
 	_text(font, "架势 · " + str(p.stance()["name"]), at + Vector2(32, 54), Color(0.8, 0.86, 1.0), 12)
 	if p.state == Player.S.DEAD:
-		_text(font, "%.0f 秒后复活" % maxf(p.respawn_timer, 0.0), at + Vector2(110, 54), Color(1, 0.4, 0.4), 12)
+		var msg := "%.0f 秒后复活" % maxf(p.respawn_timer, 0.0) if p.auto_respawn else "清完这间复苏"
+		_text(font, msg, at + Vector2(110, 54), Color(1, 0.4, 0.4), 12)
 
 
 ## 头目登场：名字大字，上下两道金线从中间展开
@@ -249,3 +300,154 @@ func _text(font: Font, s: String, pos: Vector2, col: Color, size: int, right_ali
 func _text_centered(font: Font, s: String, pos: Vector2, col: Color, size: int) -> void:
 	var w := font.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 	_text(font, s, pos - Vector2(w / 2.0, 0), col, size)
+
+
+# ---------- 铜钱、魂玉 ----------
+
+func _draw_purse(font: Font) -> void:
+	var at := Vector2(14, 84)
+	if Game.run != null and main.mode == "room":
+		_purse_row(font, "coin", Game.run.coins, at)
+		_purse_row(font, "jade", Game.run.jade, at + Vector2(0, 14))
+	elif main.mode == "hub":
+		_purse_row(font, "jade", int(Game.save["jade"]), at)
+		_text(font, "（已存）", at + Vector2(46, 4), Color(0.75, 0.72, 0.8, 0.7), 12)
+
+
+func _purse_row(font: Font, kind: String, value: int, at: Vector2) -> void:
+	var b: float = _bump[kind]
+	var s := 1.0 + b * 1.2
+	draw_set_transform(at, 0.0, Vector2(s, s))
+	Icons.draw(self, kind, Vector2.ZERO, Color(1, 1, 1))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var col := Color("e0a860") if kind == "coin" else Color("7ee8c0")
+	if b > 0.0:
+		col = col.lerp(Color(1, 1, 1), 0.6)
+	_text(font, str(value), at + Vector2(9, 4 - roundf(b * 8.0)), col, 12)
+
+
+# ---------- 地图 ----------
+
+## 顶上一排小格子：每列一个，走过的实心，现在的那格闪
+func _draw_minimap(_font: Font) -> void:
+	var r: Run = Game.run
+	var n := r.rows.size()
+	var step := 20.0
+	var x0 := 320.0 - (n - 1) * step / 2.0
+	var y := 16.0
+	draw_rect(Rect2(x0 - 12, y - 9, (n - 1) * step + 24, 18), Color(0, 0, 0, 0.35))
+	for i in range(n):
+		var c := Vector2(x0 + i * step, y)
+		if i < n - 1:
+			draw_rect(Rect2(c.x + 5, c.y, step - 10, 1), Color(0.6, 0.55, 0.5, 0.5 if i >= r.row else 0.9))
+		var nd: Dictionary = r.rows[i][r.col] if i == r.row else _visited_in(r, i)
+		var icon_type: String = nd["type"] if not nd.is_empty() else ""
+		var col: Color = LevelData.NODE_TYPES[icon_type]["color"] if icon_type != "" else Color(0.5, 0.48, 0.52)
+		if i == r.row:
+			var pulse := 0.6 + 0.4 * sin(_time * 6.0)
+			draw_rect(Rect2(c - Vector2(7, 7), Vector2(14, 14)), Color(col, 0.35 * pulse))
+			draw_rect(Rect2(c - Vector2(7, 7), Vector2(14, 14)), Color(col, pulse), false, 1.0)
+			Icons.draw(self, icon_type, c, col)
+		elif i < r.row:
+			Icons.draw(self, icon_type, c, col.darkened(0.25))
+		else:
+			# 还没走到：最后一格是头目，其余是问号点
+			if i == n - 1:
+				Icons.draw(self, "boss", c, Color(LevelData.NODE_TYPES["boss"]["color"], 0.8))
+			else:
+				draw_rect(Rect2(c - Vector2(1, 1), Vector2(3, 3)), Color(0.7, 0.66, 0.6, 0.6))
+
+
+func _visited_in(r: Run, i: int) -> Dictionary:
+	for nd: Dictionary in r.rows[i]:
+		if nd["visited"]:
+			return nd
+	return {}
+
+
+## Tab：整张地图，从左往右走，每列的房间竖着排，线是能走的路
+func _draw_map(font: Font) -> void:
+	var r: Run = Game.run
+	var box := Rect2(40, 40, 560, 270)
+	draw_rect(box, Color(0.04, 0.03, 0.06, 0.94))
+	_frame(box)
+	var fd := r.floor_data()
+	_text_centered(font, "%s · %s" % [fd["sub"], fd["name"]], Vector2(320, 60), Color(0.95, 0.9, 0.8), 12)
+	var n := r.rows.size()
+	var area := Rect2(72, 82, 496, 180)
+	var pos := func(i: int, j: int) -> Vector2:
+		var m: int = r.rows[i].size()
+		var x := area.position.x + area.size.x * i / float(n - 1)
+		var yy := area.position.y + area.size.y * (0.5 if m == 1 else j / float(m - 1))
+		return Vector2(x, yy).round()
+	# 路
+	for i in range(n - 1):
+		for j in range(r.rows[i].size()):
+			var nd: Dictionary = r.rows[i][j]
+			for k: int in nd["next"]:
+				var taken: bool = nd["visited"] and r.rows[i + 1][k]["visited"]
+				var avail := i == r.row and j == r.col
+				var col := Color(0.95, 0.85, 0.55) if taken else (Color(0.9, 0.8, 0.6, 0.85) if avail else Color(0.5, 0.46, 0.5, 0.5))
+				_dashed(pos.call(i, j), pos.call(i + 1, k), col, taken or avail)
+	# 房间
+	for i in range(n):
+		for j in range(r.rows[i].size()):
+			var nd: Dictionary = r.rows[i][j]
+			var c: Vector2 = pos.call(i, j)
+			var col: Color = LevelData.NODE_TYPES[nd["type"]]["color"]
+			var here := i == r.row and j == r.col
+			var reachable := i == r.row + 1 and (r.node()["next"] as Array).has(j)
+			draw_circle(c, 9, Color(0.02, 0.02, 0.03))
+			draw_circle(c, 8, Color(col, 0.25 if nd["visited"] or here else 0.1))
+			if here:
+				draw_arc(c, 10.0 + sin(_time * 6.0), 0, TAU, 20, Color(1, 0.95, 0.75), 1.0)
+			elif reachable:
+				draw_arc(c, 10.0, 0, TAU, 20, Color(col, 0.6 + 0.3 * sin(_time * 4.0)), 1.0)
+			Icons.draw(self, nd["type"], c, col if (nd["visited"] or here or reachable or i > r.row) else col.darkened(0.4))
+	# 图例
+	var lx := 70.0
+	for t: String in ["fight", "elite", "shop", "rest", "boss"]:
+		var spec: Dictionary = LevelData.NODE_TYPES[t]
+		Icons.draw(self, t, Vector2(lx, 290), spec["color"])
+		_text(font, spec["label"], Vector2(lx + 10, 294), Color(0.85, 0.82, 0.8), 12)
+		lx += 70.0
+	_text(font, "Tab 关闭", Vector2(590, 294), Color(0.75, 0.72, 0.8, 0.7), 12, true)
+
+
+func _dashed(a: Vector2, b: Vector2, col: Color, solid: bool) -> void:
+	var len := a.distance_to(b)
+	var dir := (b - a) / len
+	var d := 10.0
+	while d < len - 10.0:
+		var e := minf(d + (6.0 if not solid else 4.0), len - 10.0)
+		draw_line(a + dir * d, a + dir * e, col, 1.0)
+		d += 6.0 if solid else 9.0
+
+
+# ---------- 死亡结算 ----------
+
+func _draw_death(font: Font) -> void:
+	var t := _death_time
+	var a := clampf(t / 0.6, 0.0, 1.0)
+	draw_rect(Rect2(0, 0, 640, 360), Color(0.05, 0.0, 0.01, 0.72 * a))
+	var c := Vector2(320, 130)
+	var spread := clampf(t / 0.6, 0.0, 1.0)
+	draw_rect(Rect2(c.x - 170 * spread, c.y - 34, 340 * spread, 1), Color(0.75, 0.15, 0.12, a))
+	draw_rect(Rect2(c.x - 170 * spread, c.y + 12, 340 * spread, 1), Color(0.75, 0.15, 0.12, a))
+	_text_centered(font, "身 死", c + Vector2(0, 4), Color(0.9, 0.18, 0.15, a), 36)
+	var r := _death
+	var kept := int(floor(r.jade * LevelData.DEATH_KEEP))
+	var la := clampf((t - 0.7) / 0.4, 0.0, 1.0)
+	var lines := [
+		["走到", "第 %d / %d 间 · %s" % [r.row + 1, r.rows.size(), LevelData.room(r.room_key())["name"]]],
+		["斩敌", "%d" % r.kills],
+		["魂玉", "%d → 带回 %d（60%%）" % [r.jade, kept]],
+		["铜钱", "%d · 散落" % r.coins],
+	]
+	for i in range(lines.size()):
+		var y := 178.0 + i * 16.0
+		_text(font, lines[i][0], Vector2(252, y), Color(GOLD, la), 12)
+		_text(font, lines[i][1], Vector2(292, y), Color(0.92, 0.9, 0.88, la), 12)
+	if t > 1.4:
+		var blink := 0.55 + 0.45 * sin(t * 4.0)
+		_text_centered(font, "按 攻击 回破庙", Vector2(320, 260), Color(1, 0.95, 0.8, blink), 12)

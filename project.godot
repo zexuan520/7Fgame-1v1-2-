@@ -5,8 +5,8 @@ config_version=5
 
 [application]
 
-config/name="残刃归途 - 战斗原型"
-config/description="只狼式格挡、弹反、架势与处决的 2D 战斗原型"
+config/name="残刃归途"
+config/description="只狼式格挡弹反的 2D 横版肉鸽：第一层山脚荒村"
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 

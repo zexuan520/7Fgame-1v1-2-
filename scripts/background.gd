@@ -9,6 +9,7 @@ const VIEW_H := 360.0
 
 var floor_y := 300.0
 var arena_w := 800.0
+var seed_value := 0
 var time := 0.0
 var _layers: Array[Layer] = []
 var _front: Array[Layer] = []
@@ -26,6 +27,11 @@ class Layer extends Node2D:
 
 
 func _ready() -> void:
+	_build()
+
+
+## 子类（荒村、河畔）重写这两个函数换一套图层
+func _build() -> void:
 	_rng.seed = 7
 	for i in range(30):
 		_petals.append(Vector3(_rng.randf() * arena_w, _rng.randf() * floor_y, _rng.randf() * TAU))
@@ -46,6 +52,10 @@ func _ready() -> void:
 
 ## 前景层要放在角色前面，由主场景加到更高的层级
 func make_foreground() -> Array[Layer]:
+	return _build_front()
+
+
+func _build_front() -> Array[Layer]:
 	var add := CanvasItemMaterial.new()
 	add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 	_front.append(_new_layer(1.0, _paint_fireflies, add))
@@ -76,8 +86,19 @@ func set_camera(cam_left: float) -> void:
 		l.position.x = cam_left * (1.0 - l.factor)
 
 
+## 视差层要画多宽才能盖住整个房间
+func span(factor: float) -> float:
+	return VIEW_W + maxf(arena_w - VIEW_W, 0.0) * factor + 40.0
+
+
 func _process(delta: float) -> void:
 	time += delta
+	_tick(delta)
+	for l in _layers + _front:
+		l.queue_redraw()
+
+
+func _tick(delta: float) -> void:
 	for i in range(_petals.size()):
 		var p := _petals[i]
 		p.z += delta * 2.0
@@ -92,8 +113,6 @@ func _process(delta: float) -> void:
 		f.x += cos(f.z * 0.7 + i) * 8.0 * delta
 		f.y += sin(f.z * 1.1 + i * 2.0) * 6.0 * delta
 		_flies[i] = f
-	for l in _layers + _front:
-		l.queue_redraw()
 
 
 # ---------- 各层 ----------

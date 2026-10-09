@@ -81,6 +81,8 @@ func _setup() -> void:
 	for a in InputMap.get_actions():
 		Input.action_release(a)
 	Engine.time_scale = 1.0
+	Game.practice = true   # 战斗测试都在练武场里跑
+	Game.run = null
 	main = load("res://scenes/main.tscn").instantiate()
 	get_tree().root.add_child(main)
 	await get_tree().physics_frame

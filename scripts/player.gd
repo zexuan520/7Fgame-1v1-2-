@@ -64,6 +64,9 @@ var respawn_timer := 0.0
 var clock := 0.0
 var parry_count := 0                # 统计，用于界面显示
 var gourds := MAX_GOURDS
+var max_gourds := MAX_GOURDS        # 商人的空药罐、破庙供台能加
+var dmg_mult := 1.0                 # 磨刀石加攻击
+var auto_respawn := true            # 练武场倒下 3 秒自动复活；闯关时要清完房间才复活
 var stance_index := 0               # 当前架势（见 Stance.LIST）
 var _switch_t := -1.0               # 切换架势的转刀动画
 var _drawn_timer := 0.0             # 打完之后多久收刀入鞘
@@ -304,7 +307,7 @@ func _physics_process(delta: float) -> void:
 		S.DEAD:
 			velocity.x = 0.0
 			respawn_timer -= delta
-			if respawn_timer <= 0.0:
+			if respawn_timer <= 0.0 and auto_respawn:
 				respawn()
 		S.DRINK: _state_drink(delta)
 		S.ART: _state_art(delta)

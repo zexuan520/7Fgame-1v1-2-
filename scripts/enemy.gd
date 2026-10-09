@@ -11,6 +11,7 @@ const COOP_POSTURE_MULT := 1.4      # 双人时架势 ×1.4
 const BROKEN_TIME := 2.0            # 架势满 → 处决窗口 2 秒
 const INTRO_TURN := 4.2             # 头目登场：说完话转身拔刀
 const INTRO_END := 5.2
+const AGGRO_RANGE := 300.0          # 房间里站着的敌人，玩家走到这么近才动手
 
 var kind := "ronin"
 var data: Dictionary = {}
@@ -34,6 +35,7 @@ var _feinted := false
 var _retreat_t := 0.0
 var _intro_said := 0
 var _keep_jitter := 0.0     # 每个敌人想站的距离稍微错开，不会挤在一个点上
+var aggro := true           # false 时站着不动，等玩家走近（房间里的第一波）
 var _side := 1              # 包抄的一边（ai.flank 为 true 时有一半会绕到玩家另一边）
 
 # 美术
@@ -196,6 +198,8 @@ func _enter(s: S) -> void:
 	state_time = 0.0
 	if s == S.DYING:
 		_fell = false
+		if main != null and main.has_method("on_enemy_killed"):
+			main.on_enemy_killed(self)
 
 
 func _phase_data() -> Dictionary:
@@ -334,13 +338,20 @@ func _state_idle(delta: float) -> void:
 	if target == null:
 		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 		return
+	if not aggro:
+		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
+		if absf(target.global_position.x - global_position.x) < AGGRO_RANGE:
+			wake()
+		else:
+			facing = 1 if target.global_position.x >= global_position.x else -1
+			return
 	var dx := target.global_position.x - global_position.x
 	var dist := absf(dx)
 	var speed: float = data["speed"]
 	if _side < 0 and attack_cooldown > 0.0 and dist < 160.0 and _retreat_t <= 0.0:
 		# 包抄：从玩家身边窜过去，绕到另一边
 		var goal := target.global_position.x + signf(-dx if dx != 0.0 else 1.0) * -90.0
-		if goal < 30.0 or goal > float(main.ARENA_W) - 30.0:
+		if goal < 30.0 or goal > float(main.arena_w) - 30.0:
 			_side = 1   # 那边是墙，绕不过去
 		elif absf(goal - global_position.x) > 12.0:
 			velocity.x = move_toward(velocity.x, signf(goal - global_position.x) * speed * 1.2, 1500.0 * delta)
@@ -524,11 +535,23 @@ func _on_attack_result(result: String, p: Player) -> void:
 
 # ---------- 受击 ----------
 
+## 醒过来开始打（附近站着的同伴一起醒）
+func wake() -> void:
+	if aggro:
+		return
+	aggro = true
+	attack_cooldown = maxf(attack_cooldown, 0.5)
+	for o: Enemy in main.get_enemies():
+		if o != self and not o.aggro and absf(o.global_position.x - global_position.x) < 220.0:
+			o.wake()
+
+
 ## 玩家攻击命中时调用。返回 hit / blocked / guardbreak / none
 func receive_player_hit(atk: Dictionary, p: Player) -> String:
 	if not is_hittable() or state == S.BROKEN:
 		return "none"
-	var dmg: float = atk["dmg"]
+	wake()
+	var dmg: float = float(atk["dmg"]) * p.dmg_mult
 	var p_amount: float = atk["posture"]
 	var heavy: bool = atk["heavy"]
 	var from_front := (p.global_position.x >= global_position.x) == (facing == 1)

@@ -20,7 +20,7 @@ func _physics_process(delta: float) -> void:
 		_trail.pop_back()
 	global_position += velocity * delta
 	_life -= delta
-	if _life <= 0.0 or global_position.x < -60.0 or global_position.x > float(main.ARENA_W) + 60.0:
+	if _life <= 0.0 or global_position.x < -60.0 or global_position.x > float(main.arena_w) + 60.0:
 		queue_free()
 		return
 	if deflected_by == null:

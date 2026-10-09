@@ -1,5 +1,5 @@
 extends Node
-## 全局单例（自动加载为 Game）：按键映射、中文字体、调试开关。
+## 全局单例（自动加载为 Game）：按键映射、中文字体、调试开关、这一局的状态、存档。
 
 const PARRY_WINDOW := 0.15        # 设计文档：弹反窗口 0.15 秒
 const PARRY_WINDOW_EASY := 0.25   # 低难度 0.25 秒
@@ -7,6 +7,13 @@ const PARRY_WINDOW_EASY := 0.25   # 低难度 0.25 秒
 var easy_mode := false
 var show_hitboxes := false
 var font: Font
+
+var practice := false             # 练武场：旧的单场地，数字键换对手（F4 切换）
+var run: Run = null               # 正在进行的一局；null 时在破庙
+var last_result := {}             # 上一局的结算，回到破庙时显示
+var save_path := "user://save.cfg"
+## 存档：魂玉、供台等级、统计
+var save := {"jade": 0, "altar": {}, "runs": 0, "clears": 0, "deaths": 0, "best_row": 0}
 
 
 func _ready() -> void:
@@ -19,6 +26,26 @@ func _ready() -> void:
 	pixel.oversampling = 1.0
 	font = pixel
 	_setup_inputs()
+	load_save()
+
+
+func load_save() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(save_path) != OK:
+		return
+	for k: String in save.keys():
+		save[k] = cfg.get_value("save", k, save[k])
+
+
+func write_save() -> void:
+	var cfg := ConfigFile.new()
+	for k: String in save.keys():
+		cfg.set_value("save", k, save[k])
+	cfg.save(save_path)
+
+
+func altar_level(id: String) -> int:
+	return int((save["altar"] as Dictionary).get(id, 0))
 
 
 func parry_window() -> float:
@@ -42,6 +69,10 @@ func _setup_inputs() -> void:
 	_add_keys("toggle_easy", [KEY_F1])
 	_add_keys("toggle_hitbox", [KEY_F3])
 	_add_keys("toggle_help", [KEY_H])
+	_add_keys("toggle_map", [KEY_TAB])
+	_add_pad_button("toggle_map", 0, JOY_BUTTON_BACK)
+	_add_pad_button("toggle_map", 1, JOY_BUTTON_BACK)
+	_add_keys("toggle_practice", [KEY_F4])
 	_add_keys("reset", [KEY_R])
 	# 数字键 1-5 换对手（见 EnemyData.ENCOUNTERS）
 	var nums := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9]
