@@ -45,7 +45,7 @@ class Look:
 	var scale := 1.0
 	var sword_len := 24.0
 	var width := 1.0
-	var weapon := "katana"             # katana 太刀 / dual 双短刃 / nodachi 野太刀 / spear 长枪 / fist 铁拳
+	var weapon := "katana"             # katana 太刀 / dual 双短刃 / nodachi 野太刀 / spear 长枪 / fist 铁拳 / staff 长棍（僧兵）
 	var helm := ""                     # 头甲：hood 头巾 / kasa 斗笠 / kabuto 铁盔
 	var armor := ""                    # 身甲：vest 短打 / leather 皮甲 / plate 铁甲
 
@@ -534,6 +534,16 @@ static func _draw_sword(ci: CanvasItem, hand: Vector2, angle: float, pal: _Pal, 
 		ci.draw_line(head, point, pal.c(look.blade_edge), 1.0)
 		ci.draw_line(head - dir * 1.5 - n * 1.5, head - dir * 4.0 - n * 2.5, pal.c(Color("c0302a")), 2.0)
 		ci.draw_line(head - dir * 1.5 + n * 1.0, head - dir * 4.5 + n * 0.5, pal.c(Color("e04a3a")), 1.0)
+		return
+	if look.weapon == "staff":
+		# 长棍：一根木杆从手后面伸出来，两头包铁（颜色用 blade 当木头、tsuba 当铁箍）
+		var back := hand - dir * 18.0
+		var front := hand + dir * look.sword_len
+		ci.draw_line(back, front, pal.outline, 4.0)
+		ci.draw_line(back, front, pal.c(look.blade), 2.0)
+		ci.draw_line(back + n * 0.5, front + n * 0.5, pal.c(look.blade.lightened(0.25)), 1.0)
+		for end in [back, front]:
+			ci.draw_line(end, end - dir * 4.0 if end == front else end + dir * 4.0, pal.c(look.tsuba), 2.0)
 		return
 	var guard := hand + dir * 2.5
 	var tip := hand + dir * look.sword_len

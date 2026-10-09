@@ -147,6 +147,10 @@ func _build_room(def: Dictionary) -> void:
 			bv.mood = String(def.get("mood", "dusk"))
 			background = bv
 		"river": background = BgRiver.new()
+		"bamboo_temple":
+			var bb := BgBamboo.new()
+			bb.mood = String(def.get("mood", "mist"))
+			background = bb
 		_: background = Background.new()
 	background.floor_y = FLOOR_Y
 	background.arena_w = arena_w
@@ -311,7 +315,7 @@ func _load_hub() -> void:
 	var res := Game.last_result
 	if not res.is_empty():
 		if res["victory"]:
-			hud.title_card("第一层 · 通关", "魂玉 +%d 全部带回" % res["kept"])
+			hud.title_card("平安回城", "%s通关 · 魂玉 +%d 全部带回" % [res.get("floor", ""), res["kept"]])
 		else:
 			hud.title_card("回到破庙", "魂玉 %d → 带回 %d（60%%）" % [res["jade"], res["kept"]])
 		Game.last_result = {}
@@ -483,7 +487,7 @@ func _on_room_cleared() -> void:
 	cleared = true
 	var r := Game.run
 	r.rooms_cleared += 1
-	var jade: int = LevelData.CLEAR_JADE.get(r.room_type(), 0)
+	var jade := floor_jade(int(LevelData.CLEAR_JADE.get(r.room_type(), 0)))
 	var at := Vector2(camera.position.x, FLOOR_Y - 80.0)
 	if jade > 0:
 		spawn_pickups("jade", jade, at)
@@ -506,26 +510,57 @@ func _on_room_cleared() -> void:
 		_reward_timer = REWARD_DELAY
 	if r.is_last_room():
 		Game.save["clears"] = int(Game.save["clears"]) + 1
+		Game.save["best_floor"] = maxi(int(Game.save["best_floor"]), r.floor_index + 1)
 		# 头目的身世：打败几次给第几片
 		var boss: String = r.room()["waves"][0][0][0]
-		grant_memory(Story.boss_fragment(boss, int(Game.save["clears"])), at)
-		var it := _add_interactable("door", exit_x() - 60.0, "回破庙", "temple", Color("e0a050"), {"action": "victory"})
-		it.sub = "第二层 · 尚未开放"
-		it.set_enabled(true)
-		_open_later(it)
+		var kills: Dictionary = Game.save["boss_kills"]
+		kills[boss] = int(kills.get(boss, 0)) + 1
+		grant_memory(Story.boss_fragment(boss, int(kills[boss])), at)
+		# 层末：回城（魂玉全部带回）或继续登山（带着这一局的一切去下一层）
+		var doors := []
+		var nxt := r.floor_index + 1
+		if nxt < LevelData.FLOORS.size():
+			var nfd := LevelData.floor_data(nxt)
+			var home := _add_interactable("door", exit_x() - 230.0, "回城", "temple", Color("e0a050"), {"action": "victory"})
+			home.sub = "魂玉全部带回"
+			var climb := _add_interactable("door", exit_x() - 100.0, "继续登山", "boss", Color("9a7cff"), {"action": "climb"})
+			climb.sub = "%s · %s" % [nfd["sub"], nfd["name"]]
+			doors = [home, climb]
+		else:
+			var it := _add_interactable("door", exit_x() - 60.0, "回破庙", "temple", Color("e0a050"), {"action": "victory"})
+			it.sub = "再往上 · 尚未开放"
+			doors = [it]
+		_open_later(doors, "%s · 通关" % r.floor_data()["sub"], EnemyData.TYPES[boss]["name"] + " 击破")
 	else:
 		hud.toast("清场 · 出口开了")
 
 
 ## 门在头目倒下一会儿之后再出现，让死亡台词说完
-func _open_later(it: Interactable) -> void:
-	it.visible = false
-	await get_tree().create_timer(2.5, true, false, true).timeout
-	if is_instance_valid(it):
-		it.visible = true
+func _open_later(doors: Array, title: String, sub: String) -> void:
+	for it: Interactable in doors:
+		it.visible = false
 		it.set_enabled(true)
-		spawn_ring(it.global_position + Vector2(0, -30), Color(1.0, 0.75, 0.4), 50.0)
-		hud.title_card("第一层 · 通关", "断水 · 柳江远 击破")
+	await get_tree().create_timer(2.5, true, false, true).timeout
+	for it: Interactable in doors:
+		if is_instance_valid(it):
+			it.visible = true
+			spawn_ring(it.global_position + Vector2(0, -30), Color(1.0, 0.75, 0.4), 50.0)
+	if not doors.is_empty() and is_instance_valid(doors[0]):
+		hud.title_card(title, sub)
+
+
+## 这一层的魂玉倍率（第二层 ×1.3）
+func floor_jade(n: int) -> int:
+	if n <= 0 or Game.run == null or mode != "room":
+		return n
+	return roundi(n * float(Game.run.floor_data().get("scale", {}).get("jade", 1.0)))
+
+
+## 继续登山：换到下一层，这一局的铜钱、魂玉、招式、装备都带着
+func _climb() -> void:
+	_fade_then(func() -> void:
+		Game.run.next_floor()
+		_load_room())
 
 
 # ---------- 清房奖励：三选一 ----------
@@ -638,7 +673,7 @@ func _finish_run(victory: bool) -> void:
 	Game.save["jade"] = int(Game.save["jade"]) + kept
 	if not victory:
 		Game.save["deaths"] = int(Game.save["deaths"]) + 1
-	Game.last_result = {"victory": victory, "jade": r.jade, "kept": kept, "coins": r.coins,
+	Game.last_result = {"victory": victory, "jade": r.jade, "kept": kept, "coins": r.coins, "floor": r.floor_data()["sub"],
 		"kills": r.kills, "rooms": r.rooms_cleared}
 	Game.write_save()
 	Game.run = null
@@ -655,7 +690,7 @@ func on_enemy_killed(e: Enemy) -> void:
 	if drop.has("coins"):
 		spawn_pickups("coin", int(drop["coins"]), at)
 	if drop.has("jade"):
-		spawn_pickups("jade", int(drop["jade"]), at)
+		spawn_pickups("jade", floor_jade(int(drop["jade"])), at)
 	# 精英有一半几率掉记忆碎片
 	if not e.is_grunt() and e.kind != "liu" and randf() < ELITE_MEMORY:
 		grant_memory(Story.next_fragment(), at)
@@ -792,6 +827,7 @@ func interact(it: Interactable, p: Player) -> void:
 				"start_run": _start_run()
 				"next": _go_next(int(it.data["col"]))
 				"victory": _finish_run(true)
+				"climb": _climb()
 		"item":
 			if not it.enabled:
 				return
@@ -1536,6 +1572,10 @@ func spawn_enemy(kind: String, pos: Vector2) -> Enemy:
 	var e := Enemy.create(kind)
 	e.main = self
 	e.position = pos
+	if mode == "room" and Game.run != null:
+		var sc: Dictionary = Game.run.floor_data().get("scale", {})
+		e.hp_mult = float(sc.get("hp", 1.0))
+		e.dmg_mult = float(sc.get("dmg", 1.0))
 	world.add_child(e)
 	enemies.append(e)
 	e.set_coop(players.size() >= 2)

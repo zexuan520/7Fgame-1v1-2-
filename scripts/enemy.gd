@@ -40,6 +40,8 @@ var _feinted := false
 var _retreat_t := 0.0
 var _intro_said := 0
 var intro_lines: Array = []  # 这次登场说的话
+var hp_mult := 1.0          # 层级系数（设计文档第 13 节）：第二层生命 ×1.4、伤害 ×1.2
+var dmg_mult := 1.0
 var _keep_jitter := 0.0     # 每个敌人想站的距离稍微错开，不会挤在一个点上
 var aggro := true           # false 时站着不动，等玩家走近（房间里的第一波）
 var perch := false          # 守在高处不走动（站在屋顶、望楼上的弓手）
@@ -164,7 +166,7 @@ func display_name() -> String:
 func _apply_stats(full: bool) -> void:
 	var hp_ratio := 1.0 if full else hp / max_hp
 	var posture_ratio := 0.0 if full else posture / max_posture
-	max_hp = float(data["hp"]) * (COOP_HP_MULT if coop else 1.0)
+	max_hp = float(data["hp"]) * hp_mult * (COOP_HP_MULT if coop else 1.0)
 	max_posture = float(data["posture"]) * (COOP_POSTURE_MULT if coop else 1.0)
 	hp = max_hp * hp_ratio
 	posture = max_posture * posture_ratio
@@ -501,7 +503,11 @@ func _state_active(_delta: float) -> void:
 				continue
 			if r.intersects(p.body_rect()):
 				hit_targets.append(p)
-				var result := p.receive_enemy_hit(m, self)
+				var info := m
+				if dmg_mult != 1.0:
+					info = m.duplicate()
+					info["dmg"] = float(m["dmg"]) * dmg_mult
+				var result := p.receive_enemy_hit(info, self)
 				_on_attack_result(result, p)
 				if state != S.ACTIVE:
 					return
@@ -808,7 +814,7 @@ func _state_intro(delta: float) -> void:
 		_intro_said = 99
 		if p != null:
 			facing = 1 if p.global_position.x >= global_position.x else -1
-		main.hud.title_card(display_name(), "第一层 · 山脚荒村")
+		main.hud.title_card(display_name(), String(data.get("title_sub", "第一层 · 山脚荒村")))
 		main.shake(2.0)
 		main.spawn_dust(global_position, 0.0, 10)
 	if state_time >= INTRO_END:
@@ -850,8 +856,9 @@ func _spawn_fx() -> void:
 					dir.y = clampf(dir.y, -0.6, 0.6)
 					dir = dir.normalized()
 			a.velocity = dir * float(info["speed"])
-			a.dmg = info["dmg"]
+			a.dmg = float(info["dmg"]) * dmg_mult
 			a.posture = info["posture"]
+			a.star = info.get("style", "") == "star"
 			a.position = global_position + Vector2(facing * 14.0, -34.0)
 			main.fx_root.add_child(a)
 		"slash":

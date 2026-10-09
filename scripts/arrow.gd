@@ -10,6 +10,7 @@ var facing := 1
 var dmg := 16.0
 var posture := 22.0
 var deflected_by: Player = null     # 被谁弹回去的（弹回之后只打敌人）
+var star := false                   # 忍者的手里剑：画成转着的四角星
 var _life := LIFE
 var _trail: Array[Vector2] = []
 
@@ -68,6 +69,9 @@ func _check_enemies() -> void:
 
 
 func _draw() -> void:
+	if star:
+		_draw_star()
+		return
 	var back := deflected_by != null
 	var shaft := Color("c9b08a") if not back else Color(1.0, 0.85, 0.4)
 	for i in range(_trail.size()):
@@ -82,3 +86,22 @@ func _draw() -> void:
 	# 箭羽
 	draw_line(-d * 12.0, -d * 15.0 - n * 2.0, Color(0.9, 0.9, 0.85), 1.0)
 	draw_line(-d * 12.0, -d * 15.0 + n * 2.0, Color(0.9, 0.9, 0.85), 1.0)
+
+
+func _draw_star() -> void:
+	var a := (LIFE - _life) * 22.0
+	var col := Color(0.75, 0.78, 0.85) if deflected_by == null else Color(1.0, 0.85, 0.4)
+	for i in range(_trail.size()):
+		var p := _trail[i] - global_position
+		draw_circle(p, 2.0, Color(col, 0.25 * (1.0 - float(i) / _trail.size())))
+	var pts := PackedVector2Array()
+	for k in range(8):
+		var r := 6.0 if k % 2 == 0 else 2.0
+		pts.append(Vector2(cos(a + k * PI / 4.0), sin(a + k * PI / 4.0)) * r)
+	draw_colored_polygon(pts, Color(0.05, 0.04, 0.06))
+	var inner := PackedVector2Array()
+	for p in pts:
+		inner.append(p * 0.75)
+	draw_colored_polygon(inner, col)
+	draw_circle(Vector2.ZERO, 1.0, Color(0.1, 0.1, 0.12))
+

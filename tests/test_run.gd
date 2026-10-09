@@ -47,6 +47,9 @@ func _run() -> void:
 	_reset_save()
 	await _setup()
 	await test_shop_services()
+	_reset_save()
+	await _setup()
+	await test_climb()
 	test_room_layouts()
 	await _setup()
 	await test_features()
@@ -95,6 +98,8 @@ func _reset_save() -> void:
 	Game.save["arts"] = []
 	Game.save["memories"] = []
 	Game.save["meets"] = {}
+	Game.save["boss_kills"] = {}
+	Game.save["best_floor"] = 0
 	Game.save["clears"] = 0
 	Game.save["runs"] = 0
 
@@ -1163,3 +1168,67 @@ func test_shop_services() -> void:
 	await _press("p1_guard")
 	_check(main.shop_player == null and not p.frozen, "格挡离开")
 	_check(old_stock != "" and r.stock()[0] == "refill", "刷新后补药还在第一格")
+
+
+# ---------- 回城 / 继续登山，第二层 ----------
+
+## 跳到这一层的头目房，打倒头目，等门出来
+func _beat_boss() -> void:
+	var r: Run = Game.run
+	r.row = r.rows.size() - 2
+	r.col = 0
+	main._go_next(0)
+	await _wait_fade()
+	_kill_all()
+	await _frames(200)
+
+
+func test_climb() -> void:
+	print("回城或继续登山，第二层竹林古寺")
+	var ok := true
+	for i in range(100):
+		var rr := Run.create(1, i)
+		ok = ok and rr.rows[0][0]["room"] == "temple_steps" and rr.rows[-1][0]["room"] == "zen_hall"
+		for row: Array in rr.rows:
+			for nd: Dictionary in row:
+				ok = ok and LevelData.ROOMS[nd["room"]]["theme"] == "bamboo_temple"
+	_check(ok, "第二层地图：古寺石阶出发，寂光殿收尾，全是竹林古寺的房间")
+	var p := _p()
+	main.interact(_find("door", "action", "start_run"), p)
+	await _wait_fade()
+	var r: Run = Game.run
+	r.coins = 50
+	p.build["arts"][1] = {"id": "kuujin", "lv": 2}
+	var weapon: Dictionary = p.gear["weapon"]
+	await _beat_boss()
+	var home := _find("door", "action", "victory")
+	var climb := _find("door", "action", "climb")
+	_check(home != null and climb != null and home.visible and climb.visible and climb.enabled, "打倒柳江远：回城、继续登山两扇门")
+	_check(climb.sub == "第二层 · 竹林古寺", "继续登山的门写着第二层")
+	var jade := r.jade
+	main.interact(climb, p)
+	await _wait_fade()
+	_check(r.floor_index == 1 and r.row == 0 and r.room_key() == "temple_steps", "到了第二层古寺石阶（%s）" % r.room_key())
+	_check(r.coins >= 50 and r.jade == jade and p.build["arts"][1]["id"] == "kuujin" and p.gear["weapon"] == weapon,
+		"铜钱、魂玉、招式、装备都带着")
+	_check(r.room_id().begins_with("1_"), "房间坐标带上层数（%s）" % r.room_id())
+	_check(main.floor_jade(10) == 13, "第二层魂玉 ×1.3")
+	var col: int = r.node()["next"][0]
+	r.rows[1][col]["type"] = "fight"
+	r.rows[1][col]["room"] = "bamboo_sea"
+	main._go_next(col)
+	await _wait_fade()
+	var e: Enemy = main.enemies[0]
+	_check(is_equal_approx(e.max_hp, float(e.data["hp"]) * 1.4) and is_equal_approx(e.dmg_mult, 1.2),
+		"敌人生命 ×1.4、伤害 ×1.2（%s %.0f）" % [e.kind, e.max_hp])
+	_check(main.background is BgBamboo, "换成竹林古寺的景")
+	await _beat_boss()
+	_check(main.enemies.is_empty() or main.enemies[0].kind == "jakko", "第二层头目是寂光")
+	_check(_find("door", "action", "climb") == null and _find("door", "action", "victory") != null, "再往上还没开，只有回破庙")
+	_check(Story.has("jakko_0") and int(Game.save["boss_kills"]["jakko"]) == 1, "想起寂光的第一段身世")
+	jade = r.jade
+	var before := int(Game.save["jade"])
+	main.interact(_find("door", "action", "victory"), p)
+	await _wait_fade()
+	_check(main.mode == "hub" and int(Game.save["jade"]) == before + jade, "回城魂玉全部带回（+%d）" % jade)
+	_check(int(Game.save["best_floor"]) == 2, "记下最远到第二层")

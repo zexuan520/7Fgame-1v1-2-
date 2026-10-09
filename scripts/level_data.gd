@@ -9,14 +9,16 @@ extends RefCounted
 ##                          [类型, 权重] 抽 count 个（同列不重复，"fight" 可以重复）
 ##   pools                  每种房间类型能抽到的房间
 ##   events                 这一层的奇遇房能碰到哪些奇遇（见 Events），一局里不重复
+##   scale                  层级系数（设计文档第 13 节）：hp 敌人生命、dmg 敌人伤害、jade 魂玉产出的倍率
 ##
 ## 房间类型：start 起点 / fight 战斗 / elite 精英 / shop 商人 / rest 土地庙 / event 奇遇 / boss 头目
 ##
 ## 房间字段：
 ##   name                   显示名
 ##   width                  房间宽度（画面 640，宽的房间镜头会跟着走）
-##   theme                  village 荒村 / river 河畔夜 / temple 破庙
-##   mood                   荒村的天色和远近景：dusk 黄昏 / night 月夜 / graves 乱坟岗 / fog 雾田 / bamboo 竹林 / camp 山贼营
+##   theme                  village 荒村 / river 河畔夜 / temple 破庙 / bamboo_temple 竹林古寺（第二层）
+##   mood                   荒村的天色和远近景：dusk 黄昏 / night 月夜 / graves 乱坟岗 / fog 雾田 / bamboo 竹林 / camp 山贼营；
+##                          竹林古寺：mist 晨雾 / dusk 暮钟 / night 寺夜
 ##   exit_x                 出口门画在哪儿（不写就贴着右墙）。门右边还有地方时可以藏一间密室
 ##   features               跑酷和解谜机关：坑、竹签、烂木板、寨门、拉杆、石灯笼、裂墙，写法见 RoomFeatures 开头
 ##   seed                   背景随机种子（房子、树的位置）
@@ -52,6 +54,31 @@ const FLOORS := [
 			"boss": ["river"],
 		},
 		"events": ["blood_altar", "wounded_ronin", "gambler", "grave_mound", "hermit", "mirror"],
+		"scale": {"hp": 1.0, "dmg": 1.0, "jade": 1.0},
+	},
+	{
+		"name": "竹林古寺", "sub": "第二层",
+		"rows": [
+			{"count": 1, "types": [["start", 1]]},
+			{"count": 2, "types": [["fight", 1]]},
+			{"count": 3, "types": [["fight", 3], ["shop", 1], ["rest", 1], ["event", 2]]},
+			{"count": 3, "types": [["fight", 3], ["elite", 2]]},
+			{"count": 3, "types": [["fight", 2], ["shop", 2], ["rest", 2], ["event", 2]]},
+			{"count": 2, "types": [["fight", 2], ["elite", 1]]},
+			{"count": 1, "types": [["rest", 1]]},
+			{"count": 1, "types": [["boss", 1]]},
+		],
+		"pools": {
+			"start": ["temple_steps"],
+			"fight": ["bamboo_sea", "bell_court", "monk_dorm", "stone_garden", "hanging_bridge"],
+			"elite": ["hakai_hall", "shadow_court"],
+			"shop": ["temple_market"],
+			"rest": ["bamboo_shrine"],
+			"event": ["zen_garden", "ruined_gate"],
+			"boss": ["zen_hall"],
+		},
+		"events": ["blood_altar", "wounded_ronin", "gambler", "grave_mound", "hermit", "mirror"],
+		"scale": {"hp": 1.4, "dmg": 1.2, "jade": 1.3},
 	},
 ]
 
@@ -177,6 +204,89 @@ const ROOMS := {
 	"river": {"name": "断水河畔", "width": 840.0, "theme": "river", "seed": 13,
 		"waves": [[["liu", 600.0]]], "intro": true},
 
+	# ========== 第二层：竹林古寺 ==========
+	"temple_steps": {"name": "古寺石阶", "width": 720.0, "theme": "bamboo_temple", "mood": "mist", "seed": 21,
+		"props": [["bamboo", 40.0], ["stone_lantern", 160.0], ["banner", 230.0], ["note", 320.0, 0.0, "steps"],
+			["urn", 380.0], ["jar", 398.0], ["stone_lantern", 470.0], ["bamboo", 640.0]],
+		"line": ["", "石阶尽头是寺门。钟声停了很多年了。"]},
+
+	"bamboo_sea": {"name": "竹海", "width": 2100.0, "theme": "bamboo_temple", "mood": "mist", "seed": 22,
+		"props": [["bamboo", 100.0], ["stone_lantern", 300.0], ["jar", 360.0], ["scaffold", 520.0], ["chest", 520.0, 112.0],
+			["box", 520.0, 56.0], ["crates", 610.0], ["box", 610.0, 34.0], ["urn", 660.0], ["bamboo", 760.0],
+			["bamboo", 1450.0], ["urn", 1600.0], ["jar", 1620.0], ["stone_lantern", 1900.0], ["bamboo", 2000.0]],
+		"features": [["pit", 980.0, 1060.0], ["spikes", 1120.0, 1160.0], ["pit", 1220.0, 1360.0], ["plank", 1290.0, 24.0, 44.0],
+			["lever", 1480.0, "a", 0.0, 2.2], ["gate", 1740.0, "a"]],
+		"line": ["", "竹子密得透不进光。有人在竹梢上跟着你。"],
+		"waves": [[["sohei", 560.0], ["shinobi", 640.0], ["archer", 520.0, 112.0], ["sohei", 1140.0], ["shinobi", 1580.0]],
+			[["shinobi", 40.0], ["shinobi", 900.0], ["sohei", 880.0]]]},
+	"bell_court": {"name": "钟楼前庭", "width": 2000.0, "theme": "bamboo_temple", "mood": "dusk", "seed": 23,
+		"props": [["banner", 160.0], ["wall", 300.0], ["urn", 300.0, 46.0], ["stone_lantern", 420.0], ["tower", 520.0],
+			["chest", 520.0, 100.0], ["jar", 600.0], ["barrel", 640.0], ["scaffold", 1350.0], ["box", 1350.0, 56.0],
+			["urn", 1600.0], ["banner", 1800.0]],
+		"features": [["pit", 960.0, 1200.0], ["ledge", 1040.0, 40.0, 40.0], ["plank", 1120.0, 62.0, 40.0],
+			["lantern", 1260.0, "b"], ["lantern", 1350.0, "b", 112.0], ["lantern", 1560.0, "b"],
+			["spikes", 1500.0, 1530.0], ["gate", 1660.0, "b"]],
+		"line": ["", "钟楼底下三盏长明灯。点亮它们，寺门才开。"],
+		"waves": [[["sohei", 440.0], ["archer", 520.0, 100.0], ["shinobi", 640.0], ["sohei", 1300.0], ["archer", 1350.0, 112.0]],
+			[["shinobi", 860.0], ["shinobi", 40.0]]]},
+	"monk_dorm": {"name": "僧寮", "width": 2000.0, "theme": "bamboo_temple", "mood": "night", "seed": 24,
+		"props": [["bamboo", 80.0], ["shed", 300.0], ["jar", 300.0, 74.0], ["stone_lantern", 420.0], ["house2", 640.0],
+			["urn", 600.0, 70.0], ["chest", 650.0, 128.0], ["barrel", 700.0], ["house2", 1300.0], ["jar", 1260.0, 70.0],
+			["urn", 1600.0], ["stone_lantern", 1880.0]],
+		"features": [["pit", 1000.0, 1080.0], ["lever", 1340.0, "c", 128.0], ["spikes", 1460.0, 1520.0], ["gate", 1660.0, "c"]],
+		"line": ["", "门闩挂在僧寮屋顶上。"],
+		"waves": [[["sohei", 470.0], ["shinobi", 520.0], ["shinobi", 600.0], ["archer", 1290.0, 128.0], ["sohei", 1570.0]],
+			[["archer", 640.0, 70.0], ["sohei", 860.0]]]},
+	"stone_garden": {"name": "枯山水", "width": 2200.0, "exit_x": 2060.0, "theme": "bamboo_temple", "mood": "mist", "seed": 25,
+		"props": [["bamboo", 60.0], ["stone_lantern", 200.0], ["jar", 230.0], ["urn", 420.0], ["bamboo", 900.0],
+			["scaffold", 1300.0], ["box", 1300.0, 56.0], ["stone_lantern", 1420.0], ["jar", 1600.0], ["bamboo", 1760.0],
+			["chest", 2150.0], ["urn", 2120.0], ["jar", 2180.0]],
+		"features": [["pit", 500.0, 580.0], ["pit", 650.0, 860.0], ["plank", 700.0, 30.0, 40.0], ["plank", 760.0, 56.0, 40.0],
+			["ledge", 820.0, 30.0, 40.0], ["spikes", 1000.0, 1060.0], ["lantern", 1150.0, "c"], ["lantern", 1300.0, "c", 112.0],
+			["lantern", 1500.0, "c"], ["gate", 1700.0, "c"], ["crack", 2088.0]],
+		"waves": [[["shinobi", 380.0], ["shinobi", 420.0], ["archer", 1300.0, 112.0], ["sohei", 1450.0]],
+			[["shinobi", 40.0], ["sohei", 2100.0], ["sohei", 2100.0]]]},
+	"hanging_bridge": {"name": "断桥", "width": 2100.0, "theme": "bamboo_temple", "mood": "night", "seed": 26,
+		"props": [["bamboo", 120.0], ["stone_lantern", 300.0], ["banner", 400.0], ["crates", 620.0], ["box", 620.0, 34.0],
+			["cart", 720.0], ["bamboo", 1460.0], ["tower", 1600.0], ["chest", 1600.0, 100.0], ["stone_lantern", 1950.0]],
+		"features": [["pit", 900.0, 1300.0], ["plank", 960.0, 30.0, 44.0], ["plank", 1040.0, 40.0, 44.0],
+			["plank", 1120.0, 30.0, 44.0], ["plank", 1200.0, 40.0, 44.0], ["spikes", 1400.0, 1440.0],
+			["lever", 1520.0, "a", 0.0, 2.4], ["gate", 1760.0, "a"]],
+		"line": ["", "桥板都烂了。一块一块踩过去，别停。"],
+		"waves": [[["sohei", 500.0], ["shinobi", 600.0], ["shinobi", 700.0], ["archer", 1600.0, 100.0], ["sohei", 1650.0]],
+			[["shinobi", 1350.0], ["shinobi", 40.0]]]},
+
+	"hakai_hall": {"name": "罗汉堂", "width": 1420.0, "theme": "bamboo_temple", "mood": "night", "seed": 27,
+		"props": [["bamboo", 120.0], ["jar", 200.0], ["stone_lantern", 360.0], ["urn", 560.0], ["banner", 640.0],
+			["wall", 750.0], ["stone_lantern", 840.0], ["fire", 920.0], ["banner", 1000.0], ["stone_lantern", 1070.0],
+			["urn", 1100.0], ["jar", 1115.0], ["note", 1140.0, 0.0, "hakai"]],
+		"features": [["spikes", 260.0, 300.0], ["pit", 420.0, 500.0]],
+		"line": ["破戒僧", "这寺里的佛，早被我砸了。"],
+		"waves": [[["hakai", 1160.0]]]},
+	"shadow_court": {"name": "影院", "width": 2100.0, "theme": "bamboo_temple", "mood": "dusk", "seed": 28,
+		"props": [["banner", 200.0], ["stone_lantern", 330.0], ["crates", 470.0], ["box", 470.0, 34.0], ["tower", 620.0],
+			["chest", 620.0, 100.0], ["urn", 700.0], ["crates", 1000.0], ["tower", 1400.0], ["stone_lantern", 1640.0],
+			["banner", 1900.0]],
+		"features": [["pit", 1100.0, 1190.0], ["spikes", 1250.0, 1300.0], ["lever", 1400.0, "a", 100.0], ["gate", 1720.0, "a"]],
+		"line": ["忍者", "……来了。"],
+		"waves": [[["hakai", 520.0], ["shinobi", 640.0], ["archer", 620.0, 100.0], ["shinobi", 1350.0]],
+			[["shinobi", 960.0], ["shinobi", 40.0]]]},
+
+	"temple_market": {"name": "山门下的货摊", "width": 960.0, "theme": "bamboo_temple", "mood": "dusk", "seed": 29,
+		"props": [["bamboo", 40.0], ["barrel_d", 80.0], ["fire", 120.0], ["stone_lantern", 740.0], ["banner", 860.0],
+			["bamboo", 920.0]]},
+	"bamboo_shrine": {"name": "竹林小祠", "width": 720.0, "theme": "bamboo_temple", "mood": "mist", "seed": 30,
+		"props": [["bamboo", 60.0], ["note", 190.0, 0.0, "shrine2"], ["urn", 250.0], ["stone_lantern", 300.0],
+			["stone_lantern", 420.0], ["jar", 470.0], ["bamboo", 600.0]]},
+	"zen_garden": {"name": "禅院", "width": 720.0, "theme": "bamboo_temple", "mood": "mist", "seed": 31,
+		"props": [["bamboo", 40.0], ["stone_lantern", 180.0], ["urn", 520.0], ["stone_lantern", 600.0], ["bamboo", 680.0]]},
+	"ruined_gate": {"name": "倒了的山门", "width": 720.0, "theme": "bamboo_temple", "mood": "night", "seed": 32,
+		"props": [["wall", 120.0], ["banner", 220.0], ["jar", 260.0], ["stone_lantern", 500.0], ["urn", 580.0],
+			["bamboo", 660.0]]},
+	"zen_hall": {"name": "寂光殿", "width": 840.0, "theme": "bamboo_temple", "mood": "night", "seed": 33,
+		"props": [["stone_lantern", 120.0], ["banner", 260.0], ["stone_lantern", 720.0]],
+		"waves": [[["jakko", 600.0]]], "intro": true},
+
 	# ---------- 据点 ----------
 	"temple": {"name": "破庙", "width": 800.0, "theme": "temple", "seed": 0},
 }
@@ -187,6 +297,9 @@ const NOTES := {
 	"grave": ["无名墓", "「这里埋着十七个想过河的人。刀都插在坟上了。」"],
 	"ronin": ["浪人的遗骸", "「我也想拿那把刀……他的居合，收刀比拔刀还快。」"],
 	"shrine": ["土地庙的签", "「签文：水不可断。想断水的人，先断了自己。」"],
+	"steps": ["石阶上的刻字", "「上山的人，把刀放下。」——刻字底下堆着一层断刀。"],
+	"hakai": ["罗汉堂的供桌", "「十八罗汉，碎了十七尊。剩下那尊的脸，被人一棍子敲平了。」"],
+	"shrine2": ["小祠的签", "「签文：静。不动的刀，才是最快的刀。」"],
 }
 
 ## 房间类型在地图上的样子：图标名、颜色、门上的字

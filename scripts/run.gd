@@ -57,8 +57,18 @@ func room_type() -> String:
 	return node()["type"]
 
 
+## 房间坐标（层_列_个），商人货、土地庙、奇遇按它记
 func room_id() -> String:
-	return "%d_%d" % [row, col]
+	return "%d_%d_%d" % [floor_index, row, col]
+
+
+## 继续登山：换到下一层的新地图，钱、魂玉、招式、装备都留着
+func next_floor() -> void:
+	floor_index += 1
+	row = 0
+	col = 0
+	_generate()
+	rows[0][0]["visited"] = true
 
 
 ## 当前房间的出口：[[列序号, 节点], ...]

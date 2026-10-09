@@ -98,6 +98,15 @@ func _run() -> void:
 	await test_mind_ketsuon()
 	await _setup()
 	await test_mind_jiri()
+	test_enemy_data()
+	await _setup_kind("shinobi")
+	await test_shinobi()
+	await _setup_kind("sohei")
+	await test_sohei()
+	await _setup_kind("hakai")
+	await test_hakai()
+	await _setup_kind("jakko")
+	await test_jakko()
 	print("")
 	if failures == 0:
 		print("全部测试通过")
@@ -822,7 +831,7 @@ func _tap_with(action: String, held: String) -> void:
 ## 敌人摆在出招前摇里不动（不会格挡、也不会真的砍下来）
 func _freeze_windup() -> void:
 	e.state = Enemy.S.WINDUP
-	e.move_key = "sweep"
+	e.move_key = "sweep" if e.moves.has("sweep") else String(e.moves.keys()[0])
 	e.state_time = -10.0
 
 
@@ -1041,3 +1050,134 @@ func test_mind_jiri() -> void:
 	await _frames(5)
 	_check(e.lives < (e.data["phases"] as Array).size(), "处决成功")
 	_check(is_equal_approx(p.will, Player.MAX_WILL), "刃意充满（%.0f）" % p.will)
+
+
+# ---------- 第二层的敌人 ----------
+
+## 敌人表自查：出招表、变招、接招都指向有的招式，用到的姿势都有
+func test_enemy_data() -> void:
+	print("敌人数据表自查")
+	Enemy._build_poses()
+	var bad := []
+	for key: String in EnemyData.TYPES:
+		var t: Dictionary = EnemyData.TYPES[key]
+		var moves: Dictionary = t["moves"]
+		var refs := []
+		var ai: Dictionary = t["ai"]
+		for pk: Array in ai.get("picks", []):
+			refs.append(pk[0])
+		for f: Array in ai.get("far", []):
+			refs.append(f[0])
+		for ph: Dictionary in t["phases"]:
+			for pk: Array in ph.get("picks", []):
+				refs.append(pk[0])
+			for f: Array in ph.get("far", []):
+				refs.append(f[0])
+		for mk: String in moves:
+			var m: Dictionary = moves[mk]
+			if m.has("feint"):
+				refs.append(m["feint"]["into"])
+			if m.has("then"):
+				refs.append(m["then"])
+			for ps: Array in m.get("poses", []):
+				for pose: String in ps:
+					if not Enemy.POSES.has(pose):
+						bad.append("%s.%s 的姿势 %s" % [key, mk, pose])
+		for r: String in refs:
+			if not moves.has(r):
+				bad.append("%s 没有招式 %s" % [key, r])
+		for pose: String in t.get("idle", []):
+			if not Enemy.POSES.has(pose):
+				bad.append("%s 的待机姿势 %s" % [key, pose])
+	_check(bad.is_empty(), "招式和姿势都对得上 %s" % str(bad))
+
+
+func test_shinobi() -> void:
+	print("忍者：手里剑能挡、能弹回去")
+	e.global_position = Vector2(640, 300)
+	await _frames(2)
+	Input.action_press("p1_guard")
+	await _frames(20)
+	e._start_move("shuriken")
+	var star := false
+	for i in range(60):
+		await _frames(1)
+		for c in main.fx_root.get_children():
+			if c is Arrow and c.star and not star:
+				star = true
+				_freeze_windup()   # 扔完就让忍者定住，别冲上来砍
+	await _frames(40)
+	Input.action_release("p1_guard")
+	_check(star, "扔出来的是手里剑")
+	_check(is_equal_approx(p.hp, p.max_hp) and p.posture > 0.0, "按住格挡挡下（架势 %.0f）" % p.posture)
+	await _frames(30)
+	e.attack_cooldown = 9999.0
+	e._retreat_t = 0.0
+	e.global_position = Vector2(640, 300)
+	e._start_move("shuriken")
+	var arrow: Arrow = null
+	for i in range(200):
+		await _frames(1)
+		for c in main.fx_root.get_children():
+			if c is Arrow:
+				if arrow == null:
+					_freeze_windup()
+				arrow = c
+		# 手里剑比箭快，提前一点按（弹反窗口里它能飞 57 像素）
+		if arrow != null and is_instance_valid(arrow) and arrow.global_position.x - p.global_position.x < 45.0:
+			break
+	await _tap("p1_guard")
+	await _frames(8)
+	_check(arrow != null and is_instance_valid(arrow) and arrow.deflected_by == p and arrow.velocity.x > 0.0,
+		"弹反把手里剑打回去")
+	_check(is_equal_approx(p.hp, p.max_hp), "弹反没掉血")
+	# 疾斩冲过来砍
+	await _setup_kind("shinobi")
+	e.global_position = Vector2(520, 300)
+	e._start_move("dash_cut")
+	await _frames(50)
+	_check(p.hp < p.max_hp, "疾斩远远冲过来砍中（hp %.0f）" % p.hp)
+
+
+func test_sohei() -> void:
+	print("僧兵：扫堂棍要跳")
+	e._start_move("staff_sweep")
+	await _wait_windup_end(0, 0.12)
+	await _tap("p1_jump")
+	await _frames(40)
+	_check(is_equal_approx(p.hp, p.max_hp), "跳过扫堂棍（hp %.0f）" % p.hp)
+	await _setup_kind("sohei")
+	e._start_move("staff_combo")
+	await _frames(90)
+	_check(is_equal_approx(p.max_hp - p.hp, 32.0), "棍二连不挡吃两下 16×2（%.0f）" % (p.max_hp - p.hp))
+
+
+func test_hakai() -> void:
+	print("破戒僧：迟砸")
+	_check(e.max_posture == 210.0 and e.lives == 2, "精英两管血，架势 210")
+	e._start_move("slam")
+	await _frames(40)
+	_check(e.state == Enemy.S.WINDUP, "举过头顶停很久")
+	await _wait_windup_end(0, 0.06)
+	await _tap("p1_guard")
+	await _frames(30)
+	_check(p.parry_count == 1, "看准了弹反（%d）" % p.parry_count)
+
+
+func test_jakko() -> void:
+	print("禅刃 · 寂光：变招和静")
+	e._start_move("feint_sweep")
+	_check(not e._danger(), "起手像禅三连，没有危")
+	await _frames(30)
+	_check(e.move_key == "sweep", "半路变成扫腿（%s）" % e.move_key)
+	await _setup_kind("jakko")
+	e._start_move("feint_grab")
+	await _frames(30)
+	_check(e.move_key == "grab", "也可能变成擒拿（%s）" % e.move_key)
+	await _setup_kind("jakko")
+	e._start_move("still")
+	await _frames(40)
+	_check(e.move_key == "still" and e.state == Enemy.S.WINDUP, "静：站着不动")
+	await _frames(25)
+	_check(e.move_key == "quick", "然后突然快斩（%s）" % e.move_key)
+	_check((e.data["phases"] as Array).size() == 3 and e.data["title_sub"] == "第二层 · 竹林古寺", "三个阶段，登场写第二层")
