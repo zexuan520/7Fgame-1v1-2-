@@ -6,3 +6,4 @@ video/out/*-preview.mp4
 opus-video/*/audio/*.wav
 opus-video/*/audio/cues.json
 opus-video/*/qa/s-*.png
+opus-video/*/out/*-preview-*.mp4
