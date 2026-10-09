@@ -158,14 +158,6 @@ const SHOP_ITEMS := {
 ## 土地庙：上香一次，回满生命、补满药罐
 const REST_HEAL := 1.0
 
-## 破庙供台：用魂玉换永久加成，存档里记等级
-const ALTAR := {
-	"vigor": {"name": "体魄", "desc": "初始生命 +20", "costs": [5, 10, 15]},
-	"gourd": {"name": "药缘", "desc": "初始药罐 +1", "costs": [8, 16]},
-	"purse": {"name": "盘缠", "desc": "开局铜钱 +15", "costs": [4, 8, 12]},
-}
-
-
 static func floor_data(index: int) -> Dictionary:
 	return FLOORS[index]
 

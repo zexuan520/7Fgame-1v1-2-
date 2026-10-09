@@ -15,6 +15,8 @@ const MAX_ATTACKERS := 2              # 设计文档：同时最多两个敌人�
 const REVIVE_RATIO := 0.4             # 双人时倒下的人，清完房间以 40% 生命爬起来
 const DEATH_DELAY := 2.4              # 全员倒下后多久出结算
 const HEAL_PICKUP := 0.15             # 罐子里的伤药回 15% 生命
+const GEAR_DROP := 0.05               # 杂兵掉装备的几率
+const CHEST_GEAR := 0.6               # 宝箱里有装备的几率
 
 var arena_w := PRACTICE_W             # 当前房间宽度，镜头和墙都按它来
 var mode := "practice"                # practice 练武场 / hub 破庙 / room 闯关中的房间
@@ -40,6 +42,9 @@ var cleared := true
 var _wave_timer := -1.0
 var _death_timer := -1.0
 var dead_wait := false                # 结算画面出来了，等按攻击回破庙
+var menu_player: Player = null        # 拾骨婆的天赋界面开着（谁打开的谁来点）
+var menu_cursor := Vector3i.ZERO      # 天赋界面光标：树、层、节点
+var focus_gear := {}                  # 玩家序号 → 正站在跟前的地上装备（界面画对比卡）
 var _fade_dir := 0                    # 1 正在变黑，-1 正在变亮
 var _after_fade: Callable
 
@@ -252,14 +257,15 @@ func _load_hub() -> void:
 	for p in players:
 		if not p.is_alive():
 			p.respawn()
+		p.gear = GearData.empty_loadout(String(Game.save["start_weapon"]))
+		p.revives = 0
 		_apply_player_stats(p, true)
 		p.will = 0.0
-	_add_npc("monk", 330.0)
-	var x := 420.0
-	for id: String in LevelData.ALTAR:
-		var it := _add_interactable("altar", x, "", id, Color("5ed6a8"), {"id": id})
-		_refresh_altar(it)
-		x += 84.0
+	_add_npc("monk", 300.0)
+	_add_npc("granny", 452.0)
+	_add_interactable("talent", 452.0, "", "talent", Color("5ed6a8"))
+	var rack := _add_interactable("rack", 600.0, "兵器架", "rack", Color("c9a24a"))
+	_refresh_rack(rack)
 	var fd := LevelData.floor_data(0)
 	var gate := _add_interactable("door", arena_w - 56.0, "出发", "start", Color("e0a050"), {"action": "start_run"})
 	gate.sub = "%s · %s" % [fd["sub"], fd["name"]]
@@ -274,27 +280,29 @@ func _load_hub() -> void:
 		hud.room_banner("破庙", "据点")
 
 
-func _refresh_altar(it: Interactable) -> void:
-	var id: String = it.data["id"]
-	var spec: Dictionary = LevelData.ALTAR[id]
-	var lvl := Game.altar_level(id)
-	var costs: Array = spec["costs"]
-	it.label = "%s %d/%d" % [spec["name"], lvl, costs.size()]
-	if lvl >= costs.size():
-		it.sub = spec["desc"] + " · 已满"
-		it.enabled = false
-	else:
-		it.sub = "%s · %d 魂玉" % [spec["desc"], costs[lvl]]
+## 兵器架：出发时带哪把武器（闯关时拿到过的武器才会挂上来）
+func _refresh_rack(it: Interactable) -> void:
+	var cur: String = Game.save["start_weapon"]
+	var n := (Game.save["weapons"] as Array).size()
+	it.data["weapon"] = cur
+	it.sub = "出发带 %s · %d/%d 把" % [GearData.WEAPONS[cur]["name"], n, GearData.WEAPONS.size()]
+	for p in players:
+		if p.gear["weapon"]["base"] != cur:
+			p.gear = GearData.empty_loadout(cur)
+			_apply_player_stats(p, false)
 
 
 func _start_run() -> void:
 	Game.run = Run.create(0)
-	Game.run.coins = Game.altar_level("purse") * 15
+	Game.run.coins = int(Talents.run_value("start_coins"))
 	Game.save["runs"] = int(Game.save["runs"]) + 1
 	Game.write_save()
 	for p in players:
+		p.gear = Game.run.loadout(p.index)
 		_apply_player_stats(p, true)
 		p.will = 0.0
+		Game.run.revives[p.index] = int(p.stats["revive"])
+		p.revives = int(p.stats["revive"])
 	_fade_then(_load_room)
 
 
@@ -318,7 +326,13 @@ func _load_room() -> void:
 			for id: String in stock:
 				var spec: Dictionary = LevelData.SHOP_ITEMS[id]
 				var it := _add_interactable("item", x, spec["name"], id, Color("e0b860"), {"id": id})
-				it.sub = "%s · %d 铜钱" % [spec["desc"], spec["cost"]]
+				it.sub = "%s · %d 铜钱" % [spec["desc"], shop_price(int(spec["cost"]))]
+				x += 84.0
+			for item: Variant in r.shop_gear_list():
+				if item != null:
+					var g := _add_gear(item, Vector2(x, FLOOR_Y))
+					g.data["price"] = shop_price(GearData.PRICES[int(item["q"])])
+					g.data["shop_index"] = (r.shop_gear_list() as Array).find(item)
 				x += 84.0
 			_add_npc("merchant", x + 30.0)
 		"rest":
@@ -461,7 +475,7 @@ func _finish_run(victory: bool) -> void:
 	var r := Game.run
 	if r == null:
 		return
-	var kept := r.jade if victory else int(floor(r.jade * LevelData.DEATH_KEEP))
+	var kept := r.jade if victory else int(floor(r.jade * death_keep()))
 	Game.save["jade"] = int(Game.save["jade"]) + kept
 	if not victory:
 		Game.save["deaths"] = int(Game.save["deaths"]) + 1
@@ -483,6 +497,17 @@ func on_enemy_killed(e: Enemy) -> void:
 		spawn_pickups("coin", int(drop["coins"]), at)
 	if drop.has("jade"):
 		spawn_pickups("jade", int(drop["jade"]), at)
+	for p in players:
+		if p.is_alive() and float(p.stats["kill_heal"]) > 0.0:
+			p.heal(p.max_hp * float(p.stats["kill_heal"]))
+	# 装备：精英必掉，头目掉传说，杂兵偶尔掉
+	var luck := int(Talents.run_value("luck"))
+	var source := "boss" if e.kind == "liu" else ("elite" if not e.is_grunt() else "")
+	var chance := 1.0 if source != "" else GEAR_DROP + float(Talents.run_value("gear_drop"))
+	if randf() < chance:
+		var item := GearData.roll(Game.run.rng, GearData.weights_for(source, Game.run.row, luck),
+			"weapon" if source == "boss" else "")
+		_drop_gear(item, Vector2(e.global_position.x, e.global_position.y if e.is_on_floor() else FLOOR_Y))
 
 
 ## 崩出一把铜钱/魂玉/伤药：最多 8 个，钱数平分到每个上。ground 是它们落在哪一层
@@ -510,17 +535,24 @@ func collect(kind: String, amount: int, p: Player) -> void:
 		return
 	if Game.run == null:
 		return
+	var r := Game.run
+	var mult := 1.0 + (float(p.stats["coin"]) if kind == "coin" else float(Talents.run_value("jade")))
+	r.bank[kind] = float(r.bank[kind]) + amount * mult
+	var whole := int(floor(float(r.bank[kind]) + 0.0001))
+	r.bank[kind] = float(r.bank[kind]) - whole
 	if kind == "coin":
-		Game.run.coins += amount
+		r.coins += whole
 	else:
-		Game.run.jade += amount
-		spawn_text(p.global_position + Vector2(0, -64), "魂玉 +%d" % amount, Color(0.5, 1.0, 0.8), 12)
+		r.jade += whole
+		if whole > 0:
+			spawn_text(p.global_position + Vector2(0, -64), "魂玉 +%d" % whole, Color(0.5, 1.0, 0.8), 12)
 	hud.bump(kind)
 
 
 # ---------- 互动：门、货、香炉、供台 ----------
 
 func _update_interact() -> void:
+	focus_gear.clear()
 	for it in interactables:
 		it.highlight = false
 	if _fade_dir != 0 or dead_wait:
@@ -534,12 +566,18 @@ func _update_interact() -> void:
 			if not it.visible:
 				continue
 			var d := absf(it.global_position.x - p.global_position.x)
+			if it.kind == "gear" or (it.kind == "chest" and not it.enabled):
+				d += -6.0 if it.kind == "gear" else 8.0   # 地上的装备优先，开过的宝箱让一让
 			if d < best_d and absf(it.global_position.y - p.global_position.y) < 60.0:
 				best_d = d
 				best = it
 		if best == null:
 			continue
 		best.highlight = true
+		if best.kind == "gear":
+			focus_gear[p.index] = best
+		if menu_player != null:
+			continue
 		if Input.is_action_just_pressed(p.prefix + "down") and p.state == Player.S.FREE and p.is_on_floor():
 			interact(best, p)
 
@@ -560,10 +598,11 @@ func interact(it: Interactable, p: Player) -> void:
 				return
 			var id: String = it.data["id"]
 			var spec: Dictionary = LevelData.SHOP_ITEMS[id]
-			if Game.run.coins < int(spec["cost"]):
+			var cost := shop_price(int(spec["cost"]))
+			if Game.run.coins < cost:
 				spawn_text(at, "铜钱不够", Color(0.8, 0.75, 0.75), 12)
 				return
-			Game.run.coins -= int(spec["cost"])
+			Game.run.coins -= cost
 			_apply_item(id)
 			(Game.run.stock() as Array).erase(id)
 			it.enabled = false
@@ -590,7 +629,10 @@ func interact(it: Interactable, p: Player) -> void:
 			it.used = true
 			it.enabled = false
 			var top := it.global_position + Vector2(0, -16)
-			spawn_pickups("coin", randi_range(12, 24), top, it.global_position.y)
+			spawn_pickups("coin", loot_amount("coin", randi_range(8, 16)), top, it.global_position.y)
+			if randf() < CHEST_GEAR and Game.run != null:
+				var item := GearData.roll(Game.run.rng, GearData.weights_for("chest", Game.run.row, int(Talents.run_value("luck"))))
+				_drop_gear(item, it.global_position + Vector2(18, 0))
 			if randf() < 0.4:
 				spawn_pickups("heal", 1, top, it.global_position.y)
 			if randf() < 0.25:
@@ -604,25 +646,21 @@ func interact(it: Interactable, p: Player) -> void:
 			if not it.used:
 				it.used = true
 				spawn_pickups("coin", 5, it.global_position + Vector2(8, -6), it.global_position.y)
-		"altar":
-			if not it.enabled:
-				return
-			var id: String = it.data["id"]
-			var costs: Array = LevelData.ALTAR[id]["costs"]
-			var lvl := Game.altar_level(id)
-			var cost: int = costs[lvl]
-			if int(Game.save["jade"]) < cost:
-				spawn_text(at, "魂玉不够", Color(0.8, 0.75, 0.75), 12)
-				return
-			Game.save["jade"] = int(Game.save["jade"]) - cost
-			(Game.save["altar"] as Dictionary)[id] = lvl + 1
+		"talent":
+			open_talents(p)
+		"rack":
+			var list: Array = Game.save["weapons"]
+			var i := list.find(Game.save["start_weapon"])
+			Game.save["start_weapon"] = list[(i + 1) % list.size()]
 			Game.write_save()
-			_refresh_altar(it)
-			for q in players:
-				_apply_player_stats(q, true)
-			spawn_text(at, LevelData.ALTAR[id]["desc"], Color(0.5, 1.0, 0.8), 12)
-			spawn_ring(it.global_position + Vector2(0, -26), Color(0.4, 1.0, 0.75), 30.0)
-			hud.bump("jade")
+			_refresh_rack(it)
+			if list.size() <= 1:
+				spawn_text(at, "闯关时拿到别的武器，就会挂到架上", Color(0.85, 0.8, 0.75), 12)
+			else:
+				spawn_text(at, GearData.WEAPONS[Game.save["start_weapon"]]["name"], Color(1.0, 0.9, 0.6), 12)
+				spawn_spark(it.global_position + Vector2(0, -30), Color(1.0, 0.85, 0.4), 8)
+		"gear":
+			_take_gear(it, p)
 
 
 func _apply_item(id: String) -> void:
@@ -642,25 +680,157 @@ func _apply_item(id: String) -> void:
 		_apply_player_stats(q, false)
 
 
-## 按供台等级和这一局的加成算玩家数值。refill 为 true 时回满
+## 按装备、天赋和这一局的加成算玩家数值。refill 为 true 时回满
 func _apply_player_stats(p: Player, refill: bool) -> void:
 	var b: Dictionary = Game.run.buffs if Game.run != null and mode != "practice" else {}
 	var old_max := p.max_hp
 	var old_gourds := p.max_gourds
-	p.max_hp = 200.0 + 20.0 * Game.altar_level("vigor") + float(b.get("hp", 0.0))
-	p.max_gourds = Player.MAX_GOURDS + Game.altar_level("gourd") + int(b.get("gourds", 0))
-	p.max_posture = 100.0 + float(b.get("posture", 0.0))
-	p.dmg_mult = 1.0 + float(b.get("dmg", 0.0))
+	var st := GearData.totals(p.gear)
+	if mode != "practice":
+		Talents.apply(st)
+	st["atk"] = float(st["atk"]) + float(b.get("dmg", 0.0))
+	st["hp"] = float(st["hp"]) + float(b.get("hp", 0.0))
+	st["max_posture"] = float(st["max_posture"]) + float(b.get("posture", 0.0))
+	st["gourds"] = int(st["gourds"]) + int(b.get("gourds", 0))
+	p.apply_loadout(st)
+	p.max_hp = 200.0 + float(st["hp"])
+	p.max_gourds = Player.MAX_GOURDS + int(st["gourds"])
+	p.max_posture = (100.0 + float(st["max_posture"])) * (1.0 + float(st["max_posture_pct"]))
 	p.auto_respawn = mode == "practice"
-	if mode == "practice":
-		p.max_hp = 200.0
-		p.max_gourds = Player.MAX_GOURDS
 	if refill:
 		p.hp = p.max_hp
 		p.gourds = p.max_gourds
 	else:
 		p.hp = minf(p.max_hp, p.hp + maxf(0.0, p.max_hp - old_max))
 		p.gourds = mini(p.max_gourds, p.gourds + maxi(0, p.max_gourds - old_gourds))
+
+
+# ---------- 装备：掉在地上、捡起来换上 ----------
+
+## 地上放一件装备（Interactable，站上去按 下 换上）
+func _add_gear(item: Dictionary, at: Vector2) -> Interactable:
+	var it := _add_interactable("gear", at.x, GearData.display_name(item), _gear_icon(item), GearData.color(item), {"item": item})
+	it.position = at
+	it.sub = "%s · %s" % [GearData.quality(item)["name"], GearData.SLOT_NAMES[item["slot"]]]
+	return it
+
+
+func _gear_icon(item: Dictionary) -> String:
+	return Icons.gear_icon(item)
+
+
+## 敌人、宝箱掉出来的装备：带一道光柱落地
+func _drop_gear(item: Dictionary, at: Vector2) -> Interactable:
+	var it := _add_gear(item, Vector2(clampf(at.x, 30.0, arena_w - 30.0), at.y))
+	it.time = 0.0
+	var col := GearData.color(item)
+	spawn_ring(it.global_position + Vector2(0, -12), col, 22.0 + int(item["q"]) * 6.0)
+	spawn_spark(it.global_position + Vector2(0, -12), col, 8 + int(item["q"]) * 4)
+	if int(item["q"]) >= 3:
+		flash_screen(col, 0.15)
+		spawn_text(it.global_position + Vector2(0, -50), GearData.quality(item)["name"], col, 14)
+	return it
+
+
+## 换上地上的装备，身上原来那件放回地上（商人的要先付钱）
+func _take_gear(it: Interactable, p: Player) -> void:
+	var item: Dictionary = it.data["item"]
+	var at := it.global_position + Vector2(0, -60)
+	var price := int(it.data.get("price", 0))
+	if price > 0:
+		if Game.run.coins < price:
+			spawn_text(at, "铜钱不够", Color(0.8, 0.75, 0.75), 12)
+			return
+		Game.run.coins -= price
+		var list: Array = Game.run.shop_gear_list()
+		list[int(it.data["shop_index"])] = null
+		hud.bump("coin")
+	var slot := GearData.target_slot(p.gear, item)
+	var old: Variant = p.gear[slot]
+	p.gear[slot] = item
+	interactables.erase(it)
+	it.queue_free()
+	if old != null:
+		_add_gear(old, it.position)
+	_apply_player_stats(p, false)
+	var col := GearData.color(item)
+	spawn_text(at, "换上 " + GearData.display_name(item), col, 12)
+	spawn_spark(p.global_position + Vector2(0, -30), col, 12)
+	if item["slot"] == "weapon" and Game.unlock_weapon(item["base"]):
+		hud.toast("%s 挂上了破庙的兵器架" % GearData.WEAPONS[item["base"]]["name"])
+
+
+## 商人的价格（行者“识货”打折）
+func shop_price(cost: int) -> int:
+	return maxi(1, roundi(cost * (1.0 - float(Talents.run_value("discount")))))
+
+
+## 罐子、宝箱里的铜钱（行者“寻宝”加成）
+func loot_amount(kind: String, n: int) -> int:
+	if kind != "coin":
+		return n
+	return roundi(n * (1.0 + float(Talents.run_value("loot"))))
+
+
+func death_keep() -> float:
+	return LevelData.DEATH_KEEP + float(Talents.run_value("keep"))
+
+
+# ---------- 拾骨婆的天赋界面 ----------
+
+func open_talents(p: Player) -> void:
+	menu_player = p
+	for q in players:
+		q.frozen = true
+	hud.show_map = false
+
+
+func close_talents() -> void:
+	menu_player = null
+	for q in players:
+		q.frozen = false
+		_apply_player_stats(q, true)
+
+
+func _update_menu() -> void:
+	var p := menu_player
+	if not is_instance_valid(p):
+		close_talents()
+		return
+	var c := menu_cursor
+	var pr := p.prefix
+	if Input.is_action_just_pressed(pr + "left"):
+		c = _menu_step(c, -1)
+	elif Input.is_action_just_pressed(pr + "right"):
+		c = _menu_step(c, 1)
+	elif Input.is_action_just_pressed(pr + "jump"):
+		c.y = maxi(0, c.y - 1)
+	elif Input.is_action_just_pressed(pr + "down"):
+		c.y = mini(Talents.UNLOCK.size() - 1, c.y + 1)
+	menu_cursor = c
+	if Input.is_action_just_pressed(pr + "attack"):
+		var why := Talents.why_not(c.x, c.y, c.z)
+		if why == "":
+			Talents.learn(c.x, c.y, c.z)
+			hud.bump("jade")
+			hud.menu_flash = 0.3
+		else:
+			hud.menu_note = why
+			hud.menu_note_time = 1.4
+	elif Input.is_action_just_pressed(pr + "heal"):
+		var back := Talents.reset()
+		hud.menu_note = "洗髓 · 退回魂玉 %d" % back
+		hud.menu_note_time = 1.6
+		hud.bump("jade")
+	elif Input.is_action_just_pressed(pr + "guard") or Input.is_action_just_pressed(pr + "dodge"):
+		close_talents()
+
+
+## 左右移动光标：一棵树三个节点走完就跳到下一棵树
+func _menu_step(c: Vector3i, d: int) -> Vector3i:
+	var flat := c.x * 3 + c.z + d
+	flat = posmod(flat, Talents.TREES.size() * 3)
+	return Vector3i(flat / 3, c.y, flat % 3)
 
 
 ## 玩家出手的判定框碰到罐子、木桶就砍碎
@@ -776,6 +946,11 @@ func _spawn_player(index: int) -> Player:
 		# 闯关中途加入：站到 1P 旁边
 		if mode != "practice" and not players.is_empty():
 			p.position = players[0].global_position + Vector2(-24, -10)
+	if Game.run != null and mode != "practice":
+		p.gear = Game.run.loadout(index)
+		p.revives = int(Game.run.revives.get(index, 0))
+	else:
+		p.gear = GearData.empty_loadout(String(Game.save["start_weapon"]) if not Game.practice else "katana")
 	world.add_child(p)
 	players.append(p)
 	_apply_player_stats(p, true)
@@ -976,6 +1151,8 @@ func _process(delta: float) -> void:
 		Engine.time_scale = 1.0
 
 	_update_camera(real_dt)
+	if menu_player != null:
+		_update_menu()
 	if mode == "practice":
 		_check_cleared(real_dt)
 	elif mode == "room" and _fade_dir == 0:
@@ -1024,6 +1201,11 @@ func _update_camera(dt: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if menu_player != null:
+		if event.is_action_pressed("toggle_map") or event.is_action_pressed("quit"):
+			close_talents()
+			get_viewport().set_input_as_handled()
+		return
 	if dead_wait:
 		# 结算画面：任意一个人按攻击回破庙
 		if event.is_action_pressed("p1_attack") or event.is_action_pressed("p2_attack"):
@@ -1046,7 +1228,21 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("toggle_help"):
 		hud.show_help = not hud.show_help
 	elif event.is_action_pressed("toggle_map"):
-		hud.show_map = not hud.show_map
+		# Tab：闯关时 地图 → 装备 → 关；破庙里只有装备
+		if Game.run == null:
+			hud.show_gear = not hud.show_gear
+		elif hud.show_map:
+			hud.show_map = false
+			hud.show_gear = true
+		elif hud.show_gear:
+			hud.show_gear = false
+		else:
+			hud.show_map = true
+	elif event.is_action_pressed("debug_jade") and mode == "hub":
+		Game.save["jade"] = int(Game.save["jade"]) + 50
+		Game.write_save()
+		hud.bump("jade")
+		hud.toast("调试：魂玉 +50")
 	elif event.is_action_pressed("toggle_practice") and mode != "room":
 		Game.practice = not Game.practice
 		get_tree().reload_current_scene()

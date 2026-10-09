@@ -14,6 +14,10 @@ var rooms_cleared := 0
 var buffs := {"dmg": 0.0, "hp": 0.0, "gourds": 0, "posture": 0.0}
 var shop_stock := {}                # 商人房间的货：房间坐标 → [货物 id, ...]（买过的从里面去掉）
 var rested := {}                    # 上过香的土地庙
+var gear := {}                      # 每个玩家身上的装备：玩家序号 → {weapon, head, body, charm1, charm2}
+var revives := {}                   # 不动“不死身”：玩家序号 → 这一局还能站起来几次
+var bank := {"coin": 0.0, "jade": 0.0}   # 加成后不满 1 的零头，攒够了再进钱袋
+var shop_gear := {}                 # 商人房间卖的装备：房间坐标 → [装备, ...]（买过的设成 null）
 var rng := RandomNumberGenerator.new()
 
 
@@ -184,3 +188,24 @@ func stock() -> Array:
 			picked.append(keys.pop_at(rng.randi_range(0, keys.size() - 1)))
 		shop_stock[id] = picked
 	return shop_stock[id]
+
+
+## 商人摊上的装备：一件，行者“随缘”多一件
+func shop_gear_list() -> Array:
+	var id := room_id()
+	if not shop_gear.has(id):
+		var list := []
+		for i in range(1 + int(Talents.run_value("shop_extra"))):
+			list.append(GearData.roll(rng, GearData.weights_for("shop", row, int(Talents.run_value("luck")))))
+		shop_gear[id] = list
+	return shop_gear[id]
+
+
+## 某个玩家这一局的装备（第一次要的时候按兵器架上选的武器新建）
+func loadout(index: int) -> Dictionary:
+	if not gear.has(index):
+		var g := GearData.empty_loadout(String(Game.save["start_weapon"]))
+		if int(Talents.run_value("start_charm")) > 0:
+			g["charm1"] = GearData.roll(rng, [0.0, 1.0, 0.0, 0.0, 0.0], "charm")
+		gear[index] = g
+	return gear[index]

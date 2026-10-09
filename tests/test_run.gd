@@ -1,7 +1,8 @@
 extends Node
 ## 关卡和肉鸽流程自动测试（无界面运行）：
 ##   godot --headless --path . res://tests/test_run.tscn
-## 验证岔路地图、平台和楼梯、砸罐子开宝箱、破庙出发、房间锁门和波次、掉钱、商人、土地庙、死亡带回 60% 魂玉、打败柳江远、供台。
+## 验证岔路地图、平台和楼梯、砸罐子开宝箱、破庙出发、房间锁门和波次、掉钱、商人、土地庙、死亡带回 60% 魂玉、打败柳江远、
+## 装备掉落和换装、武器手感、防具减伤、饰品、流血、商人卖装备、兵器架、拾骨婆天赋、旧存档供台退魂玉。
 
 var main: Node
 var failures := 0
@@ -14,15 +15,23 @@ func _ready() -> void:
 func _run() -> void:
 	Game.save_path = "user://test_save.cfg"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Game.save_path))
+	_reset_save()
 	test_map_generation()
+	test_gear_rolls()
 	await _setup()
 	await test_hub_and_start()
 	await test_fight_room()
 	await test_platforms_and_loot()
+	await test_gear_swap()
 	await test_shop_and_rest()
 	await test_death_returns_home()
 	await _setup()
-	await test_altar()
+	await test_talents()
+	await _setup()
+	await test_rack()
+	_reset_save()
+	test_old_altar_refund()
+	await _setup()
 	await _setup()
 	await test_boss_victory()
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Game.save_path))
@@ -55,6 +64,13 @@ func _frames(n: int) -> void:
 		main._hitstop_until = 0
 		main._slow_until = 0
 		Engine.time_scale = 1.0
+
+
+func _reset_save() -> void:
+	Game.save["jade"] = 0
+	Game.save["talents"] = {}
+	Game.save["weapons"] = ["katana"]
+	Game.save["start_weapon"] = "katana"
 
 
 func _check(cond: bool, name: String) -> void:
@@ -133,7 +149,8 @@ func test_hub_and_start() -> void:
 	_check(main.mode == "hub", "开局在破庙")
 	var gate := _find("door", "action", "start_run")
 	_check(gate != null and gate.enabled, "有出发的门")
-	_check(_find("altar") != null, "有供台")
+	_check(_find("talent") != null and _find("rack") != null, "有拾骨婆和兵器架")
+	_check(_p().gear["weapon"]["base"] == "katana", "默认带太刀出发")
 	main.interact(gate, _p())
 	await _wait_fade()
 	_check(main.mode == "room" and Game.run != null and Game.run.row == 0, "进到第一间（%s）" % main.mode)
@@ -227,7 +244,7 @@ func test_platforms_and_loot() -> void:
 	main.interact(chest, p)
 	p.global_position = chest.global_position
 	await _frames(100)
-	_check(not chest.enabled and r.coins >= coins + 12, "打开宝箱拿到铜钱（+%d）" % (r.coins - coins))
+	_check(not chest.enabled and r.coins >= coins + 8, "打开宝箱拿到铜钱（+%d）" % (r.coins - coins))
 	_kill_all()
 	await _frames(90)
 	_kill_all()
@@ -254,11 +271,21 @@ func test_shop_and_rest() -> void:
 	var cost: int = LevelData.SHOP_ITEMS[id]["cost"]
 	main.interact(item, _p())
 	_check(not item.enabled and r.coins == 100 - cost, "买下 %s 花 %d 铜钱" % [LevelData.SHOP_ITEMS[id]["name"], cost])
+	var gear_it := _find("gear")
+	_check(gear_it != null and int(gear_it.data.get("price", 0)) > 0, "摊子上有一件装备卖")
+	if gear_it != null:
+		var price := int(gear_it.data["price"])
+		var gitem: Dictionary = gear_it.data["item"]
+		r.coins = price
+		main.interact(gear_it, _p())
+		_check(r.coins == 0 and _p().gear.values().has(gitem), "买下装备直接换上（%s %d 铜钱）" % [GearData.display_name(gitem), price])
+		_check(r.shop_gear_list()[0] == null, "买过的装备从摊子上撤下")
 	r.coins = 100
 	main._apply_item("whetstone")
 	main._apply_item("amulet")
 	main._apply_item("gourd")
-	_check(is_equal_approx(_p().dmg_mult, 1.15 + (0.15 if id == "whetstone" else 0.0)), "磨刀石加攻击（×%.2f）" % _p().dmg_mult)
+	var atk := float(_p().stats["atk"]) - _gear_atk(_p())
+	_check(is_equal_approx(atk, 0.15 + (0.15 if id == "whetstone" else 0.0)), "磨刀石加攻击（+%.2f）" % atk)
 	_check(_p().max_hp >= 230.0 and _p().max_gourds >= 4, "护符加生命上限、空药罐加药罐（%d / %d）" % [_p().max_hp, _p().max_gourds])
 
 	col = r.node()["next"][0]
@@ -294,18 +321,184 @@ func test_death_returns_home() -> void:
 	_check(cfg.load(Game.save_path) == OK and int(cfg.get_value("save", "jade", 0)) == int(Game.save["jade"]), "魂玉写进存档")
 
 
-func test_altar() -> void:
-	print("破庙供台")
+## 装备上的攻击词条（磨刀石测试里扣掉）
+func _gear_atk(p: Player) -> float:
+	return float(GearData.totals(p.gear)["atk"])
+
+
+func test_gear_rolls() -> void:
+	print("装备生成")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var ok := true
+	var qualities := {}
+	for k in range(400):
+		var item := GearData.roll(rng, [1.0, 1.0, 1.0, 1.0, 1.0])
+		var q := int(item["q"])
+		qualities[q] = true
+		var cats := {}
+		for a: Array in item["affixes"]:
+			cats[GearData.AFFIXES[a[0]]["cat"]] = true
+		if (item["affixes"] as Array).size() != int(GearData.QUALITIES[q]["affixes"]) or cats.size() != (item["affixes"] as Array).size():
+			ok = false
+		if q == 4 and (item["mech"] as Array).size() < 1:
+			ok = false
+		if GearData.describe(item).is_empty() and item["slot"] != "charm":
+			ok = false
+	_check(ok, "词条数按品质来、同类词条不重复、传说带专属机制")
+	_check(qualities.size() == 5, "五种品质都能出")
+	var boss := GearData.roll(rng, GearData.weights_for("boss", 7, 0), "weapon")
+	_check(int(boss["q"]) == 4 and boss["slot"] == "weapon", "头目掉传说武器（%s）" % GearData.display_name(boss))
+	var w0: Array = GearData.weights_for("chest", 2, 0)
+	var w2: Array = GearData.weights_for("chest", 2, 2)
+	_check(float(w2[0]) < float(w0[0]) and float(w2[2]) > float(w0[2]), "鉴宝让高品质更容易出")
+
+
+func test_gear_swap() -> void:
+	print("装备：捡起来换上")
+	var p := _p()
+	var rng := RandomNumberGenerator.new()
+	var dummy: Enemy = main.spawn_enemy("ronin", Vector2(900, 300))
+	dummy.aggro = false
+	var base_atk := p.strike(Moves.get_move("slash1"), dummy)
+	_check(is_equal_approx(float(base_atk["posture"]), 20.0), "太刀横斩架势伤害 20")
+	_clear_gear()
+	var nodachi := GearData.make("weapon", "nodachi", 2, rng)
+	var it: Interactable = main._drop_gear(nodachi, p.global_position)
+	_check(it != null and _find("gear") == it, "装备掉在地上")
+	await _frames(2)
+	_check(main.focus_gear.has(1), "站在跟前显示对比卡")
+	main.interact(it, p)
+	_check(p.gear["weapon"] == nodachi and p.look.weapon == "nodachi", "换上野太刀")
+	var old := _find("gear")
+	_check(old != null and old.data["item"]["base"] == "katana", "原来的太刀放回地上")
+	_check((Game.save["weapons"] as Array).has("nodachi"), "野太刀挂上破庙兵器架")
+	var atk := p._weapon_scaled(Moves.get_move("slash1"))
+	_check(is_equal_approx(float(atk["dmg"]), 20.0 * 1.7 * 1.25) and float(atk["windup"]) > 0.07, "野太刀伤害 ×%.2f、出手更慢" % (float(atk["dmg"]) / 20.0))
+	# 防具减伤
+	p._enter(Player.S.FREE)
+	p.invul_timer = 0.0
+	p.hp = p.max_hp
+	var hp0 := p.hp
+	p.gear["body"] = GearData.make("body", "plate", 0, rng)
+	main._apply_player_stats(p, false)
+	p.receive_enemy_hit({"dmg": 71.0, "posture": 0.0, "unblockable": true, "kind": "slash"}, main.enemies[-1])
+	var d := float(p.stats["def"])
+	_check(d >= 11.0 and is_equal_approx(hp0 - p.hp, 71.0 * 60.0 / (60.0 + d)), "铁甲防御 %d：71 伤害只掉 %.1f" % [d, hp0 - p.hp])
+	_check(is_equal_approx(p.max_posture, (100.0 + float(p.stats["max_posture"])) * 1.2), "铁甲架势上限 +20%%（%d）" % p.max_posture)
+	p.hp = p.max_hp
+	p._enter(Player.S.FREE)
+	# 饰品：两格先填空的，满了换差的
+	var c1 := GearData.make("charm", "jade_bead", 3, rng)
+	var c2 := GearData.make("charm", "lucky_cat", 0, rng)
+	p.gear["charm1"] = c1
+	_check(GearData.target_slot(p.gear, c2) == "charm2", "第二个饰品放进空格")
+	p.gear["charm2"] = c2
+	_check(GearData.target_slot(p.gear, GearData.make("charm", "wind_bell", 1, rng)) == "charm2", "两格都满时换掉差的那件")
+	main._apply_player_stats(p, false)
+	_check(float(p.stats["parry_heal"]) == 0.02 and float(p.stats["coin"]) >= 0.4, "饰品机制算进数值")
+	# 双短刃流血
+	var e: Enemy = main.enemies[-1]
+	e.hp = e.max_hp
+	e.add_bleed()
+	e.add_bleed()
+	await _frames(62)
+	_check(e.max_hp - e.hp >= 5.9 and e.max_hp - e.hp <= 9.1, "流血两层一秒掉 %.1f" % (e.max_hp - e.hp))
+	e.queue_free()
+	main.enemies.erase(e)
+	p.gear = Game.run.loadout(1)
+	p.gear["weapon"] = GearData.starter("katana")
+	p.gear["body"] = null
+	p.gear["charm1"] = null
+	p.gear["charm2"] = null
+	_clear_gear()
+	main._apply_player_stats(p, false)
+
+
+func _clear_gear() -> void:
+	for x: Interactable in main.interactables.duplicate():
+		if x.kind == "gear":
+			main.interactables.erase(x)
+			x.queue_free()
+
+
+func test_talents() -> void:
+	print("拾骨婆的天赋")
+	var p := _p()
+	var it := _find("talent")
+	main.interact(it, p)
+	_check(main.menu_player == p and p.frozen, "打开天赋界面，人站住不动")
 	Game.save["jade"] = 20
-	Game.save["altar"] = {}
-	var it := _find("altar", "id", "vigor")
-	main.interact(it, _p())
-	_check(Game.altar_level("vigor") == 1 and int(Game.save["jade"]) == 15, "供奉 5 魂玉，体魄升一级")
-	_check(_p().max_hp == 220.0, "初始生命 +20（%d）" % _p().max_hp)
+	_check(Talents.why_not(1, 1, 0) != "", "第二层没投够点数点不了")
+	_check(Talents.learn(1, 0, 0), "点亮 体魄")
+	_check(int(Game.save["jade"]) == 17 and Talents.rank("vigor") == 1, "花 3 魂玉")
 	Game.save["jade"] = 0
-	main.interact(it, _p())
-	_check(Game.altar_level("vigor") == 1, "魂玉不够供不了")
-	Game.save["altar"] = {}
+	_check(Talents.why_not(1, 0, 0) == "魂玉不够", "魂玉不够点不了")
+	main.close_talents()
+	_check(p.max_hp == 220.0 and not p.frozen, "离开后生命 +20（%d）" % p.max_hp)
+	# 奥义三选一
+	Game.save["jade"] = 1000
+	for k in range(3):
+		Talents.learn(1, 0, 1)
+		Talents.learn(1, 0, 2)
+	for k in range(2):
+		Talents.learn(1, 1, 0)
+		Talents.learn(1, 1, 1)
+	_check(Talents.why_not(1, 3, 0) == "", "投够 10 点解锁奥义（已投 %d）" % Talents.spent_in(Talents.TREES[1]))
+	Talents.learn(1, 3, 0)
+	_check(Talents.why_not(1, 3, 1) == "奥义只能选一个", "奥义只能选一个")
+	main._apply_player_stats(p, true)
+	_check(p.max_gourds == 5 and int(p.stats["revive"]) == 1, "药缘 +2 药罐、不死身")
+	var spent := Talents.jade_spent()
+	var before := int(Game.save["jade"])
+	_check(Talents.reset() == spent and int(Game.save["jade"]) == before + spent and Talents.rank("vigor") == 0, "洗髓退回全部魂玉（%d）" % spent)
+	# 不死身：闯关时倒下一次站起来
+	Game.save["talents"] = {"vigor": 3, "calm": 3, "hide": 3, "undying": 1}
+	main.interact(_find("door", "action", "start_run"), p)
+	await _wait_fade()
+	_check(p.revives == 1, "出发时带一次不死身")
+	p.hp = 1.0
+	p.receive_enemy_hit({"dmg": 50.0, "posture": 0.0, "unblockable": true, "kind": "slash"}, p)
+	_check(p.is_alive() and is_equal_approx(p.hp, p.max_hp * 0.5) and p.revives == 0, "倒下以一半生命站起来")
+	# 行者：开局铜钱、商人打折、死亡多带回魂玉
+	Game.save["talents"] = {"purse": 2, "haggle": 3, "homeward": 1}
+	_check(main.shop_price(100) == 76, "识货三级 -24%%（%d）" % main.shop_price(100))
+	_check(is_equal_approx(main.death_keep(), 0.8), "归途：带回 80%")
+	Game.save["talents"] = {}
+	Game.save["jade"] = 0
+
+
+func test_rack() -> void:
+	print("兵器架")
+	Game.save["weapons"] = ["katana", "spear"]
+	Game.save["start_weapon"] = "katana"
+	var rack := _find("rack")
+	main.interact(rack, _p())
+	_check(Game.save["start_weapon"] == "spear" and _p().gear["weapon"]["base"] == "spear", "换成长枪出发")
+	_check(_p().look.weapon == "spear" and not _p().look.saya, "长枪背在背上，没有刀鞘")
+	var atk := _p()._weapon_scaled(Moves.get_move("slash4"))
+	_check(atk.get("pierce", false) and float(atk["size"].x) > 66.0 * 1.4, "长枪突刺破盾、距离更远")
+	main.interact(_find("door", "action", "start_run"), _p())
+	await _wait_fade()
+	_check(Game.run.loadout(1)["weapon"]["base"] == "spear", "出发带的是长枪")
+	Game.run = null
+	Game.save["weapons"] = ["katana"]
+	Game.save["start_weapon"] = "katana"
+
+
+func test_old_altar_refund() -> void:
+	print("旧存档：供台换成天赋，魂玉退回")
+	var cfg := ConfigFile.new()
+	cfg.set_value("save", "jade", 3)
+	cfg.set_value("save", "altar", {"vigor": 2, "purse": 1})
+	cfg.save(Game.save_path)
+	Game.load_save()
+	_check(int(Game.save["jade"]) == 3 + 5 + 10 + 4, "供奉过的 19 魂玉退回来（%d）" % Game.save["jade"])
+	var again := ConfigFile.new()
+	again.load(Game.save_path)
+	_check(not again.has_section_key("save", "altar"), "存档里不再有供台")
+	_reset_save()
+	Game.write_save()
 
 
 func test_boss_victory() -> void:
@@ -327,6 +520,8 @@ func test_boss_victory() -> void:
 	var home := _find("door", "action", "victory")
 	_check(home != null and home.visible and home.enabled, "打完出现回破庙的门")
 	_check(r.jade >= 4 + 15, "头目掉魂玉（%d）" % r.jade)
+	var drop := _find("gear")
+	_check(drop != null and int(drop.data["item"]["q"]) == 4, "头目掉一件传说装备（%s）" % (GearData.display_name(drop.data["item"]) if drop != null else "无"))
 	var got := r.jade
 	main.interact(home, _p())
 	await _wait_fade()

@@ -12,8 +12,8 @@ const HELP := [
 	["2P", "←/→ 移动  ↑ 跳  ↓ 下  小键盘1 攻击 2 格挡 3 闪身 4 药罐 5 回旋斩 6 换架势"],
 	["招式", "连按攻击五连  下+攻击 升龙斩  空中攻击 空中斩  空中下+攻击 落雷斩  闪身中攻击 闪身突刺"],
 	["手柄", "A 跳  X 攻击  RB 格挡  B 闪身  Y 药罐  LB 回旋斩  十字键上 换架势"],
-	["闯关", "站在门、货物、香炉、供台前按 下 互动  Tab 地图  清完敌人出口才开"],
-	["其他", "F2 2P 加入/退出  F1 低难度  F3 判定框  F4 练武场（数字键换对手）  Esc 退出"],
+	["闯关", "站在门、货物、香炉、装备前按 下 互动  Tab 地图/装备  清完敌人出口才开"],
+	["其他", "F2 2P 加入/退出  F1 低难度  F3 判定框  F4 练武场  F5 破庙里魂玉+50（调试）  Esc 退出"],
 ]
 
 var main: Node
@@ -33,6 +33,10 @@ const TITLE_TIME := 2.6
 const BANNER_TIME := 2.8
 
 var show_map := false
+var show_gear := false      # Tab：身上的装备
+var menu_flash := 0.0       # 天赋界面：刚点亮一个节点时闪一下
+var menu_note := ""         # 天赋界面：点不了的原因
+var menu_note_time := 0.0
 var fade := 0.0             # 换房间时的黑屏
 var _banner := ""           # 进房间时顶上的房间名
 var _banner_sub := ""
@@ -91,6 +95,8 @@ func _process(delta: float) -> void:
 	_line_time = maxf(0.0, _line_time - delta)
 	_title_time = maxf(0.0, _title_time - delta)
 	_banner_time = maxf(0.0, _banner_time - delta)
+	menu_flash = maxf(0.0, menu_flash - delta)
+	menu_note_time = maxf(0.0, menu_note_time - delta)
 	_death_time += delta
 	for k: String in _bump:
 		_bump[k] = maxf(0.0, float(_bump[k]) - delta)
@@ -133,12 +139,21 @@ func _draw() -> void:
 		var a := clampf(_toast_time / 0.4, 0.0, 1.0)
 		_text_centered(font, _toast, Vector2(320, 70), Color(1, 0.95, 0.8, a), 12)
 
+	for idx: int in main.focus_gear:
+		var it: Interactable = main.focus_gear[idx]
+		for p: Player in main.get_players():
+			if p.index == idx and is_instance_valid(it):
+				_draw_gear_card(font, it, p)
 	if show_map and Game.run != null:
 		_draw_map(font)
+	if show_gear:
+		_draw_gear_screen(font)
+	if main.menu_player != null:
+		_draw_talents(font)
 	if show_help:
 		_draw_help(font)
 	else:
-		var hint := "H 操作说明" + ("  Tab 地图" if Game.run != null else "")
+		var hint := "H 操作说明" + ("  Tab 地图/装备" if Game.run != null else "  Tab 装备")
 		_text(font, hint, Vector2(640 - 8, 354), Color(0.8, 0.78, 0.85, 0.45), 12, true)
 	if _death != null:
 		_draw_death(font)
@@ -182,6 +197,9 @@ func _posture(r: Rect2, ratio: float) -> void:
 	draw_rect(Rect2(cx, r.position.y - 1, 1, r.size.y + 2), GOLD)
 
 
+var _art_cost := 40.0
+
+
 func _will(r: Rect2, ratio: float, ready: bool) -> void:
 	draw_rect(r, Color("10141a"))
 	var col := Color(0.55, 0.85, 1.0) if not ready else Color(1.0, 0.85, 0.4).lerp(Color(1, 1, 1), 0.2 + 0.2 * sin(_time * 8.0))
@@ -189,7 +207,7 @@ func _will(r: Rect2, ratio: float, ready: bool) -> void:
 	draw_rect(Rect2(r.position, Vector2(w, r.size.y)), col)
 	draw_rect(Rect2(r.position, Vector2(w, 1)), col.lightened(0.4))
 	# 每 40 一格的刻度
-	var step := r.size.x * float(Player.ART["cost"]) / Player.MAX_WILL
+	var step := r.size.x * _art_cost / Player.MAX_WILL
 	var x := step
 	while x < r.size.x - 1.0:
 		draw_rect(Rect2(r.position.x + roundf(x), r.position.y, 1, r.size.y), FRAME)
@@ -232,7 +250,8 @@ func _draw_player_panel(font: Font, p: Player, at: Vector2) -> void:
 	# 刃意：攒满一格（40）可以放一次回旋斩
 	var wi_r := Rect2(at + Vector2(32, 24), Vector2(130, 3))
 	_frame(wi_r)
-	_will(wi_r, p.will / Player.MAX_WILL, p.will >= float(Player.ART["cost"]))
+	_art_cost = p.art_cost()
+	_will(wi_r, p.will / Player.MAX_WILL, p.will >= _art_cost)
 	# 药罐
 	for i in range(p.max_gourds):
 		_gourd(at + Vector2(140 + i * 9, 36), i < p.gourds)
@@ -240,6 +259,10 @@ func _draw_player_panel(font: Font, p: Player, at: Vector2) -> void:
 	_text(font, "弹反 × %d" % p.parry_count, at + Vector2(32, 40), Color(0.95, 0.85, 0.55), 12)
 	# 当前架势
 	_text(font, "架势 · " + str(p.stance()["name"]), at + Vector2(32, 54), Color(0.8, 0.86, 1.0), 12)
+	var wpn: Dictionary = p.gear["weapon"]
+	_text(font, GearData.display_name(wpn), at + Vector2(32, 68), GearData.color(wpn), 12)
+	if p.revives > 0:
+		_text(font, "不死身 ×%d" % p.revives, at + Vector2(110, 68), Color(1.0, 0.85, 0.4), 12)
 	if p.state == Player.S.DEAD:
 		var msg := "%.0f 秒后复活" % maxf(p.respawn_timer, 0.0) if p.auto_respawn else "清完这间复苏"
 		_text(font, msg, at + Vector2(110, 54), Color(1, 0.4, 0.4), 12)
@@ -305,7 +328,7 @@ func _text_centered(font: Font, s: String, pos: Vector2, col: Color, size: int) 
 # ---------- 铜钱、魂玉 ----------
 
 func _draw_purse(font: Font) -> void:
-	var at := Vector2(14, 84)
+	var at := Vector2(14, 98)
 	if Game.run != null and main.mode == "room":
 		_purse_row(font, "coin", Game.run.coins, at)
 		_purse_row(font, "jade", Game.run.jade, at + Vector2(0, 14))
@@ -436,12 +459,12 @@ func _draw_death(font: Font) -> void:
 	draw_rect(Rect2(c.x - 170 * spread, c.y + 12, 340 * spread, 1), Color(0.75, 0.15, 0.12, a))
 	_text_centered(font, "身 死", c + Vector2(0, 4), Color(0.9, 0.18, 0.15, a), 36)
 	var r := _death
-	var kept := int(floor(r.jade * LevelData.DEATH_KEEP))
+	var kept := int(floor(r.jade * main.death_keep()))
 	var la := clampf((t - 0.7) / 0.4, 0.0, 1.0)
 	var lines := [
 		["走到", "第 %d / %d 间 · %s" % [r.row + 1, r.rows.size(), LevelData.room(r.room_key())["name"]]],
 		["斩敌", "%d" % r.kills],
-		["魂玉", "%d → 带回 %d（60%%）" % [r.jade, kept]],
+		["魂玉", "%d → 带回 %d（%d%%）" % [r.jade, kept, roundi(main.death_keep() * 100.0)]],
 		["铜钱", "%d · 散落" % r.coins],
 	]
 	for i in range(lines.size()):
@@ -451,3 +474,179 @@ func _draw_death(font: Font) -> void:
 	if t > 1.4:
 		var blink := 0.55 + 0.45 * sin(t * 4.0)
 		_text_centered(font, "按 攻击 回破庙", Vector2(320, 260), Color(1, 0.95, 0.8, blink), 12)
+
+
+# ---------- 装备 ----------
+
+## 按宽度折行（中文按字断）
+func _wrap(font: Font, s: String, width: float) -> Array:
+	var out := []
+	var line := ""
+	for ch in s:
+		if font.get_string_size(line + ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x > width and line != "":
+			out.append(line)
+			line = ch.strip_edges(true, false) if ch == " " else ch
+		else:
+			line += ch
+	if line != "":
+		out.append(line)
+	return out
+
+
+## 站在地上的装备跟前：新的和身上那件对比
+func _draw_gear_card(font: Font, it: Interactable, p: Player) -> void:
+	var item: Dictionary = it.data["item"]
+	var w := 262.0
+	# 卡片放在人物的另一边，不挡住人和地上的东西
+	var sx: float = p.global_position.x - (main.camera.position.x - 320.0)
+	var x := 640.0 - 14.0 - w if sx < 320.0 else 14.0
+	var slot := GearData.target_slot(p.gear, item)
+	var cur: Variant = p.gear[slot]
+	var rows := []   # [文字, 颜色]
+	var q := GearData.quality(item)
+	rows.append([GearData.display_name(item), GearData.color(item), 0.0])
+	rows.append(["%s · %s" % [q["name"], GearData.SLOT_NAMES[item["slot"]]], Color(0.75, 0.72, 0.78), 0.0])
+	for l: String in GearData.describe(item):
+		for wl: String in _wrap(font, l, w - 20.0):
+			rows.append([wl, Color(0.93, 0.9, 0.86), 0.0])
+	rows.append(["", Color.WHITE, 4.0])
+	if cur == null:
+		rows.append(["身上：空着", Color(0.65, 0.62, 0.68), 0.0])
+	else:
+		rows.append(["换下：" + GearData.display_name(cur) + " · " + String(GearData.quality(cur)["name"]), Color(GearData.color(cur), 0.8), 0.0])
+		for l: String in GearData.describe(cur):
+			for wl: String in _wrap(font, l, w - 20.0):
+				rows.append([wl, Color(0.62, 0.6, 0.65), 0.0])
+	var h := 10.0
+	for r: Array in rows:
+		h += 13.0 + float(r[2])
+	var box := Rect2(x, 300.0 - h - 30.0, w, h)
+	draw_rect(box, Color(0.04, 0.03, 0.06, 0.92))
+	_frame(box)
+	draw_rect(Rect2(box.position, Vector2(3, box.size.y)), GearData.color(item))
+	var y := box.position.y + 14.0
+	for r: Array in rows:
+		if r[0] != "":
+			_text(font, r[0], Vector2(box.position.x + 10, y), r[1], 12)
+		elif float(r[2]) > 0.0:
+			draw_rect(Rect2(box.position.x + 10, y - 6, w - 20, 1), Color(GOLD_DARK, 0.8))
+		y += 13.0 + float(r[2])
+
+
+## Tab：身上的五件装备和汇总数值
+func _draw_gear_screen(font: Font) -> void:
+	var ps: Array = main.get_players()
+	var box := Rect2(30, 30, 580, 290)
+	draw_rect(box, Color(0.04, 0.03, 0.06, 0.95))
+	_frame(box)
+	_text_centered(font, "身上的装备", Vector2(320, 48), Color(0.95, 0.9, 0.8), 12)
+	var col_w := box.size.x / float(ps.size())
+	for i in range(ps.size()):
+		var p: Player = ps[i]
+		var x := box.position.x + 12.0 + i * col_w
+		var y := 66.0
+		if ps.size() > 1:
+			_text(font, "%dP" % p.index, Vector2(x, y), p.color.lightened(0.3), 12)
+			y += 14.0
+		for slot: String in GearData.SLOTS:
+			var item: Variant = p.gear[slot]
+			Icons.draw(self, Icons.gear_icon(item) if item != null else "", Vector2(x + 7, y - 4), GearData.color(item) if item != null else Color(0.3, 0.28, 0.32))
+			if item == null:
+				_text(font, GearData.SLOT_NAMES[slot] + " · 空", Vector2(x + 20, y), Color(0.5, 0.48, 0.52), 12)
+				y += 18.0
+				continue
+			_text(font, "%s  %s" % [GearData.display_name(item), GearData.quality(item)["name"]], Vector2(x + 20, y), GearData.color(item), 12)
+			y += 13.0
+			var lines := GearData.describe(item)
+			for l: String in lines:
+				for wl: String in _wrap(font, l, col_w - 40.0):
+					_text(font, wl, Vector2(x + 20, y), Color(0.78, 0.76, 0.8), 12)
+					y += 12.0
+			y += 5.0
+		var st: Dictionary = p.stats
+		var sum := "生命 %d  架势 %d  防御 %d  攻击 %+d%%  会心 %d%%" % [roundi(p.max_hp), roundi(p.max_posture),
+			roundi(float(st["def"])), roundi(float(st["atk"]) * 100.0), roundi(minf(0.6, float(st["crit"])) * 100.0)]
+		for wl: String in _wrap(font, sum, col_w - 24.0):
+			_text(font, wl, Vector2(x, maxf(y + 4.0, 0.0)), Color(GOLD, 0.95), 12)
+			y += 13.0
+	_text(font, "Tab 关闭", Vector2(box.end.x - 8, box.end.y - 8), Color(0.75, 0.72, 0.8, 0.7), 12, true)
+
+
+# ---------- 天赋 ----------
+
+const TIER_NAMES := ["一层", "二层", "三层", "奥义"]
+
+
+func _draw_talents(font: Font) -> void:
+	draw_rect(Rect2(0, 0, 640, 360), Color(0, 0, 0, 0.5))
+	var box := Rect2(16, 18, 608, 324)
+	draw_rect(box, Color(0.04, 0.03, 0.06, 0.96))
+	_frame(box)
+	_text_centered(font, "拾骨婆 · 天赋", Vector2(320, 36), Color(0.95, 0.9, 0.8), 12)
+	_purse_row(font, "jade", int(Game.save["jade"]), Vector2(box.end.x - 70, 32))
+	var cur: Vector3i = main.menu_cursor
+	for ti in range(Talents.TREES.size()):
+		var t: Dictionary = Talents.TREES[ti]
+		var tc: Color = t["color"]
+		var x0 := box.position.x + 10.0 + ti * 198.0
+		var spent := Talents.spent_in(t)
+		_text(font, "%s（%s）" % [t["name"], t["role"]], Vector2(x0 + 4, 60), tc.lightened(0.2), 12)
+		_text(font, "已投 %d 点" % spent, Vector2(x0 + 186, 60), Color(0.75, 0.72, 0.78), 12, true)
+		draw_rect(Rect2(x0, 66, 188, 1), Color(tc, 0.5))
+		for tier in range((t["tiers"] as Array).size()):
+			var y := 76.0 + tier * 50.0
+			var open := spent >= int(Talents.UNLOCK[tier])
+			_text(font, TIER_NAMES[tier], Vector2(x0 + 2, y + 20), Color(0.7, 0.68, 0.74, 1.0 if open else 0.45), 12)
+			var nodes: Array = t["tiers"][tier]
+			for k in range(nodes.size()):
+				var nd: Dictionary = nodes[k]
+				var r := Rect2(x0 + 34 + k * 52, y, 46, 34)
+				var rank := Talents.rank(nd["id"])
+				var locked_ult := false
+				if nd.get("ult", false) and rank == 0:
+					for other: Dictionary in nodes:
+						if Talents.rank(other["id"]) > 0:
+							locked_ult = true
+				var lit := rank > 0
+				var base_c := Color(0.12, 0.1, 0.14)
+				if lit:
+					base_c = tc.darkened(0.55)
+				draw_rect(r, base_c if open and not locked_ult else Color(0.07, 0.06, 0.08))
+				var sel := cur == Vector3i(ti, tier, k)
+				var edge := tc if lit else Color(0.4, 0.38, 0.44)
+				if sel:
+					edge = Color(1.0, 0.95, 0.75).lerp(tc, 0.3 + 0.2 * sin(_time * 6.0))
+					if menu_flash > 0.0:
+						draw_rect(r.grow(3), Color(tc, menu_flash * 2.0))
+				draw_rect(r, edge, false, 2.0 if sel else 1.0)
+				var name_c := Color(0.95, 0.92, 0.88) if lit else Color(0.7, 0.68, 0.74)
+				if not open or locked_ult:
+					name_c = Color(0.4, 0.38, 0.42)
+				_text_centered(font, nd["name"], Vector2(r.get_center().x, r.position.y + 16), name_c, 12)
+				# 等级小方块
+				var mx := int(nd["max"])
+				var px := r.get_center().x - (mx * 6 - 2) / 2.0
+				for m in range(mx):
+					draw_rect(Rect2(px + m * 6, r.position.y + 24, 4, 4), tc if m < rank else Color(0.25, 0.23, 0.28))
+				if locked_ult:
+					draw_line(r.position + Vector2(4, 4), r.end - Vector2(4, 4), Color(0.4, 0.2, 0.2), 1.0)
+	# 下面一栏：光标所在节点的说明
+	var t: Dictionary = Talents.TREES[cur.x]
+	var nd: Dictionary = t["tiers"][cur.y][cur.z]
+	var rank := Talents.rank(nd["id"])
+	var info := Rect2(box.position.x + 10, 280, box.size.x - 20, 34)
+	draw_rect(info, Color(0.08, 0.06, 0.1))
+	var head := "%s  %d/%d" % [nd["name"], rank, nd["max"]]
+	_text(font, head, Vector2(info.position.x + 8, info.position.y + 14), (t["color"] as Color).lightened(0.2), 12)
+	var desc := String(nd["desc"]) + ("（每级）" if int(nd["max"]) > 1 else "")
+	_text(font, desc, Vector2(info.position.x + 96, info.position.y + 14), Color(0.92, 0.9, 0.86), 12)
+	var why := Talents.why_not(cur.x, cur.y, cur.z)
+	var price := "%d 魂玉" % Talents.COSTS[cur.y]
+	var state := price if why == "" else why
+	var sc := Color(0.5, 1.0, 0.8) if why == "" else Color(0.85, 0.6, 0.55)
+	if menu_note_time > 0.0:
+		state = menu_note
+		sc = Color(1.0, 0.85, 0.5)
+	_text(font, state, Vector2(info.end.x - 8, info.position.y + 14), sc, 12, true)
+	_text(font, "←→ 选节点  跳/下 换层  攻击 点亮  药罐 洗髓（全退）  格挡/闪身 离开", Vector2(info.position.x + 8, info.position.y + 29),
+		Color(0.7, 0.68, 0.74), 12)

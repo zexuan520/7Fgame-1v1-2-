@@ -12,8 +12,11 @@ var practice := false             # 练武场：旧的单场地，数字键换�
 var run: Run = null               # 正在进行的一局；null 时在破庙
 var last_result := {}             # 上一局的结算，回到破庙时显示
 var save_path := "user://save.cfg"
-## 存档：魂玉、供台等级、统计
-var save := {"jade": 0, "altar": {}, "runs": 0, "clears": 0, "deaths": 0, "best_row": 0}
+## 存档：魂玉、天赋等级、兵器架上解锁的武器、统计
+var save := {"jade": 0, "talents": {}, "weapons": ["katana"], "start_weapon": "katana",
+	"runs": 0, "clears": 0, "deaths": 0, "best_row": 0}
+## 旧版破庙供台的价格：读到旧存档时把供奉过的魂玉退回来（供台换成了天赋树）
+const OLD_ALTAR_COSTS := {"vigor": [5, 10, 15], "gourd": [8, 16], "purse": [4, 8, 12]}
 
 
 func _ready() -> void:
@@ -35,6 +38,13 @@ func load_save() -> void:
 		return
 	for k: String in save.keys():
 		save[k] = cfg.get_value("save", k, save[k])
+	var old: Dictionary = cfg.get_value("save", "altar", {})
+	if not old.is_empty():
+		for id: String in old:
+			var costs: Array = OLD_ALTAR_COSTS.get(id, [])
+			for i in range(mini(int(old[id]), costs.size())):
+				save["jade"] = int(save["jade"]) + int(costs[i])
+		write_save()
 
 
 func write_save() -> void:
@@ -44,8 +54,14 @@ func write_save() -> void:
 	cfg.save(save_path)
 
 
-func altar_level(id: String) -> int:
-	return int((save["altar"] as Dictionary).get(id, 0))
+## 兵器架：闯关时拿到过的武器解锁成出发武器
+func unlock_weapon(id: String) -> bool:
+	var list: Array = save["weapons"]
+	if list.has(id):
+		return false
+	list.append(id)
+	write_save()
+	return true
 
 
 func parry_window() -> float:
@@ -74,6 +90,7 @@ func _setup_inputs() -> void:
 	_add_pad_button("toggle_map", 1, JOY_BUTTON_BACK)
 	_add_keys("toggle_practice", [KEY_F4])
 	_add_keys("reset", [KEY_R])
+	_add_keys("debug_jade", [KEY_F5])
 	# 数字键 1-5 换对手（见 EnemyData.ENCOUNTERS）
 	var nums := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9]
 	for i in range(nums.size()):

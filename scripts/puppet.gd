@@ -45,6 +45,9 @@ class Look:
 	var scale := 1.0
 	var sword_len := 24.0
 	var width := 1.0
+	var weapon := "katana"             # katana 太刀 / dual 双短刃 / nodachi 野太刀 / spear 长枪 / fist 铁拳
+	var helm := ""                     # 头甲：hood 头巾 / kasa 斗笠 / kabuto 铁盔
+	var armor := ""                    # 身甲：vest 短打 / leather 皮甲 / plate 铁甲
 
 
 static func base_pose() -> Dictionary:
@@ -261,8 +264,18 @@ static func draw(ci: CanvasItem, p: Dictionary, look: Look, facing: int,
 	if look.cape:
 		_draw_cape(ci, j, pal, sway_k)
 
+	var sheathed := float(p.get("sheathed", 0.0)) >= 0.5
+	# 背着的长兵器（野太刀、长枪收起来时斜背在背上）
+	if sheathed and (look.weapon == "spear" or look.weapon == "nodachi"):
+		_draw_back_carry(ci, hip, neck, up, fwd, pal, look)
+	# 后手的第二把短刃、后手铁拳
+	if look.weapon == "dual" and not sheathed:
+		_draw_sword(ci, j["hand_b"], float(p["sword"]) - 0.35, pal, look)
+
 	# 后侧：袖子和腿
 	_draw_arm(ci, j["shoulder_b"], j["elbow_b"], j["hand_b"], pal, true, sway_k, w)
+	if look.weapon == "fist":
+		_draw_gauntlet(ci, j["hand_b"], pal, true)
 	_draw_leg(ci, hip - Vector2(1.5, 0), j["knee_b"], j["foot_b"], pal, true, w)
 
 	# 前腿
@@ -285,6 +298,8 @@ static func draw(ci: CanvasItem, p: Dictionary, look: Look, facing: int,
 	_fill(ci, back, pal.c(look.cloth_dark))
 	# 前胸受光
 	ci.draw_line(top + fwd * (shoulder_w - 1.0), hip + fwd * (waist - 1.0) + up * 6.0, pal.c(look.cloth_light), 1.0)
+	if look.armor != "":
+		_draw_body_armor(ci, hip, top, up, fwd, waist, shoulder_w, pal, look)
 	# 领口（V 字）
 	var chest := hip + up * 9.0 + fwd * 1.5
 	ci.draw_line(top + fwd * 2.5, chest, pal.c(look.collar), 1.0)
@@ -299,7 +314,6 @@ static func draw(ci: CanvasItem, p: Dictionary, look: Look, facing: int,
 	ci.draw_rect(Rect2(hip - fwd * (waist + 2.0) + up * 5.0, Vector2(3, 3)), pal.c(look.belt.darkened(0.3)))
 
 	# 刀鞘：插在腰带上，鞘口在前，鞘尾斜向后下
-	var sheathed := float(p.get("sheathed", 0.0)) >= 0.5
 	if look.saya:
 		_draw_saya(ci, hip, up, fwd, sheathed, pal, look)
 
@@ -310,7 +324,8 @@ static func draw(ci: CanvasItem, p: Dictionary, look: Look, facing: int,
 
 	# 刀
 	var hand_f: Vector2 = j["hand_f"]
-	if not sheathed:
+	var carried := sheathed and (look.weapon == "spear" or look.weapon == "nodachi")
+	if not sheathed and not carried and look.weapon != "fist":
 		var grip := hand_f.lerp(p.get("sword_at", hand_f), float(p.get("sword_free", 0.0)))
 		var blur := float(p.get("blur", 0.0))
 		if absf(blur) > 0.02:
@@ -319,6 +334,14 @@ static func draw(ci: CanvasItem, p: Dictionary, look: Look, facing: int,
 
 	# 前手（盖在刀柄上）
 	_draw_arm(ci, j["shoulder"], j["elbow_f"], j["hand_f"], pal, false, sway_k, w)
+	if look.weapon == "fist":
+		_draw_gauntlet(ci, j["hand_f"], pal, false)
+	if look.armor == "plate":
+		# 铁甲的肩甲盖在前臂上面
+		var sh: Vector2 = j["shoulder"]
+		ci.draw_circle(sh + Vector2(0, 1), 4.2, pal.outline)
+		ci.draw_circle(sh + Vector2(0, 1), 3.4, pal.c(Color("5a5e6a")))
+		ci.draw_line(sh + Vector2(-3, 0), sh + Vector2(3, 0), pal.c(Color("8a909e")), 1.0)
 
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
@@ -418,7 +441,10 @@ static func _draw_head(ci: CanvasItem, head: Vector2, pal: _Pal, look: Look) -> 
 		ci.draw_rect(Rect2(head + Vector2(3.0, -0.5), Vector2(3, 1.5)), pal.c(look.eye_glow))
 	else:
 		ci.draw_rect(Rect2(head + Vector2(3.5, -0.5), Vector2(1.5, 2)), pal.outline)
-	if look.hat:
+	if look.helm == "hood" or look.helm == "kabuto":
+		_draw_helm(ci, head, pal, look)
+		return
+	if look.hat or look.helm == "kasa":
 		# 斗笠：宽圆锥，右上受月光
 		var brim_l := head + Vector2(-13, -2)
 		var brim_r := head + Vector2(13, -2)
@@ -444,6 +470,21 @@ static func _draw_head(ci: CanvasItem, head: Vector2, pal: _Pal, look: Look) -> 
 static func _draw_sword(ci: CanvasItem, hand: Vector2, angle: float, pal: _Pal, look: Look) -> void:
 	var dir := _dir(angle)
 	var n := dir.orthogonal()
+	if look.weapon == "spear":
+		# 长枪：木杆从手后面伸出来，前头一个枪尖和一撮红缨
+		var tail := hand - dir * 16.0
+		var head := hand + dir * (look.sword_len - 7.0)
+		var point := hand + dir * look.sword_len
+		ci.draw_line(tail, head, pal.outline, 4.0)
+		ci.draw_line(tail, head, pal.c(Color("7a5236")), 2.0)
+		ci.draw_line(tail + n * 0.5, head + n * 0.5, pal.c(Color("a87a52")), 1.0)
+		var tip_poly := PackedVector2Array([head + n * 2.2, point, head - n * 2.2, head - dir * 1.5])
+		_outline(ci, tip_poly, pal.outline)
+		_fill(ci, tip_poly, pal.c(look.blade))
+		ci.draw_line(head, point, pal.c(look.blade_edge), 1.0)
+		ci.draw_line(head - dir * 1.5 - n * 1.5, head - dir * 4.0 - n * 2.5, pal.c(Color("c0302a")), 2.0)
+		ci.draw_line(head - dir * 1.5 + n * 1.0, head - dir * 4.5 + n * 0.5, pal.c(Color("e04a3a")), 1.0)
+		return
 	var guard := hand + dir * 2.5
 	var tip := hand + dir * look.sword_len
 	# 刀柄（缠绳）
@@ -461,6 +502,95 @@ static func _draw_sword(ci: CanvasItem, hand: Vector2, angle: float, pal: _Pal, 
 	# 护手
 	ci.draw_line(guard - n * 3.0, guard + n * 3.0, pal.outline, 3.0)
 	ci.draw_line(guard - n * 2.2, guard + n * 2.2, pal.c(look.tsuba), 1.5)
+
+
+## 头甲：头巾裹住头顶、后面打个结；铁盔是一个铁碗加前面的金色锹形
+static func _draw_helm(ci: CanvasItem, head: Vector2, pal: _Pal, look: Look) -> void:
+	var heavy := look.helm == "kabuto"
+	var r := HEAD_R + (1.6 if heavy else 0.6)
+	var col := Color("4a4e5a") if heavy else Color("3a3a52")
+	var lit := Color("8a909e") if heavy else Color("5a5a7a")
+	var dome := PackedVector2Array()
+	for i in range(9):
+		var a := PI + PI * i / 8.0
+		dome.append(head + Vector2(cos(a) * r, sin(a) * r * 0.95 - 0.5))
+	dome.append(head + Vector2(r, 0.5))
+	dome.append(head + Vector2(-r, 0.5))
+	_outline(ci, dome, pal.outline)
+	_fill(ci, dome, pal.c(col))
+	ci.draw_line(head + Vector2(-1, -r + 1.0), head + Vector2(r - 1.5, -2.0), pal.c(lit), 1.0)
+	if heavy:
+		ci.draw_line(head + Vector2(-r - 1.0, 0.5), head + Vector2(r + 1.0, 0.5), pal.outline, 3.0)
+		ci.draw_line(head + Vector2(-r - 0.5, 0.5), head + Vector2(r + 0.5, 0.5), pal.c(col.lightened(0.15)), 1.0)
+		ci.draw_line(head + Vector2(2, -4), head + Vector2(5, -10), pal.c(Color("d8b040")), 1.0)
+		ci.draw_line(head + Vector2(4, -4), head + Vector2(8, -9), pal.c(Color("d8b040")), 1.0)
+	else:
+		# 头巾在脑后打的结
+		ci.draw_rect(Rect2(head + Vector2(-r - 2.0, -2.0), Vector2(3, 3)), pal.c(col))
+		ci.draw_line(head + Vector2(-r - 1.0, 0), head + Vector2(-r - 4.0, 3.0), pal.c(col), 1.0)
+
+
+## 铁拳：手上套一个铁护手
+static func _draw_gauntlet(ci: CanvasItem, hand: Vector2, pal: _Pal, is_back: bool) -> void:
+	ci.draw_circle(hand, 3.6, pal.outline)
+	ci.draw_circle(hand, 2.8, pal.c(Color("4a4e58") if is_back else Color("6a707e")))
+	ci.draw_rect(Rect2(hand + Vector2(-1, -2), Vector2(2, 1)), pal.c(Color("a8aebb")))
+
+
+## 野太刀、长枪收起来时背在背上：从腰后斜到肩膀上面
+static func _draw_back_carry(ci: CanvasItem, hip: Vector2, neck: Vector2, up: Vector2, fwd: Vector2, pal: _Pal, look: Look) -> void:
+	var dir := (up * 0.85 + fwd * 0.5).normalized()       # 往上、往前（柄或枪尖从肩膀后面露出来）
+	var c := hip.lerp(neck, 0.45) - fwd * 4.0
+	var half := look.sword_len * 0.55
+	var a := c - dir * half
+	var b := c + dir * half
+	if look.weapon == "spear":
+		ci.draw_line(a, b, pal.outline, 4.0)
+		ci.draw_line(a, b, pal.c(Color("7a5236")), 2.0)
+		var n := dir.orthogonal()
+		var tip_poly := PackedVector2Array([b + n * 2.0, b + dir * 6.0, b - n * 2.0])
+		_outline(ci, tip_poly, pal.outline)
+		_fill(ci, tip_poly, pal.c(look.blade))
+		ci.draw_line(b - n * 1.5, b - dir * 3.0 - n * 2.0, pal.c(Color("c0302a")), 2.0)
+	else:
+		# 野太刀：长刀鞘，刀柄从右肩上面露出来
+		ci.draw_line(a, b - dir * 6.0, pal.outline, 5.0)
+		ci.draw_line(a, b - dir * 6.0, pal.c(look.saya_color), 3.0)
+		ci.draw_line(a + up * 0.5, b - dir * 6.0 + up * 0.5, pal.c(look.saya_color.lightened(0.25)), 1.0)
+		var n := dir.orthogonal()
+		var g := b - dir * 6.0
+		ci.draw_line(g - n * 3.0, g + n * 3.0, pal.outline, 3.0)
+		ci.draw_line(g - n * 2.2, g + n * 2.2, pal.c(look.tsuba), 1.5)
+		ci.draw_line(g, b + dir * 3.0, pal.outline, 4.0)
+		ci.draw_line(g, b + dir * 2.5, pal.c(look.hilt), 2.0)
+
+
+## 身甲：皮甲是一块棕色胸甲加肩带，铁甲是一排排甲片，短打是一条束腰
+static func _draw_body_armor(ci: CanvasItem, hip: Vector2, top: Vector2, up: Vector2, fwd: Vector2,
+		waist: float, shoulder_w: float, pal: _Pal, look: Look) -> void:
+	var lo := hip + up * 4.0
+	var hi := top - up * 2.0
+	match look.armor:
+		"vest":
+			var sash := PackedVector2Array([lo - fwd * (waist + 0.5), lo + fwd * (waist + 0.5),
+				lo + fwd * (waist + 0.5) + up * 3.0, lo - fwd * (waist + 0.5) + up * 3.0])
+			_fill(ci, sash, pal.c(Color("3a5a4a")))
+			ci.draw_line(sash[3], sash[2], pal.c(Color("5a8a6a")), 1.0)
+		"leather", "plate":
+			var col := Color("6a4a30") if look.armor == "leather" else Color("50545e")
+			var lit := Color("9a7048") if look.armor == "leather" else Color("8a909e")
+			var plate := PackedVector2Array([lo - fwd * (waist - 0.5), lo + fwd * (waist + 0.5),
+				hi + fwd * (shoulder_w - 1.0), hi - fwd * (shoulder_w - 2.5)])
+			_outline(ci, plate, pal.outline)
+			_fill(ci, plate, pal.c(col))
+			ci.draw_line(plate[1], plate[2], pal.c(lit), 1.0)
+			if look.armor == "plate":
+				for i in range(1, 4):
+					var t := i / 4.0
+					ci.draw_line(plate[0].lerp(plate[3], t), plate[1].lerp(plate[2], t), pal.c(col.darkened(0.35)), 1.0)
+			else:
+				# 斜挎的皮带
+				ci.draw_line(hi - fwd * (shoulder_w - 2.5), lo + fwd * (waist - 1.0), pal.c(Color("3a2414")), 1.0)
 
 
 ## 鞘口位置和鞘的方向（本地坐标），拔刀式时手要放到这里

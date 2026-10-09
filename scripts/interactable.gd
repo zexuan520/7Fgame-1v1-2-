@@ -1,11 +1,11 @@
 class_name Interactable
 extends Node2D
-## 房间里能按「下」互动的东西：出口的门、商人的货、土地庙的香炉、破庙的供台。
+## 房间里能按「下」互动的东西：出口的门、商人的货、土地庙的香炉、地上的装备、破庙的拾骨婆和兵器架。
 ## 主场景每帧把离玩家最近的一个设成 highlight，按「下」时调用 main.interact()。
 
 const RANGE := 26.0
 
-var kind := "door"          # door 门 / item 货物 / rest 土地庙 / altar 供台 / chest 宝箱 / note 遗骸
+var kind := "door"          # door 门 / item 货物 / rest 土地庙 / chest 宝箱 / note 遗骸 / gear 装备 / talent 天赋 / rack 兵器架
 var label := ""             # 头上的字
 var sub := ""               # 小字（价格、说明）
 var icon := ""              # 图标：门是房间类型，货物是货物 id
@@ -29,7 +29,11 @@ func prompt() -> String:
 		"door": return "↓ 进入" if enabled else "清完敌人才能走"
 		"item": return "↓ 购买" if enabled else "卖完了"
 		"rest": return "↓ 上香" if enabled else "香已经点上了"
-		"altar": return "↓ 供奉" if enabled else "已满"
+		"talent": return "↓ 点天赋"
+		"rack": return "↓ 换出发武器"
+		"gear":
+			var price := int(data.get("price", 0))
+			return "↓ 买下换上 · %d 铜钱" % price if price > 0 else "↓ 换上"
 		"chest": return "↓ 打开" if enabled else "空了"
 		"note": return "↓ 查看"
 	return "↓"
@@ -45,7 +49,9 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	match kind:
 		"door": _draw_door()
-		"item", "altar": _draw_item()
+		"item": _draw_item()
+		"gear": _draw_gear()
+		"rack": _draw_rack()
 		"rest": _draw_shrine()
 		"chest": _draw_chest()
 		"note": _draw_note()
@@ -56,8 +62,12 @@ func _draw() -> void:
 		top = -60.0
 	elif kind == "chest" or kind == "note":
 		top = -30.0
+	elif kind == "talent":
+		top = -86.0
+	elif kind == "rack":
+		top = -62.0
 	var a := 1.0 if highlight else 0.75
-	var show_sub := sub != "" and (highlight or kind == "door" or kind == "rest")
+	var show_sub := sub != "" and (highlight or kind == "door" or kind == "rest") and kind != "gear"
 	if highlight:
 		var w := maxf(font.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x,
 			font.get_string_size(prompt(), HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x) + 12.0
@@ -157,6 +167,63 @@ func _draw_item() -> void:
 		for i in range(3):
 			draw_circle(c, 6.0 + i * 3.0, Color(color, 0.06))
 	Icons.draw(self, icon, c, color if enabled else Color(0.35, 0.32, 0.35))
+
+
+# ---------- 地上的装备 ----------
+
+func _draw_gear() -> void:
+	var q := int(data["item"]["q"])
+	var pulse := 0.6 + 0.4 * sin(time * 3.0 + position.x)
+	# 品质越高光柱越高
+	if q >= 1:
+		var h := 22.0 + q * 12.0
+		for i in range(6):
+			var t := float(i) / 6.0
+			draw_rect(Rect2(-3 + t * 1.0, -h * (1.0 - t) - 4, 6 - t * 2.0, h * (1.0 - t)), Color(color, 0.05 * pulse))
+		draw_rect(Rect2(-0.5, -h - 4, 1, h), Color(color.lightened(0.3), 0.18 * pulse))
+	# 落地的一圈光、往上飘的光点
+	draw_set_transform(Vector2(0, -1), 0.0, Vector2(1.0, 0.3))
+	draw_circle(Vector2.ZERO, 10.0, Color(color, 0.18 * pulse))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	for i in range(2 + q):
+		var t := fmod(time * 0.6 + i * 0.37, 1.0)
+		var at := Vector2(sin(i * 2.1 + time) * 6.0, -4.0 - t * (18.0 + q * 6.0)).round()
+		draw_rect(Rect2(at, Vector2(1, 1)), Color(color.lightened(0.4), (1.0 - t) * 0.8))
+	var bob := roundf(sin(time * 2.5 + position.x) * 1.5)
+	Icons.draw(self, icon, Vector2(0, -9 + bob), color)
+
+
+# ---------- 兵器架 ----------
+
+func _draw_rack() -> void:
+	var o := Color("0c080a")
+	var wood := Color("5a3a24")
+	var lit := Color("8a5a36")
+	for x in [-26.0, 24.0]:
+		draw_rect(Rect2(x - 1, -46, 4, 46), o)
+		draw_rect(Rect2(x, -45, 2, 45), wood)
+		draw_rect(Rect2(x, -45, 1, 45), lit)
+	for y in [-42.0, -22.0]:
+		draw_rect(Rect2(-28, y - 1, 56, 4), o)
+		draw_rect(Rect2(-27, y, 54, 2), wood)
+		draw_rect(Rect2(-27, y, 54, 1), lit)
+	draw_rect(Rect2(-30, -2, 60, 2), o)
+	# 架子上挂着解锁的武器，出发要带的那把发光
+	var ids: Array = GearData.WEAPONS.keys()
+	var have: Array = Game.save["weapons"]
+	for i in range(ids.size()):
+		var id: String = ids[i]
+		var at := Vector2(-20 + i * 10, -30)
+		if not have.has(id):
+			draw_rect(Rect2(at + Vector2(-1, -6), Vector2(2, 12)), Color(0.15, 0.12, 0.14))
+			continue
+		var cur: bool = id == data.get("weapon", "")
+		if cur:
+			for k in range(3):
+				draw_circle(at, 6.0 + k * 3.0, Color(1.0, 0.85, 0.4, 0.06 + 0.03 * sin(time * 3.0)))
+		draw_set_transform(at, -PI / 2.0, Vector2.ONE)
+		Icons.draw(self, "w_" + id, Vector2.ZERO, Color(1, 1, 1) if cur else Color(0.6, 0.58, 0.6))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 # ---------- 土地庙 ----------

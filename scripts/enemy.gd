@@ -12,6 +12,9 @@ const BROKEN_TIME := 2.0            # 架势满 → 处决窗口 2 秒
 const INTRO_TURN := 4.2             # 头目登场：说完话转身拔刀
 const INTRO_END := 5.2
 const AGGRO_RANGE := 300.0          # 房间里站着的敌人，玩家走到这么近才动手
+const BLEED_MAX := 5                # 流血最多叠 5 层
+const BLEED_DPS := 3.0              # 每层每秒伤害
+const BLEED_TIME := 3.0
 
 var kind := "ronin"
 var data: Dictionary = {}
@@ -38,6 +41,9 @@ var _keep_jitter := 0.0     # 每个敌人想站的距离稍微错开，不会�
 var aggro := true           # false 时站着不动，等玩家走近（房间里的第一波）
 var perch := false          # 守在高处不走动（站在屋顶、望楼上的弓手）
 var _jump_cd := 0.0
+var bleed_stacks := 0
+var bleed_time := 0.0
+var _bleed_acc := 0.0
 var _side := 1              # 包抄的一边（ai.flank 为 true 时有一半会绕到玩家另一边）
 
 # 美术
@@ -232,6 +238,7 @@ func _hit_times() -> Array:
 
 func _physics_process(delta: float) -> void:
 	state_time += delta
+	_tick_bleed(delta)
 	flash_timer = maxf(0.0, flash_timer - delta)
 	attack_cooldown -= delta
 	if state != S.BROKEN and state != S.DYING and state != S.DEAD:
@@ -538,7 +545,7 @@ func _on_attack_result(result: String, p: Player) -> void:
 				velocity.x = -facing * 200.0
 				_stagger(0.7)
 			else:
-				add_posture(p_amount * 0.5)
+				add_posture(p_amount * 0.5 * (1.0 + float(p.stats["parry_posture"])))
 		"block":
 			main.spawn_spark(mid, Color(0.7, 0.8, 1.0), 6)
 		"hit":
@@ -582,9 +589,10 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 	if not is_hittable() or state == S.BROKEN:
 		return "none"
 	wake()
-	var dmg: float = float(atk["dmg"]) * p.dmg_mult
-	var p_amount: float = atk["posture"]
-	var heavy: bool = atk["heavy"]
+	var hit := p.strike(atk, self)
+	var dmg: float = hit["dmg"]
+	var p_amount: float = hit["posture"]
+	var heavy: bool = hit["heavy"]
 	var from_front := (p.global_position.x >= global_position.x) == (facing == 1)
 	var mid := (global_position + p.global_position) / 2.0 + Vector2(0, -33)
 
@@ -595,6 +603,7 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 			main.spawn_spark(mid, Color(1.0, 0.6, 0.2), 14)
 			main.shake(3.0)
 			_take_damage(dmg * 0.5, p_amount)
+			p.on_hit_landed(self, hit)
 			velocity.x = -facing * 160.0
 			_stagger(1.1)
 			return "guardbreak"
@@ -618,6 +627,7 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 			main.spawn_spark(mid, Color(1.0, 0.6, 0.2), 12)
 			main.shake(3.0)
 			_take_damage(dmg, p_amount)
+			p.on_hit_landed(self, hit)
 			_stagger(0.5)
 			return "guardbreak"
 		main.spawn_spark(mid, Color(0.8, 0.85, 1.0), 6)
@@ -637,11 +647,41 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 	main.spawn_spark(mid, Color(0.95, 0.2, 0.2), 8 if not heavy else 12)
 	main.spawn_blood(global_position + Vector2(0, -body_size.y * 0.6), float(p.facing), 12 if heavy else 8)
 	_take_damage(dmg, p_amount)
+	p.on_hit_landed(self, hit)
 	if state == S.IDLE or state == S.GUARD or (is_grunt() and state == S.WINDUP):
 		# 杂兵挨刀会被打断出招
 		velocity.x = -facing * (140.0 if is_grunt() else 90.0)
 		_enter(S.FLINCH)
 	return "hit"
+
+
+## 双短刃的流血：叠层，每层每秒 3 点伤害，3 秒没再被砍就止住
+func add_bleed() -> void:
+	bleed_stacks = mini(bleed_stacks + 1, BLEED_MAX)
+	bleed_time = BLEED_TIME
+
+
+func _tick_bleed(delta: float) -> void:
+	if bleed_stacks <= 0:
+		return
+	if state == S.DYING or state == S.DEAD or state == S.BROKEN:
+		bleed_stacks = 0
+		return
+	bleed_time -= delta
+	_bleed_acc += delta
+	if _bleed_acc >= 0.5:
+		_bleed_acc -= 0.5
+		hp = maxf(0.0, hp - BLEED_DPS * 0.5 * bleed_stacks)
+		main.spawn_blood(global_position + Vector2(0, -body_size.y * 0.5), 0.0, 2 + bleed_stacks)
+		if hp <= 0.0:
+			bleed_stacks = 0
+			if is_grunt():
+				_die()
+			else:
+				_break()
+			return
+	if bleed_time <= 0.0:
+		bleed_stacks = 0
 
 
 func _take_damage(dmg: float, p_amount: float) -> void:

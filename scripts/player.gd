@@ -65,7 +65,11 @@ var clock := 0.0
 var parry_count := 0                # 统计，用于界面显示
 var gourds := MAX_GOURDS
 var max_gourds := MAX_GOURDS        # 商人的空药罐、破庙供台能加
-var dmg_mult := 1.0                 # 磨刀石加攻击
+var gear: Dictionary = GearData.empty_loadout()   # 身上的装备（闯关时和 Game.run.gear 是同一个字典）
+var stats: Dictionary = GearData.base_stats()     # 装备 + 天赋 + 商人加成汇总后的数值（见 GearData.base_stats）
+var weapon: Dictionary = GearData.weapon_stats(GearData.starter("katana"))
+var revives := 0                    # 不动“不死身”：这一局还能站起来几次
+var frozen := false                 # 开着天赋界面时站着不动
 var auto_respawn := true            # 练武场倒下 3 秒自动复活；闯关时要清完房间才复活
 var stance_index := 0               # 当前架势（见 Stance.LIST）
 var _switch_t := -1.0               # 切换架势的转刀动画
@@ -82,6 +86,9 @@ var _air_attacks := 0
 var _dodge_end := -10.0
 var _stun_time := HITSTUN_TIME      # 这次挨打的僵直时间（被擒拿更久）
 var _art_tick := -1
+var _counter_t := 0.0              # 太刀：弹反后追击
+var _pierce_t := 0.0               # 修罗面：处决后无视格挡
+var _dodge_buff_t := 0.0           # 风铃：闪身后加伤害
 
 # 美术
 var look := Puppet.Look.new()
@@ -277,6 +284,9 @@ func _physics_process(delta: float) -> void:
 	parry_timer = maxf(0.0, parry_timer - delta)
 	dodge_cooldown = maxf(0.0, dodge_cooldown - delta)
 	invul_timer = maxf(0.0, invul_timer - delta)
+	_counter_t = maxf(0.0, _counter_t - delta)
+	_pierce_t = maxf(0.0, _pierce_t - delta)
+	_dodge_buff_t = maxf(0.0, _dodge_buff_t - delta)
 	flash_timer = maxf(0.0, flash_timer - delta)
 	if state != S.DEAD and state != S.BROKEN:
 		tick_posture(delta)
@@ -284,6 +294,14 @@ func _physics_process(delta: float) -> void:
 		air_jumps = 1
 		if state != S.ATTACK:
 			_air_attacks = 0
+
+	if frozen:
+		velocity.x = move_toward(velocity.x, 0.0, 1300.0 * delta)
+		apply_gravity(delta)
+		move_and_slide()
+		_update_art(delta)
+		queue_redraw()
+		return
 
 	match state:
 		S.FREE: _state_free(delta)
@@ -326,7 +344,7 @@ func _state_free(delta: float) -> void:
 	var dir := Input.get_axis(prefix + "left", prefix + "right")
 	# 起步和刹车有很短的加减速，动作才接得上
 	var accel := 2000.0 if absf(dir) > 0.1 else 2600.0
-	velocity.x = move_toward(velocity.x, dir * MOVE_SPEED, accel * delta)
+	velocity.x = move_toward(velocity.x, dir * move_speed(), accel * delta)
 	if absf(dir) > 0.1:
 		facing = 1 if dir > 0.0 else -1
 	if _pressed("jump"):
@@ -352,7 +370,7 @@ func _state_charge(delta: float) -> void:
 		_start_guard()
 	elif _pressed("dodge") and dodge_cooldown <= 0.0:
 		_start_dodge(Input.get_axis(prefix + "left", prefix + "right"))
-	elif charge_time >= HEAVY_CHARGE_TIME:
+	elif charge_time >= charge_needed():
 		_start_move("heavy")
 	elif not _held("attack"):
 		_start_move("slash1")
@@ -487,7 +505,7 @@ func _state_drink(delta: float) -> void:
 	velocity.x = move_toward(velocity.x, dir * 45.0, 900.0 * delta)
 	if not _drank and state_time >= DRINK_HEAL_AT:
 		_drank = true
-		var amount := minf(max_hp * HEAL_RATIO, max_hp - hp)
+		var amount := minf(max_hp * HEAL_RATIO * (1.0 + float(stats["gourd_heal"])), max_hp - hp)
 		hp += amount
 		flash(Color(0.5, 1.0, 0.6), 0.2)
 		main.spawn_text(global_position + Vector2(0, -70), "+%d" % roundi(amount), Color(0.5, 1.0, 0.55))
@@ -532,7 +550,7 @@ func _state_art(delta: float) -> void:
 
 
 func _state_dodge(_delta: float) -> void:
-	velocity.x = dodge_dir * DODGE_SPEED
+	velocity.x = dodge_dir * DODGE_SPEED * (1.0 + float(stats["dodge_speed"]))
 	velocity.y = 0.0   # 空中闪身保持高度
 	if _pressed("attack") and state_time >= 0.06:
 		# 闪身中按攻击：顺势突刺
@@ -542,6 +560,8 @@ func _state_dodge(_delta: float) -> void:
 	if state_time >= DODGE_TIME:
 		velocity.x = dodge_dir * 90.0
 		_dodge_end = clock
+		if float(stats["dodge_dmg"]) > 0.0:
+			_dodge_buff_t = 1.0
 		_enter(S.FREE)
 
 
@@ -600,6 +620,7 @@ func _start_attack(data: Dictionary, step: int) -> void:
 		data = data.duplicate()
 	if not bool(data["heavy"]):
 		data["recover"] = float(data["recover"]) * float(st["recover"])
+	data = _weapon_scaled(data)
 	attack = data
 	combo_step = step
 	combo_queued = false
@@ -614,7 +635,8 @@ func _start_guard() -> void:
 
 
 func _arm_parry() -> void:
-	var window := Game.parry_window() + float(stance()["parry_bonus"])
+	var window := Game.parry_window() + float(stance()["parry_bonus"]) + float(stats["parry"]) \
+		+ (0.03 if weapon["trait"] == "crush" else 0.0)
 	if clock - last_guard_press < GUARD_SPAM_GAP:
 		window *= GUARD_SPAM_FACTOR   # 乱按惩罚
 	last_guard_press = clock
@@ -626,7 +648,8 @@ func _start_dodge(dir: float) -> void:
 		dodge_dir = 1 if dir > 0.0 else -1
 	else:
 		dodge_dir = -facing   # 不按方向时向后撤步
-	dodge_cooldown = DODGE_COOLDOWN + DODGE_TIME
+	var cd := 1.0 + float(stats["dodge_cd"]) - (0.3 if weapon["trait"] == "bleed" else 0.0)
+	dodge_cooldown = DODGE_COOLDOWN * maxf(cd, 0.3) + DODGE_TIME
 	invul_timer = DODGE_INVUL
 	_enter(S.DODGE)
 	if is_on_floor():
@@ -643,10 +666,10 @@ func _start_drink() -> void:
 
 
 func _start_art() -> void:
-	if will < ART["cost"]:
+	if will < art_cost():
 		main.spawn_text(global_position + Vector2(0, -70), "刃意不足", Color(0.7, 0.7, 0.75), 12)
 		return
-	will -= ART["cost"]
+	will -= art_cost()
 	_art_tick = -1
 	hit_targets.clear()
 	_enter(S.ART)
@@ -655,7 +678,10 @@ func _start_art() -> void:
 
 
 func gain_will(kind: String) -> void:
-	will = minf(MAX_WILL, will + float(WILL_GAIN.get(kind, 0.0)) * float(stance()["will"]))
+	var k := float(stance()["will"]) * (1.0 + float(stats["will"]))
+	if hp < max_hp * 0.3:
+		k *= 1.0 + float(stats["low_will"])
+	will = minf(MAX_WILL, will + float(WILL_GAIN.get(kind, 0.0)) * k)
 
 
 func stance() -> Dictionary:
@@ -692,6 +718,10 @@ func _start_execute(target: Enemy) -> void:
 	_enter(S.EXECUTE)
 	target.execute_by(self)
 	gain_will("execute")
+	if float(stats["exec_heal"]) > 0.0:
+		heal(max_hp * float(stats["exec_heal"]))
+	if float(stats["exec_pierce"]) > 0.0:
+		_pierce_t = float(stats["exec_pierce"])
 	_victory = "overhead" if target.lives <= 0 else "wheel"
 
 
@@ -739,6 +769,116 @@ func _check_stomp() -> void:
 			return
 
 
+# ---------- 装备和天赋的数值 ----------
+
+## 按装备表重算数值：武器、外观跟着换
+func apply_loadout(s: Dictionary) -> void:
+	stats = s
+	weapon = GearData.weapon_stats(gear["weapon"])
+	look.weapon = weapon["id"]
+	look.sword_len = float(weapon["len"])
+	look.saya = weapon["id"] == "katana" or weapon["id"] == "dual"
+	look.helm = gear["head"]["base"] if gear["head"] != null else ""
+	look.armor = gear["body"]["base"] if gear["body"] != null else ""
+	posture_recover_rate = 30.0 * (1.0 + float(s["posture_rec"]))
+
+
+func move_speed() -> float:
+	return MOVE_SPEED * maxf(0.5, 1.0 + float(stats["move"]))
+
+
+func charge_needed() -> float:
+	return maxf(0.25, HEAVY_CHARGE_TIME - float(stats["charge"]))
+
+
+func art_cost() -> float:
+	return maxf(10.0, float(ART["cost"]) - float(stats["art_cost"]))
+
+
+## 受到伤害的倍率：防御 d 时 × 60 / (60 + d)，金刚再减
+func damage_taken_mult() -> float:
+	return 60.0 / (60.0 + float(stats["def"])) * maxf(0.2, 1.0 + float(stats["dmg_taken"]))
+
+
+func heal(amount: float) -> void:
+	var add := minf(amount, max_hp - hp)
+	if add <= 0.5 or state == S.DEAD:
+		return
+	hp += add
+	main.spawn_text(global_position + Vector2(0, -64), "+%d" % roundi(add), Color(0.5, 1.0, 0.55), 12)
+
+
+func _super_armor() -> bool:
+	if weapon["trait"] != "armor":
+		return false
+	return state == S.CHARGE or (state == S.ATTACK and bool(attack.get("heavy", false)))
+
+
+## 招式表里的数值按武器换算：伤害、架势、出手快慢、距离
+func _weapon_scaled(data: Dictionary) -> Dictionary:
+	var d := data.duplicate()
+	d["dmg"] = float(d["dmg"]) * float(weapon["dmg"])
+	d["posture"] = float(d["posture"]) * float(weapon["posture"])
+	var sp := float(weapon["speed"])
+	if not d.get("plunge", false):
+		d["windup"] = float(d["windup"]) * sp
+	d["recover"] = float(d["recover"]) * sp
+	var rk := float(weapon["reach"])
+	var size: Vector2 = d["size"]
+	if d.get("around", false):
+		d["size"] = Vector2(size.x * lerpf(1.0, rk, 0.5), size.y)
+	else:
+		# 判定框往前长：框的后边不动，前边按倍率伸出去
+		var back := float(d["reach"]) - size.x / 2.0
+		var new_w := size.x * rk
+		d["size"] = Vector2(new_w, size.y)
+		d["reach"] = back + new_w / 2.0
+	if weapon["trait"] == "pierce" and (d.get("id", "") == "slash4" or d.get("id", "") == "dash"):
+		d["pierce"] = true
+	return d
+
+
+## 一刀打到敌人身上的实际数值：伤害、架势伤害、能不能破防、会不会会心
+func strike(atk: Dictionary, e: Enemy) -> Dictionary:
+	var mult := 1.0 + float(stats["atk"])
+	if hp < max_hp * float(stats["low_dmg_line"]):
+		mult += float(stats["low_dmg"])
+	if _dodge_buff_t > 0.0:
+		mult += float(stats["dodge_dmg"])
+	if e.max_posture > 0.0 and e.posture >= e.max_posture * 0.5:
+		mult += float(stats["pressure"])
+	if int(atk.get("combo", -1)) >= 3:
+		mult += float(stats["combo_end"])
+	if bool(atk.get("heavy", false)) and atk.get("id", "") in ["heavy", "plunge"]:
+		mult += float(stats["heavy_dmg"])
+	var counter := false
+	if _counter_t > 0.0 and not atk.has("ticks"):
+		mult += 0.6
+		_counter_t = 0.0
+		counter = true
+	var crit := randf() < minf(0.6, float(stats["crit"]))
+	if crit:
+		mult *= 1.0 + float(stats["crit_dmg"])
+	return {
+		"dmg": float(atk["dmg"]) * mult,
+		"posture": float(atk["posture"]) * (1.0 + float(stats["pdmg"])),
+		"heavy": bool(atk["heavy"]) or bool(atk.get("pierce", false)) or _pierce_t > 0.0,
+		"crit": crit, "counter": counter,
+	}
+
+
+## 这一刀真的砍到肉了（没被挡）：吸血、流血
+func on_hit_landed(e: Enemy, hit: Dictionary) -> void:
+	if float(stats["lifesteal"]) > 0.0:
+		hp = minf(max_hp, hp + float(hit["dmg"]) * float(stats["lifesteal"]))
+	if weapon["trait"] == "bleed":
+		e.add_bleed()
+	if hit["crit"]:
+		main.spawn_text(e.global_position + Vector2(randf_range(-8, 8), -e.body_size.y - 40.0), "会心", Color(1.0, 0.85, 0.3), 12)
+	elif hit["counter"]:
+		main.spawn_text(e.global_position + Vector2(0, -e.body_size.y - 40.0), "追击", Color(0.9, 0.95, 1.0), 12)
+
+
 # ---------- 受击 ----------
 
 ## 敌人攻击命中判定框时调用。返回 parry / block / hit / miss / mikiri
@@ -763,20 +903,29 @@ func receive_enemy_hit(info: Dictionary, attacker: Node2D) -> String:
 			gain_will("parry")
 			flash(Color(1.0, 0.95, 0.5), 0.15)
 			add_posture(p * 0.25)
+			if float(stats["parry_heal"]) > 0.0:
+				heal(max_hp * float(stats["parry_heal"]))
+			will = minf(MAX_WILL, will + float(stats["parry_will"]))
+			if weapon["trait"] == "counter":
+				_counter_t = 2.0
 			return "parry"
-		add_posture(p * float(stance()["block_posture"]))
+		add_posture(p * float(stance()["block_posture"]) * maxf(0.1, 1.0 + float(stats["block_posture"])))
 		if state != S.BROKEN:
 			velocity.x = -to_attacker * 165.0
 		return "block"
-	var dmg: float = info["dmg"]
+	var dmg: float = float(info["dmg"]) * damage_taken_mult()
 	hp -= dmg
 	flash(Color(1.0, 0.3, 0.3), 0.15)
 	main.spawn_blood(global_position + Vector2(0, -28), -to_attacker, 10)
-	velocity.x = -to_attacker * 210.0
 	if hp <= 0.0:
 		_die()
 		return "hit"
 	add_posture(p * 0.5)
+	if _super_armor() and kind != "grab":
+		# 野太刀霸体：吃下这一刀，动作不停
+		flash(Color(1.0, 0.75, 0.4), 0.1)
+		return "hit"
+	velocity.x = -to_attacker * 210.0
 	if state != S.BROKEN:
 		_stun_time = float(info.get("stun", HITSTUN_TIME))
 		if kind == "grab":
@@ -794,6 +943,17 @@ func _on_posture_full() -> void:
 
 
 func _die() -> void:
+	if revives > 0:
+		# 不死身：倒下一次，以一半生命站起来
+		revives -= 1
+		hp = max_hp * 0.5
+		posture = 0.0
+		invul_timer = 1.0
+		flash(Color(1.0, 0.9, 0.5), 0.3)
+		main.spawn_text(global_position + Vector2(0, -70), "不死身", Color(1.0, 0.85, 0.4), 14)
+		main.spawn_ring(global_position + Vector2(0, -26), Color(1.0, 0.85, 0.4), 40.0)
+		_enter(S.FREE)
+		return
 	hp = 0.0
 	_enter(S.DEAD)
 	respawn_timer = RESPAWN_TIME
@@ -864,7 +1024,7 @@ func _target_pose() -> Dictionary:
 		S.CHARGE:
 			# 短按时还停在架势上（拔刀式刀不出鞘），按久了才举刀蓄力
 			var cp: Dictionary = Puppet.lerp_pose(_stance_pose(), POSES["charge"], (charge_time - 0.1) / 0.25)
-			if charge_time >= HEAVY_CHARGE_TIME - 0.1:
+			if charge_time >= charge_needed() - 0.1:
 				cp["dx"] = sin(clock * 90.0) * 0.8   # 蓄满时抖动
 			return cp
 		S.ATTACK:
@@ -1226,7 +1386,7 @@ func _draw() -> void:
 		draw_circle(tip, 3.5, Color(1.0, 0.95, 0.6, 0.5))
 		draw_circle(tip, 2.0, Color(1.0, 1.0, 0.85))
 	if state == S.CHARGE:
-		var ratio := clampf(charge_time / HEAVY_CHARGE_TIME, 0.0, 1.0)
+		var ratio := clampf(charge_time / charge_needed(), 0.0, 1.0)
 		var full := ratio >= 1.0
 		draw_rect(Rect2(-14, 5, 28, 3), Color(0, 0, 0, 0.7))
 		draw_rect(Rect2(-14, 5, 28 * ratio, 3), Color(1, 1, 1) if full else Color(1.0, 0.6, 0.2))

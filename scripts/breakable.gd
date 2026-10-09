@@ -61,7 +61,7 @@ func _break(dir: float) -> void:
 	rng.randomize()
 	for l: Array in KINDS[kind]["loot"]:
 		if rng.randf() < float(l[1]):
-			main.spawn_pickups(l[0], rng.randi_range(int(l[2]), int(l[3])), global_position + Vector2(0, -10), global_position.y)
+			main.spawn_pickups(l[0], main.loot_amount(l[0], rng.randi_range(int(l[2]), int(l[3]))), global_position + Vector2(0, -10), global_position.y)
 	queue_free()
 
 
