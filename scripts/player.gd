@@ -58,6 +58,11 @@ var _scarf: Array[Vector2] = []     # 围巾各节的世界坐标
 var _was_on_floor := true
 var _ghost_timer := 0.0
 var _squash := Vector2.ONE
+var _idle_time := 0.0               # 站着不动多久了，用来触发闲置小动作
+var _land_timer := 0.0
+var _spin_time := -1.0              # 二段跳翻身
+var _prev_facing := 1
+var _ready_blend := 0.0             # 0 = 放松，1 = 戒备
 
 static var POSES := {}
 
@@ -66,6 +71,24 @@ static func _build_poses() -> void:
 	if not POSES.is_empty():
 		return
 	POSES["idle"] = Puppet.pose({})
+	# 放松持刀：刀尖斜向下
+	POSES["relaxed"] = Puppet.pose({"crouch": 1.2, "lean": 0.04, "foot_f": Vector2(5, 0), "foot_b": Vector2(-4, 0),
+		"arm_f": Vector2(0.25, 0.6), "arm_b": Vector2(-0.12, 0.2), "sword": 0.55})
+	# 戒备：敌人靠近时，双手持刀刀尖指向对方
+	POSES["ready"] = Puppet.pose({"crouch": 2.8, "lean": 0.16, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(0.95, 1.55), "arm_b": Vector2(0.75, 1.45), "sword": 1.45})
+	# 闲置小动作：甩刀（血振）
+	POSES["chiburi_up"] = Puppet.pose({"crouch": 1.5, "lean": -0.05, "foot_f": Vector2(5, 0), "foot_b": Vector2(-4, 0),
+		"arm_f": Vector2(1.9, 2.5), "arm_b": Vector2(-0.2, 0.3), "sword": 2.7})
+	POSES["chiburi_down"] = Puppet.pose({"crouch": 2.5, "lean": 0.22, "foot_f": Vector2(6, 0), "foot_b": Vector2(-4, 0),
+		"arm_f": Vector2(0.9, 0.5), "arm_b": Vector2(-0.4, 0.1), "sword": 0.25})
+	# 伸展、回头
+	POSES["stretch"] = Puppet.pose({"crouch": 0.4, "lean": -0.16, "head": -0.25, "foot_f": Vector2(5, 0), "foot_b": Vector2(-4, 0),
+		"arm_f": Vector2(0.3, 0.6), "arm_b": Vector2(2.7, 3.1), "sword": 0.5})
+	POSES["look_back"] = Puppet.pose({"crouch": 1.4, "lean": -0.06, "head": -0.5, "foot_f": Vector2(5, 0), "foot_b": Vector2(-5, 0),
+		"arm_f": Vector2(0.3, 0.7), "arm_b": Vector2(-0.3, 0.1), "sword": 0.6})
+	POSES["land"] = Puppet.pose({"crouch": 6.5, "lean": 0.35, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(0.6, 1.0), "arm_b": Vector2(-0.8, -0.2), "sword": 0.9})
 	POSES["guard"] = Puppet.pose({"crouch": 2.5, "lean": 0.15, "foot_f": Vector2(5, 0), "foot_b": Vector2(-6, 0),
 		"arm_f": Vector2(1.1, 2.4), "arm_b": Vector2(0.7, 1.9), "sword": 2.75})
 	POSES["parry"] = Puppet.pose({"crouch": 3.0, "lean": 0.3, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
@@ -295,6 +318,7 @@ func _try_jump() -> void:
 		main.spawn_dust(global_position, 0.0, 6)
 	elif air_jumps > 0:
 		main.spawn_dust(global_position, 0.0, 4)
+		_spin_time = 0.0
 		air_jumps -= 1
 		velocity.y = JUMP_VELOCITY * 0.9
 
@@ -465,19 +489,15 @@ func _target_pose() -> Dictionary:
 	match state:
 		S.FREE:
 			if not is_on_floor():
+				if _spin_time >= 0.0:
+					return Puppet.pose({"crouch": 5.0, "lean": 0.5, "foot_f": Vector2(4, -6), "foot_b": Vector2(-2, -5),
+						"arm_f": Vector2(1.2, 2.2), "arm_b": Vector2(1.0, 2.0), "sword": 1.0})
 				return POSES["jump"] if velocity.y < 0.0 else POSES["fall"]
+			if _land_timer > 0.0:
+				return POSES["land"]
 			if absf(velocity.x) > 10.0:
-				var ph := clock * 13.0
-				return Puppet.pose({
-					"crouch": 2.0 + absf(sin(ph)) * 1.2, "lean": 0.3,
-					"foot_f": Vector2(5.0 * sin(ph), -maxf(0.0, 3.0 * cos(ph))),
-					"foot_b": Vector2(-5.0 * sin(ph), -maxf(0.0, -3.0 * cos(ph))),
-					"arm_f": Vector2(-0.3 + 0.2 * sin(ph), 0.2), "sword": -0.7,
-					"arm_b": Vector2(0.4 * sin(ph + PI), 0.9),
-				})
-			var idle: Dictionary = POSES["idle"].duplicate()
-			idle["crouch"] = 1.0 + sin(clock * 3.0) * 0.6
-			return idle
+				return _run_pose()
+			return _idle_pose()
 		S.CHARGE:
 			var cp: Dictionary = Puppet.lerp_pose(POSES["idle"], POSES["charge"], charge_time / 0.25)
 			if charge_time >= HEAVY_CHARGE_TIME - 0.1:
@@ -509,7 +529,59 @@ func _target_pose() -> Dictionary:
 	return POSES["idle"]
 
 
+func _run_pose() -> Dictionary:
+	var ph := clock * 14.0
+	var s := sin(ph)
+	var c := cos(ph)
+	return Puppet.pose({
+		"crouch": 2.2 + absf(s) * 1.6, "lean": 0.34 + absf(s) * 0.04, "head": -0.1,
+		"foot_f": Vector2(6.5 * s, -maxf(0.0, 4.5 * c)),
+		"foot_b": Vector2(-6.5 * s, -maxf(0.0, -4.5 * c)),
+		"arm_f": Vector2(-0.5 + 0.25 * s, 0.1), "sword": -1.0 + 0.15 * s,   # 刀拖在身后
+		"arm_b": Vector2(0.9 * -s, 1.2 + 0.4 * -s),
+	})
+
+
+func _idle_pose() -> Dictionary:
+	# 敌人靠近时进入戒备，远离时放松
+	var base := Puppet.lerp_pose(POSES["relaxed"], POSES["ready"], _ready_blend)
+	var p := Puppet.breathe(base, clock, 1.0 - _ready_blend * 0.4)
+	# 站久了做闲置小动作：甩刀、伸展、回头，轮流来
+	if _ready_blend < 0.1 and _idle_time > 3.0:
+		var cycle := fmod(_idle_time - 3.0, 5.0)
+		var which := int((_idle_time - 3.0) / 5.0) % 3
+		var r: Dictionary = POSES["relaxed"]
+		var track: Array
+		match which:
+			0: track = [[0.0, r], [0.35, POSES["chiburi_up"]], [0.5, POSES["chiburi_down"]], [1.0, POSES["chiburi_down"]], [1.5, r]]
+			1: track = [[0.0, r], [0.6, POSES["stretch"]], [1.3, POSES["stretch"]], [1.9, r]]
+			_: track = [[0.0, r], [0.4, POSES["look_back"]], [1.6, POSES["look_back"]], [2.0, r]]
+		var last: float = track[track.size() - 1][0]
+		if cycle < last:
+			return Puppet.breathe(Puppet.sample(track, cycle), clock, 0.6)
+	return p
+
+
 func _update_art(delta: float) -> void:
+	# 待机时间、落地缓冲、翻身、戒备程度
+	if state == S.FREE and is_on_floor() and absf(velocity.x) < 10.0:
+		_idle_time += delta
+	else:
+		_idle_time = 0.0
+	_land_timer = maxf(0.0, _land_timer - delta)
+	if _spin_time >= 0.0:
+		_spin_time += delta
+		if _spin_time > 0.32 or is_on_floor():
+			_spin_time = -1.0
+	var near: Enemy = main.nearest_enemy(global_position, 170.0)
+	var want := 1.0 if near != null and near.is_hittable() else 0.0
+	_ready_blend = move_toward(_ready_blend, want, delta * 3.0)
+	if want > 0.0:
+		_idle_time = 0.0
+	if facing != _prev_facing:
+		_squash = Vector2(0.82, 1.08)   # 转身
+		_prev_facing = facing
+
 	# 姿势平滑过渡；出刀那一下要快
 	var rate := 60.0 if state == S.ATTACK or state == S.EXECUTE else 22.0
 	_pose = Puppet.lerp_pose(_pose, _target_pose(), 1.0 - exp(-rate * delta))
@@ -519,6 +591,8 @@ func _update_art(delta: float) -> void:
 	if is_on_floor() and not _was_on_floor:
 		main.spawn_dust(global_position, 0.0, 6)
 		_squash = Vector2(1.18, 0.84)
+		if state == S.FREE:
+			_land_timer = 0.1
 	_was_on_floor = is_on_floor()
 
 	# 闪身残影
@@ -567,7 +641,14 @@ func _draw() -> void:
 	if state == S.DEAD:
 		Puppet.draw(self, _pose, look, facing, Vector2(-facing * 6.0, -4.0), Color(0.15, 0.15, 0.2, 0.45), 1.0, -facing * PI / 2.0)
 	else:
-		Puppet.draw_lit(self, _pose, look, facing, rim, Vector2.ZERO, tint, alpha, 0.0, _squash, velocity.x)
+		var spin := 0.0
+		var spin_off := Vector2.ZERO
+		if _spin_time >= 0.0:
+			spin = facing * TAU * clampf(_spin_time / 0.32, 0.0, 1.0)
+			# 绕身体中心翻转
+			var pivot := Vector2(0, -26)
+			spin_off = pivot - pivot.rotated(spin)
+		Puppet.draw_lit(self, _pose, look, facing, rim, spin_off, tint, alpha, spin, _squash, velocity.x)
 
 	# 弹反窗口内刀身发光
 	if state == S.GUARD and parry_timer > 0.0:

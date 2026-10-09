@@ -156,6 +156,20 @@ func nearest_player(from: Vector2) -> Player:
 	return best
 
 
+## 离 from 最近、还能战斗的敌人（超出 max_dist 返回 null）
+func nearest_enemy(from: Vector2, max_dist: float) -> Enemy:
+	var best: Enemy = null
+	var best_d := max_dist
+	for e in enemies:
+		if not e.visible or e.state == Enemy.S.DEAD or e.state == Enemy.S.DYING:
+			continue
+		var d := absf(e.global_position.x - from.x)
+		if d < best_d:
+			best_d = d
+			best = e
+	return best
+
+
 ## 玩家身边有架势崩溃的敌人时返回它（按攻击即可处决）
 func find_executable(p: Player) -> Enemy:
 	for e in enemies:

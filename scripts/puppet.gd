@@ -89,6 +89,34 @@ static func lerp_pose(a: Dictionary, b: Dictionary, t: float) -> Dictionary:
 	return out
 
 
+## 按时间在一串关键姿势之间插值（带缓入缓出）。track 为 [[时间, 姿势], ...]，时间递增
+static func sample(track: Array, t: float) -> Dictionary:
+	if t <= float(track[0][0]):
+		return track[0][1]
+	for i in range(track.size() - 1):
+		var t0: float = track[i][0]
+		var t1: float = track[i + 1][0]
+		if t <= t1:
+			var k := (t - t0) / maxf(t1 - t0, 0.001)
+			return lerp_pose(track[i][1], track[i + 1][1], smoothstep(0.0, 1.0, k))
+	return track[track.size() - 1][1]
+
+
+## 在姿势上叠加呼吸起伏（amount 为幅度倍数）
+static func breathe(p: Dictionary, t: float, amount: float = 1.0) -> Dictionary:
+	var out := p.duplicate()
+	var b := sin(t * 2.4)
+	out["crouch"] = float(p["crouch"]) + b * 0.45 * amount
+	out["lean"] = float(p["lean"]) + b * 0.025 * amount
+	out["head"] = float(p["head"]) - b * 0.04 * amount
+	var af: Vector2 = p["arm_f"]
+	out["arm_f"] = af + Vector2(b * 0.04, b * 0.05) * amount
+	var ab: Vector2 = p["arm_b"]
+	out["arm_b"] = ab + Vector2(-b * 0.05, b * 0.04) * amount
+	out["sword"] = float(p["sword"]) + sin(t * 2.4 + 0.6) * 0.05 * amount
+	return out
+
+
 static func _dir(angle: float) -> Vector2:
 	return Vector2(sin(angle), cos(angle))
 

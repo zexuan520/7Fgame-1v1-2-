@@ -49,6 +49,7 @@ var rng := RandomNumberGenerator.new()
 var look := Puppet.Look.new()
 var _pose: Dictionary = {}
 var _clock := 0.0
+var _stalk := 0.0           # 0 扛刀放松，1 压低戒备
 
 static var POSES := {}
 
@@ -63,6 +64,12 @@ static func _build_poses() -> void:
 		"sword": -1.4, "foot_f": Vector2(7, 0), "foot_b": Vector2(-8, 0)})
 	POSES["sweep_cut"] = Puppet.pose({"crouch": 8.0, "lean": 0.5, "arm_f": Vector2(1.5, 1.6), "arm_b": Vector2(-0.6, -0.4),
 		"sword": 1.75, "foot_f": Vector2(9, 0), "foot_b": Vector2(-8, 0)})
+	# 远处：刀扛在肩上，身体放松
+	POSES["shoulder"] = Puppet.pose({"crouch": 0.8, "lean": -0.04, "foot_f": Vector2(4, 0), "foot_b": Vector2(-4, 0),
+		"arm_f": Vector2(2.3, 3.7), "arm_b": Vector2(-0.15, 0.15), "sword": 4.25, "head": 0.05})
+	# 近处：压低身体，刀尖低垂，伺机出手
+	POSES["stalk"] = Puppet.pose({"crouch": 3.2, "lean": 0.26, "foot_f": Vector2(7, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(0.7, 1.15), "arm_b": Vector2(0.5, 1.1), "sword": 0.95, "head": -0.12})
 	var tp: Dictionary = Player.POSES["raise3"].duplicate()
 	tp["lean"] = -0.3
 	tp["crouch"] = 4.0
@@ -86,7 +93,7 @@ func _ready() -> void:
 	look.cape_color = Color("3b2e2b")
 	look.sword_len = 28.0
 	look.width = 1.15
-	_pose = POSES["idle"].duplicate()
+	_pose = POSES["shoulder"].duplicate()
 	body_size = Vector2(30, 56)
 	setup_body()
 	posture_recover_rate = 25.0
@@ -201,6 +208,8 @@ func _physics_process(delta: float) -> void:
 	apply_gravity(delta)
 	move_and_slide()
 	_clock += delta
+	var near := target != null and absf(target.global_position.x - global_position.x) < 200.0
+	_stalk = move_toward(_stalk, 1.0 if near else 0.0, delta * 2.5)
 	var rate := 50.0 if state == S.ACTIVE else 18.0
 	_pose = Puppet.lerp_pose(_pose, _target_pose(), 1.0 - exp(-rate * delta))
 	queue_redraw()
@@ -457,24 +466,11 @@ func _target_pose() -> Dictionary:
 	var t := state_time
 	match state:
 		S.IDLE:
-			if absf(velocity.x) > 5.0:
-				var ph := _clock * 9.0
-				var walk := Puppet.pose({
-					"crouch": 2.0 + absf(sin(ph)) * 0.8, "lean": 0.2,
-					"foot_f": Vector2(4.0 * sin(ph), -maxf(0.0, 2.0 * cos(ph))),
-					"foot_b": Vector2(-4.0 * sin(ph), -maxf(0.0, -2.0 * cos(ph))),
-				})
-				# 往后退时身体后仰
-				if signf(velocity.x) != float(facing):
-					walk["lean"] = -0.1
-				return walk
-			var idle: Dictionary = POSES["idle"].duplicate()
-			idle["crouch"] = 1.5 + sin(_clock * 2.5) * 0.6
-			return idle
+			return _idle_pose()
 		S.WINDUP:
 			var keys := _move_keys()
 			var windup: float = _hit_times()[0] * _speed()
-			return Puppet.lerp_pose(POSES["idle"], POSES[keys[0]], t / maxf(windup * 0.6, 0.01))
+			return Puppet.lerp_pose(POSES["stalk"], POSES[keys[0]], t / maxf(windup * 0.6, 0.01))
 		S.ACTIVE:
 			var keys := _move_keys()
 			var active: float = _hit_times()[1]
@@ -482,7 +478,7 @@ func _target_pose() -> Dictionary:
 		S.RECOVER:
 			var keys := _move_keys()
 			var recover: float = _hit_times()[2] * _speed()
-			return Puppet.lerp_pose(POSES[keys[1]], POSES["idle"], pow(t / recover, 2.0))
+			return Puppet.lerp_pose(POSES[keys[1]], POSES["stalk"], pow(t / recover, 2.0))
 		S.GUARD:
 			return POSES["guard"]
 		S.FLINCH, S.STAGGER:
@@ -492,8 +488,31 @@ func _target_pose() -> Dictionary:
 			bp["lean"] = 0.7 + sin(_clock * 3.0) * 0.1
 			return bp
 		S.REVIVE:
-			return Puppet.lerp_pose(POSES["broken"], POSES["idle"], (t - 0.6) / 0.6)
-	return POSES["idle"]
+			return Puppet.lerp_pose(POSES["broken"], POSES["stalk"], (t - 0.6) / 0.6)
+	return POSES["stalk"]
+
+
+## 待机/走动：远处扛刀晃着走，近处压低身体横移
+func _idle_pose() -> Dictionary:
+	var base := Puppet.lerp_pose(POSES["shoulder"], POSES["stalk"], _stalk)
+	var speed := absf(velocity.x)
+	if speed < 5.0:
+		return Puppet.breathe(base, _clock * 0.85, 1.2 - _stalk * 0.5)
+	var k := clampf(speed / WALK_SPEED, 0.0, 1.0)
+	var back := signf(velocity.x) != float(facing)
+	var ph := _clock * (7.0 + 3.0 * _stalk) * (-1.0 if back else 1.0)
+	var stride := lerpf(5.0, 4.0, _stalk) * k
+	var w := base.duplicate()
+	w["foot_f"] = Vector2(float(base["foot_f"].x) * 0.4 + stride * sin(ph), -maxf(0.0, 2.2 * cos(ph)) * k)
+	w["foot_b"] = Vector2(float(base["foot_b"].x) * 0.4 - stride * sin(ph), -maxf(0.0, -2.2 * cos(ph)) * k)
+	# 每一步身体上下起伏、左右晃，扛着的刀跟着颠
+	w["crouch"] = float(base["crouch"]) + absf(sin(ph)) * 0.9 * k
+	w["lean"] = float(base["lean"]) + sin(ph * 2.0) * 0.03 + (-0.18 if back else 0.0)
+	w["head"] = float(base["head"]) - sin(ph * 2.0) * 0.04
+	w["sword"] = float(base["sword"]) + sin(ph * 2.0 + 0.5) * lerpf(0.12, 0.04, _stalk)
+	var ab: Vector2 = base["arm_b"]
+	w["arm_b"] = ab + Vector2(-sin(ph) * 0.35 * (1.0 - _stalk), 0.0)
+	return w
 
 
 func _draw() -> void:
