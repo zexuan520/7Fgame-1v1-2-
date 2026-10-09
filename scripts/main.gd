@@ -17,6 +17,7 @@ const DEATH_DELAY := 2.4              # 全员倒下后多久出结算
 const HEAL_PICKUP := 0.15             # 罐子里的伤药回 15% 生命
 const GEAR_DROP := 0.05               # 杂兵掉装备的几率
 const CHEST_GEAR := 0.6               # 宝箱里有装备的几率
+const REWARD_DELAY := 1.2             # 清完战斗房、精英房后多久弹出三选一
 
 var arena_w := PRACTICE_W             # 当前房间宽度，镜头和墙都按它来
 var mode := "practice"                # practice 练武场 / hub 破庙 / room 闯关中的房间
@@ -46,6 +47,13 @@ var dead_wait := false                # 结算画面出来了，等按攻击回�
 var menu_player: Player = null        # 拾骨婆的天赋界面开着（谁打开的谁来点）
 var menu_cursor := Vector3i.ZERO      # 天赋界面光标：树、层、节点
 var focus_gear := {}                  # 玩家序号 → 正站在跟前的地上装备（界面画对比卡）
+## 清房奖励三选一：玩家序号 → {"choices": [...], "cursor": 选中第几个, "replace": -1 或正在选换掉哪一格, "type": 房间类型}
+## 双人时各选各的，谁选完谁先能动；两个人都选完门才能进
+var rewards := {}
+var _reward_timer := -1.0             # 倒数到 0 弹出三选一
+var _reward_type := ""
+var codex_player: Player = null       # 破庙招式谱开着
+var codex_cursor := Vector2i.ZERO     # 招式谱光标：列（0 招式 1 心法）、行
 var _fade_dir := 0                    # 1 正在变黑，-1 正在变亮
 var _after_fade: Callable
 
@@ -272,6 +280,7 @@ func _load_hub() -> void:
 		if not p.is_alive():
 			p.respawn()
 		p.gear = GearData.empty_loadout(String(Game.save["start_weapon"]))
+		p.build = Arts.new_build()
 		p.revives = 0
 		_apply_player_stats(p, true)
 		p.will = 0.0
@@ -280,6 +289,8 @@ func _load_hub() -> void:
 	_add_interactable("talent", 452.0, "", "talent", Color("5ed6a8"))
 	var rack := _add_interactable("rack", 600.0, "兵器架", "rack", Color("c9a24a"))
 	_refresh_rack(rack)
+	var codex := _add_interactable("codex", 190.0, "招式谱", "codex", Color("d8b878"))
+	codex.sub = "用魂玉把招式、心法加进掉落池"
 	var fd := LevelData.floor_data(0)
 	var gate := _add_interactable("door", arena_w - 56.0, "出发", "start", Color("e0a050"), {"action": "start_run"})
 	gate.sub = "%s · %s" % [fd["sub"], fd["name"]]
@@ -313,6 +324,7 @@ func _start_run() -> void:
 	Game.write_save()
 	for p in players:
 		p.gear = Game.run.loadout(p.index)
+		p.build = Game.run.build(p.index)
 		_apply_player_stats(p, true)
 		p.will = 0.0
 		Game.run.revives[p.index] = int(p.stats["revive"])
@@ -326,6 +338,7 @@ func _load_room() -> void:
 	mode = "room"
 	var r := Game.run
 	var def := r.room()
+	_close_rewards()
 	_build_room(def)
 	_place_players(ENTRY_X)
 	for p in players:
@@ -414,6 +427,10 @@ func _spawn_wave(i: int, intro: bool = false) -> void:
 
 
 func _update_room(dt: float) -> void:
+	if _reward_timer >= 0.0:
+		_reward_timer -= dt
+		if _reward_timer < 0.0 and not dead_wait and _death_timer < 0.0:
+			open_rewards(_reward_type)
 	if not cleared:
 		if _wave_timer >= 0.0:
 			_wave_timer -= dt
@@ -468,6 +485,9 @@ func _on_room_cleared() -> void:
 			p.respawn()
 			p.hp = p.max_hp * REVIVE_RATIO
 			spawn_text(p.global_position + Vector2(0, -70), "复苏", Color(0.6, 1.0, 0.7))
+	if LevelData.REWARD_ROOMS.has(r.room_type()):
+		_reward_type = r.room_type()
+		_reward_timer = REWARD_DELAY
 	if r.is_last_room():
 		Game.save["clears"] = int(Game.save["clears"]) + 1
 		var it := _add_interactable("door", exit_x() - 60.0, "回破庙", "temple", Color("e0a050"), {"action": "victory"})
@@ -487,6 +507,84 @@ func _open_later(it: Interactable) -> void:
 		it.set_enabled(true)
 		spawn_ring(it.global_position + Vector2(0, -30), Color(1.0, 0.75, 0.4), 50.0)
 		hud.title_card("第一层 · 通关", "断水 · 柳江远 击破")
+
+
+# ---------- 清房奖励：三选一 ----------
+
+func open_rewards(room_type: String) -> void:
+	var r := Game.run
+	rewards.clear()
+	for p in players:
+		rewards[p.index] = {"choices": Arts.roll_choices(r.rng, p.build, room_type, r.row), "cursor": 0,
+			"replace": -1, "type": room_type}
+		p.frozen = true
+	hud.show_map = false
+	hud.show_gear = false
+	hud.show_build = false
+
+
+func _close_rewards() -> void:
+	rewards.clear()
+	_reward_timer = -1.0
+	for p in players:
+		_unfreeze(p)
+
+
+func _unfreeze(p: Player) -> void:
+	p.frozen = false
+	p._buf.clear()   # 选奖励时按的键不要留到外面
+
+
+func _update_rewards() -> void:
+	for idx: int in rewards.keys():
+		var p: Player = null
+		for q in players:
+			if q.index == idx:
+				p = q
+		if p == null:
+			rewards.erase(idx)   # 2P 退出了
+			continue
+		var rw: Dictionary = rewards[idx]
+		var pr := p.prefix
+		var step := 0
+		if Input.is_action_just_pressed(pr + "left") or Input.is_action_just_pressed(pr + "jump"):
+			step = -1
+		elif Input.is_action_just_pressed(pr + "right") or Input.is_action_just_pressed(pr + "down"):
+			step = 1
+		var choice: Dictionary = rw["choices"][rw["cursor"]]
+		if int(rw["replace"]) < 0:
+			rw["cursor"] = posmod(int(rw["cursor"]) + step, (rw["choices"] as Array).size())
+			if Input.is_action_just_pressed(pr + "attack"):
+				choice = rw["choices"][rw["cursor"]]
+				if Arts.needs_replace(p.build, choice):
+					rw["replace"] = 0
+				else:
+					take_reward(p, -1)
+		else:
+			var n := Arts.MAX_ARTS if choice["kind"] == "art" else Arts.MAX_MINDS
+			rw["replace"] = posmod(int(rw["replace"]) + step, n)
+			if Input.is_action_just_pressed(pr + "attack"):
+				take_reward(p, int(rw["replace"]))
+			elif Input.is_action_just_pressed(pr + "guard") or Input.is_action_just_pressed(pr + "dodge"):
+				rw["replace"] = -1
+
+
+## 玩家选定了光标上的奖励（格子满了时 replace 是换掉第几个）
+func take_reward(p: Player, replace: int) -> void:
+	var rw: Dictionary = rewards[p.index]
+	var choice: Dictionary = rw["choices"][rw["cursor"]]
+	var at := p.global_position + Vector2(0, -74)
+	if choice["kind"] == "coin":
+		Game.run.coins += int(choice["amount"])
+		hud.bump("coin")
+	else:
+		Arts.take(p.build, choice, replace)
+		_apply_player_stats(p, false)
+	var col := Arts.color(choice)
+	spawn_text(at, Arts.describe(choice)[1], col, 12)
+	spawn_spark(p.global_position + Vector2(0, -30), col, 12)
+	rewards.erase(p.index)
+	_unfreeze(p)
 
 
 func _go_next(col: int) -> void:
@@ -600,7 +698,7 @@ func _update_interact() -> void:
 		best.highlight = true
 		if best.kind == "gear":
 			focus_gear[p.index] = best
-		if menu_player != null:
+		if menu_player != null or codex_player != null or not rewards.is_empty():
 			continue
 		if Input.is_action_just_pressed(p.prefix + "down") and p.state == Player.S.FREE and p.is_on_floor():
 			interact(best, p)
@@ -672,6 +770,8 @@ func interact(it: Interactable, p: Player) -> void:
 				spawn_pickups("coin", 5, it.global_position + Vector2(8, -6), it.global_position.y)
 		"talent":
 			open_talents(p)
+		"codex":
+			open_codex(p)
 		"rack":
 			var list: Array = Game.save["weapons"]
 			var i := list.find(Game.save["start_weapon"])
@@ -712,6 +812,7 @@ func _apply_player_stats(p: Player, refill: bool) -> void:
 	var st := GearData.totals(p.gear)
 	if mode != "practice":
 		Talents.apply(st)
+	Arts.apply_minds(st, p.build)
 	st["atk"] = float(st["atk"]) + float(b.get("dmg", 0.0))
 	st["hp"] = float(st["hp"]) + float(b.get("hp", 0.0))
 	st["max_posture"] = float(st["max_posture"]) + float(b.get("posture", 0.0))
@@ -857,14 +958,63 @@ func _menu_step(c: Vector3i, d: int) -> Vector3i:
 	return Vector3i(flat / 3, c.y, flat % 3)
 
 
+# ---------- 破庙的招式谱 ----------
+
+func open_codex(p: Player) -> void:
+	codex_player = p
+	for q in players:
+		q.frozen = true
+	hud.show_map = false
+	hud.show_gear = false
+	hud.show_build = false
+
+
+func close_codex() -> void:
+	codex_player = null
+	for q in players:
+		_unfreeze(q)
+
+
+## 招式谱一列：0 招式、1 心法
+func codex_ids(col: int) -> Array:
+	return Arts.ARTS.keys() if col == 0 else Arts.MINDS.keys()
+
+
+func _update_codex() -> void:
+	var p := codex_player
+	if not is_instance_valid(p):
+		close_codex()
+		return
+	var c := codex_cursor
+	var pr := p.prefix
+	if Input.is_action_just_pressed(pr + "left") or Input.is_action_just_pressed(pr + "right"):
+		c.x = 1 - c.x
+	elif Input.is_action_just_pressed(pr + "jump"):
+		c.y -= 1
+	elif Input.is_action_just_pressed(pr + "down"):
+		c.y += 1
+	c.y = posmod(c.y, codex_ids(c.x).size())
+	codex_cursor = c
+	if Input.is_action_just_pressed(pr + "attack"):
+		var why := Arts.unlock("art" if c.x == 0 else "mind", codex_ids(c.x)[c.y])
+		if why == "":
+			hud.bump("jade")
+			hud.menu_flash = 0.3
+		else:
+			hud.menu_note = why
+			hud.menu_note_time = 1.4
+	elif Input.is_action_just_pressed(pr + "guard") or Input.is_action_just_pressed(pr + "dodge"):
+		close_codex()
+
+
 ## 玩家出手的判定框碰到罐子、木桶就砍碎
 func _hit_breakables() -> void:
 	for p in players:
 		var r := Rect2()
 		if p.state == Player.S.ATTACK and p.attack_phase == 1:
 			r = p._attack_rect()
-		elif p.state == Player.S.ART and p.state_time >= float(Player.ART["windup"]):
-			var size: Vector2 = Player.ART["size"]
+		elif p.state == Player.S.ART and p.art["run"] == "spin" and p.state_time >= float(p.art["windup"]):
+			var size: Vector2 = p.art["size"]
 			r = Rect2(p.global_position + Vector2(-size.x / 2.0, -size.y), size)
 		else:
 			continue
@@ -995,6 +1145,7 @@ func _spawn_player(index: int) -> Player:
 			p.position = players[0].global_position + Vector2(-24, -10)
 	if Game.run != null and mode != "practice":
 		p.gear = Game.run.loadout(index)
+		p.build = Game.run.build(index)
 		p.revives = int(Game.run.revives.get(index, 0))
 	else:
 		p.gear = GearData.empty_loadout(String(Game.save["start_weapon"]) if not Game.practice else "katana")
@@ -1217,6 +1368,10 @@ func _process(delta: float) -> void:
 	_update_camera(real_dt)
 	if menu_player != null:
 		_update_menu()
+	elif codex_player != null:
+		_update_codex()
+	if not rewards.is_empty():
+		_update_rewards()
 	if mode == "practice":
 		_check_cleared(real_dt)
 	elif mode == "room" and _fade_dir == 0:
@@ -1270,6 +1425,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			close_talents()
 			get_viewport().set_input_as_handled()
 		return
+	if codex_player != null:
+		if event.is_action_pressed("toggle_map") or event.is_action_pressed("quit"):
+			close_codex()
+			get_viewport().set_input_as_handled()
+		return
+	if not rewards.is_empty():
+		return   # 三选一的时候别的键都不管
 	if dead_wait:
 		# 结算画面：任意一个人按攻击回破庙
 		if event.is_action_pressed("p1_attack") or event.is_action_pressed("p2_attack"):
@@ -1292,14 +1454,17 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("toggle_help"):
 		hud.show_help = not hud.show_help
 	elif event.is_action_pressed("toggle_map"):
-		# Tab：闯关时 地图 → 装备 → 关；破庙里只有装备
-		if Game.run == null:
-			hud.show_gear = not hud.show_gear
-		elif hud.show_map:
+		# Tab：闯关时 地图 → 装备 → 招式心法 → 关；破庙里没有地图
+		if hud.show_map:
 			hud.show_map = false
 			hud.show_gear = true
 		elif hud.show_gear:
 			hud.show_gear = false
+			hud.show_build = true
+		elif hud.show_build:
+			hud.show_build = false
+		elif Game.run == null:
+			hud.show_gear = true
 		else:
 			hud.show_map = true
 	elif event.is_action_pressed("debug_jade") and mode == "hub":

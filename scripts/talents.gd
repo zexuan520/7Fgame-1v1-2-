@@ -21,7 +21,7 @@ const TREES := [
 			{"id": "flurry", "name": "连斩", "desc": "五连第 4、5 刀伤害 +25%", "max": 1, "stats": {"combo_end": 0.25}},
 		], [
 			{"id": "vital", "name": "会心", "desc": "会心伤害 +25%", "max": 2, "stats": {"crit_dmg": 0.25}},
-			{"id": "intent", "name": "刃意", "desc": "回旋斩少耗 5 刃意", "max": 2, "stats": {"art_cost": 5.0}},
+			{"id": "intent", "name": "刃意", "desc": "招式少耗 5 刃意", "max": 2, "stats": {"art_cost": 5.0}},
 			{"id": "press", "name": "追命", "desc": "敌人架势过半时伤害 +15%", "max": 1, "stats": {"pressure": 0.15}},
 		], [
 			{"id": "asura", "name": "修罗道", "desc": "生命低于 50% 时伤害 +30%", "max": 1, "ult": true, "stats": {"low_dmg": 0.3}},

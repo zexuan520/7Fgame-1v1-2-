@@ -2,7 +2,8 @@ extends Node
 ## 关卡和肉鸽流程自动测试（无界面运行）：
 ##   godot --headless --path . res://tests/test_run.tscn
 ## 验证岔路地图、平台和楼梯、砸罐子开宝箱、破庙出发、房间锁门和波次、掉钱、商人、土地庙、死亡带回 60% 魂玉、打败柳江远、
-## 装备掉落和换装、武器手感、防具减伤、饰品、流血、商人卖装备、兵器架、拾骨婆天赋、旧存档供台退魂玉。
+## 装备掉落和换装、武器手感、防具减伤、饰品、流血、商人卖装备、兵器架、拾骨婆天赋、旧存档供台退魂玉、
+## 清房三选一（招式、心法、强化、铜钱、替换、双人各选各的、死了清空）、招式谱。
 
 var main: Node
 var failures := 0
@@ -29,6 +30,11 @@ func _run() -> void:
 	await test_talents()
 	await _setup()
 	await test_rack()
+	test_reward_rolls()
+	await _setup()
+	await test_codex()
+	await _setup()
+	await test_rewards()
 	test_room_layouts()
 	await _setup()
 	await test_features()
@@ -74,6 +80,7 @@ func _reset_save() -> void:
 	Game.save["talents"] = {}
 	Game.save["weapons"] = ["katana"]
 	Game.save["start_weapon"] = "katana"
+	Game.save["arts"] = []
 
 
 func _check(cond: bool, name: String) -> void:
@@ -93,6 +100,14 @@ func _find(kind: String, key: String = "", value: Variant = null) -> Interactabl
 		if it.kind == kind and (key == "" or it.data.get(key) == value):
 			return it
 	return null
+
+
+## 按一下键（界面在 _process 里读）
+func _press(action: String) -> void:
+	Input.action_press(action)
+	await _frames(1)
+	Input.action_release(action)
+	await _frames(1)
 
 
 ## 等黑屏过渡做完
@@ -710,3 +725,162 @@ func test_boss_victory() -> void:
 	await _wait_fade()
 	_check(main.mode == "hub" and int(Game.save["jade"]) == before + got, "通关魂玉全部带回（+%d）" % (int(Game.save["jade"]) - before))
 	_check(int(Game.save["clears"]) >= 1, "记一次通关")
+
+
+# ---------- 招式和心法 ----------
+
+func test_reward_rolls() -> void:
+	print("三选一抽奖励")
+	Game.save["arts"] = []
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var b := Arts.new_build()
+	var seen := {}
+	var coins := 0
+	var ok := true
+	for i in range(300):
+		var cs := Arts.roll_choices(rng, b, "fight", 2)
+		var keys := {}
+		for c: Dictionary in cs:
+			var k := "%s:%s" % [c["kind"], c.get("id", "")]
+			if keys.has(k):
+				ok = false
+			keys[k] = true
+			seen[c.get("id", "coin")] = true
+			if c["kind"] == "coin":
+				coins += 1
+				ok = ok and int(c["amount"]) == 19
+		ok = ok and cs.size() == 3
+	_check(ok, "每次三个，不重复；铜钱 15 + 每列 2")
+	_check(not (seen.has("issen") or seen.has("kage") or seen.has("ukifune") or seen.has("ryuun") or seen.has("ketsuon")),
+		"没加进招式谱的不会出现")
+	_check(seen.has("kuujin") and seen.has("kongo") and seen.has("houzan") and seen.has("fudoshin") and seen.has("whirl"),
+		"谱上的招式、心法、回旋斩强化都会出现")
+	_check(coins > 0, "战斗房有时给铜钱（%d 次）" % coins)
+	var elite_ok := true
+	for i in range(300):
+		for c: Dictionary in Arts.roll_choices(rng, b, "elite", 2):
+			if c["kind"] == "coin" or (c["kind"] == "art" and int(c["lv"]) != 2):
+				elite_ok = false
+	_check(elite_ok, "精英房：新招式直接 2 级，不给铜钱")
+	# 能拿的都拿完了：拿铜钱补
+	var full := {"arts": [{"id": "whirl", "lv": 3}, {"id": "kuujin", "lv": 3}, {"id": "houzan", "lv": 3}],
+		"minds": ["fudoshin", "zanshin", "jiri"]}
+	var cs2 := Arts.roll_choices(rng, full, "fight", 0)
+	_check(cs2.size() == 2 and cs2[-1]["kind"] == "coin", "选项不够三个用一份铜钱补（%s）" % str(cs2.map(func(c: Dictionary) -> String: return c["kind"])))
+	_check(Arts.needs_replace(full, {"kind": "art", "id": "kongo", "lv": 1}), "招式满三个要替换")
+	_check(not Arts.needs_replace(full, {"kind": "mind", "id": "ryuun"}), "心法三个还能装")
+
+
+func test_codex() -> void:
+	print("招式谱：用魂玉加进掉落池")
+	Game.save["arts"] = []
+	Game.save["jade"] = 30
+	var it := _find("codex")
+	_check(it != null, "破庙里有招式谱")
+	main.interact(it, _p())
+	_check(main.codex_player == _p() and _p().frozen, "打开招式谱，人站住")
+	await _press("p1_down")
+	_check(main.codex_ids(0)[main.codex_cursor.y] == "issen", "往下一格是一心")
+	await _press("p1_attack")
+	_check(Arts.in_pool("art", "issen") and int(Game.save["jade"]) == 10, "花 20 魂玉把一心加进掉落池（剩 %d）" % int(Game.save["jade"]))
+	await _press("p1_right")
+	await _press("p1_down")
+	_check(main.codex_ids(1)[main.codex_cursor.y] == "ryuun", "换到心法列：流云")
+	await _press("p1_attack")
+	_check(not Arts.in_pool("mind", "ryuun") and main.hud.menu_note == "魂玉不够", "魂玉不够加不了")
+	await _press("p1_guard")
+	_check(main.codex_player == null and not _p().frozen, "格挡离开")
+	var cfg := ConfigFile.new()
+	_check(cfg.load(Game.save_path) == OK and (cfg.get_value("save", "arts", []) as Array).has("issen"), "写进存档")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 3
+	var seen := false
+	for i in range(300):
+		for c: Dictionary in Arts.roll_choices(rng, Arts.new_build(), "fight", 0):
+			if c.get("id", "") == "issen":
+				seen = true
+	_check(seen, "加进去以后奖励里会出现一心")
+	Game.save["arts"] = []
+
+
+## 设定三选一的三个选项（测试里不靠随机）
+func _offer(type: String, choices: Array) -> void:
+	main.open_rewards(type)
+	for idx: int in main.rewards:
+		main.rewards[idx]["choices"] = choices.duplicate(true)
+
+
+func test_rewards() -> void:
+	print("清房三选一")
+	Game.save["arts"] = []
+	var p := _p()
+	main.interact(_find("door", "action", "start_run"), p)
+	await _wait_fade()
+	var r: Run = Game.run
+	_check(p.build == r.build(1) and Arts.art_count(p.build) == 1 and p.build["arts"][0]["id"] == "whirl", "出发只带回旋斩")
+	await _enter_room("lane")
+	_check(main.rewards.has(1) and (main.rewards[1]["choices"] as Array).size() == 3, "清完战斗房弹出三选一")
+	_check(p.frozen, "选的时候人站住")
+	var three := [{"kind": "art", "id": "kuujin", "lv": 1}, {"kind": "mind", "id": "fudoshin"}, {"kind": "coin", "amount": 15}]
+	_offer("fight", three)
+	await _press("p1_attack")
+	_check(main.rewards.is_empty() and not p.frozen, "按攻击选定，界面关掉")
+	_check(p.build["arts"][1] != null and p.build["arts"][1]["id"] == "kuujin", "空刃斩装进第二格（←→）")
+	_offer("fight", three)
+	await _press("p1_right")
+	await _press("p1_attack")
+	_check(p.build["minds"] == ["fudoshin"] and is_equal_approx(float(p.stats["parry_rebound"]), 0.3), "心法装上，数值生效")
+	var before := r.coins
+	_offer("fight", three)
+	await _press("p1_left")
+	await _press("p1_attack")
+	_check(r.coins == before + 15, "选铜钱进钱袋（%d → %d）" % [before, r.coins])
+	_offer("fight", [{"kind": "up", "id": "kuujin", "lv": 2}])
+	await _press("p1_attack")
+	_check(int(p.build["arts"][1]["lv"]) == 2, "强化空刃斩到 2 级")
+	# 格子满了：先选换掉哪个，格挡能退回去
+	p.build["arts"][2] = {"id": "houzan", "lv": 1}
+	_offer("elite", [{"kind": "art", "id": "kongo", "lv": 2}])
+	await _press("p1_attack")
+	_check(main.rewards.has(1) and int(main.rewards[1]["replace"]) == 0, "三格满了，先选换掉哪个")
+	await _press("p1_guard")
+	_check(int(main.rewards[1]["replace"]) == -1, "格挡退回选卡")
+	await _press("p1_attack")
+	await _press("p1_right")
+	await _press("p1_attack")
+	_check(p.build["arts"][1]["id"] == "kongo" and int(p.build["arts"][1]["lv"]) == 2, "换掉第二格，精英给 2 级金刚没")
+	# 双人各选各的
+	var p2: Player = main._spawn_player(2)
+	await _frames(2)
+	_check(p2.build == r.build(2) and p2.build != p.build, "2P 有自己的招式")
+	_offer("fight", [{"kind": "mind", "id": "zanshin"}, {"kind": "mind", "id": "fudoshin"}, {"kind": "coin", "amount": 15}])
+	_check(main.rewards.size() == 2, "两个人各有一份")
+	await _press("p1_attack")
+	_check(not main.rewards.has(1) and main.rewards.has(2) and not p.frozen and p2.frozen, "1P 选完能动，2P 还在选")
+	await _press("p2_right")
+	await _press("p2_attack")
+	_check(main.rewards.is_empty() and p2.build["minds"] == ["fudoshin"] and p2.build["arts"][1] == null, "2P 选了心法，招式还是自己的")
+	_check(p.build["minds"] == ["fudoshin", "zanshin"], "1P 选的残心只给 1P")
+	main._remove_player(2)
+	# 精英房清完也弹
+	var col: int = r.node()["next"][0]
+	r.rows[r.row + 1][col]["type"] = "elite"
+	r.rows[r.row + 1][col]["room"] = "shrine_ronin"
+	main._go_next(col)
+	await _wait_fade()
+	main.waves = [main.waves[0]]
+	_kill_all()
+	await _frames(130)
+	_check(main.rewards.has(1) and main.rewards[1]["type"] == "elite", "精英房清完弹出精英奖励")
+	main._close_rewards()
+	# 死了清空
+	p._die()
+	await _frames(int(main.DEATH_DELAY * 60.0) + 10)
+	var ev := InputEventAction.new()
+	ev.action = "p1_attack"
+	ev.pressed = true
+	main._unhandled_input(ev)
+	await _wait_fade()
+	_check(main.mode == "hub" and Arts.art_count(p.build) == 1 and (p.build["minds"] as Array).is_empty(), "回破庙后招式心法清空")
+	_check(is_equal_approx(float(p.stats["parry_rebound"]), 0.0), "心法数值也没了")

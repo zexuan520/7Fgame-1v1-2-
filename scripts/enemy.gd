@@ -15,6 +15,8 @@ const AGGRO_RANGE := 300.0          # 房间里站着的敌人，玩家走到这
 const BLEED_MAX := 5                # 流血最多叠 5 层
 const BLEED_DPS := 3.0              # 每层每秒伤害
 const BLEED_TIME := 3.0
+const BLEED_BURST_DMG := 15.0       # 血音引爆：伤害
+const BLEED_BURST_POSTURE := 40.0   # 血音引爆：架势伤害（至少架势上限的 30%）
 
 var kind := "ronin"
 var data: Dictionary = {}
@@ -550,7 +552,8 @@ func _on_attack_result(result: String, p: Player) -> void:
 				velocity.x = -facing * 200.0
 				_stagger(0.7)
 			else:
-				add_posture(p_amount * 0.5 * (1.0 + float(p.stats["parry_posture"])))
+				# 心法“不动心”：反震 50% → 80%
+				add_posture(p_amount * (0.5 + float(p.stats["parry_rebound"])) * (1.0 + float(p.stats["parry_posture"])))
 		"block":
 			main.spawn_impact(mid, Color(0.75, 0.85, 1.0), 0.7, false, p.facing)
 			main.hitstop(0.04)
@@ -671,10 +674,20 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 	return "hit"
 
 
-## 双短刃的流血：叠层，每层每秒 3 点伤害，3 秒没再被砍就止住
-func add_bleed() -> void:
+## 双短刃、浮舟渡打的流血：叠层，每层每秒 3 点伤害，3 秒没再被砍就止住。
+## 心法“血音”：叠满 5 层时引爆，造成一大截架势伤害
+func add_bleed(p: Player = null) -> void:
 	bleed_stacks = mini(bleed_stacks + 1, BLEED_MAX)
 	bleed_time = BLEED_TIME
+	if p != null and bleed_stacks >= BLEED_MAX and float(p.stats["bleed_burst"]) > 0.0 and is_hittable():
+		bleed_stacks = 0
+		var at := global_position + Vector2(0, -body_size.y * 0.55)
+		main.spawn_text(at + Vector2(0, -30), "血音", Color(1.0, 0.25, 0.3), 14)
+		main.spawn_blood(at, 1.0, 14)
+		main.spawn_blood(at, -1.0, 14)
+		main.spawn_ring(at, Color(1.0, 0.25, 0.3), 30.0)
+		main.hitstop(0.06)
+		_take_damage(BLEED_BURST_DMG, maxf(BLEED_BURST_POSTURE, max_posture * 0.3))
 
 
 func _tick_bleed(delta: float) -> void:

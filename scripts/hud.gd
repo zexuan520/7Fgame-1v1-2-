@@ -1,17 +1,18 @@
 class_name Hud
 extends Node2D
-## 屏幕界面：左上角玩家状态和铜钱魂玉，顶上的小地图，底部敌人名字和血条，
-## Tab 打开的整张地图，按 H 打开的操作说明，死亡结算，换房间的黑屏。
+## 屏幕界面：左上角玩家状态（下面一排招式格子、一排心法）和铜钱魂玉，顶上的小地图，底部敌人名字和血条，
+## Tab 打开的整张地图、装备、招式心法，按 H 打开的操作说明，清房三选一，招式谱，死亡结算，换房间的黑屏。
 
 const GOLD := Color("c9a24a")
 const GOLD_DARK := Color("6b5426")
 const FRAME := Color("0c0a12")
 
 const HELP := [
-	["1P", "A/D 移动  W/空格 跳  S 下  J 攻击(长按重击)  K 格挡/弹反  L/Shift 闪身  U 药罐  I 回旋斩  O 换架势"],
-	["2P", "←/→ 移动  ↑ 跳  ↓ 下  小键盘1 攻击 2 格挡 3 闪身 4 药罐 5 回旋斩 6 换架势"],
-	["招式", "连按攻击五连  下+攻击 升龙斩  空中攻击 空中斩  空中下+攻击 落雷斩  闪身中攻击 闪身突刺"],
-	["手柄", "A 跳  X 攻击  RB 格挡  B 闪身  Y 药罐  LB 回旋斩  十字键上 换架势"],
+	["1P", "A/D 移动  W/空格 跳  S 下  J 攻击(长按重击)  K 格挡/弹反  L/Shift 闪身  U 药罐  I 招式  O 换架势"],
+	["2P", "←/→ 移动  ↑ 跳  ↓ 下  小键盘1 攻击 2 格挡 3 闪身 4 药罐 5 招式 6 换架势"],
+	["连招", "连按攻击五连  下+攻击 升龙斩  空中攻击 空中斩  空中下+攻击 落雷斩  闪身中攻击 闪身突刺"],
+	["招式", "招式键单按 / 按住←→ / 按住↓ 放三格招式，耗刃意  清完战斗、精英房三选一"],
+	["手柄", "A 跳  X 攻击  RB 格挡  B 闪身  Y 药罐  LB 招式  十字键上 换架势"],
 	["闯关", "站在门、货物、香炉、装备前按 下 互动  Tab 地图/装备  清完敌人出口才开"],
 	["其他", "F2 2P 加入/退出  F1 低难度  F3 判定框  F4 练武场  F5 破庙里魂玉+50（调试）  Esc 退出"],
 ]
@@ -34,6 +35,7 @@ const BANNER_TIME := 2.8
 
 var show_map := false
 var show_gear := false      # Tab：身上的装备
+var show_build := false     # Tab：这一局的招式和心法
 var menu_flash := 0.0       # 天赋界面：刚点亮一个节点时闪一下
 var menu_note := ""         # 天赋界面：点不了的原因
 var menu_note_time := 0.0
@@ -148,12 +150,18 @@ func _draw() -> void:
 		_draw_map(font)
 	if show_gear:
 		_draw_gear_screen(font)
+	if show_build:
+		_draw_build_screen(font)
 	if main.menu_player != null:
 		_draw_talents(font)
+	if main.codex_player != null:
+		_draw_codex(font)
+	if not main.rewards.is_empty():
+		_draw_rewards(font)
 	if show_help:
 		_draw_help(font)
 	else:
-		var hint := "H 操作说明" + ("  Tab 地图/装备" if Game.run != null else "  Tab 装备")
+		var hint := "H 操作说明" + ("  Tab 地图/装备/招式" if Game.run != null else "  Tab 装备/招式")
 		_text(font, hint, Vector2(640 - 8, 354), Color(0.8, 0.78, 0.85, 0.45), 12, true)
 	if _death != null:
 		_draw_death(font)
@@ -266,6 +274,54 @@ func _draw_player_panel(font: Font, p: Player, at: Vector2) -> void:
 	if p.state == Player.S.DEAD:
 		var msg := "%.0f 秒后复活" % maxf(p.respawn_timer, 0.0) if p.auto_respawn else "清完这间复苏"
 		_text(font, msg, at + Vector2(110, 54), Color(1, 0.4, 0.4), 12)
+	_draw_build_strip(font, p, at + Vector2(0, 76))
+
+
+## 面板下面：三个招式格子（单按 / ←→ / ↓），刃意够放的那格亮起来；再下面一排心法
+func _draw_build_strip(font: Font, p: Player, at: Vector2) -> void:
+	var slots: Array = p.build["arts"]
+	for i in range(slots.size()):
+		var r := Rect2(at + Vector2(i * 57, 0), Vector2(54, 14))
+		draw_rect(r, Color(0.05, 0.04, 0.08, 0.85))
+		var s: Variant = slots[i]
+		if s == null:
+			draw_rect(r, Color(0.3, 0.28, 0.34, 0.6), false, 1.0)
+			_slot_glyph(r.position + Vector2(5, 7), i, Color(0.4, 0.38, 0.44))
+			continue
+		var a: Dictionary = Arts.ARTS[s["id"]]
+		var col: Color = Arts.SCHOOL_COLORS[a["school"]]
+		var ready := p.will >= p.art_cost(Arts.art(s["id"], int(s["lv"])))
+		if ready:
+			draw_rect(r, Color(col, 0.22 + 0.08 * sin(_time * 6.0)))
+		draw_rect(r, col if ready else col.darkened(0.45), false, 1.0)
+		_slot_glyph(r.position + Vector2(5, 7), i, col if ready else Color(0.6, 0.58, 0.62))
+		_text(font, a["short"], r.position + Vector2(10, 11), Color(0.95, 0.92, 0.88) if ready else Color(0.7, 0.68, 0.72), 12)
+		for k in range(Arts.max_level(s["id"])):
+			draw_rect(Rect2(r.position.x + 49, r.position.y + 2 + k * 4, 3, 3), col if k < int(s["lv"]) else Color(0.25, 0.23, 0.28))
+	var minds: Array = p.build["minds"]
+	for i in range(Arts.MAX_MINDS):
+		var r := Rect2(at + Vector2(i * 42, 17), Vector2(40, 13))
+		if i >= minds.size():
+			draw_rect(r, Color(0.3, 0.28, 0.34, 0.35), false, 1.0)
+			continue
+		var m: Dictionary = Arts.MINDS[minds[i]]
+		var col: Color = Arts.SCHOOL_COLORS[m["school"]]
+		draw_rect(r, Color(col.darkened(0.6), 0.85))
+		draw_rect(r, col.darkened(0.2), false, 1.0)
+		_text_centered(font, m["short"], r.position + Vector2(20, 11), Color(0.95, 0.92, 0.88), 12)
+
+
+## 招式格子左边的小记号：单按一个点、←→ 一根横线带两个尖、↓ 一个往下的三角
+func _slot_glyph(c: Vector2, slot: int, col: Color) -> void:
+	match slot:
+		0:
+			draw_rect(Rect2(c - Vector2(1, 1), Vector2(2, 2)), col)
+		1:
+			draw_rect(Rect2(c + Vector2(-3, 0), Vector2(7, 1)), col)
+			draw_rect(Rect2(c + Vector2(-3, -1), Vector2(1, 3)), col)
+			draw_rect(Rect2(c + Vector2(3, -1), Vector2(1, 3)), col)
+		2:
+			draw_colored_polygon(PackedVector2Array([c + Vector2(-3, -2), c + Vector2(4, -2), c + Vector2(0.5, 3)]), col)
 
 
 ## 头目登场：名字大字，上下两道金线从中间展开
@@ -300,7 +356,7 @@ func _draw_boss_bar(font: Font, e: Enemy) -> void:
 
 
 func _draw_help(font: Font) -> void:
-	var r := Rect2(24, 218, 592, 106)
+	var r := Rect2(24, 202, 592, 122)
 	_frame(r)
 	draw_rect(r, Color(0.05, 0.04, 0.08, 0.92))
 	for i in range(HELP.size()):
@@ -328,7 +384,7 @@ func _text_centered(font: Font, s: String, pos: Vector2, col: Color, size: int) 
 # ---------- 铜钱、魂玉 ----------
 
 func _draw_purse(font: Font) -> void:
-	var at := Vector2(14, 98)
+	var at := Vector2(14, 128)
 	if Game.run != null and main.mode == "room":
 		_purse_row(font, "coin", Game.run.coins, at)
 		_purse_row(font, "jade", Game.run.jade, at + Vector2(0, 14))
@@ -650,3 +706,189 @@ func _draw_talents(font: Font) -> void:
 	_text(font, state, Vector2(info.end.x - 8, info.position.y + 14), sc, 12, true)
 	_text(font, "←→ 选节点  跳/下 换层  攻击 点亮  药罐 洗髓（全退）  格挡/闪身 离开", Vector2(info.position.x + 8, info.position.y + 29),
 		Color(0.7, 0.68, 0.74), 12)
+
+
+# ---------- 招式和心法 ----------
+
+## 清房三选一：每个还没选的玩家一列卡片
+func _draw_rewards(font: Font) -> void:
+	draw_rect(Rect2(0, 0, 640, 360), Color(0, 0, 0, 0.45))
+	var ids: Array = main.rewards.keys()
+	ids.sort()
+	var w := 300.0
+	for n in range(ids.size()):
+		var idx: int = ids[n]
+		var x := 170.0 if ids.size() == 1 else (16.0 if idx == 1 else 324.0)
+		var p: Player = null
+		for q: Player in main.get_players():
+			if q.index == idx:
+				p = q
+		if p == null:
+			continue
+		var rw: Dictionary = main.rewards[idx]
+		var box := Rect2(x, 34, w, 284)
+		draw_rect(box, Color(0.04, 0.03, 0.06, 0.95))
+		_frame(box)
+		var title := "精英奖励" if rw["type"] == "elite" else "清场奖励"
+		if main.get_players().size() > 1:
+			title = "%dP · %s" % [idx, title]
+		_text_centered(font, title + " · 三选一", Vector2(x + w / 2.0, 52), p.color.lightened(0.3) if main.get_players().size() > 1 else Color(0.95, 0.9, 0.8), 12)
+		var choices: Array = rw["choices"]
+		var cur := int(rw["cursor"])
+		if int(rw["replace"]) < 0:
+			for i in range(choices.size()):
+				_reward_card(font, choices[i], Rect2(x + 10, 62 + i * 70, w - 20, 64), i == cur)
+			_text(font, "←→ 选  攻击 确定", Vector2(x + 10, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)
+		else:
+			var choice: Dictionary = choices[cur]
+			_reward_card(font, choice, Rect2(x + 10, 62, w - 20, 64), true)
+			var is_art: bool = choice["kind"] == "art"
+			_text(font, "装满了，换掉哪一个？" if is_art else "心法装满了，换掉哪一个？", Vector2(x + 12, 146), Color(1.0, 0.85, 0.5), 12)
+			var n_rows := Arts.MAX_ARTS if is_art else Arts.MAX_MINDS
+			for i in range(n_rows):
+				var r := Rect2(x + 10, 154 + i * 30, w - 20, 26)
+				var sel := i == int(rw["replace"])
+				draw_rect(r, Color(0.1, 0.08, 0.12) if not sel else Color(0.22, 0.12, 0.1))
+				draw_rect(r, Color(1.0, 0.6, 0.4) if sel else Color(0.35, 0.32, 0.38), false, 2.0 if sel else 1.0)
+				var name := ""
+				var sub := ""
+				var col := Color(0.9, 0.88, 0.85)
+				if is_art:
+					var s: Variant = p.build["arts"][i]
+					_slot_glyph(r.position + Vector2(8, 13), i, Color(0.8, 0.78, 0.82))
+					if s != null:
+						var a: Dictionary = Arts.ARTS[s["id"]]
+						name = "%s · %s" % [a["name"], Arts.LEVEL_NAMES[int(s["lv"])]]
+						sub = Arts.SLOT_NAMES[Arts.SLOTS[i]]
+						col = Arts.SCHOOL_COLORS[a["school"]]
+				else:
+					var m: Dictionary = Arts.MINDS[p.build["minds"][i]]
+					name = m["name"]
+					sub = m["desc"]
+					col = Arts.SCHOOL_COLORS[m["school"]]
+				_text(font, name, r.position + Vector2(18, 17), col, 12)
+				if sub != "":
+					var short: String = _wrap(font, sub, w - 130.0)[0]
+					_text(font, short, Vector2(r.end.x - 6, r.position.y + 17), Color(0.65, 0.62, 0.68), 12, true)
+			_text(font, "←→ 选  攻击 换掉  格挡 返回", Vector2(x + 10, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)
+
+
+func _reward_card(font: Font, choice: Dictionary, r: Rect2, sel: bool) -> void:
+	var col := Arts.color(choice)
+	var d: Array = Arts.describe(choice)
+	draw_rect(r, Color(0.09, 0.07, 0.11) if not sel else Color(col.darkened(0.7), 0.95))
+	draw_rect(Rect2(r.position, Vector2(3, r.size.y)), col)
+	var edge := Color(1.0, 0.95, 0.75).lerp(col, 0.3 + 0.2 * sin(_time * 6.0)) if sel else Color(0.35, 0.32, 0.38)
+	draw_rect(r, edge, false, 2.0 if sel else 1.0)
+	_text(font, d[0], r.position + Vector2(10, 15), col, 12)
+	_text(font, d[1], r.position + Vector2(62, 15), Color(0.98, 0.95, 0.9), 12)
+	var lines: Array = _wrap(font, d[2], r.size.x - 20.0)
+	for i in range(mini(lines.size(), 3)):
+		_text(font, lines[i], r.position + Vector2(10, 30 + i * 13), Color(0.82, 0.8, 0.84) if sel else Color(0.65, 0.62, 0.68), 12)
+
+
+## Tab：这一局装的招式和心法
+func _draw_build_screen(font: Font) -> void:
+	var ps: Array = main.get_players()
+	var box := Rect2(30, 30, 580, 290)
+	draw_rect(box, Color(0.04, 0.03, 0.06, 0.95))
+	_frame(box)
+	_text_centered(font, "招式与心法" + ("（这一局有效）" if Game.run != null else "（出发后清房获得）"), Vector2(320, 48), Color(0.95, 0.9, 0.8), 12)
+	var col_w := box.size.x / float(ps.size())
+	for i in range(ps.size()):
+		var p: Player = ps[i]
+		var x := box.position.x + 12.0 + i * col_w
+		var y := 66.0
+		if ps.size() > 1:
+			_text(font, "%dP" % p.index, Vector2(x, y), p.color.lightened(0.3), 12)
+			y += 14.0
+		_text(font, "招式", Vector2(x, y), GOLD, 12)
+		y += 14.0
+		var slots: Array = p.build["arts"]
+		for k in range(slots.size()):
+			_slot_glyph(Vector2(x + 5, y - 4), k, Color(0.8, 0.78, 0.82))
+			var s: Variant = slots[k]
+			if s == null:
+				_text(font, "%s · 空" % Arts.SLOT_NAMES[Arts.SLOTS[k]], Vector2(x + 14, y), Color(0.5, 0.48, 0.52), 12)
+				y += 16.0
+				continue
+			var a: Dictionary = Arts.ARTS[s["id"]]
+			var head := "%s %s · %s · 刃意 %d" % [a["name"], Arts.LEVEL_NAMES[int(s["lv"])], a["school"],
+				roundi(p.art_cost(Arts.art(s["id"], int(s["lv"]))))]
+			_text(font, head, Vector2(x + 14, y), Arts.SCHOOL_COLORS[a["school"]], 12)
+			y += 13.0
+			for wl: String in _wrap(font, "%s（%s）" % [a["desc"], Arts.level_desc(s["id"], int(s["lv"]))], col_w - 40.0):
+				_text(font, wl, Vector2(x + 14, y), Color(0.78, 0.76, 0.8), 12)
+				y += 12.0
+			y += 4.0
+		y += 4.0
+		_text(font, "心法 %d/%d" % [(p.build["minds"] as Array).size(), Arts.MAX_MINDS], Vector2(x, y), GOLD, 12)
+		y += 14.0
+		for id: String in p.build["minds"]:
+			var m: Dictionary = Arts.MINDS[id]
+			for wl: String in _wrap(font, "%s：%s" % [m["name"], m["desc"]], col_w - 28.0):
+				_text(font, wl, Vector2(x + 14, y), Arts.SCHOOL_COLORS[m["school"]].lightened(0.2), 12)
+				y += 12.0
+			y += 3.0
+		if (p.build["minds"] as Array).is_empty():
+			_text(font, "还没有", Vector2(x + 14, y), Color(0.5, 0.48, 0.52), 12)
+	_text(font, "Tab 关闭", Vector2(box.end.x - 8, box.end.y - 8), Color(0.75, 0.72, 0.8, 0.7), 12, true)
+
+
+## 破庙招式谱：两列，左边招式右边心法；没在谱上的用魂玉加进掉落池
+func _draw_codex(font: Font) -> void:
+	draw_rect(Rect2(0, 0, 640, 360), Color(0, 0, 0, 0.5))
+	var box := Rect2(16, 18, 608, 324)
+	draw_rect(box, Color(0.04, 0.03, 0.06, 0.96))
+	_frame(box)
+	_text_centered(font, "招式谱 · 掉落池", Vector2(320, 36), Color(0.95, 0.9, 0.8), 12)
+	_purse_row(font, "jade", int(Game.save["jade"]), Vector2(box.end.x - 70, 32))
+	var cur: Vector2i = main.codex_cursor
+	for c in range(2):
+		var kind := "art" if c == 0 else "mind"
+		var x0 := box.position.x + 12.0 + c * 300.0
+		_text(font, "招式（最多装 3 个）" if c == 0 else "心法（最多装 4 个）", Vector2(x0 + 4, 60), GOLD, 12)
+		draw_rect(Rect2(x0, 66, 284, 1), Color(GOLD_DARK, 0.8))
+		var ids: Array = main.codex_ids(c)
+		for i in range(ids.size()):
+			var id: String = ids[i]
+			var e := Arts.entry(kind, id)
+			var r := Rect2(x0, 72 + i * 24, 284, 20)
+			var sel := cur == Vector2i(c, i)
+			var have := Arts.in_pool(kind, id)
+			var col: Color = Arts.SCHOOL_COLORS[e["school"]]
+			draw_rect(r, Color(col.darkened(0.7), 0.9) if sel else Color(0.08, 0.06, 0.1))
+			if sel:
+				draw_rect(r, Color(1.0, 0.95, 0.75).lerp(col, 0.3 + 0.2 * sin(_time * 6.0)), false, 2.0)
+				if menu_flash > 0.0:
+					draw_rect(r.grow(2), Color(col, menu_flash * 2.0))
+			_text(font, e["name"], r.position + Vector2(8, 14), col if have else Color(0.45, 0.43, 0.48), 12)
+			_text(font, e["school"], r.position + Vector2(80, 14), Color(0.65, 0.62, 0.68), 12)
+			var state := "在谱上"
+			var sc := Color(0.5, 1.0, 0.8)
+			if kind == "art" and id == Arts.STARTER:
+				state = "每局自带"
+			elif not have:
+				state = "%d 魂玉" % int(e["unlock"])
+				sc = Color(0.85, 0.75, 0.55)
+			_text(font, state, Vector2(r.end.x - 8, r.position.y + 14), sc, 12, true)
+	# 下面一栏：光标所在条目的说明
+	var kind2 := "art" if cur.x == 0 else "mind"
+	var id2: String = main.codex_ids(cur.x)[cur.y]
+	var e2 := Arts.entry(kind2, id2)
+	var info := Rect2(box.position.x + 10, 254, box.size.x - 20, 70)
+	draw_rect(info, Color(0.08, 0.06, 0.1))
+	var lines := []
+	if kind2 == "art":
+		lines.append("%s · 刃意 %d · %s" % [e2["name"], int(e2["cost"]), e2["desc"]])
+		for lv in range(1, Arts.max_level(id2) + 1):
+			lines.append("%s：%s" % [Arts.LEVEL_NAMES[lv], Arts.level_desc(id2, lv)])
+	else:
+		lines.append("%s · %s" % [e2["name"], e2["desc"]])
+	var y := info.position.y + 14
+	for l: String in lines:
+		_text(font, l, Vector2(info.position.x + 8, y), Color(0.92, 0.9, 0.86), 12)
+		y += 13
+	if menu_note_time > 0.0:
+		_text(font, menu_note, Vector2(info.end.x - 8, info.position.y + 14), Color(1.0, 0.85, 0.5), 12, true)
+	_text(font, "←→ 换列  跳/下 选  攻击 加进掉落池  格挡/闪身 离开", Vector2(box.position.x + 14, box.end.y - 6), Color(0.7, 0.68, 0.74), 12)

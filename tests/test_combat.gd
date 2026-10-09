@@ -74,6 +74,30 @@ func _run() -> void:
 	await test_walk_and_run()
 	await _setup()
 	await test_run_jump()
+	await _setup()
+	await test_art_slots()
+	await _setup()
+	await test_issen()
+	await _setup()
+	await test_kuujin()
+	await _setup()
+	await test_kongo()
+	await _setup()
+	await test_houzan()
+	await _setup()
+	await test_kage()
+	await _setup()
+	await test_ukifune()
+	await _setup()
+	await test_mind_fudoshin()
+	await _setup()
+	await test_mind_zanshin()
+	await _setup()
+	await test_mind_ryuun()
+	await _setup()
+	await test_mind_ketsuon()
+	await _setup()
+	await test_mind_jiri()
 	print("")
 	if failures == 0:
 		print("全部测试通过")
@@ -772,3 +796,248 @@ func test_run_jump() -> void:
 	await _frames(12)
 	_check(p.velocity.x > 150.0, "空中松开方向还带着惯性（%.0f）" % p.velocity.x)
 	await _frames(60)
+
+
+# ---------- 招式和心法（Arts） ----------
+
+## 装上几个招式：arts 是三个格子 [[id, 等级] 或 null]
+func _equip(arts: Array, minds: Array = []) -> void:
+	var b := {"arts": [], "minds": minds.duplicate()}
+	for s: Variant in arts:
+		b["arts"].append(null if s == null else {"id": s[0], "lv": s[1]})
+	p.build = b
+	main._apply_player_stats(p, false)
+	p.stats["crit"] = 0.0
+
+
+## 按住一个方向再按 action（方向键先按一帧，等按完再松）
+func _tap_with(action: String, held: String) -> void:
+	Input.action_press(held)
+	await _frames(1)
+	await _tap(action)
+	await _frames(1)
+	Input.action_release(held)
+
+
+## 敌人摆在出招前摇里不动（不会格挡、也不会真的砍下来）
+func _freeze_windup() -> void:
+	e.state = Enemy.S.WINDUP
+	e.move_key = "sweep"
+	e.state_time = -10.0
+
+
+func test_art_slots() -> void:
+	print("招式键 + 方向：三个格子")
+	_equip([["whirl", 1], ["kuujin", 1], ["houzan", 1]])
+	_freeze_windup()   # 敌人别还手
+	p.will = 100.0
+	await _tap("p1_art")
+	await _frames(2)
+	_check(p.state == Player.S.ART and p.art["id"] == "whirl", "单按放第一格（回旋斩）")
+	await _frames(60)
+	p.will = 100.0
+	await _tap_with("p1_art", "p1_left")
+	await _frames(2)
+	_check(p.art["id"] == "kuujin" and p.facing == -1, "按住左放第二格（空刃斩），顺便转身")
+	await _frames(40)
+	p.will = 100.0
+	await _tap_with("p1_art", "p1_down")
+	await _frames(2)
+	_check(p.art["id"] == "houzan", "按住下放第三格（崩山劲）")
+	await _frames(60)
+	_equip([["kuujin", 1], null, null])
+	p.will = 100.0
+	await _tap_with("p1_art", "p1_down")
+	await _frames(2)
+	_check(p.art["id"] == "kuujin", "那一格空着就放装着的那个")
+	_check(is_equal_approx(p.will, 70.0), "空刃斩耗 30 刃意（剩 %.0f）" % p.will)
+	await _frames(40)
+	p.will = 20.0
+	await _tap("p1_art")
+	await _frames(2)
+	_check(p.state != Player.S.ART, "刃意不够放不出来")
+
+
+func test_issen() -> void:
+	print("一心：居合斩开一大片")
+	_equip([["issen", 1], null, null])
+	e.global_position = Vector2(520, 300)   # 离 120，普通刀够不着
+	_freeze_windup()
+	p.will = 100.0
+	await _tap("p1_art")
+	await _frames(50)
+	_check(is_equal_approx(p.will, 50.0), "耗 50 刃意")
+	_check(is_equal_approx(e.max_hp - e.hp, 55.0), "120 外也砍中，55 伤害（实际 %.1f）" % (e.max_hp - e.hp))
+	_check(is_equal_approx(e.posture, 50.0), "架势 +50（实际 %.1f）" % e.posture)
+	await _frames(40)
+	_check(p.state == Player.S.FREE, "收刀回到平常")
+	# 三级：收刀前再补一刀
+	await _setup()
+	_equip([["issen", 3], null, null])
+	_freeze_windup()
+	p.will = 100.0
+	await _tap("p1_art")
+	await _frames(70)
+	_check(is_equal_approx(e.max_hp - e.hp, 180.0) or e.state == Enemy.S.BROKEN, "三级砍两刀 90×2（实际 %.1f）" % (e.max_hp - e.hp))
+
+
+func test_kuujin() -> void:
+	print("空刃斩：刃气飞出去打断前摇")
+	_equip([["kuujin", 1], null, null])
+	e.global_position = Vector2(640, 300)
+	_freeze_windup()
+	p.will = 100.0
+	await _tap("p1_art")
+	await _frames(50)
+	_check(is_equal_approx(e.max_hp - e.hp, 16.0), "240 外打中，16 伤害（实际 %.1f）" % (e.max_hp - e.hp))
+	_check(e.state == Enemy.S.STAGGER, "敌人前摇被打断（状态 %d）" % e.state)
+	# 三级连挥两道，穿透
+	await _setup()
+	_equip([["kuujin", 3], null, null])
+	e.global_position = Vector2(600, 300)
+	_freeze_windup()
+	var e2: Enemy = main.spawn_enemy("dog", Vector2(520, 300))
+	e2.attack_cooldown = 9999.0
+	p.will = 100.0
+	await _tap("p1_art")
+	await _frames(50)
+	_check(e.max_hp - e.hp >= 48.0 - 0.1, "两道都打中后面的敌人（%.1f）" % (e.max_hp - e.hp))
+	_check(e2.hp < e2.max_hp, "前面的野狗也挨了（穿透）")
+
+
+func test_kongo() -> void:
+	print("金刚没：格挡都算弹反")
+	_equip([["kongo", 3], null, null])
+	p.will = 100.0
+	await _tap("p1_art")
+	await _frames(20)
+	_check(p._kongo_t > 2.8, "金刚没生效（剩 %.1f 秒）" % p._kongo_t)
+	Input.action_press("p1_guard")
+	await _frames(20)   # 早就过了普通弹反窗口
+	e._start_move("slash")
+	await _frames(150)
+	Input.action_release("p1_guard")
+	_check(p.parry_count == 3, "按住格挡，三段全变弹反（%d）" % p.parry_count)
+	_check(is_equal_approx(e.posture, 45.0), "敌人吃到弹反反震（%.1f）" % e.posture)
+	p._kongo_t = 0.0
+	Input.action_press("p1_guard")
+	await _frames(20)
+	e._start_move("quick")
+	await _frames(60)
+	Input.action_release("p1_guard")
+	_check(p.parry_count == 3, "时间过了按住格挡就只是格挡")
+
+
+func test_houzan() -> void:
+	print("崩山劲：空中砸下来震地")
+	_equip([["houzan", 1], null, null])
+	_freeze_windup()
+	p.velocity.y = -450.0
+	await _frames(12)
+	_check(not p.is_on_floor(), "先跳起来")
+	p.will = 100.0
+	await _tap("p1_art")
+	await _frames(60)
+	_check(p.is_on_floor(), "砸到地上")
+	_check(is_equal_approx(e.posture, 60.0), "架势 +60（实际 %.1f）" % e.posture)
+	_check(is_equal_approx(e.max_hp - e.hp, 18.0), "18 伤害（实际 %.1f）" % (e.max_hp - e.hp))
+
+
+func test_kage() -> void:
+	print("影步：瞬移到背后，下一刀必会心")
+	_equip([["kage", 1], null, null])
+	e.global_position = Vector2(560, 300)
+	e.facing = -1
+	_freeze_windup()
+	p.will = 100.0
+	await _tap("p1_art")
+	await _frames(6)
+	_check(p.global_position.x > e.global_position.x and p.facing == -1, "站到敌人背后，转过来对着它（x %.0f）" % p.global_position.x)
+	_check(p._sure_crit_t > 0.0, "下一刀必会心")
+	var hit: Dictionary = p.strike(Moves.get_move("slash1"), e)
+	_check(hit["crit"] and is_equal_approx(float(hit["dmg"]), 30.0), "这一刀会心 20×1.5 = %.0f" % float(hit["dmg"]))
+	hit = p.strike(Moves.get_move("slash1"), e)
+	_check(not hit["crit"], "只管一刀")
+
+
+func test_ukifune() -> void:
+	print("浮舟渡打：七段连斩叠流血")
+	_equip([["ukifune", 1], null, null])
+	_freeze_windup()
+	p.will = 100.0
+	await _tap("p1_art")
+	await _frames(50)
+	_check(e.max_hp - e.hp >= 49.0, "七段每段 7 伤害（%.1f）" % (e.max_hp - e.hp))
+	_check(e.bleed_stacks == 5, "流血叠满 5 层（%d）" % e.bleed_stacks)
+
+
+func test_mind_fudoshin() -> void:
+	print("心法·不动心：弹反反震 80%")
+	_equip([["whirl", 1], null, null], ["fudoshin"])
+	e._start_move("slash")
+	for hit in range(3):
+		await _wait_windup_end(hit, 0.06)
+		await _tap("p1_guard")
+		await _frames(12)
+	_check(p.parry_count == 3, "三段都弹反")
+	_check(is_equal_approx(e.posture, 72.0), "敌人架势 +24×3 = 72（实际 %.1f）" % e.posture)
+
+
+func test_mind_zanshin() -> void:
+	print("心法·残心：残血伤害高，药少回")
+	_equip([["whirl", 1], null, null], ["zanshin"])
+	var full: float = p.strike(Moves.get_move("slash1"), e)["dmg"]
+	p.hp = p.max_hp * 0.4
+	var low: float = p.strike(Moves.get_move("slash1"), e)["dmg"]
+	_check(is_equal_approx(full, 20.0) and is_equal_approx(low, 26.0), "满血 %.0f，半血以下 %.0f（+30%%）" % [full, low])
+	await _tap("p1_heal")
+	await _frames(70)
+	_check(is_equal_approx(p.hp, p.max_hp * 0.68), "药罐只回 28%%（%.0f）" % p.hp)
+
+
+func test_mind_ryuun() -> void:
+	print("心法·流云：完美闪避放慢时间")
+	_equip([["whirl", 1], null, null], ["ryuun"])
+	e._start_move("quick")
+	await _wait_windup_end(0, 0.03)
+	Input.action_press("p1_right")
+	await _tap("p1_dodge")
+	Input.action_release("p1_right")
+	await _frames(1)
+	var slowed: bool = main._slow_until > 0
+	await _frames(20)
+	_check(p.perfect_dodges == 1 or slowed, "完美闪避（%d）" % p.perfect_dodges)
+	_check(is_equal_approx(p.hp, p.max_hp), "没被砍中")
+	_check(is_equal_approx(p.will, 8.0), "刃意 +8（%.0f）" % p.will)
+	# 没有流云：不算
+	await _setup()
+	e._start_move("quick")
+	await _wait_windup_end(0, 0.03)
+	Input.action_press("p1_right")
+	await _tap("p1_dodge")
+	Input.action_release("p1_right")
+	await _frames(20)
+	_check(p.perfect_dodges == 0, "没装流云不放慢")
+
+
+func test_mind_ketsuon() -> void:
+	print("心法·血音：流血叠满引爆")
+	_equip([["whirl", 1], null, null], ["ketsuon"])
+	for i in range(4):
+		e.add_bleed(p)
+	_check(e.bleed_stacks == 4 and is_equal_approx(e.posture, 0.0), "四层不引爆")
+	e.add_bleed(p)
+	_check(e.bleed_stacks == 0, "第五层引爆，流血清空")
+	_check(e.posture >= 40.0 and is_equal_approx(e.max_hp - e.hp, 15.0), "架势 +%.0f、伤害 %.0f" % [e.posture, e.max_hp - e.hp])
+
+
+func test_mind_jiri() -> void:
+	print("心法·持离：处决后刃意充满")
+	_equip([["whirl", 1], null, null], ["jiri"])
+	p.will = 0.0
+	e._break()
+	await _frames(2)
+	await _tap("p1_attack")
+	await _frames(5)
+	_check(e.lives < (e.data["phases"] as Array).size(), "处决成功")
+	_check(is_equal_approx(p.will, Player.MAX_WILL), "刃意充满（%.0f）" % p.will)

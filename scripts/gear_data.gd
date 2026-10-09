@@ -90,7 +90,7 @@ static func base_stats() -> Dictionary:
 		"gourd_heal": 0.0, "charge": 0.0, "art_cost": 0.0, "combo_end": 0.0, "pressure": 0.0, "heavy_dmg": 0.0,
 		"lifesteal": 0.0, "exec_heal": 0.0, "parry_posture": 0.0, "parry_heal": 0.0, "parry_will": 0.0,
 		"revive": 0, "exec_pierce": 0.0, "low_will": 0.0, "kill_heal": 0.0, "dodge_dmg": 0.0, "low_dmg": 0.0,
-		"low_dmg_line": 0.5,
+		"low_dmg_line": 0.5, "parry_rebound": 0.0, "perfect_slow": 0.0, "bleed_burst": 0.0, "exec_will": 0.0,
 	}
 
 

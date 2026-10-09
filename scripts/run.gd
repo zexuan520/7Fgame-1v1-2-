@@ -18,6 +18,7 @@ var gear := {}                      # 每个玩家身上的装备：玩家序号
 var revives := {}                   # 不动“不死身”：玩家序号 → 这一局还能站起来几次
 var bank := {"coin": 0.0, "jade": 0.0}   # 加成后不满 1 的零头，攒够了再进钱袋
 var shop_gear := {}                 # 商人房间卖的装备：房间坐标 → [装备, ...]（买过的设成 null）
+var builds := {}                    # 每个玩家这一局的招式和心法：玩家序号 → Arts.new_build()
 var rng := RandomNumberGenerator.new()
 
 
@@ -199,6 +200,13 @@ func shop_gear_list() -> Array:
 			list.append(GearData.roll(rng, GearData.weights_for("shop", row, int(Talents.run_value("luck")))))
 		shop_gear[id] = list
 	return shop_gear[id]
+
+
+## 某个玩家这一局的招式和心法（第一次要的时候只带回旋斩）
+func build(index: int) -> Dictionary:
+	if not builds.has(index):
+		builds[index] = Arts.new_build()
+	return builds[index]
 
 
 ## 某个玩家这一局的装备（第一次要的时候按兵器架上选的武器新建）

@@ -1,6 +1,7 @@
 class_name Player
 extends Fighter
 ## 主角：移动、二段跳、三段轻攻击、蓄力重攻击、格挡、弹反、闪身、处决、药罐、刃意招式、架势切换。
+## 刃意招式和心法见 Arts：招式键单按 / 按住左右 / 按住下 各放一格。
 
 enum S { FREE, CHARGE, ATTACK, GUARD, DODGE, HITSTUN, BROKEN, EXECUTE, DEAD, DRINK, ART }
 
@@ -39,11 +40,9 @@ const DRINK_HEAL_AT := 0.6
 
 # 刃意：弹反、看破、命中、踩头、处决攒能量，满 40 可以放一次招式
 const MAX_WILL := 100.0
-const WILL_GAIN := {"hit": 4.0, "guardbreak": 6.0, "parry": 12.0, "mikiri": 15.0, "stomp": 8.0, "execute": 35.0}
-
-# 刃意招式·回旋斩：原地转两圈，前后都砍，每圈一次判定，能破格挡；转的时候不吃伤害
-const ART := {"cost": 40.0, "windup": 0.14, "active": 0.42, "recover": 0.3, "ticks": 2,
-	"dmg": 22.0, "posture": 40.0, "size": Vector2(120, 46), "heavy": true}
+const WILL_GAIN := {"hit": 4.0, "guardbreak": 6.0, "parry": 12.0, "mikiri": 15.0, "stomp": 8.0, "execute": 35.0,
+	"perfect": 8.0}
+const PERFECT_DODGE := 0.12         # 闪身开始这么久之内被砍到（本来要挨刀）算完美闪避（心法“流云”）
 
 # 攻击招式全部在 Moves.LIST 里（地面五连、重劈、升龙斩、空中斩、落雷斩、闪身突刺）
 const AIR_ATTACKS := 2              # 每次跳起最多两下空中攻击（落雷斩不算）
@@ -105,7 +104,17 @@ var _drank := false
 var _air_attacks := 0
 var _dodge_end := -10.0
 var _stun_time := HITSTUN_TIME      # 这次挨打的僵直时间（被擒拿更久）
+var build: Dictionary = Arts.new_build()   # 这一局装的招式和心法（闯关时和 Game.run.builds 是同一个字典）
+var art: Dictionary = {}            # 正在放的招式（Arts.art() 按等级算好的数值）
 var _art_tick := -1
+var _art_done := false
+var _art_end := 0.0
+var _kongo_t := 0.0                # 金刚没：剩多久格挡都算弹反
+var _kongo_will := 0.0
+var _sure_crit_t := 0.0            # 影步：下一刀必会心
+var _sure_crit_bonus := 0.0
+var _perfect_used := false         # 这次闪身已经触发过完美闪避
+var perfect_dodges := 0             # 统计
 var _counter_t := 0.0              # 太刀：弹反后追击
 var _pierce_t := 0.0               # 修罗面：处决后无视格挡
 var _dodge_buff_t := 0.0           # 风铃：闪身后加伤害
@@ -345,6 +354,8 @@ func _physics_process(delta: float) -> void:
 	_counter_t = maxf(0.0, _counter_t - delta)
 	_pierce_t = maxf(0.0, _pierce_t - delta)
 	_dodge_buff_t = maxf(0.0, _dodge_buff_t - delta)
+	_kongo_t = maxf(0.0, _kongo_t - delta)
+	_sure_crit_t = maxf(0.0, _sure_crit_t - delta)
 	_combo_grace = maxf(0.0, _combo_grace - delta)
 	flash_timer = maxf(0.0, flash_timer - delta)
 	if state != S.DEAD and state != S.BROKEN:
@@ -608,38 +619,171 @@ func _state_drink(delta: float) -> void:
 
 
 func _state_art(delta: float) -> void:
-	var windup: float = ART["windup"]
-	var active: float = ART["active"]
-	var recover: float = ART["recover"]
-	var t := state_time - windup
+	var t := state_time - float(art["windup"])
 	if t < 0.0:
 		velocity.x = move_toward(velocity.x, 0.0, 1300.0 * delta)
+		if art["run"] == "quake" and not is_on_floor():
+			velocity.y = 0.0   # 崩山劲在空中：先停一下再砸下去
 		return
-	if t < active:
-		velocity.x = facing * 130.0
-		invul_timer = maxf(invul_timer, 0.05)
-		var tick := int(t / (active / float(ART["ticks"])))
-		if tick != _art_tick:
-			_art_tick = tick
-			hit_targets.clear()
-			var c := global_position + Vector2(0, -26)
-			main.spawn_slash(c, facing, 50.0, -3.0, 0.3, Color(1.0, 0.85, 0.45), 9.0)
-			main.spawn_slash(c, -facing, 46.0, -2.6, 0.5, Color(1.0, 0.85, 0.45), 7.0)
-			main.spawn_dust(global_position, float(facing), 6)
-			main.shake(2.0)
-		var r := Rect2(global_position + Vector2(-60.0 + facing * 8.0, -46.0), ART["size"])
-		for e: Enemy in main.get_enemies():
-			if e in hit_targets or not e.is_hittable():
-				continue
-			if r.intersects(e.body_rect()):
-				hit_targets.append(e)
-				var result := e.receive_player_hit(ART, self)
-				if result == "hit" or result == "guardbreak":
-					main.hitstop(0.05)
+	if not _art_done:
+		call("_art_" + String(art["run"]), t, delta)
+		if _art_done:
+			_art_end = state_time
 		return
 	velocity.x = move_toward(velocity.x, 0.0, 1300.0 * delta)
-	if t >= active + recover:
+	if state_time - _art_end >= float(art["recover"]):
 		_enter(S.FREE)
+
+
+## 招式打中判定框里的敌人：返回打中了谁（招式打中不攒刃意，免得招式接招式停不下来）
+func _art_hit(r: Rect2, info: Dictionary) -> Array:
+	var got := []
+	for e: Enemy in main.get_enemies():
+		if e in hit_targets or not e.is_hittable():
+			continue
+		if r.intersects(e.body_rect()):
+			hit_targets.append(e)
+			var result := e.receive_player_hit(info, self)
+			if result == "hit" or result == "guardbreak":
+				main.hitstop(0.05)
+				got.append(e)
+	return got
+
+
+## 回旋斩：原地转几圈，前后都砍，每圈一次判定，能破格挡；转的时候不吃伤害
+func _art_spin(t: float, _delta: float) -> void:
+	var active: float = art["active"]
+	if t >= active:
+		_art_done = true
+		return
+	velocity.x = facing * 130.0
+	invul_timer = maxf(invul_timer, 0.05)
+	var tick := int(t / (active / float(art["ticks"])))
+	if tick != _art_tick:
+		_art_tick = tick
+		hit_targets.clear()
+		var c := global_position + Vector2(0, -26)
+		main.spawn_slash(c, facing, 50.0, -3.0, 0.3, Color(1.0, 0.85, 0.45), 9.0)
+		main.spawn_slash(c, -facing, 46.0, -2.6, 0.5, Color(1.0, 0.85, 0.45), 7.0)
+		main.spawn_dust(global_position, float(facing), 6)
+		main.shake(2.0)
+	var size: Vector2 = art["size"]
+	_art_hit(Rect2(global_position + Vector2(-size.x / 2.0 + facing * 8.0, -46.0), size), art)
+
+
+## 一心：纳刀蓄势之后一记居合，身前一大片；三级收刀前再补一刀
+func _art_iai(t: float, delta: float) -> void:
+	velocity.x = move_toward(velocity.x, 0.0, 1800.0 * delta)
+	var second: bool = art.get("second", false)
+	if _art_tick < 0 or (second and _art_tick == 0 and t >= 0.18):
+		_art_tick += 1
+		hit_targets.clear()
+		if _art_tick == 0:
+			velocity.x = facing * float(art["lunge"])
+		var c2 := Color(1.0, 0.95, 0.75)
+		var center := global_position + Vector2(facing * 30.0, -26.0)
+		main.spawn_slash(center, facing, 70.0, -0.5, 0.55, c2, 8.0)
+		main.spawn_streak(global_position + Vector2(facing * 10.0, -25.0), facing, 150.0, c2)
+		main.flash_screen(Color(1.0, 0.95, 0.85), 0.12)
+		main.shake(4.0)
+		main.punch(0.05)
+		_art_hit(front_rect(art["reach"], art["size"], art["height"]), art)
+	if t >= float(art["active"]) + (0.2 if second else 0.0):
+		_art_done = true
+
+
+## 空刃斩：挥出刃气往前飞（三级连挥两道）
+func _art_wave(t: float, _delta: float) -> void:
+	velocity.x = 0.0
+	var count := int(art["count"])
+	if _art_tick + 1 < count and t >= (_art_tick + 1) * 0.14:
+		_art_tick += 1
+		var w := BladeWave.new()
+		w.main = main
+		w.owner_player = self
+		w.facing = facing
+		w.info = art
+		w.position = global_position + Vector2(facing * 22.0, -28.0)
+		main.fx_root.add_child(w)
+		main.spawn_slash(global_position + Vector2(facing * 9.0, -26.0), facing, 40.0, -2.2, 0.8, Color(0.7, 0.9, 1.0), 8.0)
+	if _art_tick + 1 >= count and t >= float(art["active"]):
+		_art_done = true
+
+
+## 金刚没：一段时间内格挡都算弹反
+func _art_kongo(_t: float, _delta: float) -> void:
+	_kongo_t = float(art["time"])
+	_kongo_will = float(art.get("parry_will", 0.0))
+	main.spawn_ring(global_position + Vector2(0, -26), Color(1.0, 0.85, 0.4), 36.0)
+	main.spawn_spark(global_position + Vector2(0, -30), Color(1.0, 0.85, 0.4), 12)
+	_art_done = true
+	if _held("guard"):
+		_start_guard()
+
+
+## 崩山劲：刀戳进地面震开一圈；空中放先砸下来
+func _art_quake(t: float, _delta: float) -> void:
+	if not is_on_floor() and t < 1.5:
+		velocity = Vector2(0.0, 820.0)
+		return
+	velocity.x = 0.0
+	var size: Vector2 = art["size"]
+	var r := Rect2(global_position + Vector2(-size.x / 2.0, -size.y), size)
+	var col := Color(1.0, 0.65, 0.35)
+	main.spawn_ring(global_position + Vector2(0, -4), col, size.x * 0.45)
+	main.spawn_slash(global_position + Vector2(0, -4), 1, size.x * 0.4, -0.25, 0.0, col, 6.0)
+	main.spawn_slash(global_position + Vector2(0, -4), -1, size.x * 0.4, -0.25, 0.0, col, 6.0)
+	main.spawn_dust(global_position, 1.0, 12)
+	main.spawn_dust(global_position, -1.0, 12)
+	main.shake(6.0)
+	main.punch(0.06)
+	_squash = Vector2(1.3, 0.75)
+	for e: Enemy in _art_hit(r, art):
+		if e.is_grunt() and e.state != Enemy.S.DYING:
+			e.velocity.y = -260.0   # 震起来
+	_art_done = true
+
+
+## 影步：瞬移到最近的敌人背后，下一刀必会心；附近没敌人就往前闪一段
+func _art_shadow(_t: float, _delta: float) -> void:
+	var from := global_position
+	var e: Enemy = main.nearest_enemy(global_position, float(art["range"]))
+	if e != null and e.is_hittable():
+		var x := e.global_position.x - e.facing * (e.body_size.x * 0.5 + 18.0)
+		global_position = Vector2(clampf(x, 20.0, float(main.arena_w) - 20.0), e.global_position.y)
+		facing = 1 if e.global_position.x >= global_position.x else -1
+	else:
+		global_position.x = clampf(global_position.x + facing * 100.0, 20.0, float(main.arena_w) - 20.0)
+	velocity = Vector2.ZERO
+	invul_timer = maxf(invul_timer, 0.35)
+	_sure_crit_t = float(art["crit_time"])
+	_sure_crit_bonus = float(art["crit_bonus"])
+	var col := Color(0.55, 0.85, 0.8)
+	main.spawn_ghost(from, _pose, look, facing, col)
+	main.spawn_spark(from + Vector2(0, -26), col, 10)
+	main.spawn_spark(global_position + Vector2(0, -26), col, 10)
+	_art_done = true
+
+
+## 浮舟渡打：往前几段连斩，每刀叠流血
+func _art_flurry(t: float, _delta: float) -> void:
+	var hits := int(art["hits"])
+	var tick := int(t / (float(art["active"]) / hits))
+	if tick != _art_tick and tick < hits:
+		_art_tick = tick
+		hit_targets.clear()
+		velocity.x = facing * 70.0
+		var c := global_position + Vector2(facing * 9.0, -26.0)
+		var col := Color(1.0, 0.6, 0.7)
+		if tick % 2 == 0:
+			main.spawn_slash(c, facing, 36.0, 0.9, -1.8, col, 6.0)
+		else:
+			main.spawn_slash(c, facing, 38.0, -2.2, 0.7, col, 6.0)
+		for e: Enemy in _art_hit(front_rect(art["reach"], art["size"], art["height"]), art):
+			for k in range(int(art["bleed"])):
+				e.add_bleed(self)
+	if t >= float(art["active"]):
+		_art_done = true
 
 
 func _state_dodge(_delta: float) -> void:
@@ -756,6 +900,7 @@ func _start_dodge(dir: float) -> void:
 	var cd := 1.0 + float(stats["dodge_cd"]) - (0.3 if weapon["trait"] == "bleed" else 0.0)
 	dodge_cooldown = DODGE_COOLDOWN * maxf(cd, 0.3) + DODGE_TIME
 	invul_timer = DODGE_INVUL
+	_perfect_used = false
 	_enter(S.DODGE)
 	if is_on_floor():
 		main.spawn_dust(global_position, -dodge_dir, 6)
@@ -770,16 +915,46 @@ func _start_drink() -> void:
 	_enter(S.DRINK)
 
 
+## 招式键 + 方向：单按放第一格，按住左右放第二格（顺便转身），按住下放第三格；那一格空着就放第一个装着的
 func _start_art() -> void:
-	if will < art_cost():
+	var slot := 0
+	var dir := Input.get_axis(prefix + "left", prefix + "right")
+	if _held("down"):
+		slot = 2
+	elif absf(dir) > 0.1:
+		slot = 1
+	var a := equipped_art(slot)
+	if a.is_empty():
+		main.spawn_text(global_position + Vector2(0, -70), "没装招式", Color(0.7, 0.7, 0.75), 12)
+		return
+	if will < art_cost(a):
 		main.spawn_text(global_position + Vector2(0, -70), "刃意不足", Color(0.7, 0.7, 0.75), 12)
 		return
-	will -= art_cost()
+	if slot == 1 and absf(dir) > 0.1:
+		facing = 1 if dir > 0.0 else -1
+	will -= art_cost(a)
+	art = a
 	_art_tick = -1
+	_art_done = false
 	hit_targets.clear()
 	_enter(S.ART)
-	flash(Color(1.0, 0.85, 0.4), 0.12)
-	main.spawn_text(global_position + Vector2(0, -74), "回旋斩", Color(1.0, 0.85, 0.4), 14)
+	var col: Color = Arts.SCHOOL_COLORS[a["school"]]
+	flash(col, 0.12)
+	main.spawn_text(global_position + Vector2(0, -74), a["name"], col, 14)
+
+
+## 某一格装的招式（按等级算好数值）；这一格空着就给第一个装着的，一个都没有返回空字典
+func equipped_art(slot: int) -> Dictionary:
+	var slots: Array = build["arts"]
+	var s: Variant = slots[slot]
+	if s == null:
+		for x: Variant in slots:
+			if x != null:
+				s = x
+				break
+	if s == null:
+		return {}
+	return Arts.art(s["id"], int(s["lv"]))
 
 
 func gain_will(kind: String) -> void:
@@ -827,6 +1002,8 @@ func _start_execute(target: Enemy) -> void:
 		heal(max_hp * float(stats["exec_heal"]))
 	if float(stats["exec_pierce"]) > 0.0:
 		_pierce_t = float(stats["exec_pierce"])
+	if float(stats["exec_will"]) > 0.0:
+		will = MAX_WILL   # 心法“持离”
 	_victory = "overhead" if target.lives <= 0 else "wheel"
 
 
@@ -896,8 +1073,11 @@ func charge_needed() -> float:
 	return maxf(0.25, HEAVY_CHARGE_TIME - float(stats["charge"]))
 
 
-func art_cost() -> float:
-	return maxf(10.0, float(ART["cost"]) - float(stats["art_cost"]))
+## 放一个招式要多少刃意（修罗“刃意”天赋少耗）；不给招式就算第一格的
+func art_cost(a: Dictionary = {}) -> float:
+	if a.is_empty():
+		a = equipped_art(0)
+	return maxf(10.0, float(a.get("cost", 40.0)) - float(stats["art_cost"]))
 
 
 ## 受到伤害的倍率：防御 d 时 × 60 / (60 + d)，金刚再减
@@ -962,8 +1142,14 @@ func strike(atk: Dictionary, e: Enemy) -> Dictionary:
 		_counter_t = 0.0
 		counter = true
 	var crit := randf() < minf(0.6, float(stats["crit"]))
+	var crit_dmg := float(stats["crit_dmg"])
+	if _sure_crit_t > 0.0:
+		# 影步之后的下一刀必会心
+		crit = true
+		crit_dmg += _sure_crit_bonus
+		_sure_crit_t = 0.0
 	if crit:
-		mult *= 1.0 + float(stats["crit_dmg"])
+		mult *= 1.0 + crit_dmg
 	return {
 		"dmg": float(atk["dmg"]) * mult,
 		"posture": float(atk["posture"]) * (1.0 + float(stats["pdmg"])),
@@ -977,7 +1163,7 @@ func on_hit_landed(e: Enemy, hit: Dictionary) -> void:
 	if float(stats["lifesteal"]) > 0.0:
 		hp = minf(max_hp, hp + float(hit["dmg"]) * float(stats["lifesteal"]))
 	if weapon["trait"] == "bleed":
-		e.add_bleed()
+		e.add_bleed(self)
 	if hit["crit"]:
 		main.spawn_text(e.global_position + Vector2(randf_range(-8, 8), -e.body_size.y - 40.0), "会心", Color(1.0, 0.85, 0.3), 12)
 	elif hit["counter"]:
@@ -996,16 +1182,20 @@ func receive_enemy_hit(info: Dictionary, attacker: Node2D) -> String:
 		if kind == "thrust" and state == S.DODGE and dodge_dir == -int(attacker.get("facing")):
 			gain_will("mikiri")
 			return "mikiri"   # 看破：迎着突刺方向闪身
+		if state == S.DODGE and state_time <= PERFECT_DODGE and not _perfect_used and float(stats["perfect_slow"]) > 0.0:
+			_perfect_dodge()
 		return "miss"
 	if kind == "sweep" and not is_on_floor():
 		return "miss"         # 跳过下段横扫
 	var p: float = info["posture"]
 	var unblockable: bool = info["unblockable"]
 	if not unblockable and state == S.GUARD and facing == to_attacker:
-		if parry_timer > 0.0:
+		if parry_timer > 0.0 or _kongo_t > 0.0:
 			parry_timer = 0.0
 			parry_count += 1
 			gain_will("parry")
+			if _kongo_t > 0.0:
+				will = minf(MAX_WILL, will + _kongo_will)
 			flash(Color(1.0, 0.95, 0.5), 0.15)
 			add_posture(p * 0.25)
 			if float(stats["parry_heal"]) > 0.0:
@@ -1037,6 +1227,16 @@ func receive_enemy_hit(info: Dictionary, attacker: Node2D) -> String:
 			velocity = Vector2(-to_attacker * 260.0, -240.0)   # 被抓起来摔出去
 		_enter(S.HITSTUN)
 	return "hit"
+
+
+## 心法“流云”：完美闪避放慢时间
+func _perfect_dodge() -> void:
+	_perfect_used = true
+	perfect_dodges += 1
+	gain_will("perfect")
+	main.slowmo(0.3, float(stats["perfect_slow"]))
+	main.spawn_text(global_position + Vector2(0, -70), "流云", Color(0.6, 0.95, 0.9), 12)
+	main.spawn_ghost(global_position, _pose, look, facing, Color(0.6, 0.95, 0.9))
 
 
 ## 机关伤人（坑、竹签）：按最大生命扣，弹一下，短暂无敌免得连着扣
@@ -1183,7 +1383,17 @@ func _target_pose() -> Dictionary:
 				return d
 			return Puppet.lerp_pose(POSES["drink"], POSES["relaxed"], (t - (DRINK_TIME - 0.2)) / 0.2)
 		S.ART:
-			return POSES["art_prep"] if t < float(ART["windup"]) else POSES["art_spin"]
+			var keys: Array = art["pose"]
+			if t < float(art["windup"]):
+				return POSES[keys[0]]
+			match String(art["run"]):
+				"quake":
+					return POSES["plunge_fall"] if not _art_done else POSES[keys[1]]
+				"flurry":
+					return POSES["cut2"] if _art_tick % 2 == 0 else POSES["cut1"]
+				"kongo":
+					return POSES["guard"]
+			return POSES[keys[1]]
 		S.BROKEN:
 			var bp: Dictionary = POSES["broken"].duplicate()
 			bp["lean"] = 0.7 + sin(clock * 4.0) * 0.08
@@ -1504,11 +1714,12 @@ func _draw() -> void:
 		var pivot := Vector2(facing * 8.0, 0)
 		var off := pivot - pivot.rotated(rot)
 		Puppet.draw_lit(self, _pose, look, facing, rim, off + Vector2(0, -2.0 * k), Color(0.15, 0.15, 0.2, 0.35 * k), 1.0, rot)
-	elif (state == S.ART and state_time >= float(ART["windup"])) or (state == S.ATTACK and attack.get("spin", false) and attack_phase == 1):
+	elif (state == S.ART and art["run"] == "spin" and state_time >= float(art["windup"])) \
+			or (state == S.ATTACK and attack.get("spin", false) and attack_phase == 1):
 		# 回旋斩、旋风斩：横向压扁再翻面，假装在原地转身
 		var turn := 0.0
 		if state == S.ART:
-			turn = (state_time - float(ART["windup"])) / float(ART["active"]) * float(ART["ticks"]) * TAU
+			turn = (state_time - float(art["windup"])) / float(art["active"]) * float(art["ticks"]) * TAU
 		else:
 			turn = state_time / float(attack["active"]) * TAU
 		var c := cos(turn)
@@ -1529,6 +1740,14 @@ func _draw() -> void:
 	if state == S.DRINK:
 		_draw_gourd()
 
+	# 金刚没：身上一圈金光；影步之后刀尖一点红光（下一刀必会心）
+	if _kongo_t > 0.0 and state != S.DEAD:
+		var ka := 0.25 + 0.15 * sin(clock * 10.0)
+		draw_arc(Vector2(0, -26), 24.0, 0.0, TAU, 24, Color(1.0, 0.85, 0.4, ka), 2.0)
+		draw_arc(Vector2(0, -26), 20.0, 0.0, TAU, 24, Color(1.0, 0.95, 0.7, ka * 0.6), 1.0)
+	if _sure_crit_t > 0.0 and state != S.DEAD:
+		var tip2 := Puppet.sword_tip(_pose, look, facing)
+		draw_circle(tip2, 3.0, Color(1.0, 0.3, 0.25, 0.5 + 0.3 * sin(clock * 12.0)))
 	# 弹反窗口内刀身发光
 	if state == S.GUARD and parry_timer > 0.0:
 		var tip := Puppet.sword_tip(_pose, look, facing)

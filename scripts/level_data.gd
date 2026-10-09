@@ -191,6 +191,8 @@ const DROPS := {
 	"ronin": {"coins": 25, "jade": 3}, "liu": {"coins": 40, "jade": 15},
 }
 const CLEAR_JADE := {"fight": 1, "elite": 2}
+## 清完这些房间弹出三选一奖励（招式、心法、强化、铜钱，见 Arts）
+const REWARD_ROOMS := ["fight", "elite"]
 const DEATH_KEEP := 0.6
 
 ## 商人：每次进店从这里抽 3 样，用铜钱买，只在这一局有效

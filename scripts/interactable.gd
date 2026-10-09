@@ -5,7 +5,7 @@ extends Node2D
 
 const RANGE := 26.0
 
-var kind := "door"          # door 门 / item 货物 / rest 土地庙 / chest 宝箱 / note 遗骸 / gear 装备 / talent 天赋 / rack 兵器架
+var kind := "door"          # door 门 / item 货物 / rest 土地庙 / chest 宝箱 / note 遗骸 / gear 装备 / talent 天赋 / rack 兵器架 / codex 招式谱
 var label := ""             # 头上的字
 var sub := ""               # 小字（价格、说明）
 var icon := ""              # 图标：门是房间类型，货物是货物 id
@@ -31,6 +31,7 @@ func prompt() -> String:
 		"rest": return "↓ 上香" if enabled else "香已经点上了"
 		"talent": return "↓ 点天赋"
 		"rack": return "↓ 换出发武器"
+		"codex": return "↓ 翻招式谱"
 		"gear":
 			var price := int(data.get("price", 0))
 			return "↓ 买下换上 · %d 铜钱" % price if price > 0 else "↓ 换上"
@@ -52,6 +53,7 @@ func _draw() -> void:
 		"item": _draw_item()
 		"gear": _draw_gear()
 		"rack": _draw_rack()
+		"codex": _draw_codex()
 		"rest": _draw_shrine()
 		"chest": _draw_chest()
 		"note": _draw_note()
@@ -64,7 +66,7 @@ func _draw() -> void:
 		top = -30.0
 	elif kind == "talent":
 		top = -86.0
-	elif kind == "rack":
+	elif kind == "rack" or kind == "codex":
 		top = -62.0
 	var a := 1.0 if highlight else 0.75
 	var show_sub := sub != "" and (highlight or kind == "door" or kind == "rest") and kind != "gear"
@@ -224,6 +226,39 @@ func _draw_rack() -> void:
 		draw_set_transform(at, -PI / 2.0, Vector2.ONE)
 		Icons.draw(self, "w_" + id, Vector2.ZERO, Color(1, 1, 1) if cur else Color(0.6, 0.58, 0.6))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+# ---------- 招式谱 ----------
+
+## 经案上摊着一卷谱，谱上加进掉落池的招式越多，上面的字越多
+func _draw_codex() -> void:
+	var o := Color("0c080a")
+	var wood := Color("5a3a24")
+	var lit := Color("8a5a36")
+	# 案腿和案面
+	for x in [-16.0, 14.0]:
+		draw_rect(Rect2(x - 1, -26, 4, 26), o)
+		draw_rect(Rect2(x, -25, 2, 25), wood)
+	draw_rect(Rect2(-22, -30, 44, 6), o)
+	draw_rect(Rect2(-21, -29, 42, 4), wood)
+	draw_rect(Rect2(-21, -29, 42, 1), lit)
+	# 摊开的卷轴，两头卷着
+	draw_rect(Rect2(-17, -38, 34, 9), o)
+	draw_rect(Rect2(-16, -37, 32, 7), Color("d8ccae"))
+	for x in [-18.0, 16.0]:
+		draw_rect(Rect2(x - 1, -39, 4, 11), o)
+		draw_rect(Rect2(x, -38, 2, 9), Color("8a5a36"))
+	var n := 0
+	for id: String in Arts.ARTS:
+		if Arts.in_pool("art", id):
+			n += 1
+	for id: String in Arts.MINDS:
+		if Arts.in_pool("mind", id):
+			n += 1
+	for i in range(n):
+		draw_rect(Rect2(-14 + i * 2.5, -36 + (i % 2), 1, 4), Color("3a2a20"))
+	# 微微的光
+	draw_circle(Vector2(0, -34), 10.0, Color(1.0, 0.85, 0.5, 0.05 + 0.03 * sin(time * 2.5)))
 
 
 # ---------- 土地庙 ----------
