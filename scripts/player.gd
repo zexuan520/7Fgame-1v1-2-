@@ -130,6 +130,8 @@ var _sure_crit_t := 0.0            # 影步：下一刀必会心
 var _sure_crit_bonus := 0.0
 var _perfect_used := false         # 这次闪身已经触发过完美闪避
 var perfect_dodges := 0             # 统计
+var block_count := 0                # 统计：格挡下几刀（新手引导用）
+var mikiri_count := 0               # 统计：看破几次
 var downed := 0.0                   # 濒死还剩几秒（0 = 没在濒死；倒下时同伴还站着才会濒死）
 var revive_progress := 0.0          # 同伴扶了多久
 var _counter_t := 0.0              # 太刀：弹反后追击
@@ -1071,7 +1073,11 @@ func _state_dodge(_delta: float) -> void:
 	velocity.x = dodge_dir * DODGE_SPEED * (1.0 + float(stats["dodge_speed"]))
 	velocity.y = 0.0   # 空中闪身保持高度
 	if _pressed("attack") and state_time >= 0.06:
-		# 闪身中按攻击：顺势突刺
+		# 闪身中按攻击：身边有架势崩了的敌人就处决（看破之后马上接处决），不然顺势突刺
+		var target: Enemy = main.find_executable(self)
+		if target != null:
+			_start_execute(target)
+			return
 		facing = dodge_dir
 		_start_move("dash" if is_on_floor() else "air1")
 		return
@@ -1477,6 +1483,7 @@ func receive_enemy_hit(info: Dictionary, attacker: Node2D) -> String:
 	if invul_timer > 0.0:
 		if kind == "thrust" and state == S.DODGE and dodge_dir == -int(attacker.get("facing")):
 			gain_will("mikiri")
+			mikiri_count += 1
 			Game.sfx("mikiri")
 			return "mikiri"   # 看破：迎着突刺方向闪身
 		if state == S.DODGE and state_time <= PERFECT_DODGE and not _perfect_used and float(stats["perfect_slow"]) > 0.0:
@@ -1506,6 +1513,7 @@ func receive_enemy_hit(info: Dictionary, attacker: Node2D) -> String:
 		if state != S.BROKEN:
 			velocity.x = -to_attacker * 165.0
 		Game.sfx("block")
+		block_count += 1
 		return "block"
 	var dmg: float = float(info["dmg"]) * damage_taken_mult()
 	Game.sfx("hurt")

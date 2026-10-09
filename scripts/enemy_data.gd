@@ -8,7 +8,7 @@ extends RefCounted
 ##   hp / posture           每管血的生命、架势上限
 ##   speed / guard          走路速度、被砍时举刀格挡的概率
 ##   shield                 举盾：正面的轻攻击全部挡下，要重击、回旋斩或绕到背后
-##   passive                不走不打（训练场的木桩）
+##   passive                不走不打（训练场的木桩、新手引导的教头）；no_loot 倒下什么也不掉
 ##   beast / yokai          野兽（爆竹吓得僵直很久）/ 妖物（焰筒伤害翻倍）
 ##   body / look            判定框大小；外观（Puppet.Look 的字段）
 ##   prop                   手上额外画的东西：bow 弓 / shield 盾
@@ -215,10 +215,34 @@ const TYPES := {
 		},
 	},
 
+	# ---------- 新手引导：教头 ----------
+	# 不自己出招，由 Tutorial 一招一招喂：快斩（格挡、弹反）、下段横扫（跳）、突刺（看破）
+	"tutor": {
+		"name": "教头", "rank": "elite", "hp": 600.0, "posture": 999.0, "speed": 0.0, "guard": 0.0, "passive": true, "no_loot": true,
+		"body": Vector2(30, 56), "prop": "", "idle": ["st_gedan", "st_gedan"],
+		"look": {"scale": 1.1, "hat": true, "width": 1.1, "sword_len": 28.0,
+			"cloth": Color("5a5a64"), "cloth_dark": Color("3a3a44"), "cloth_light": Color("7a7a86"),
+			"collar": Color("c8c0b0"), "pants": Color("2e2c34"), "pants_dark": Color("1c1b20"),
+			"pants_light": Color("46444e"), "belt": Color("8a6a3a"), "hat_color": Color("8a7a5a"), "hat_dark": Color("5a4e38")},
+		"ai": {"attack_range": 0.0, "keep": [0.0, 0.0], "picks": []},
+		"phases": [{"speed": 1.15}],
+		"moves": {
+			"quick": {"name": "快斩", "kind": "slash", "unblockable": false,
+				"dmg": 20.0, "posture": 25.0, "reach": 39.0, "size": Vector2(63, 36), "height": 30.0, "lunge": 0.0,
+				"hits": [[0.5, 0.10, 0.45]], "poses": [["raise1", "cut1"]], "fx": "slash"},
+			"sweep": {"name": "下段横扫", "kind": "sweep", "unblockable": true,
+				"dmg": 30.0, "posture": 30.0, "reach": 45.0, "size": Vector2(96, 18), "height": 9.0, "lunge": 0.0,
+				"hits": [[0.8, 0.16, 0.65]], "poses": [["sweep_prep", "sweep_cut"]], "fx": "sweep"},
+			"thrust": {"name": "突刺", "kind": "thrust", "unblockable": true,
+				"dmg": 30.0, "posture": 30.0, "reach": 33.0, "size": Vector2(60, 21), "height": 30.0, "lunge": 700.0,
+				"hits": [[0.85, 0.20, 0.65]], "poses": [["thrust_prep", "cut3"]], "fx": "streak"},
+		},
+	},
+
 	# ---------- 训练场：稻草木桩 ----------
 	# 不走不打，血和架势都厚，练连招、压架势、处决用
 	"dummy": {
-		"name": "稻草木桩", "rank": "elite", "hp": 3000.0, "posture": 300.0, "speed": 0.0, "guard": 0.0, "passive": true,
+		"name": "稻草木桩", "rank": "elite", "hp": 3000.0, "posture": 300.0, "speed": 0.0, "guard": 0.0, "passive": true, "no_loot": true,
 		"body": Vector2(28, 54), "prop": "", "idle": ["idle", "idle"],
 		"look": {"scale": 1.05, "hat": false, "width": 1.1, "sword_len": 0.0,
 			"cloth": Color("c8a85a"), "cloth_dark": Color("9a7a3a"), "cloth_light": Color("e0c880"),

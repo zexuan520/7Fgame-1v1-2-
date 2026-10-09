@@ -37,6 +37,7 @@ const BANNER_TIME := 2.8
 var show_map := false
 var show_gear := false      # Tab：身上的装备
 var show_build := false     # Tab：这一局的招式和心法
+var _tutorial := ""         # 新手引导这一步的提示
 var menu_flash := 0.0       # 天赋界面：刚点亮一个节点时闪一下
 var menu_note := ""         # 天赋界面：点不了的原因
 var menu_note_time := 0.0
@@ -85,6 +86,10 @@ func title_card(title: String, sub: String) -> void:
 func clear_lines() -> void:
 	_line_time = 0.0
 	_title_time = 0.0
+
+
+func tutorial(text: String) -> void:
+	_tutorial = text
 
 
 func toast(text: String) -> void:
@@ -141,6 +146,8 @@ func _draw() -> void:
 		_text(font, _line_who, at + Vector2(0, -16), Color(GOLD, la), 12)
 		_text(font, _line, at, Color(0.95, 0.93, 0.9, la), 12)
 
+	if _tutorial != "" and main.mode == "room":
+		_draw_tutorial(font)
 	if _toast_time > 0.0:
 		var a := clampf(_toast_time / 0.4, 0.0, 1.0)
 		_text_centered(font, _toast, Vector2(320, 70), Color(1, 0.95, 0.8, a), 12)
@@ -1150,3 +1157,18 @@ func _draw_sys(font: Font) -> void:
 	elif main.sys_menu == "keys":
 		hint = "攻击 改这个键  格挡 返回（手柄按键不变）"
 	_text(font, hint, Vector2(box.position.x + 14, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)
+
+
+## 新手引导：屏幕上方一块提示，跳过的说明在右下
+func _draw_tutorial(font: Font) -> void:
+	var lines := _wrap(font, _tutorial, 376.0)
+	var h := 16.0 + lines.size() * 14.0
+	var box := Rect2(190, 124, 400, h)   # 靠右一点，别压住左边的面板
+	var pulse := 0.6 + 0.4 * sin(_time * 3.0)
+	draw_rect(box, Color(0.04, 0.03, 0.06, 0.88))
+	_frame(box)
+	draw_rect(Rect2(box.position, Vector2(3, box.size.y)), Color(GOLD, pulse))
+	for i in range(lines.size()):
+		_text(font, lines[i], Vector2(box.position.x + 12, box.position.y + 18 + i * 14), Color(0.97, 0.94, 0.86), 12)
+	_text(font, "Tab 跳过教学", Vector2(box.end.x - 6, box.end.y + 14), Color(0.7, 0.68, 0.74, 0.7), 12, true)
+

@@ -90,6 +90,12 @@ const ROOMS := {
 			["woodpile", 460.0], ["scarecrow", 540.0]],
 		"line": ["", "山下的村子早就没人了。往前走，刀在河那边。"]},
 
+	# ---------- 新手引导（第一次出发时代替村口，见 Tutorial） ----------
+	"tutorial_path": {"name": "村外小路", "width": 1200.0, "theme": "village", "mood": "dusk", "seed": 18, "tutorial": true,
+		"props": [["bamboo", 30.0], ["sign", 130.0], ["jar", 200.0], ["lantern", 330.0], ["woodpile", 980.0],
+			["hay", 1060.0], ["bamboo", 1150.0]],
+		"line": ["教头", "想上山？先让我看看你会不会拿刀。"]},
+
 	# ---------- 战斗 ----------
 	# 每间两三屏长：前一段打架，后一段跳坑、过竹签、踩烂木板，再解一个机关才过得去
 	"lane": {"name": "荒村小道", "width": 2100.0, "theme": "village", "mood": "dusk", "seed": 2,

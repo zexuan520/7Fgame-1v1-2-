@@ -61,6 +61,9 @@ func _run() -> void:
 	await test_audio()
 	_reset_save()
 	await test_system_menus()
+	_reset_save()
+	await _setup()
+	await test_tutorial()
 	test_room_layouts()
 	await _setup()
 	await test_features()
@@ -112,6 +115,7 @@ func _reset_save() -> void:
 	Game.save["meets"] = {}
 	Game.save["boss_kills"] = {}
 	Game.save["hub"] = {}
+	Game.save["tutorial_done"] = true   # 新手引导单独测
 	Game.save["best_floor"] = 0
 	Game.save["clears"] = 0
 	Game.save["runs"] = 0
@@ -1535,3 +1539,96 @@ func test_system_menus() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Game.settings_path))
 	Game.settings_path = "user://settings.cfg"
 	Game.title_done = true
+
+
+# ---------- 新手引导 ----------
+
+## 等教头这一招前摇快结束（还剩 lead 秒）
+func _tutor_windup(t: Enemy, lead: float) -> void:
+	for i in range(400):
+		if t.state == Enemy.S.WINDUP:
+			var w: float = t._hit_times()[0] * t._speed()
+			if t.state_time >= w - lead:
+				return
+		await _frames(1)
+
+
+func test_tutorial() -> void:
+	print("新手引导：第一次出发先走教学小路")
+	Game.save["tutorial_done"] = false
+	Game.save["runs"] = 0
+	var p := _p()
+	main.interact(_find("door", "action", "start_run"), p)
+	await _wait_fade()
+	var r: Run = Game.run
+	var tut: Tutorial = main.tutorial
+	_check(r.room_key() == "tutorial_path" and tut != null and not _find("door").enabled, "第一间是村外小路，出口锁着")
+	_check(main.hud._tutorial.contains("D") and main.hud._tutorial.contains("W"), "提示里写着现在的按键（%s）" % main.hud._tutorial)
+	# 走、跳
+	p.global_position.x += 200.0
+	p.velocity.y = -400.0
+	await _frames(30)
+	_check(tut.step == 1 and is_instance_valid(tut.dummy), "走过去跳一下，换成砍木桩")
+	# 砍木桩
+	p.global_position.x = 500.0
+	p.facing = 1
+	for i in range(4):
+		await _press("p1_attack")
+		await _frames(12)
+	_check(tut.step == 2 and is_instance_valid(tut.tutor), "砍了木桩，教头出来了")
+	# 格挡两刀
+	p.global_position.x = 740.0
+	p.facing = 1
+	Input.action_press("p1_guard")
+	for i in range(400):
+		await _frames(1)
+		if tut.step != 2:
+			break
+	Input.action_release("p1_guard")
+	_check(tut.step == 3, "按住格挡挡下两刀")
+	# 弹反两次
+	for k in range(2):
+		await _tutor_windup(tut.tutor, 0.06)
+		await _press("p1_guard")
+		await _frames(30)
+	_check(tut.step == 4, "看准白光弹反两次（第 %d 步）" % tut.step)
+	# 跳过横扫
+	await _tutor_windup(tut.tutor, 0.1)
+	await _press("p1_jump")
+	for i in range(120):
+		await _frames(1)
+		if tut.step != 4:
+			break
+	_check(tut.step == 5, "跳过下段横扫（第 %d 步）" % tut.step)
+	# 看破突刺
+	p.global_position.x = 740.0
+	await _tutor_windup(tut.tutor, 0.02)
+	Input.action_press("p1_right")
+	await _press("p1_dodge")
+	Input.action_release("p1_right")
+	for i in range(60):
+		await _frames(1)
+		if tut.step != 5:
+			break
+	_check(tut.step == 6 and tut.tutor.state == Enemy.S.BROKEN, "看破突刺，教头架势崩了（第 %d 步）" % tut.step)
+	# 处决
+	p.global_position.x = tut.tutor.global_position.x - 50.0
+	await _frames(2)
+	await _press("p1_attack")
+	await _frames(30)
+	_check(not is_instance_valid(tut) and bool(Game.save["tutorial_done"]) and _find("door").enabled, "处决教头，教学结束，出口开了")
+	_check(main.hud._tutorial == "", "提示收起来")
+	main._finish_run(false)
+	await _wait_fade()
+	# 跳过：不想学的按 Tab
+	Game.save["tutorial_done"] = false
+	Game.save["runs"] = 0
+	main.interact(_find("door", "action", "start_run"), _p())
+	await _wait_fade()
+	await _press("toggle_map")
+	_check(Game.save["tutorial_done"] and _find("door").enabled and not main.hud.show_map, "按 Tab 跳过教学，出口开了，不会顺手打开地图")
+	main._finish_run(false)
+	await _wait_fade()
+	main.interact(_find("door", "action", "start_run"), _p())
+	await _wait_fade()
+	_check(Game.run.room_key() == "village_gate", "教过以后第一间还是村口")

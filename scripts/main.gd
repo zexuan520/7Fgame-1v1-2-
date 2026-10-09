@@ -90,6 +90,7 @@ var _slow_scale := 1.0
 
 ## 系统菜单：title 标题 / pause 暂停 / settings 设置 / keys 改键（暂停时游戏世界停住，菜单照常走）
 var sys_menu := ""
+var tutorial: Tutorial = null         # 新手引导（第一次出发的教学小路）
 var sys_cursor := 0
 var sys_wait := ""                    # 改键：正在等按新键的动作
 var _sys_from := ""                   # 设置从哪个菜单进来的（关掉回去）
@@ -384,6 +385,8 @@ func _refresh_rack(it: Interactable) -> void:
 
 func _start_run() -> void:
 	Game.run = Run.create(0)
+	if not bool(Game.save["tutorial_done"]) and int(Game.save["runs"]) == 0:
+		Game.run.rows[0][0]["room"] = "tutorial_path"   # 第一次出发：先走教学的小路
 	Game.run.coins = int(Talents.run_value("start_coins"))
 	Game.save["runs"] = int(Game.save["runs"]) + 1
 	Game.write_save()
@@ -441,6 +444,12 @@ func _load_room() -> void:
 	cleared = waves.is_empty()
 	if not cleared:
 		_spawn_wave(0, def.get("intro", false))
+	if def.get("tutorial", false) and not bool(Game.save["tutorial_done"]):
+		# 新手引导：教完出口才开
+		cleared = false
+		tutorial = Tutorial.new()
+		tutorial.main = self
+		room_root.add_child(tutorial)
 	_make_exits()
 	if not def.get("intro", false):
 		hud.room_banner(def["name"], "%s · %d / %d" % [fd["name"], r.row + 1, r.rows.size()])
@@ -507,7 +516,8 @@ func _update_room(dt: float) -> void:
 		_reward_timer -= dt
 		if _reward_timer < 0.0 and not dead_wait and _death_timer < 0.0:
 			open_rewards(_reward_type)
-	if not cleared:
+	var teaching := is_instance_valid(tutorial) and not tutorial.done   # 新手引导自己管出口
+	if not cleared and not teaching:
 		if _wave_timer >= 0.0:
 			_wave_timer -= dt
 			if _wave_timer < 0.0:
@@ -759,7 +769,7 @@ func _practice_kit() -> Dictionary:
 
 ## 敌人进入倒地时调用：掉铜钱和魂玉
 func on_enemy_killed(e: Enemy) -> void:
-	if mode != "room":
+	if mode != "room" or e.data.get("no_loot", false):
 		return
 	Game.run.kills += 1
 	var drop: Dictionary = LevelData.DROPS.get(e.kind, {})
@@ -1508,6 +1518,15 @@ func shop_do(row: Dictionary) -> void:
 	hud.menu_note_time = 1.6
 	hud.menu_flash = 0.3
 	Game.sfx("ui_select")
+
+
+## 新手引导教完了：出口开
+func tutorial_finished() -> void:
+	cleared = true
+	for it in interactables:
+		if it.kind == "door":
+			it.set_enabled(true)
+	hud.toast("出口开了")
 
 
 # ---------- 系统菜单：标题、暂停、设置、改键 ----------
@@ -2322,6 +2341,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		Game.show_hitboxes = not Game.show_hitboxes
 	elif event.is_action_pressed("toggle_help"):
 		hud.show_help = not hud.show_help
+	elif event.is_action_pressed("toggle_map") and is_instance_valid(tutorial) and not tutorial.done:
+		pass   # 教学里 Tab 是跳过教学
 	elif event.is_action_pressed("toggle_map"):
 		# Tab：闯关时 地图 → 装备 → 招式心法 → 关；破庙里没有地图
 		if hud.show_map:
