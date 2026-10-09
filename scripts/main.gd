@@ -31,6 +31,7 @@ var room_root: Node2D                 # 背景、地面、摆设、门、人物�
 var front_root: Node2D
 var hud: Hud
 var background: Background
+var features: RoomFeatures            # 跑酷和解谜机关（坑、竹签、烂木板、寨门、拉杆、灯笼、裂墙）
 var post: ShaderMaterial
 var encounter := 0
 var _clear_timer := -1.0
@@ -121,7 +122,10 @@ func _build_room(def: Dictionary) -> void:
 	room_root.z_index = -10
 	world.add_child(room_root)
 	match String(def.get("theme", "temple")):
-		"village": background = BgVillage.new()
+		"village":
+			var bv := BgVillage.new()
+			bv.mood = String(def.get("mood", "dusk"))
+			background = bv
 		"river": background = BgRiver.new()
 		_: background = Background.new()
 	background.floor_y = FLOOR_Y
@@ -133,7 +137,9 @@ func _build_room(def: Dictionary) -> void:
 	ground.collision_layer = 1
 	ground.collision_mask = 0
 	room_root.add_child(ground)
-	_add_box(ground, Rect2(-100, FLOOR_Y, arena_w + 200, 100))   # 地面
+	var feats: Array = def.get("features", [])
+	for sp: Array in RoomFeatures.ground_spans(feats, arena_w):   # 地面，被坑切成几段
+		_add_box(ground, Rect2(sp[0], FLOOR_Y, sp[1] - sp[0], 100))
 	_add_box(ground, Rect2(-40, -200, 40, 600))                  # 左墙
 	_add_box(ground, Rect2(arena_w, -200, 40, 600))              # 右墙
 	var props: Array = def.get("props", [])
@@ -151,6 +157,14 @@ func _build_room(def: Dictionary) -> void:
 	pr.props = props
 	pr.floor_y = FLOOR_Y
 	room_root.add_child(pr)
+	features = RoomFeatures.new()
+	features.main = self
+	features.features = feats
+	features.floor_y = FLOOR_Y
+	features.arena_w = arena_w
+	features.z_index = 1
+	room_root.add_child(features)
+	features.setup()
 	for item: Array in props:
 		var at := Vector2(float(item[1]), FLOOR_Y - (float(item[2]) if item.size() > 2 else 0.0))
 		if Breakable.KINDS.has(item[0]):
@@ -353,6 +367,11 @@ func _load_room() -> void:
 		hud.say(line[0], line[1], 3.0)
 
 
+## 出口门画在哪儿：房间数据写了 exit_x 就在那儿（门右边可以藏密室），没写就贴着右墙
+func exit_x() -> float:
+	return float(Game.run.room().get("exit_x", arena_w)) if mode == "room" else arena_w
+
+
 ## 房间右边的出口：下一列连着几个房间就有几扇门
 func _make_exits() -> void:
 	var r := Game.run
@@ -364,7 +383,7 @@ func _make_exits() -> void:
 		var col: int = exits[i][0]
 		var nd: Dictionary = exits[i][1]
 		var tdef: Dictionary = LevelData.NODE_TYPES[nd["type"]]
-		var x := arena_w - 70.0 - (n - 1 - i) * 100.0   # 离右墙留出门匾上字的宽度
+		var x := exit_x() - 70.0 - (n - 1 - i) * 100.0   # 离右墙留出门匾上字的宽度
 		var it := _add_interactable("door", x, tdef["label"], nd["type"], tdef["color"], {"action": "next", "col": col})
 		it.sub = LevelData.room(nd["room"])["name"]
 		it.enabled = cleared
@@ -372,8 +391,13 @@ func _make_exits() -> void:
 
 func _spawn_wave(i: int, intro: bool = false) -> void:
 	wave = i
+	var n := 0
 	for s: Array in waves[i]:
 		var pos := Vector2(float(s[1]), FLOOR_Y - (float(s[2]) if s.size() > 2 else 0.0))
+		if i > 0 and s.size() <= 2 and arena_w > VIEW_W * 1.5:
+			# 长房间：后面的波次不从房间两头刷，从玩家身边冲出来
+			pos.x = _wave_x(float(s[1]) < arena_w * 0.5, n)
+			n += 1
 		var e := spawn_enemy(s[0], pos)
 		e.perch = s.size() > 2   # 写了高度的守在高处
 		if intro:
@@ -446,7 +470,7 @@ func _on_room_cleared() -> void:
 			spawn_text(p.global_position + Vector2(0, -70), "复苏", Color(0.6, 1.0, 0.7))
 	if r.is_last_room():
 		Game.save["clears"] = int(Game.save["clears"]) + 1
-		var it := _add_interactable("door", arena_w - 60.0, "回破庙", "temple", Color("e0a050"), {"action": "victory"})
+		var it := _add_interactable("door", exit_x() - 60.0, "回破庙", "temple", Color("e0a050"), {"action": "victory"})
 		it.sub = "第二层 · 尚未开放"
 		it.set_enabled(true)
 		_open_later(it)
@@ -835,8 +859,6 @@ func _menu_step(c: Vector3i, d: int) -> Vector3i:
 
 ## 玩家出手的判定框碰到罐子、木桶就砍碎
 func _hit_breakables() -> void:
-	if breakables.is_empty():
-		return
 	for p in players:
 		var r := Rect2()
 		if p.state == Player.S.ATTACK and p.attack_phase == 1:
@@ -849,7 +871,32 @@ func _hit_breakables() -> void:
 		for b: Variant in breakables:
 			if is_instance_valid(b) and not b.broken and r.intersects(b.rect()):
 				b.hit(p.global_position.x)
+		if features != null:
+			features.hit(r, p)
 	breakables.assign(breakables.filter(func(b: Variant) -> bool: return is_instance_valid(b) and not b.broken))
+
+
+## 这里是坑吗（敌人走到坑边会停下）
+func is_gap(x: float) -> bool:
+	return features != null and is_instance_valid(features) and features.in_pit(x)
+
+
+## 后面几波敌人从玩家两边冲出来：离玩家 240-300，避开坑和关着的门
+func _wave_x(want_left: bool, i: int) -> float:
+	var px := camera.position.x
+	var alive := get_players().filter(func(p: Player) -> bool: return p.is_alive())
+	if not alive.is_empty():
+		px = (alive[0] as Player).global_position.x
+	for side in [want_left, not want_left]:
+		var d := -1.0 if side else 1.0
+		for k in range(8):
+			var x := px + d * (250.0 + i * 22.0 + k * 30.0)
+			if x < 30.0 or x > arena_w - 30.0:
+				break
+			if not is_gap(x) and not is_gap(x - 20.0) and not is_gap(x + 20.0) \
+					and not (features != null and features.blocked_between(px, x)):
+				return x
+	return clampf(px + (-260.0 if want_left else 260.0), 30.0, arena_w - 30.0)
 
 
 ## 黑屏过渡：变黑 → 执行 → 变亮

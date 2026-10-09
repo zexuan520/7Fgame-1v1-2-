@@ -91,6 +91,7 @@ func _setup() -> void:
 	get_tree().root.add_child(main)
 	await get_tree().physics_frame
 	p = main.players[0]
+	p.stats["crit"] = 0.0   # 会心是随机的，测试里关掉免得伤害数对不上
 	e = main.enemies[0]
 	e.attack_cooldown = 9999.0   # 由测试控制出招
 	e.rng.seed = 1

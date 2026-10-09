@@ -286,6 +286,9 @@ func _physics_process(delta: float) -> void:
 
 	if state != S.DEAD and state != S.DYING:
 		_separate(delta)
+	if state == S.IDLE and is_on_floor() and velocity.x != 0.0 and main.has_method("is_gap") \
+			and main.is_gap(global_position.x + signf(velocity.x) * 18.0):
+		velocity.x = 0.0   # 走到坑边停下（被打飞、被弹开还是会掉下去）
 	apply_gravity(delta)
 	move_and_slide()
 	_clock += delta

@@ -29,6 +29,9 @@ func _run() -> void:
 	await test_talents()
 	await _setup()
 	await test_rack()
+	test_room_layouts()
+	await _setup()
+	await test_features()
 	_reset_save()
 	test_old_altar_refund()
 	await _setup()
@@ -111,6 +114,186 @@ func _kill_all() -> void:
 		else:
 			while e.lives > 0:
 				e.execute_by(_p())
+
+
+## 走进指定的房间（改掉下一列的房间再进门）
+func _enter_room(key: String) -> void:
+	var r: Run = Game.run
+	var col: int = r.node()["next"][0]
+	r.rows[r.row + 1][col]["type"] = "fight"
+	r.rows[r.row + 1][col]["room"] = key
+	main._go_next(col)
+	await _wait_fade()
+	main.waves = [main.waves[0]] if not main.waves.is_empty() else []
+	_kill_all()
+	await _frames(130)
+
+
+func _gate(id: String) -> Dictionary:
+	for g: Dictionary in main.features.gates:
+		if g["id"] == id:
+			return g
+	return {}
+
+
+## 每间房的机关都摆得通：门有开关、坑跳得过去、门和出口不挤在一起
+func test_room_layouts() -> void:
+	print("房间机关布局")
+	var bad := []
+	var long_rooms := 0
+	for key: String in LevelData.ROOMS:
+		var def: Dictionary = LevelData.ROOMS[key]
+		var feats: Array = def.get("features", [])
+		var w := float(def.get("width", 800.0))
+		if w >= 1800.0:
+			long_rooms += 1
+		var ex := float(def.get("exit_x", w))
+		var supports := []
+		for f: Array in feats:
+			if f[0] == "plank" or f[0] == "ledge":
+				var pw := float(f[3]) if f.size() > 3 else 48.0
+				supports.append([float(f[1]) - pw / 2.0, float(f[1]) + pw / 2.0])
+		for f: Array in feats:
+			match String(f[0]):
+				"gate":
+					var opener := false
+					for o: Array in feats:
+						if (o[0] == "lever" or o[0] == "lantern") and o[2] == f[2] and float(o[1]) < float(f[1]):
+							opener = true
+					if not opener:
+						bad.append("%s 的门 %s 没有开关" % [key, f[2]])
+					if ex - 70.0 - 2 * 100.0 - float(f[1]) < 50.0:
+						bad.append("%s 的门离出口太近" % key)
+				"pit":
+					# 坑里的落脚点连起来，每一跳不超过 125（走着跳 83，跑着跳 138，二段跳更远）
+					var pts := [[float(f[1]), float(f[1])]]
+					for sp: Array in supports:
+						if sp[0] > float(f[1]) and sp[1] < float(f[2]):
+							pts.append(sp)
+					pts.append([float(f[2]), float(f[2])])
+					pts.sort_custom(func(a: Array, b: Array) -> bool: return a[0] < b[0])
+					for i in range(pts.size() - 1):
+						if pts[i + 1][0] - pts[i][1] > 125.0:
+							bad.append("%s 的坑 %d-%d 跳不过去" % [key, f[1], f[2]])
+		for wv: Array in def.get("waves", []):
+			for sp: Array in wv:
+				for f: Array in feats:
+					if f[0] == "pit" and float(sp[1]) > float(f[1]) - 20.0 and float(sp[1]) < float(f[2]) + 20.0 and sp.size() <= 2:
+						bad.append("%s 的 %s 站在坑上" % [key, sp[0]])
+	_check(bad.is_empty(), "机关都摆得通 %s" % str(bad))
+	_check(long_rooms >= 8, "战斗和精英房间有两三屏长（%d 间）" % long_rooms)
+	var moods := {}
+	for key: String in LevelData.ROOMS:
+		moods[LevelData.ROOMS[key].get("mood", "")] = true
+	_check(moods.size() >= 6, "至少六种天色（%s）" % str(moods.keys()))
+
+
+func test_features() -> void:
+	print("跑酷和解谜机关")
+	main.interact(_find("door", "action", "start_run"), _p())
+	await _wait_fade()
+	await _enter_room("lane")
+	var p := _p()
+	var f: RoomFeatures = main.features
+	_check(f.pits.size() == 2 and f.gates.size() == 1, "荒村小道有两个坑、一道寨门")
+	_check(main.background is BgVillage and (main.background as BgVillage).mood == "dusk", "荒村小道是黄昏")
+	# 掉坑
+	p.invul_timer = 0.0
+	p.global_position = Vector2(975, 299)
+	await _frames(10)
+	var hp := p.hp
+	p.global_position = Vector2(1050, 260)
+	await _frames(40)
+	_check(p.hp < hp - p.max_hp * 0.1 and p.global_position.x < 1010.0 and p.global_position.y <= 301.0,
+		"掉进坑里扣血，回到坑边（hp %.0f→%.0f x %.0f）" % [hp, p.hp, p.global_position.x])
+	# 竹签
+	await _frames(60)
+	p.global_position = Vector2(1120, 299)
+	await _frames(10)
+	hp = p.hp
+	p.global_position = Vector2(1170, 285)
+	p.velocity = Vector2.ZERO
+	await _frames(14)
+	_check(p.hp < hp and p.velocity.y < 0.0, "踩到竹签扣血、被弹起来")
+	# 烂木板
+	await _frames(60)
+	var pl: Dictionary = f.planks[0]
+	p.global_position = Vector2(pl["x"], pl["top"] - 10.0)
+	p.velocity = Vector2.ZERO
+	await _frames(12)
+	_check(p.is_on_floor() and absf(p.global_position.y - pl["top"]) < 3.0, "站上烂木板")
+	await _frames(30)
+	_check(pl["shape"].disabled, "站了半秒木板就塌了")
+	await _frames(200)
+	_check(not pl["shape"].disabled, "过几秒木板又搭好了")
+	# 拉杆开门，过一会儿自己关上
+	var g := _gate("a")
+	p.global_position = Vector2(1700, 299)
+	await _frames(5)
+	Input.action_press("p1_right")
+	await _frames(60)
+	Input.action_release("p1_right")
+	_check(p.global_position.x < g["x"] - 10.0, "门没开过不去（x %.0f）" % p.global_position.x)
+	p.global_position = Vector2(1480, 299)
+	p.facing = 1
+	await _frames(5)
+	await _attack()
+	await _frames(5)
+	_check(g["opened"] and g["shape"].disabled, "砍拉杆，门开了")
+	await _frames(160)
+	_check(not g["opened"] and not g["shape"].disabled, "限时门过了 2 秒多自己落下")
+	# 敌人掉坑、走到坑边会停
+	var dog: Enemy = main.spawn_enemy("dog", Vector2(1050, 250))
+	dog.aggro = false
+	await _frames(60)
+	_check(dog.state == Enemy.S.DYING or dog.state == Enemy.S.DEAD, "野狗掉进坑里摔死")
+	p.global_position = Vector2(880, 299)
+	p.invul_timer = 99.0
+	var dog2: Enemy = main.spawn_enemy("dog", Vector2(1130, 299))
+	for i in range(120):
+		await _frames(1)
+		p.invul_timer = 99.0
+	_check(dog2.state != Enemy.S.DYING and dog2.global_position.x > 1090.0, "野狗追到坑边停下（x %.0f）" % dog2.global_position.x)
+	p.invul_timer = 0.0
+
+	# 石灯笼
+	await _enter_room("graves")
+	f = main.features
+	p = _p()
+	_check((main.background as BgVillage).mood == "graves", "乱坟岗换了一套景")
+	var ln: Dictionary = f.lanterns[0]
+	f.hit(Rect2(ln["x"] - 5, ln["y"] - 30, 10, 20), p)
+	_check(ln["lit"] > 0.0, "砍一刀点亮灯笼")
+	await _frames(int(RoomFeatures.LANTERN_TIME * 60.0) + 10)
+	_check(ln["lit"] <= 0.0 and not _gate("b")["opened"], "只点一盏，过一会儿灭了，门不开")
+	for l2: Dictionary in f.lanterns:
+		f.hit(Rect2(l2["x"] - 5, l2["y"] - 30, 10, 20), p)
+		await _frames(30)
+	_check(_gate("b")["opened"], "三盏同时亮着，门开了")
+	await _frames(int(RoomFeatures.LANTERN_TIME * 60.0) + 10)
+	_check(f.lanterns[0]["done"] and _gate("b")["opened"], "解开之后灯不再灭，门一直开着")
+
+	# 裂墙密室
+	await _enter_room("well")
+	f = main.features
+	p = _p()
+	var cr: Dictionary = f.cracks[0]
+	p.global_position = Vector2(cr["x"] - 30.0, 299)
+	p.facing = 1
+	await _frames(5)
+	for i in range(RoomFeatures.CRACK_HP):
+		await _attack()
+		await _frames(25)
+	_check(cr["broken"] and cr["shapes"][0].disabled, "砍三刀砸开裂墙")
+	_check(_find("door").position.x < cr["x"], "出口门在裂墙左边，墙后面是密室")
+
+
+## 轻攻击一下
+func _attack() -> void:
+	Input.action_press("p1_attack")
+	await _frames(3)
+	Input.action_release("p1_attack")
+	await _frames(12)
 
 
 func test_map_generation() -> void:

@@ -974,6 +974,22 @@ func receive_enemy_hit(info: Dictionary, attacker: Node2D) -> String:
 	return "hit"
 
 
+## 机关伤人（坑、竹签）：按最大生命扣，弹一下，短暂无敌免得连着扣
+func env_hit(ratio: float, knock: Vector2) -> bool:
+	if state == S.DEAD or invul_timer > 0.0:
+		return false
+	hp -= max_hp * ratio
+	flash(Color(1.0, 0.3, 0.3), 0.15)
+	invul_timer = 0.8
+	if hp <= 0.0:
+		_die()
+		return true
+	velocity = knock
+	_stun_time = 0.2
+	_enter(S.HITSTUN)
+	return true
+
+
 func _on_posture_full() -> void:
 	if state == S.DEAD:
 		return
