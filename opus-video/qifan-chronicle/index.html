@@ -27,19 +27,19 @@
          -webkit-mask: radial-gradient(circle, #000 3.4px, transparent 4px) 0 0 / 9px 9px; mask: radial-gradient(circle, #000 3.4px, transparent 4px) 0 0 / 9px 9px;
          text-shadow: 0 0 30px rgba(255,59,78,.9); }
   .led-glow { position: absolute; font: 900 150px/1.05 "Noto Sans SC"; color: var(--led); filter: blur(26px); opacity: .7; letter-spacing: -2px; }
-  .kick { font: 900 30px "Noto Sans SC"; letter-spacing: 12px; color: var(--gold); }
+  .kick { font: 900 42px "Noto Sans SC"; letter-spacing: 10px; color: var(--gold); }
   .big { font: 900 300px/1 "Noto Sans SC"; letter-spacing: -10px; color: #fff; }
   .big small { font-size: 120px; letter-spacing: 0; color: var(--gold); }
   .t1 { font: 900 96px/1.15 "Noto Sans SC"; color: #fff; }
   .t1 em { font-style: normal; color: var(--gold); }
   .t2 { font: 700 44px/1.5 "Noto Sans SC"; color: rgba(244,234,216,.85); }
   .t2 b { color: var(--gold); }
-  .fine { font: 400 26px/1.5 "Noto Sans SC"; color: var(--dim); }
+  .fine { font: 700 36px/1.5 "Noto Sans SC"; color: var(--dim); }
   .card { position: absolute; border: 2px solid rgba(226,182,92,.7); background: linear-gradient(135deg, rgba(196,48,43,.35), rgba(10,8,14,.85)); padding: 34px 40px; }
   .node { position: absolute; display: flex; align-items: center; justify-content: space-between; padding: 0 40px; height: 128px;
           border: 2px solid rgba(255,59,78,.75); background: rgba(255,59,78,.08); box-shadow: 0 0 30px rgba(255,59,78,.25) inset; }
   .node .n { font: 900 70px "Noto Sans SC"; color: #fff; }
-  .node .d { font: 700 34px "Noto Sans SC"; color: rgba(244,234,216,.85); }
+  .node .d { font: 900 44px "Noto Sans SC"; color: rgba(244,234,216,.85); }
   .wire { position: absolute; width: 4px; background: var(--led); box-shadow: 0 0 14px var(--led); transform-origin: 50% 100%; }
 
   /* ---------- 第三幕：高清国风 ---------- */
@@ -50,7 +50,7 @@
   .serif { font-family: "Noto Serif SC", serif; }
   .brush { font-family: "Ma Shan Zheng", serif; }
   .shade-top { position: absolute; left: 0; right: 0; top: 0; height: 760px; background: linear-gradient(180deg, rgba(8,5,4,.92) 40%, transparent); }
-  .shade-bot { position: absolute; left: 0; right: 0; bottom: 0; height: 900px; background: linear-gradient(0deg, rgba(8,5,4,.95) 45%, transparent); }
+  .shade-bot { position: absolute; left: 0; right: 0; bottom: 0; height: 900px; background: linear-gradient(0deg, rgba(8,5,4,1) 62%, transparent); }
   .cover { position: absolute; background-size: cover; background-position: center; }
 </style></head><body>
 <canvas id="gl" width="1080" height="1920"></canvas>
@@ -66,9 +66,9 @@
     <div class="abs led" id="l7" style="left:90px;top:760px">11对战平台</div>
     <div class="abs t2" id="s7" style="left:94px;top:940px">War3 对战 · <b>DotA 天梯</b></div>
     <div class="card" id="c7" style="left:90px;top:1110px;width:780px">
-      <div class="fine" style="color:var(--gold)">2012 年 9 月</div>
+      <div class="fine" style="color:var(--gold);font-size:40px">2012 年 9 月</div>
       <div style="font:900 120px/1.1 'Noto Sans SC'"><span id="n7">80</span><span style="font-size:56px;color:var(--gold)"> 万</span></div>
-      <div class="t2" style="font-size:34px">DotA 最高同时在线</div>
+      <div class="t2" style="font-size:44px">DotA 最高同时在线</div>
     </div>
   </section>
 
@@ -106,7 +106,7 @@
       <div class="kick">2014</div>
       <div class="t1" style="margin-top:24px;font-size:80px">群雄逐鹿冠军联赛</div>
       <div style="margin-top:20px;font:900 150px/1 'Noto Sans SC'"><span id="n10">100</span><span style="font-size:60px;color:var(--gold)"> 万元</span></div>
-      <div class="t2" style="font-size:32px;margin-top:8px">联赛总奖金</div>
+      <div class="t2" style="font-size:44px;margin-top:8px">联赛总奖金</div>
     </div>
     <div class="abs" id="spot10" style="left:0;top:0;width:1080px;height:1920px;background:radial-gradient(500px 360px at 540px 950px, #2a0c0a, #050407 70%);opacity:0"></div>
     <div class="abs serif" id="y10" style="left:0;width:1080px;top:860px;text-align:center;font-weight:900;font-size:150px;color:var(--gold);opacity:0;text-shadow:0 0 50px rgba(226,182,92,.7)">2019</div>
@@ -140,7 +140,7 @@
     <div class="card" id="c12" style="left:90px;top:1300px;width:830px">
       <div class="kick">2023 春季赛</div>
       <div style="font:900 110px/1.1 'Noto Serif SC';margin-top:10px"><span id="n12">5</span><span style="font-size:52px;color:var(--gold)"> 万元</span></div>
-      <div class="t2" style="font-size:32px">冠军奖金</div>
+      <div class="t2" style="font-size:44px">冠军奖金</div>
     </div>
   </section>
 
@@ -149,7 +149,7 @@
     <div class="cover" id="kv13" style="left:-600px;top:240px;width:2280px;height:1920px;background-image:url(source/assets/sgzb-2026-keyart.jpg);background-position:42% 50%"></div>
     <div class="shade-bot"></div><div class="shade-top" style="height:620px;background:linear-gradient(180deg,rgba(8,5,4,.9) 50%,transparent)"></div>
     <div class="cover" id="lu13" style="left:0;top:1060px;width:1080px;height:253px;background-image:url(source/assets/zhuhou-taodong-lineup.jpg);border-top:2px solid var(--gold);border-bottom:2px solid var(--gold)"></div>
-    <div class="abs serif" id="y13" style="left:84px;top:230px;font-weight:900;font-size:200px;color:var(--gold);text-shadow:0 0 40px rgba(0,0,0,.8)">2026</div>
+    <div class="abs serif" id="y13" style="left:84px;top:220px;font-weight:900;font-size:200px;color:var(--gold);text-shadow:0 0 30px #000,0 0 60px #000">2026</div>
     <div class="abs serif t1" id="t13" style="left:90px;top:1350px;font-size:80px;text-shadow:0 4px 30px #000">二十年，平台<em>仍在运行</em></div>
   </section>
   <div id="flash"></div>
@@ -463,7 +463,7 @@ function act23(t) {
   }
   // 镜头 11：3D 卡片墙穿行
   else if (t < 70) { const lt = t - 60;
-    const cam = 3850 * ease(lt / 7.5);
+    const cam = 4020 * ease(lt / 7.5);
     const sway = Math.sin(lt * .5) * 6;
     $('w11').style.transform = `translateZ(${cam}px) rotateY(${sway * (1 - ease(lt / 7.5))}deg) rotateX(${4 * (1 - ease(lt / 7.5))}deg)`;
     $('w11').querySelectorAll('.hd').forEach(card => {
