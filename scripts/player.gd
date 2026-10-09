@@ -1,6 +1,6 @@
 class_name Player
 extends Fighter
-## 主角：移动、二段跳、三段轻攻击、蓄力重攻击、格挡、弹反、闪身、处决、药罐、刃意招式。
+## 主角：移动、二段跳、三段轻攻击、蓄力重攻击、格挡、弹反、闪身、处决、药罐、刃意招式、架势切换。
 
 enum S { FREE, CHARGE, ATTACK, GUARD, DODGE, HITSTUN, BROKEN, EXECUTE, DEAD, DRINK, ART }
 
@@ -64,6 +64,9 @@ var respawn_timer := 0.0
 var clock := 0.0
 var parry_count := 0                # 统计，用于界面显示
 var gourds := MAX_GOURDS
+var stance_index := 0               # 当前架势（见 Stance.LIST）
+var _switch_t := -1.0               # 切换架势的转刀动画
+var _drawn_timer := 0.0             # 拔刀式：出过刀后多久收刀入鞘
 var will := 0.0
 var _drank := false
 var _art_tick := -1
@@ -112,6 +115,23 @@ static func _build_poses() -> void:
 		"arm_f": Vector2(0.3, 0.7), "arm_b": Vector2(-0.3, 0.1), "sword": 0.6})
 	POSES["land"] = Puppet.pose({"crouch": 6.5, "lean": 0.35, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
 		"arm_f": Vector2(0.6, 1.0), "arm_b": Vector2(-0.8, -0.2), "sword": 0.9})
+	# ---------- 架势（起手式），见 Stance ----------
+	POSES["st_seigan"] = Puppet.pose({"crouch": 2.6, "lean": 0.12, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(0.55, 1.45), "arm_b": Vector2(0.45, 1.35), "sword": 2.05})
+	POSES["st_iai"] = Puppet.pose({"crouch": 4.5, "lean": 0.32, "head": 0.05, "foot_f": Vector2(8, 0), "foot_b": Vector2(-8, 0),
+		"arm_f": Vector2(0.2, 1.55), "arm_b": Vector2(0.35, 1.25), "sword": 0.5, "sheathed": 1.0})
+	POSES["relaxed_sheathed"] = Puppet.pose({"crouch": 1.2, "lean": 0.04, "foot_f": Vector2(5, 0), "foot_b": Vector2(-4, 0),
+		"arm_f": Vector2(0.15, 1.35), "arm_b": Vector2(-0.12, 0.2), "sword": 0.5, "sheathed": 1.0})
+	POSES["iai_cut"] = Puppet.pose({"crouch": 4.2, "lean": 0.38, "foot_f": Vector2(11, 0), "foot_b": Vector2(-7, 0),
+		"arm_f": Vector2(1.55, 1.6), "arm_b": Vector2(-0.9, -0.6), "sword": 1.62})
+	POSES["st_jodan"] = Puppet.pose({"crouch": 2.2, "lean": -0.05, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(2.7, 3.05), "arm_b": Vector2(2.5, 2.85), "sword": 3.9})
+	POSES["st_gedan"] = Puppet.pose({"crouch": 3.0, "lean": 0.2, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(0.35, 0.8), "arm_b": Vector2(0.25, 0.7), "sword": 0.95})
+	POSES["st_hasso"] = Puppet.pose({"crouch": 2.4, "lean": 0.05, "foot_f": Vector2(5, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(0.9, 3.0), "arm_b": Vector2(0.7, 2.6), "sword": 3.35})
+	POSES["st_waki"] = Puppet.pose({"crouch": 3.2, "lean": 0.18, "foot_f": Vector2(7, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(-0.45, -0.15), "arm_b": Vector2(-0.3, 0.05), "sword": -1.25})
 	# 喝药：后手把药罐举到嘴边，仰头
 	POSES["drink"] = Puppet.pose({"crouch": 1.0, "lean": -0.12, "head": -0.4, "foot_f": Vector2(5, 0), "foot_b": Vector2(-4, 0),
 		"arm_f": Vector2(0.2, 0.5), "arm_b": Vector2(1.9, 3.7), "sword": 0.5})
@@ -168,6 +188,7 @@ func _ready() -> void:
 		look.hair = Color("3a2418")
 		look.band = Color("e0b03a")
 	scarf_color = look.band
+	look.saya = true
 	_pose = POSES["idle"].duplicate()
 	for i in range(7):
 		_scarf.append(global_position + Vector2(0, -45))
@@ -257,6 +278,8 @@ func _state_free(_delta: float) -> void:
 		_start_dodge(dir)
 	elif _pressed("attack"):
 		_attack_pressed()
+	elif _pressed("stance"):
+		switch_stance(1)
 	elif _pressed("art"):
 		_start_art()
 	elif _pressed("heal") and is_on_floor():
@@ -423,6 +446,14 @@ func _attack_pressed() -> void:
 
 
 func _start_attack(data: Dictionary, step: int) -> void:
+	var st := stance()
+	if step == 0 and not bool(data["heavy"]):
+		data = Stance.first_strike(data, st)
+	elif not bool(data["heavy"]):
+		data = data.duplicate()
+	if not bool(data["heavy"]):
+		data["recover"] = float(data["recover"]) * float(st["recover"])
+	_drawn_timer = 1.0
 	attack = data
 	combo_step = step
 	combo_queued = false
@@ -437,7 +468,7 @@ func _start_guard() -> void:
 
 
 func _arm_parry() -> void:
-	var window := Game.parry_window()
+	var window := Game.parry_window() + float(stance()["parry_bonus"])
 	if clock - last_guard_press < GUARD_SPAM_GAP:
 		window *= GUARD_SPAM_FACTOR   # 乱按惩罚
 	last_guard_press = clock
@@ -478,7 +509,24 @@ func _start_art() -> void:
 
 
 func gain_will(kind: String) -> void:
-	will = minf(MAX_WILL, will + float(WILL_GAIN.get(kind, 0.0)))
+	will = minf(MAX_WILL, will + float(WILL_GAIN.get(kind, 0.0)) * float(stance()["will"]))
+
+
+func stance() -> Dictionary:
+	return Stance.get_data(stance_index)
+
+
+func switch_stance(step: int) -> void:
+	stance_index = posmod(stance_index + step, Stance.LIST.size())
+	_switch_t = 0.0
+	_drawn_timer = 0.0
+	_fl_kind = ""
+	main.spawn_text(global_position + Vector2(0, -74), stance()["name"] + "式", Color(0.85, 0.9, 1.0), 12)
+
+
+## 拔刀式下刀是否收在鞘里
+func is_sheathed() -> bool:
+	return bool(stance()["sheathed"]) and _drawn_timer <= 0.0 and (state == S.FREE or state == S.CHARGE)
 
 
 func _start_execute(target: Enemy) -> void:
@@ -548,7 +596,7 @@ func receive_enemy_hit(info: Dictionary, attacker: Fighter) -> String:
 			flash(Color(1.0, 0.95, 0.5), 0.15)
 			add_posture(p * 0.25)
 			return "parry"
-		add_posture(p)
+		add_posture(p * float(stance()["block_posture"]))
 		if state != S.BROKEN:
 			velocity.x = -to_attacker * 165.0
 		return "block"
@@ -597,8 +645,17 @@ func _spawn_slash() -> void:
 	if heavy:
 		main.spawn_slash(center, facing, 44.0, -2.4, 0.9, Color(1.0, 0.75, 0.4), 14.0)
 		main.punch(0.04)
+	elif attack.get("cut", "") == "iai_cut":
+		# 居合：一道又长又平的横斩
+		main.spawn_slash(center + Vector2(facing * 4.0, 0), facing, 48.0, -0.5, 0.55, Color(1.0, 0.95, 0.75), 6.0)
+		main.spawn_streak(global_position + Vector2(facing * 4.0, -25.0), facing, 80.0, Color(1.0, 0.95, 0.75))
+		main.punch(0.03)
+	elif attack.get("cut", "") == "cut2":
+		main.spawn_slash(center, facing, 38.0, 0.9, -1.9, Color(0.75, 0.9, 1.0))
 	elif combo_step == 0:
-		main.spawn_slash(center, facing, 36.0, -2.2, 0.6, Color(0.75, 0.9, 1.0))
+		var big: bool = attack.get("stance", "") == "jodan"
+		main.spawn_slash(center, facing, 44.0 if big else 36.0, -2.4 if big else -2.2, 0.7 if big else 0.6,
+			Color(1.0, 0.85, 0.6) if big else Color(0.75, 0.9, 1.0), 10.0 if big else 7.0)
 	elif combo_step == 1:
 		main.spawn_slash(center, facing, 36.0, 0.9, -1.7, Color(0.75, 0.9, 1.0))
 	else:
@@ -620,13 +677,16 @@ func _target_pose() -> Dictionary:
 				return _run_pose()
 			return _idle_pose()
 		S.CHARGE:
-			var cp: Dictionary = Puppet.lerp_pose(POSES["idle"], POSES["charge"], charge_time / 0.25)
+			# 短按时还停在架势上（拔刀式刀不出鞘），按久了才举刀蓄力
+			var cp: Dictionary = Puppet.lerp_pose(_stance_pose(), POSES["charge"], (charge_time - 0.1) / 0.25)
 			if charge_time >= HEAVY_CHARGE_TIME - 0.1:
 				cp["dx"] = sin(clock * 90.0) * 0.8   # 蓄满时抖动
 			return cp
 		S.ATTACK:
 			var heavy: bool = attack["heavy"]
 			var keys: Array = ["charge", "smash"] if heavy else [["raise1", "cut1"], ["raise2", "cut2"], ["raise3", "cut3"]][combo_step]
+			if attack.has("raise"):
+				keys = [attack["raise"], attack["cut"]]
 			var windup: float = attack["windup"]
 			var active: float = attack["active"]
 			var recover: float = attack["recover"]
@@ -634,7 +694,7 @@ func _target_pose() -> Dictionary:
 				return POSES[keys[0]]
 			if attack_phase == 1:
 				return Puppet.lerp_pose(POSES[keys[0]], POSES[keys[1]], t / (active * 0.6))
-			return Puppet.lerp_pose(POSES[keys[1]], POSES["idle"], pow(t / recover, 2.0))
+			return Puppet.lerp_pose(POSES[keys[1]], _stance_pose(true), pow(t / recover, 2.0))
 		S.GUARD:
 			return POSES["parry"] if parry_timer > 0.0 else POSES["guard"]
 		S.DODGE:
@@ -672,15 +732,40 @@ func _run_pose() -> Dictionary:
 		"foot_b": Vector2(-6.5 * s, -maxf(0.0, -4.5 * c)),
 		"arm_f": Vector2(-0.5 + 0.25 * s, 0.1), "sword": -1.0 + 0.15 * s,   # 刀拖在身后
 		"arm_b": Vector2(0.9 * -s, 1.2 + 0.4 * -s),
+	}) if not is_sheathed() else Puppet.pose({
+		"crouch": 2.2 + absf(s) * 1.6, "lean": 0.34 + absf(s) * 0.04, "head": -0.1,
+		"foot_f": Vector2(6.5 * s, -maxf(0.0, 4.5 * c)),
+		"foot_b": Vector2(-6.5 * s, -maxf(0.0, -4.5 * c)),
+		"arm_f": Vector2(0.25, 1.5), "sword": 0.5, "sheathed": 1.0,   # 手按刀柄跑
+		"arm_b": Vector2(0.9 * -s, 1.2 + 0.4 * -s),
 	})
 
 
+## 当前架势的姿势；drawn 为 true 时拔刀式也按出鞘算（刚砍完）
+func _stance_pose(drawn: bool = false) -> Dictionary:
+	var st := stance()
+	if bool(st["sheathed"]) and (drawn or not is_sheathed()):
+		return POSES["st_seigan"]
+	return POSES["st_" + str(st["id"])]
+
+
 func _idle_pose() -> Dictionary:
-	# 敌人靠近时进入戒备，远离时放松
-	var base := Puppet.lerp_pose(POSES["relaxed"], POSES["ready"], _ready_blend)
-	var p := Puppet.breathe(base, clock, 1.0 - _ready_blend * 0.4)
 	if _fl_kind != "":
 		return Flourish.sample(_fl_kind, _fl_t, Puppet.breathe(POSES["relaxed"], clock, 0.6))
+	# 敌人靠近时摆架势，远离时放松
+	var relaxed: Dictionary = POSES["relaxed_sheathed"] if is_sheathed() else POSES["relaxed"]
+	var ready := _stance_pose()
+	var p := Puppet.breathe(Puppet.lerp_pose(relaxed, ready, _ready_blend), clock, 1.0 - _ready_blend * 0.4)
+	# 摆着架势时重心前后挪、刀尖小幅画圈，像在找出手的机会
+	p["dx"] = float(p["dx"]) + 0.7 * sin(clock * 1.3) * _ready_blend
+	p["crouch"] = float(p["crouch"]) + 0.35 * sin(clock * 2.6 + 1.0) * _ready_blend
+	if not is_sheathed():
+		p["sword"] = float(p["sword"]) + 0.07 * sin(clock * 1.9) * _ready_blend
+	# 换架势：刀在手里转一圈再落到新架势
+	if _switch_t >= 0.0 and not is_sheathed():
+		var k := clampf(_switch_t / 0.35, 0.0, 1.0)
+		p["sword"] = float(p["sword"]) - TAU * (1.0 - pow(1.0 - k, 3.0))
+		p["blur"] = -0.35 * (1.0 - k)
 	return p
 
 
@@ -697,7 +782,7 @@ func _update_flourish(delta: float) -> void:
 			_start_flourish(_victory)
 			_victory = ""
 		elif _ready_blend < 0.1 and _idle_time > _fl_next:
-			_start_flourish(Flourish.pick(Flourish.PLAYER_IDLE, _fl_last))
+			_start_flourish(Flourish.pick(Flourish.PLAYER_SHEATHED if is_sheathed() else Flourish.PLAYER_IDLE, _fl_last))
 		return
 	_fl_t += delta
 	if _fl_t >= Flourish.duration(_fl_kind):
@@ -729,6 +814,20 @@ func _update_art(delta: float) -> void:
 		_idle_time = 0.0
 		_fl_next = 2.5
 	_update_flourish(delta)
+	# 架势切换动画、拔刀式收刀
+	if _switch_t >= 0.0:
+		_switch_t += delta
+		if _switch_t > 0.35:
+			_switch_t = -1.0
+	if state != S.FREE and state != S.CHARGE:
+		_drawn_timer = 1.0
+	elif _drawn_timer > 0.0 and is_on_floor() and _fl_kind == "":
+		_drawn_timer -= delta
+		if _drawn_timer <= 0.0 and bool(stance()["sheathed"]):
+			# 收刀入鞘，鞘口一点火星
+			var j := Puppet.solve(_pose)
+			var hip: Vector2 = j["hip"]
+			main.spawn_spark(global_position + Vector2((hip.x + 6.0) * facing, hip.y - 3.5), Color(1.0, 0.9, 0.6), 4)
 	if facing != _prev_facing:
 		_squash = Vector2(0.82, 1.08)   # 转身
 		_prev_facing = facing

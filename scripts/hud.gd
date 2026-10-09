@@ -7,9 +7,9 @@ const GOLD_DARK := Color("6b5426")
 const FRAME := Color("0c0a12")
 
 const HELP := [
-	["1P", "A/D 移动  W/空格 跳  J 攻击(长按重击)  K 格挡/弹反  L/Shift 闪身  U 药罐  I 回旋斩"],
-	["2P", "←/→ 移动  ↑ 跳  小键盘1 攻击 2 格挡 3 闪身 4 药罐 5 回旋斩"],
-	["手柄", "A 跳  X 攻击  RB 格挡  B 闪身  Y 药罐  LB 回旋斩"],
+	["1P", "A/D 移动  W/空格 跳  J 攻击(长按重击)  K 格挡/弹反  L/Shift 闪身  U 药罐  I 回旋斩  O 换架势"],
+	["2P", "←/→ 移动  ↑ 跳  小键盘1 攻击 2 格挡 3 闪身 4 药罐 5 回旋斩 6 换架势"],
+	["手柄", "A 跳  X 攻击  RB 格挡  B 闪身  Y 药罐  LB 回旋斩  十字键上 换架势"],
 	["其他", "F2 2P 加入/退出  F1 低难度  F3 判定框  R 重置  Esc 退出"],
 ]
 
@@ -146,8 +146,10 @@ func _draw_player_panel(font: Font, p: Player, at: Vector2) -> void:
 		_gourd(at + Vector2(140 + i * 9, 36), i < p.gourds)
 	# 弹反次数
 	_text(font, "弹反 × %d" % p.parry_count, at + Vector2(32, 40), Color(0.95, 0.85, 0.55), 12)
+	# 当前架势
+	_text(font, "架势 · " + str(p.stance()["name"]), at + Vector2(32, 54), Color(0.8, 0.86, 1.0), 12)
 	if p.state == Player.S.DEAD:
-		_text(font, "%.0f 秒后复活" % maxf(p.respawn_timer, 0.0), at + Vector2(32, 54), Color(1, 0.4, 0.4), 12)
+		_text(font, "%.0f 秒后复活" % maxf(p.respawn_timer, 0.0), at + Vector2(110, 54), Color(1, 0.4, 0.4), 12)
 
 
 func _draw_boss_bar(font: Font, e: Enemy) -> void:

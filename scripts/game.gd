@@ -30,13 +30,13 @@ func _setup_inputs() -> void:
 	_bind_player("p1_", {
 		"left": [KEY_A], "right": [KEY_D], "jump": [KEY_W, KEY_SPACE],
 		"attack": [KEY_J], "guard": [KEY_K], "dodge": [KEY_L, KEY_SHIFT],
-		"heal": [KEY_U], "art": [KEY_I],
+		"heal": [KEY_U], "art": [KEY_I], "stance": [KEY_O],
 	}, 0)
-	# 2P：方向键 + 小键盘 1/2/3（没有小键盘可用 , . /），药罐小键盘 4 或 M，招式小键盘 5 或 N + 2 号手柄
+	# 2P：方向键 + 小键盘 1/2/3（没有小键盘可用 , . /），药罐小键盘 4 或 M，招式小键盘 5 或 N，架势小键盘 6 或 B + 2 号手柄
 	_bind_player("p2_", {
 		"left": [KEY_LEFT], "right": [KEY_RIGHT], "jump": [KEY_UP],
 		"attack": [KEY_KP_1, KEY_COMMA], "guard": [KEY_KP_2, KEY_PERIOD], "dodge": [KEY_KP_3, KEY_SLASH],
-		"heal": [KEY_KP_4, KEY_M], "art": [KEY_KP_5, KEY_N],
+		"heal": [KEY_KP_4, KEY_M], "art": [KEY_KP_5, KEY_N], "stance": [KEY_KP_6, KEY_B],
 	}, 1)
 	_add_keys("toggle_p2", [KEY_F2])
 	_add_keys("toggle_easy", [KEY_F1])
@@ -49,7 +49,7 @@ func _setup_inputs() -> void:
 func _bind_player(prefix: String, keys: Dictionary, pad: int) -> void:
 	for action: String in keys:
 		_add_keys(prefix + action, keys[action])
-	# 手柄：左摇杆/十字键移动，A 跳，X 攻击，RB 格挡，B 闪身，Y 药罐，LB 招式
+	# 手柄：左摇杆/十字键移动，A 跳，X 攻击，RB 格挡，B 闪身，Y 药罐，LB 招式，十字键上 换架势
 	_add_pad_axis(prefix + "left", pad, JOY_AXIS_LEFT_X, -1.0)
 	_add_pad_axis(prefix + "right", pad, JOY_AXIS_LEFT_X, 1.0)
 	_add_pad_button(prefix + "left", pad, JOY_BUTTON_DPAD_LEFT)
@@ -59,6 +59,7 @@ func _bind_player(prefix: String, keys: Dictionary, pad: int) -> void:
 	_add_pad_button(prefix + "guard", pad, JOY_BUTTON_RIGHT_SHOULDER)
 	_add_pad_button(prefix + "art", pad, JOY_BUTTON_LEFT_SHOULDER)
 	_add_pad_button(prefix + "heal", pad, JOY_BUTTON_Y)
+	_add_pad_button(prefix + "stance", pad, JOY_BUTTON_DPAD_UP)
 	_add_pad_button(prefix + "dodge", pad, JOY_BUTTON_B)
 
 

@@ -34,6 +34,8 @@ class Look:
 	var hilt := Color("2a1d22")
 	var tsuba := Color("c9a227")
 	var outline := Color("08070d")
+	var saya := false                  # 腰间刀鞘（主角）
+	var saya_color := Color("2a1a22")
 	var hat := false                   # 斗笠（浪人）
 	var hat_color := Color("b8955a")
 	var hat_dark := Color("7d6138")
@@ -59,6 +61,7 @@ static func base_pose() -> Dictionary:
 		"blur": 0.0,                   # 刀转起来时的残影间隔（弧度，带方向）
 		"sword_at": Vector2.ZERO,      # 刀脱手时刀柄的位置（抛刀）
 		"sword_free": 0.0,             # 0 刀在手里，1 刀在 sword_at
+		"sheathed": 0.0,               # 大于 0.5 时刀收在鞘里（拔刀式）
 	}
 
 
@@ -247,6 +250,11 @@ static func draw(ci: CanvasItem, p: Dictionary, look: Look, facing: int,
 	ci.draw_line(belt[3], belt[2], pal.c(look.belt.lightened(0.3)), 1.0)
 	ci.draw_rect(Rect2(hip - fwd * (waist + 2.0) + up * 5.0, Vector2(3, 3)), pal.c(look.belt.darkened(0.3)))
 
+	# 刀鞘：插在腰带上，鞘口在前，鞘尾斜向后下
+	var sheathed := float(p.get("sheathed", 0.0)) >= 0.5
+	if look.saya:
+		_draw_saya(ci, hip, up, fwd, sheathed, pal, look)
+
 	# 脖子和头
 	var head: Vector2 = j["head"]
 	ci.draw_line(neck, head, pal.c(look.skin_dark), 3.0)
@@ -254,11 +262,12 @@ static func draw(ci: CanvasItem, p: Dictionary, look: Look, facing: int,
 
 	# 刀
 	var hand_f: Vector2 = j["hand_f"]
-	var grip := hand_f.lerp(p.get("sword_at", hand_f), float(p.get("sword_free", 0.0)))
-	var blur := float(p.get("blur", 0.0))
-	if absf(blur) > 0.02:
-		_draw_sword_blur(ci, grip, float(p["sword"]), blur, pal, look)
-	_draw_sword(ci, grip, float(p["sword"]), pal, look)
+	if not sheathed:
+		var grip := hand_f.lerp(p.get("sword_at", hand_f), float(p.get("sword_free", 0.0)))
+		var blur := float(p.get("blur", 0.0))
+		if absf(blur) > 0.02:
+			_draw_sword_blur(ci, grip, float(p["sword"]), blur, pal, look)
+		_draw_sword(ci, grip, float(p["sword"]), pal, look)
 
 	# 前手（盖在刀柄上）
 	_draw_arm(ci, j["shoulder"], j["elbow_f"], j["hand_f"], pal, false, sway_k, w)
@@ -404,6 +413,32 @@ static func _draw_sword(ci: CanvasItem, hand: Vector2, angle: float, pal: _Pal, 
 	# 护手
 	ci.draw_line(guard - n * 3.0, guard + n * 3.0, pal.outline, 3.0)
 	ci.draw_line(guard - n * 2.2, guard + n * 2.2, pal.c(look.tsuba), 1.5)
+
+
+## 鞘口位置和鞘的方向（本地坐标），拔刀式时手要放到这里
+static func saya_mouth(hip: Vector2, up: Vector2, fwd: Vector2) -> Vector2:
+	return hip + fwd * 6.0 + up * 3.5
+
+
+static func _draw_saya(ci: CanvasItem, hip: Vector2, up: Vector2, fwd: Vector2, sheathed: bool, pal: _Pal, look: Look) -> void:
+	var mouth := saya_mouth(hip, up, fwd)
+	var back := (-fwd * 0.93 - up * 0.36).normalized()
+	var end := mouth + back * (look.sword_len + 3.0)
+	ci.draw_line(mouth, end, pal.outline, 4.0)
+	ci.draw_line(mouth, end, pal.c(look.saya_color), 2.0)
+	ci.draw_line(mouth + back * 2.0 - up * 0.5, end - up * 0.5, pal.c(look.saya_color.lightened(0.25)), 1.0)
+	ci.draw_line(end - back * 2.5, end, pal.c(look.tsuba.darkened(0.2)), 2.0)    # 鞘尾金属
+	ci.draw_line(mouth + back * 1.0, mouth + back * 2.5, pal.c(look.belt.lightened(0.2)), 3.0)   # 鞘口
+	if sheathed:
+		# 刀在鞘里：只露出护手和刀柄
+		var hdir := -back
+		var n := hdir.orthogonal()
+		ci.draw_line(mouth - n * 3.0, mouth + n * 3.0, pal.outline, 3.0)
+		ci.draw_line(mouth - n * 2.2, mouth + n * 2.2, pal.c(look.tsuba), 1.5)
+		ci.draw_line(mouth + hdir * 1.0, mouth + hdir * 8.0, pal.outline, 4.0)
+		ci.draw_line(mouth + hdir * 1.0, mouth + hdir * 7.5, pal.c(look.hilt), 2.0)
+		for i in range(3):
+			ci.draw_rect(Rect2(mouth + hdir * (2.5 + i * 2.0) - Vector2(0.5, 0.5), Vector2(1, 1)), pal.c(look.collar.darkened(0.3)))
 
 
 ## 转刀残影：刀身后面拖几道越来越淡的刀影，看起来像一圈刀光

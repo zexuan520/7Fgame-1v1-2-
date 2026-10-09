@@ -5,6 +5,7 @@ extends RefCounted
 ## 刀的角度可以一直往上加（转几圈），姿势平滑时按最短角度插值，所以转多少圈都不会倒着转回去。
 
 const PLAYER_IDLE := ["wheel", "figure8", "toss", "reverse", "overhead", "chiburi", "stretch", "look_back"]
+const PLAYER_SHEATHED := ["stretch", "look_back"]   # 拔刀式刀在鞘里，只做不动刀的
 const ENEMY_FAR := ["tap", "shoulder_twirl", "hat", "beckon"]
 const ENEMY_NEAR := ["flick", "beckon", "flick"]
 

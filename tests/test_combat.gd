@@ -1,7 +1,7 @@
 extends Node
 ## 战斗规则自动测试（无界面运行）：
 ##   godot --headless --path . res://tests/test_combat.tscn
-## 用模拟按键驱动主角，验证弹反、格挡、看破、跳过横扫、处决、重击、药罐、刃意招式、双人加成。
+## 用模拟按键驱动主角，验证弹反、格挡、看破、跳过横扫、处决、重击、药罐、刃意招式、架势、双人加成。
 
 var main: Node
 var p: Player
@@ -34,6 +34,8 @@ func _run() -> void:
 	await test_gourd_interrupted()
 	await _setup()
 	await test_art()
+	await _setup()
+	await test_stances()
 	await _setup()
 	await test_coop_scaling()
 	print("")
@@ -228,6 +230,44 @@ func test_art() -> void:
 	_check(is_equal_approx(p.will, 10.0), "消耗 40 刃意（剩 %.0f）" % p.will)
 	_check(is_equal_approx(e.posture, 80.0), "两圈各一次判定，架势 +40×2 = 80（实际 %.1f）" % e.posture)
 	_check(is_equal_approx(e.max_hp - e.hp, 44.0), "伤害 22×2 = 44（实际 %.1f）" % (e.max_hp - e.hp))
+
+
+func _hold_enemy() -> void:
+	e.state = Enemy.S.WINDUP
+	e.move_key = "sweep"
+	e.state_time = -10.0   # 一直前摇，不格挡也不出手
+
+
+func test_stances() -> void:
+	print("架势")
+	await _tap("p1_stance")
+	await _frames(2)
+	_check(p.stance()["id"] == "iai", "按架势键切到拔刀式（实际 %s）" % p.stance()["id"])
+	await _frames(30)
+	_check(p.is_sheathed(), "拔刀式站着时刀在鞘里")
+	_hold_enemy()
+	await _tap("p1_attack")
+	await _frames(20)
+	_check(is_equal_approx(e.max_hp - e.hp, 30.0), "居合第一刀伤害 20×1.5 = 30（实际 %.1f）" % (e.max_hp - e.hp))
+	_check(not p.is_sheathed(), "砍完刀在手上")
+	await _frames(90)
+	_check(p.is_sheathed(), "过一会儿收刀入鞘")
+
+	await _setup()
+	p.stance_index = 2   # 上段
+	_hold_enemy()
+	await _tap("p1_attack")
+	await _frames(25)
+	_check(is_equal_approx(e.posture, 32.0), "上段第一刀架势 20×1.6 = 32（实际 %.1f）" % e.posture)
+
+	await _setup()
+	p.stance_index = 3   # 下段
+	await _tap("p1_guard")
+	await _frames(1)
+	_check(is_equal_approx(p.parry_timer, Game.PARRY_WINDOW + 0.04 - 1.0 / 60.0) or p.parry_timer > Game.PARRY_WINDOW,
+		"下段弹反窗口加长（%.3f 秒）" % p.parry_timer)
+	for i in range(Stance.LIST.size()):
+		_check(Player.POSES.has("st_" + str(Stance.LIST[i]["id"])), "架势「%s」有姿势" % Stance.LIST[i]["name"])
 
 
 func test_coop_scaling() -> void:
