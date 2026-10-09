@@ -11,12 +11,13 @@ var font: Font
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	var sf := SystemFont.new()
-	sf.font_names = PackedStringArray([
-		"Microsoft YaHei", "PingFang SC", "Hiragino Sans GB",
-		"Noto Sans CJK SC", "Source Han Sans SC", "WenQuanYi Micro Hei", "sans-serif",
-	])
-	font = sf
+	# 像素字体 Fusion Pixel（SIL OFL 1.1），12 像素的倍数最清晰
+	var pixel: FontFile = load("res://assets/fonts/fusion-pixel.ttf")
+	pixel.antialiasing = TextServer.FONT_ANTIALIASING_NONE
+	pixel.hinting = TextServer.HINTING_NONE
+	pixel.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
+	pixel.oversampling = 1.0
+	font = pixel
 	_setup_inputs()
 
 

@@ -2,11 +2,13 @@ extends Node2D
 ## 战斗原型主场景：搭建场地、生成角色、管理特效、顿帧和镜头震动。
 ## 游戏画面画在 640×360 的低分辨率画布上再放大，得到清晰的像素颗粒；界面文字画在画布外，保持清晰。
 
-const ARENA_W := 640.0
+const VIEW_W := 640.0
+const VIEW_H := 360.0
+const ARENA_W := 800.0                # 场地比画面宽，镜头跟着战斗移动
 const FLOOR_Y := 300.0
-const P1_SPAWN := Vector2(200, FLOOR_Y)
-const P2_SPAWN := Vector2(150, FLOOR_Y)
-const ENEMY_SPAWN := Vector2(440, FLOOR_Y)
+const P1_SPAWN := Vector2(280, FLOOR_Y)
+const P2_SPAWN := Vector2(220, FLOOR_Y)
+const ENEMY_SPAWN := Vector2(520, FLOOR_Y)
 
 var players: Array[Player] = []
 var enemies: Array[Enemy] = []
@@ -14,19 +16,28 @@ var camera: Camera2D
 var world: Node2D
 var fx_root: Node2D
 var hud: Hud
+var background: Background
+var post: ShaderMaterial
 
 var _shake := 0.0
+var _punch := 0.0
+var _flash := Color(0, 0, 0, 0)
 var _hitstop_until := 0
+var _slow_until := 0
+var _slow_scale := 1.0
 
 
 func _ready() -> void:
 	var container := SubViewportContainer.new()
 	container.stretch = true
-	container.size = Vector2(ARENA_W, 360)
+	container.size = Vector2(VIEW_W, VIEW_H)
 	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	post = ShaderMaterial.new()
+	post.shader = preload("res://shaders/post.gdshader")
+	container.material = post
 	add_child(container)
 	var viewport := SubViewport.new()
-	viewport.size = Vector2i(int(ARENA_W), 360)
+	viewport.size = Vector2i(int(VIEW_W), int(VIEW_H))
 	viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
 	viewport.snap_2d_transforms_to_pixel = true
 	viewport.snap_2d_vertices_to_pixel = true
@@ -34,16 +45,20 @@ func _ready() -> void:
 	world = Node2D.new()
 	viewport.add_child(world)
 
-	var bg := Background.new()
-	bg.floor_y = FLOOR_Y
-	world.add_child(bg)
+	background = Background.new()
+	background.floor_y = FLOOR_Y
+	background.arena_w = ARENA_W
+	world.add_child(background)
 	_build_arena()
 	fx_root = Node2D.new()
 	fx_root.z_index = 10
 	world.add_child(fx_root)
+	for l in background.make_foreground():
+		l.z_index = 20
+		world.add_child(l)
 
 	camera = Camera2D.new()
-	camera.position = Vector2(ARENA_W / 2.0, 180)
+	camera.position = Vector2((P1_SPAWN.x + ENEMY_SPAWN.x) / 2.0, VIEW_H / 2.0)
 	world.add_child(camera)
 
 	_spawn_player(1)
@@ -58,6 +73,7 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.main = self
 	layer.add_child(hud)
+	hud.toast("按 H 查看操作说明")
 
 
 func _build_arena() -> void:
@@ -234,30 +250,74 @@ func spawn_ring(pos: Vector2, color: Color, radius: float = 26.0) -> void:
 	fx_root.add_child(r)
 
 
-func flash_screen(color: Color, life: float = 0.25) -> void:
-	var f := Fx.ScreenFlash.new()
-	f.color = color
-	f.life = life
-	fx_root.add_child(f)
-
-
 ## 顿帧：短暂放慢时间，让弹反和处决有打击感
 func hitstop(seconds: float) -> void:
 	Engine.time_scale = 0.05
 	_hitstop_until = maxi(_hitstop_until, Time.get_ticks_msec() + int(seconds * 1000.0))
 
 
+## 慢动作（处决时用），在顿帧之后生效
+func slowmo(scale: float, seconds: float) -> void:
+	_slow_scale = scale
+	_slow_until = maxi(_slow_until, Time.get_ticks_msec() + int(seconds * 1000.0))
+
+
 func shake(amount: float) -> void:
 	_shake = maxf(_shake, amount)
 
 
+## 镜头往里推一下
+func punch(amount: float) -> void:
+	_punch = maxf(_punch, amount)
+
+
+## 整个画面闪一下颜色（在后期里叠加）
+func flash_screen(color: Color, strength: float = 0.35) -> void:
+	_flash = Color(color, strength)
+
+
 func _process(delta: float) -> void:
-	if _hitstop_until > 0 and Time.get_ticks_msec() >= _hitstop_until:
+	var now := Time.get_ticks_msec()
+	var real_dt := delta / maxf(Engine.time_scale, 0.05)
+	if _hitstop_until > 0 and now >= _hitstop_until:
 		_hitstop_until = 0
+	if _slow_until > 0 and now >= _slow_until:
+		_slow_until = 0
+	if _hitstop_until > 0:
+		Engine.time_scale = 0.05
+	elif _slow_until > 0:
+		Engine.time_scale = _slow_scale
+	else:
 		Engine.time_scale = 1.0
+
+	_update_camera(real_dt)
+	_flash.a = maxf(0.0, _flash.a - real_dt * 1.6)
+	post.set_shader_parameter("flash", _flash)
+
+
+func _update_camera(dt: float) -> void:
+	# 跟随所有战斗中角色的中点，限制在场地内
+	var sum := 0.0
+	var n := 0
+	for p in players:
+		if p.is_alive():
+			sum += p.global_position.x
+			n += 1
+	for e in enemies:
+		if e.visible:
+			sum += e.global_position.x
+			n += 1
+	var target := sum / n if n > 0 else ARENA_W / 2.0
+	target = clampf(target, VIEW_W / 2.0, ARENA_W - VIEW_W / 2.0)
+	camera.position.x = lerpf(camera.position.x, target, 1.0 - exp(-4.0 * dt))
+	camera.position.x = roundf(camera.position.x)
+	background.set_camera(camera.position.x - VIEW_W / 2.0)
+
+	_punch = maxf(0.0, _punch - dt * 0.6)
+	camera.zoom = Vector2.ONE * (1.0 + _punch)
 	if _shake > 0.0:
-		camera.offset = Vector2(randf_range(-_shake, _shake), randf_range(-_shake, _shake))
-		_shake = maxf(0.0, _shake - 30.0 * delta / maxf(Engine.time_scale, 0.05))
+		camera.offset = Vector2(randf_range(-_shake, _shake), randf_range(-_shake, _shake)).round()
+		_shake = maxf(0.0, _shake - 30.0 * dt)
 	else:
 		camera.offset = Vector2.ZERO
 
@@ -272,6 +332,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_spawn_player(2)   # 2P 按攻击键直接加入
 	elif event.is_action_pressed("toggle_easy"):
 		Game.easy_mode = not Game.easy_mode
+		hud.toast("弹反窗口 %.2f 秒%s" % [Game.parry_window(), "（低难度）" if Game.easy_mode else ""])
 	elif event.is_action_pressed("toggle_hitbox"):
 		Game.show_hitboxes = not Game.show_hitboxes
 	elif event.is_action_pressed("toggle_help"):

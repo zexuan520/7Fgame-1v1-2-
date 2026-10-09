@@ -10,7 +10,7 @@ const BASE_POSTURE := 200.0
 const COOP_HP_MULT := 1.6           # 双人时生命 ×1.6
 const COOP_POSTURE_MULT := 1.4      # 双人时架势 ×1.4
 const LIVES := 2                    # 精英：处决一次扣一管
-const WALK_SPEED := 70.0
+const WALK_SPEED := 105.0
 const BROKEN_TIME := 2.0            # 架势满 → 处决窗口 2 秒
 const GUARD_CHANCE := 0.4
 const RESPAWN_TIME := 3.0
@@ -18,16 +18,16 @@ const RESPAWN_TIME := 3.0
 # 每段攻击的时间：前摇 / 判定 / 后摇（秒）
 const MOVES := {
 	"slash": {"name": "三连斩", "kind": "slash", "unblockable": false,
-		"dmg": 25.0, "posture": 30.0, "reach": 26.0, "size": Vector2(44, 24), "height": 20.0, "lunge": 0.0,
+		"dmg": 25.0, "posture": 30.0, "reach": 39.0, "size": Vector2(66, 36), "height": 30.0, "lunge": 0.0,
 		"hits": [[0.45, 0.10, 0.18], [0.28, 0.10, 0.18], [0.34, 0.12, 0.60]]},
 	"quick": {"name": "快斩", "kind": "slash", "unblockable": false,
-		"dmg": 20.0, "posture": 30.0, "reach": 26.0, "size": Vector2(42, 24), "height": 20.0, "lunge": 0.0,
+		"dmg": 20.0, "posture": 30.0, "reach": 39.0, "size": Vector2(63, 36), "height": 30.0, "lunge": 0.0,
 		"hits": [[0.24, 0.10, 0.45]]},
 	"sweep": {"name": "下段横扫", "kind": "sweep", "unblockable": true,
-		"dmg": 35.0, "posture": 40.0, "reach": 30.0, "size": Vector2(64, 12), "height": 6.0, "lunge": 0.0,
+		"dmg": 35.0, "posture": 40.0, "reach": 45.0, "size": Vector2(96, 18), "height": 9.0, "lunge": 0.0,
 		"hits": [[0.60, 0.16, 0.65]]},
 	"thrust": {"name": "突刺", "kind": "thrust", "unblockable": true,
-		"dmg": 40.0, "posture": 40.0, "reach": 22.0, "size": Vector2(40, 14), "height": 20.0, "lunge": 520.0,
+		"dmg": 40.0, "posture": 40.0, "reach": 33.0, "size": Vector2(60, 21), "height": 30.0, "lunge": 780.0,
 		"hits": [[0.65, 0.20, 0.65]]},
 }
 
@@ -71,17 +71,23 @@ static func _build_poses() -> void:
 
 func _ready() -> void:
 	_build_poses()
-	look.scale = 1.15
+	look.scale = 1.12
 	look.hat = true
-	look.cloth = Color("7a2e2a")
-	look.cloth_dark = Color("52201d")
-	look.pants = Color("3b3540")
+	look.cape = true
+	look.cloth = Color("6e2a2a")
+	look.cloth_dark = Color("461a1d")
+	look.cloth_light = Color("9a4438")
+	look.collar = Color("b8ab96")
+	look.pants = Color("2f2c36")
+	look.pants_dark = Color("1d1b22")
+	look.pants_light = Color("4a4656")
 	look.hair = Color("2a1a14")
-	look.belt = Color("8a7a5a")
-	look.sword_len = 18.0
+	look.belt = Color("6d6247")
+	look.cape_color = Color("3b2e2b")
+	look.sword_len = 28.0
 	look.width = 1.15
 	_pose = POSES["idle"].duplicate()
-	body_size = Vector2(20, 38)
+	body_size = Vector2(30, 56)
 	setup_body()
 	posture_recover_rate = 25.0
 	spawn_pos = global_position
@@ -150,24 +156,24 @@ func _physics_process(delta: float) -> void:
 		S.WINDUP: _state_windup(delta)
 		S.ACTIVE: _state_active(delta)
 		S.RECOVER:
-			velocity.x = move_toward(velocity.x, 0.0, 1200.0 * delta)
+			velocity.x = move_toward(velocity.x, 0.0, 1800.0 * delta)
 			if state_time >= _hit_times()[2] * _speed():
 				_next_hit()
 		S.GUARD:
-			velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+			velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 			if state_time >= 0.5:
 				_enter(S.IDLE)
 		S.FLINCH:
-			velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+			velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 			if state_time >= 0.18:
 				_enter(S.IDLE)
 		S.STAGGER:
-			velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+			velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 			if state_time >= stagger_time:
 				attack_cooldown = 0.3
 				_enter(S.IDLE)
 		S.BROKEN:
-			velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+			velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 			if state_time >= BROKEN_TIME:
 				# 没抓住处决机会：架势回落到一半，敌人恢复行动
 				posture = max_posture * 0.5
@@ -181,7 +187,7 @@ func _physics_process(delta: float) -> void:
 				posture = 0.0
 				phase2 = true
 				attack_cooldown = 0.4
-				main.spawn_text(global_position + Vector2(0, -60), "第二管血", Color(1.0, 0.4, 0.3))
+				main.spawn_text(global_position + Vector2(0, -84), "第二管血", Color(1.0, 0.4, 0.3))
 				_enter(S.IDLE)
 		S.DYING:
 			velocity.x = 0.0
@@ -205,25 +211,25 @@ func _physics_process(delta: float) -> void:
 func _state_idle(delta: float) -> void:
 	target = main.nearest_player(global_position)
 	if target == null:
-		velocity.x = move_toward(velocity.x, 0.0, 600.0 * delta)
+		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 		return
 	var dx := target.global_position.x - global_position.x
 	facing = 1 if dx >= 0.0 else -1
 	var dist := absf(dx)
 
 	if attack_cooldown <= 0.0 and is_on_floor():
-		if dist < 62.0:
+		if dist < 93.0:
 			_start_move(_pick([["slash", 45], ["sweep", 20], ["quick", 15], ["thrust", 20]]))
 			return
-		if dist < 160.0 and rng.randf() < 0.012:
+		if dist < 240.0 and rng.randf() < 0.012:
 			_start_move("thrust")   # 中距离偶尔突刺
 			return
 	var want := 0.0
-	if dist > 54.0:
+	if dist > 81.0:
 		want = facing * WALK_SPEED
-	elif dist < 30.0:
+	elif dist < 45.0:
 		want = -facing * WALK_SPEED * 0.7
-	velocity.x = move_toward(velocity.x, want, 600.0 * delta)
+	velocity.x = move_toward(velocity.x, want, 900.0 * delta)
 
 
 func _pick(options: Array) -> String:
@@ -248,7 +254,7 @@ func _start_move(key: String) -> void:
 
 func _state_windup(delta: float) -> void:
 	if move_key == "thrust" and state_time < 0.25:
-		velocity.x = -facing * 40.0   # 后撤蓄力
+		velocity.x = -facing * 60.0   # 后撤蓄力
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 	if state_time >= _hit_times()[0] * _speed():
@@ -260,7 +266,7 @@ func _state_windup(delta: float) -> void:
 func _state_active(_delta: float) -> void:
 	var m := _move()
 	var lunge: float = m["lunge"]
-	velocity.x = facing * lunge if lunge > 0.0 else facing * 30.0
+	velocity.x = facing * lunge if lunge > 0.0 else facing * 45.0
 	var size: Vector2 = m["size"]
 	var r := front_rect(m["reach"], size, m["height"])
 	for p: Player in main.get_players():
@@ -292,7 +298,7 @@ func _next_hit() -> void:
 func _on_attack_result(result: String, p: Player) -> void:
 	var m := _move()
 	var p_amount: float = m["posture"]
-	var mid := (global_position + p.global_position) / 2.0 + Vector2(0, -22)
+	var mid := (global_position + p.global_position) / 2.0 + Vector2(0, -33)
 	match result:
 		"parry":
 			# 弹反：敌人受到该招架势值 50% 的反震
@@ -301,7 +307,8 @@ func _on_attack_result(result: String, p: Player) -> void:
 			main.spawn_text(mid + Vector2(0, -16), "弹反", Color(1.0, 0.9, 0.4))
 			main.hitstop(0.07)
 			main.shake(3.0)
-			velocity.x = -facing * 80.0
+			main.punch(0.03)
+			velocity.x = -facing * 120.0
 			add_posture(p_amount * 0.5)
 		"block":
 			main.spawn_spark(mid, Color(0.7, 0.8, 1.0), 6)
@@ -309,10 +316,11 @@ func _on_attack_result(result: String, p: Player) -> void:
 			main.spawn_spark(mid, Color(0.9, 0.15, 0.15), 8)
 			main.shake(2.0)
 		"mikiri":
-			main.spawn_text(global_position + Vector2(0, -60), "看破", Color(0.6, 1.0, 0.8))
-			main.spawn_spark(global_position + Vector2(0, -20), Color(0.6, 1.0, 0.8), 12)
+			main.spawn_text(global_position + Vector2(0, -84), "看破", Color(0.6, 1.0, 0.8))
+			main.spawn_spark(global_position + Vector2(0, -30), Color(0.6, 1.0, 0.8), 12)
 			main.hitstop(0.1)
 			main.shake(4.0)
+			main.punch(0.06)
 			add_posture(max_posture * 0.4)
 			if state != S.BROKEN:
 				stagger_time = 0.9
@@ -329,14 +337,14 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 	var p_amount: float = atk["posture"]
 	var heavy: bool = atk["heavy"]
 	var from_front := (p.global_position.x >= global_position.x) == (facing == 1)
-	var mid := (global_position + p.global_position) / 2.0 + Vector2(0, -22)
+	var mid := (global_position + p.global_position) / 2.0 + Vector2(0, -33)
 	var guard_chance := GUARD_CHANCE + (0.15 if phase2 else 0.0)
 	var can_guard := from_front and (state == S.IDLE or state == S.GUARD or state == S.FLINCH)
 
 	if can_guard and (state == S.GUARD or rng.randf() < guard_chance):
 		if heavy:
 			# 重攻击破防
-			main.spawn_text(global_position + Vector2(0, -60), "破招", Color(1.0, 0.6, 0.2))
+			main.spawn_text(global_position + Vector2(0, -84), "破招", Color(1.0, 0.6, 0.2))
 			main.spawn_spark(mid, Color(1.0, 0.6, 0.2), 12)
 			main.shake(3.0)
 			_take_damage(dmg, p_amount)
@@ -359,10 +367,10 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 
 	block_streak = 0
 	main.spawn_spark(mid, Color(0.95, 0.2, 0.2), 8 if not heavy else 12)
-	main.spawn_blood(global_position + Vector2(0, -22), float(p.facing), 12 if heavy else 8)
+	main.spawn_blood(global_position + Vector2(0, -33), float(p.facing), 12 if heavy else 8)
 	_take_damage(dmg, p_amount)
 	if state == S.IDLE or state == S.GUARD:
-		velocity.x = -facing * 60.0
+		velocity.x = -facing * 90.0
 		_enter(S.FLINCH)
 	return "hit"
 
@@ -378,7 +386,7 @@ func _take_damage(dmg: float, p_amount: float) -> void:
 
 func on_stomped(_p: Player) -> void:
 	if move_key == "sweep" and (state == S.WINDUP or state == S.ACTIVE or state == S.RECOVER):
-		main.spawn_text(global_position + Vector2(0, -60), "踩踏", Color(0.6, 1.0, 0.8))
+		main.spawn_text(global_position + Vector2(0, -84), "踩踏", Color(0.6, 1.0, 0.8))
 		main.hitstop(0.06)
 		add_posture(max_posture * 0.3)
 		if state != S.BROKEN:
@@ -396,20 +404,22 @@ func _break() -> void:
 	if state == S.BROKEN or state == S.DYING or state == S.DEAD or state == S.REVIVE:
 		return
 	posture = max_posture
-	main.spawn_text(global_position + Vector2(0, -64), "架势崩溃", Color(1.0, 0.25, 0.2))
+	main.spawn_text(global_position + Vector2(0, -88), "架势崩溃", Color(1.0, 0.25, 0.2))
 	main.shake(3.0)
 	_enter(S.BROKEN)
 
 
 func execute_by(p: Player) -> void:
 	lives -= 1
-	main.spawn_text(global_position + Vector2(0, -64), "处决", Color(1.0, 0.1, 0.1), 22)
-	main.spawn_spark(global_position + Vector2(0, -20), Color(1.0, 0.1, 0.1), 24)
-	main.spawn_blood(global_position + Vector2(0, -22), float(p.facing), 24)
-	main.flash_screen(Color(0.8, 0.0, 0.0))
+	main.spawn_text(global_position + Vector2(0, -88), "处决", Color(1.0, 0.1, 0.1), 22)
+	main.spawn_spark(global_position + Vector2(0, -30), Color(1.0, 0.1, 0.1), 24)
+	main.spawn_blood(global_position + Vector2(0, -33), float(p.facing), 24)
+	main.flash_screen(Color(0.85, 0.0, 0.0), 0.45)
 	main.hitstop(0.18)
+	main.slowmo(0.3, 0.6)
+	main.punch(0.12)
 	main.shake(6.0)
-	velocity.x = p.facing * 80.0
+	velocity.x = p.facing * 120.0
 	if lives > 0:
 		_enter(S.REVIVE)
 	else:
@@ -421,19 +431,19 @@ func execute_by(p: Player) -> void:
 
 func _spawn_slash() -> void:
 	var red := Color(1.0, 0.35, 0.25)
-	var center := global_position + Vector2(facing * 7.0, -19.0)
+	var center := global_position + Vector2(facing * 10.0, -29.0)
 	match move_key:
 		"sweep":
-			main.spawn_slash(global_position + Vector2(facing * 8.0, -6.0), facing, 30.0, -0.6, 0.35, red, 6.0)
-			main.spawn_dust(global_position + Vector2(facing * 20.0, 0), float(facing), 8)
+			main.spawn_slash(global_position + Vector2(facing * 12.0, -9.0), facing, 46.0, -0.6, 0.35, red, 9.0)
+			main.spawn_dust(global_position + Vector2(facing * 30.0, 0), float(facing), 10)
 		"thrust":
-			main.spawn_streak(global_position + Vector2(facing * 6.0, -18.0), facing, 52.0, red)
-			main.spawn_dust(global_position, float(-facing), 6)
+			main.spawn_streak(global_position + Vector2(facing * 9.0, -27.0), facing, 78.0, red)
+			main.spawn_dust(global_position, float(-facing), 8)
 		_:
 			if hit_index == 1:
-				main.spawn_slash(center, facing, 28.0, 0.9, -1.7)
+				main.spawn_slash(center, facing, 42.0, 0.9, -1.7, Color(1.0, 0.9, 0.85))
 			else:
-				main.spawn_slash(center, facing, 28.0, -2.2, 0.6)
+				main.spawn_slash(center, facing, 42.0, -2.2, 0.6, Color(1.0, 0.9, 0.85))
 
 
 func _move_keys() -> Array:
@@ -487,53 +497,63 @@ func _target_pose() -> Dictionary:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(-10, -1, 20, 2), Color(0, 0, 0, 0.35))
+	var top := Puppet.head_top(look) - 6.0
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.25))
+	draw_circle(Vector2.ZERO, 16.0, Color(0, 0, 0, 0.45))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	var danger := state == S.WINDUP and move_key != "" and bool(_move()["unblockable"])
 	var tint := Color(0, 0, 0, 0)
 	var pulse := 0.5 + 0.5 * sin(state_time * 30.0)
 	if flash_timer > 0.0:
-		tint = Color(flash_color, 0.85)
+		tint = Color(flash_color, 1.0)
 	elif danger:
-		tint = Color(1.0, 0.1, 0.05, 0.25 + 0.35 * pulse)
+		tint = Color(1.0, 0.1, 0.05, 0.2 + 0.3 * pulse)
 	elif state == S.BROKEN or state == S.REVIVE:
 		tint = Color(0.2, 0.2, 0.25, 0.35)
-	elif phase2:
-		tint = Color(0.6, 0.0, 0.0, 0.15)
+	look.eye_glow = Color(1.0, 0.2, 0.1) if phase2 else Color(0, 0, 0, 0)
 
 	if state == S.DYING:
 		var k := clampf(state_time / 0.6, 0.0, 1.0)
-		Puppet.draw(self, _pose, look, facing, Vector2(-facing * 6.0 * k, -3.0 * k), Color(0.15, 0.15, 0.2, 0.5),
+		Puppet.draw(self, _pose, look, facing, Vector2(-facing * 9.0 * k, -4.0 * k), Color(0.15, 0.15, 0.2, 0.5),
 			1.0 - clampf(state_time - 0.5, 0.0, 1.0) * 2.0, -facing * PI / 2.0 * k)
 		return
 	if state == S.DEAD:
 		return
 
 	if phase2:
-		# 第二管血：脚下红色怒气
-		for i in range(3):
-			var x := sin(_clock * 6.0 + i * 2.1) * 8.0
-			draw_rect(Rect2(x - 1, -6 - fmod(_clock * 30.0 + i * 9.0, 26.0), 2, 3), Color(1, 0.2, 0.1, 0.5))
-	Puppet.draw(self, _pose, look, facing, Vector2.ZERO, tint)
+		# 第二管血：身上冒出红色的气
+		for i in range(5):
+			var x := sin(_clock * 5.0 + i * 1.7) * 10.0
+			var y := -fmod(_clock * 40.0 + i * 13.0, 60.0)
+			draw_rect(Rect2(x - 1, y, 2, 2), Color(1, 0.25, 0.1, 0.7 * (1.0 + y / 60.0)))
+	# 危招时身后亮起红光
+	if danger:
+		draw_circle(Vector2(0, -30), 24.0 + pulse * 4.0, Color(1, 0.1, 0.05, 0.12))
+	var rim := Color(1.0, 0.4, 0.3, 0.7) if danger else Color(0.5, 0.62, 0.9, 0.5)
+	Puppet.draw_lit(self, _pose, look, facing, rim, Vector2.ZERO, tint, 1.0, 0.0, Vector2.ONE, velocity.x)
 
 	if danger:
-		_draw_label("危", Vector2(0, -50), Color(1, 0.15, 0.1), 16)
+		_draw_label("危", Vector2(0, top - 10), Color(1, 0.2, 0.1), 24)
 	elif state == S.WINDUP:
 		# 可弹反的招式：出刀前刀尖闪光
 		var windup_t: float = _hit_times()[0]
 		if state_time >= windup_t * _speed() - 0.12:
 			var tip := Puppet.sword_tip(_pose, look, facing)
-			draw_circle(tip, 3.0, Color(1, 1, 1, 0.9))
-			draw_line(tip - Vector2(6, 0), tip + Vector2(6, 0), Color(1, 1, 1, 0.9), 1.0)
-			draw_line(tip - Vector2(0, 6), tip + Vector2(0, 6), Color(1, 1, 1, 0.9), 1.0)
+			draw_circle(tip, 4.0, Color(1, 1, 1, 0.35))
+			draw_circle(tip, 2.0, Color(1, 1, 1))
+			draw_line(tip - Vector2(8, 0), tip + Vector2(8, 0), Color(1, 1, 1, 0.9), 1.0)
+			draw_line(tip - Vector2(0, 8), tip + Vector2(0, 8), Color(1, 1, 1, 0.9), 1.0)
 	if state == S.BROKEN:
 		# 处决点
 		var bp := 0.5 + 0.5 * sin(state_time * 12.0)
-		draw_circle(Vector2(0, -24), 3.5 + bp * 2.0, Color(0, 0, 0, 0.6))
-		draw_circle(Vector2(0, -24), 2.5 + bp * 2.0, Color(1, 0.05, 0.05))
-		_draw_label("按攻击键处决", Vector2(0, 14), Color(1, 0.35, 0.35), 10)
+		draw_circle(Vector2(0, -36), 7.0 + bp * 3.0, Color(1, 0.05, 0.05, 0.25))
+		draw_circle(Vector2(0, -36), 4.5 + bp * 1.5, Color(0, 0, 0, 0.7))
+		draw_circle(Vector2(0, -36), 3.5 + bp * 1.5, Color(0.9, 0.02, 0.02))
+		_draw_label("按攻击键处决", Vector2(0, top - 12), Color(1, 0.4, 0.4), 12)
 
-	_draw_bars(body_size.y + 8.0)
+	if posture > 0.5:
+		draw_posture_bar(Vector2(0, top), 64.0, posture / max_posture)
 
 	if Game.show_hitboxes:
 		var w := body_size.x
@@ -545,18 +565,8 @@ func _draw() -> void:
 			draw_rect(to_local_rect(front_rect(m["reach"], size, m["height"])), Color(1, 0, 0, 0.8), false)
 
 
-func _draw_bars(h: float) -> void:
-	var top := -h - 16.0
-	# 生命条 + 剩余血管
-	draw_rect(Rect2(-24, top, 48, 4), Color(0, 0, 0, 0.7))
-	draw_rect(Rect2(-24, top, 48 * hp / max_hp, 4), Color(0.85, 0.15, 0.15))
-	for i in range(LIVES):
-		var c := Color(0.95, 0.2, 0.2) if i < lives else Color(0.3, 0.3, 0.3)
-		draw_circle(Vector2(-22 + i * 6, top - 4), 2.0, c)
-	draw_posture_bar(Vector2(0, top + 7), 56.0, posture / max_posture)
-
-
 func _draw_label(text: String, pos: Vector2, col: Color, size: int) -> void:
 	var tw := Game.font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	draw_string_outline(Game.font, pos - Vector2(tw / 2.0, 0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 2, Color(0, 0, 0, 0.8))
-	draw_string(Game.font, pos - Vector2(tw / 2.0, 0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
+	var at := (pos - Vector2(tw / 2.0, 0)).round()
+	draw_string_outline(Game.font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 2, Color(0, 0, 0, 0.9))
+	draw_string(Game.font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)

@@ -53,7 +53,7 @@ func _setup() -> void:
 	e.attack_cooldown = 9999.0   # 由测试控制出招
 	e.rng.seed = 1
 	p.global_position = Vector2(400, 300)
-	e.global_position = Vector2(440, 300)
+	e.global_position = Vector2(460, 300)
 	p.facing = 1
 	await _frames(5)
 
@@ -63,6 +63,7 @@ func _frames(n: int) -> void:
 		await get_tree().physics_frame
 		# 测试里不等真实时间，直接结束顿帧
 		main._hitstop_until = 0
+		main._slow_until = 0
 		Engine.time_scale = 1.0
 
 
@@ -124,7 +125,7 @@ func test_unguarded_hit() -> void:
 
 func test_mikiri_thrust() -> void:
 	print("看破突刺")
-	p.global_position = Vector2(380, 300)
+	p.global_position = Vector2(370, 300)
 	e._start_move("thrust")
 	await _wait_windup_end(0, 0.02)
 	Input.action_press("p1_right")

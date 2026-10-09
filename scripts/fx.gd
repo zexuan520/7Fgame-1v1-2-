@@ -31,12 +31,13 @@ class Slash extends Node2D:
 			var f := float(i) / n
 			var ang := lerpf(from_angle, to_angle, f)
 			# 两头细、中间粗
-			var th := thickness * sin(f * PI) * (1.0 - k * 0.5)
+			var th := maxf(thickness * sin(f * PI) * (1.0 - k * 0.5), 0.6)
 			outer.append(Vector2.from_angle(ang) * (radius + k * 4.0))
 			inner.append(Vector2.from_angle(ang) * (radius + k * 4.0 - th))
 		inner.reverse()
 		var pts := outer + inner
-		draw_colored_polygon(pts, Color(color, 0.55 * a))
+		if not Geometry2D.triangulate_polygon(pts).is_empty():
+			draw_colored_polygon(pts, Color(color, 0.55 * a))
 		draw_polyline(outer, Color(1, 1, 1, a), 1.0)
 
 
