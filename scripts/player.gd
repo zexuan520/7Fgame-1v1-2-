@@ -50,9 +50,67 @@ var respawn_timer := 0.0
 var clock := 0.0
 var parry_count := 0                # 统计，用于界面显示
 
+# 美术
+var look := Puppet.Look.new()
+var scarf_color := Color("c0392b")
+var _pose: Dictionary = {}          # 当前画出来的姿势（平滑过渡）
+var _scarf: Array[Vector2] = []     # 围巾各节的世界坐标
+var _was_on_floor := true
+var _ghost_timer := 0.0
+
+static var POSES := {}
+
+
+static func _build_poses() -> void:
+	if not POSES.is_empty():
+		return
+	POSES["idle"] = Puppet.pose({})
+	POSES["guard"] = Puppet.pose({"crouch": 2.5, "lean": 0.15, "foot_f": Vector2(5, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(1.1, 2.4), "arm_b": Vector2(0.7, 1.9), "sword": 2.75})
+	POSES["parry"] = Puppet.pose({"crouch": 3.0, "lean": 0.3, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(1.5, 2.6), "arm_b": Vector2(0.9, 2.0), "sword": 2.45})
+	# 轻攻击三段：每段一个举刀姿势和一个出刀姿势
+	POSES["raise1"] = Puppet.pose({"lean": -0.1, "arm_f": Vector2(2.7, 3.0), "arm_b": Vector2(2.4, 2.8), "sword": 3.7,
+		"foot_f": Vector2(5, 0), "foot_b": Vector2(-5, 0)})
+	POSES["cut1"] = Puppet.pose({"lean": 0.4, "crouch": 3.0, "foot_f": Vector2(8, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(1.3, 1.5), "arm_b": Vector2(1.0, 1.4), "sword": 1.75})
+	POSES["raise2"] = Puppet.pose({"lean": 0.25, "crouch": 3.0, "arm_f": Vector2(0.2, 0.5), "arm_b": Vector2(0.2, 0.4),
+		"sword": 0.4, "foot_f": Vector2(6, 0), "foot_b": Vector2(-5, 0)})
+	POSES["cut2"] = Puppet.pose({"lean": -0.05, "arm_f": Vector2(2.4, 2.8), "arm_b": Vector2(2.0, 2.4), "sword": 2.9,
+		"foot_f": Vector2(7, 0), "foot_b": Vector2(-5, 0)})
+	POSES["raise3"] = Puppet.pose({"lean": -0.15, "crouch": 3.0, "arm_f": Vector2(-0.6, 1.2), "arm_b": Vector2(-0.4, 0.6),
+		"sword": 1.57, "foot_f": Vector2(4, 0), "foot_b": Vector2(-7, 0)})
+	POSES["cut3"] = Puppet.pose({"lean": 0.45, "crouch": 4.0, "arm_f": Vector2(1.5, 1.57), "arm_b": Vector2(-0.6, -0.3),
+		"sword": 1.57, "foot_f": Vector2(10, 0), "foot_b": Vector2(-7, 0)})
+	POSES["charge"] = Puppet.pose({"crouch": 5.0, "lean": -0.15, "arm_f": Vector2(3.0, 3.4), "arm_b": Vector2(2.8, 3.2),
+		"sword": 4.0, "foot_f": Vector2(6, 0), "foot_b": Vector2(-7, 0)})
+	POSES["smash"] = Puppet.pose({"crouch": 5.0, "lean": 0.55, "arm_f": Vector2(1.1, 0.9), "arm_b": Vector2(0.9, 0.8),
+		"sword": 1.0, "foot_f": Vector2(9, 0), "foot_b": Vector2(-7, 0)})
+	POSES["dodge"] = Puppet.pose({"crouch": 6.0, "lean": 0.7, "foot_f": Vector2(6, -2), "foot_b": Vector2(-7, 0),
+		"arm_f": Vector2(-0.6, -0.3), "arm_b": Vector2(-0.9, -0.6), "sword": -0.8})
+	POSES["backstep"] = Puppet.pose({"crouch": 5.0, "lean": -0.3, "foot_f": Vector2(5, -1), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(0.9, 1.8), "sword": 2.2})
+	POSES["hit"] = Puppet.pose({"lean": -0.45, "head": -0.3, "crouch": 2.0, "arm_f": Vector2(0.3, 0.0), "sword": 0.6,
+		"arm_b": Vector2(-0.8, -0.4), "foot_f": Vector2(6, 0), "foot_b": Vector2(-4, 0)})
+	POSES["broken"] = Puppet.pose({"crouch": 6.0, "lean": 0.7, "head": 0.4, "arm_f": Vector2(0.1, 0.0), "sword": 0.25,
+		"arm_b": Vector2(0.1, 0.0), "foot_f": Vector2(4, 0), "foot_b": Vector2(-4, 0)})
+	POSES["jump"] = Puppet.pose({"crouch": 0.0, "foot_f": Vector2(4, -5), "foot_b": Vector2(-3, -3),
+		"arm_f": Vector2(1.8, 2.2), "sword": 2.3, "arm_b": Vector2(-1.2, -0.8), "lean": 0.05})
+	POSES["fall"] = Puppet.pose({"crouch": 0.0, "foot_f": Vector2(3, -1), "foot_b": Vector2(-4, -2),
+		"arm_f": Vector2(1.2, 1.9), "sword": 2.0, "arm_b": Vector2(-1.8, -1.4), "lean": 0.0})
+
 
 func _ready() -> void:
+	_build_poses()
 	setup_body()
+	if index == 2:
+		look.cloth = Color("2f6b3f")
+		look.cloth_dark = Color("1f4a2b")
+		look.hair = Color("3a2418")
+		scarf_color = Color("e0b03a")
+	_pose = POSES["idle"].duplicate()
+	for i in range(6):
+		_scarf.append(global_position + Vector2(0, -25))
 	max_hp = 200.0
 	hp = max_hp
 	max_posture = 100.0
@@ -118,6 +176,7 @@ func _physics_process(delta: float) -> void:
 		apply_gravity(delta)
 	_check_stomp()
 	move_and_slide()
+	_update_art(delta)
 	queue_redraw()
 
 
@@ -172,6 +231,7 @@ func _state_attack(delta: float) -> void:
 		state_time = 0.0
 		hit_targets.clear()
 		velocity.x = facing * 70.0   # 出刀时向前踏一小步
+		_spawn_slash()
 	if attack_phase == 1:
 		_check_attack_hits()
 		if state_time >= active:
@@ -228,7 +288,9 @@ func _state_dodge(_delta: float) -> void:
 func _try_jump() -> void:
 	if is_on_floor():
 		velocity.y = JUMP_VELOCITY
+		main.spawn_dust(global_position, 0.0, 6)
 	elif air_jumps > 0:
+		main.spawn_dust(global_position, 0.0, 4)
 		air_jumps -= 1
 		velocity.y = JUMP_VELOCITY * 0.9
 
@@ -272,6 +334,8 @@ func _start_dodge(dir: float) -> void:
 	dodge_cooldown = DODGE_COOLDOWN + DODGE_TIME
 	invul_timer = DODGE_INVUL
 	_enter(S.DODGE)
+	if is_on_floor():
+		main.spawn_dust(global_position, -dodge_dir, 6)
 
 
 func _start_execute(target: Enemy) -> void:
@@ -342,6 +406,7 @@ func receive_enemy_hit(info: Dictionary, attacker: Fighter) -> String:
 	var dmg: float = info["dmg"]
 	hp -= dmg
 	flash(Color(1.0, 0.3, 0.3), 0.15)
+	main.spawn_blood(global_position + Vector2(0, -18), -to_attacker, 10)
 	velocity.x = -to_attacker * 140.0
 	if hp <= 0.0:
 		_die()
@@ -375,71 +440,149 @@ func respawn() -> void:
 	_enter(S.FREE)
 
 
-# ---------- 绘制（原型阶段只用色块） ----------
+# ---------- 美术 ----------
+
+func _spawn_slash() -> void:
+	var heavy: bool = attack["heavy"]
+	var center := global_position + Vector2(facing * 6.0, -16.0)
+	if heavy:
+		main.spawn_slash(center, facing, 28.0, -2.4, 0.9, Color(1.0, 0.8, 0.5), 10.0)
+	elif combo_step == 0:
+		main.spawn_slash(center, facing, 24.0, -2.2, 0.6)
+	elif combo_step == 1:
+		main.spawn_slash(center, facing, 24.0, 0.9, -1.7)
+	else:
+		main.spawn_streak(global_position + Vector2(facing * 4.0, -15.0), facing, 44.0)
+
+
+func _target_pose() -> Dictionary:
+	var t := state_time
+	match state:
+		S.FREE:
+			if not is_on_floor():
+				return POSES["jump"] if velocity.y < 0.0 else POSES["fall"]
+			if absf(velocity.x) > 10.0:
+				var ph := clock * 13.0
+				return Puppet.pose({
+					"crouch": 2.0 + absf(sin(ph)) * 1.2, "lean": 0.3,
+					"foot_f": Vector2(5.0 * sin(ph), -maxf(0.0, 3.0 * cos(ph))),
+					"foot_b": Vector2(-5.0 * sin(ph), -maxf(0.0, -3.0 * cos(ph))),
+					"arm_f": Vector2(-0.3 + 0.2 * sin(ph), 0.2), "sword": -0.7,
+					"arm_b": Vector2(0.4 * sin(ph + PI), 0.9),
+				})
+			var idle: Dictionary = POSES["idle"].duplicate()
+			idle["crouch"] = 1.0 + sin(clock * 3.0) * 0.6
+			return idle
+		S.CHARGE:
+			var cp: Dictionary = Puppet.lerp_pose(POSES["idle"], POSES["charge"], charge_time / 0.25)
+			if charge_time >= HEAVY_CHARGE_TIME - 0.1:
+				cp["dx"] = sin(clock * 90.0) * 0.8   # 蓄满时抖动
+			return cp
+		S.ATTACK:
+			var heavy: bool = attack["heavy"]
+			var keys: Array = ["charge", "smash"] if heavy else [["raise1", "cut1"], ["raise2", "cut2"], ["raise3", "cut3"]][combo_step]
+			var windup: float = attack["windup"]
+			var active: float = attack["active"]
+			var recover: float = attack["recover"]
+			if attack_phase == 0:
+				return POSES[keys[0]]
+			if attack_phase == 1:
+				return Puppet.lerp_pose(POSES[keys[0]], POSES[keys[1]], t / (active * 0.6))
+			return Puppet.lerp_pose(POSES[keys[1]], POSES["idle"], pow(t / recover, 2.0))
+		S.GUARD:
+			return POSES["parry"] if parry_timer > 0.0 else POSES["guard"]
+		S.DODGE:
+			return POSES["dodge"] if dodge_dir == facing else POSES["backstep"]
+		S.HITSTUN:
+			return POSES["hit"]
+		S.BROKEN, S.DEAD:
+			var bp: Dictionary = POSES["broken"].duplicate()
+			bp["lean"] = 0.7 + sin(clock * 4.0) * 0.08
+			return bp
+		S.EXECUTE:
+			return POSES["raise3"] if t < 0.12 else POSES["cut3"]
+	return POSES["idle"]
+
+
+func _update_art(delta: float) -> void:
+	# 姿势平滑过渡；出刀那一下要快
+	var rate := 60.0 if state == S.ATTACK or state == S.EXECUTE else 22.0
+	_pose = Puppet.lerp_pose(_pose, _target_pose(), 1.0 - exp(-rate * delta))
+
+	# 落地扬尘
+	if is_on_floor() and not _was_on_floor:
+		main.spawn_dust(global_position, 0.0, 5)
+	_was_on_floor = is_on_floor()
+
+	# 闪身残影
+	_ghost_timer -= delta
+	if state == S.DODGE and _ghost_timer <= 0.0:
+		_ghost_timer = 0.045
+		main.spawn_ghost(global_position, _pose.duplicate(), look, facing, color)
+
+	# 围巾：每一节跟随前一节，受风和重力影响
+	var j := Puppet.solve(_pose)
+	var neck: Vector2 = j["neck"]
+	var anchor := global_position + Vector2(neck.x * facing, neck.y) + Vector2(-facing * 1.0, 1.0)
+	_scarf[0] = anchor
+	for i in range(1, _scarf.size()):
+		var wave := sin(clock * 9.0 - i * 0.9) * 1.2
+		var target := _scarf[i - 1] + Vector2(-facing * 3.2 - velocity.x * 0.012, 0.9 + wave)
+		_scarf[i] = _scarf[i].lerp(target, 1.0 - exp(-30.0 * delta))
+		if _scarf[i].distance_to(_scarf[i - 1]) > 4.0:
+			_scarf[i] = _scarf[i - 1] + (_scarf[i] - _scarf[i - 1]).normalized() * 4.0
+
 
 func _draw() -> void:
-	var w := body_size.x
-	var h := body_size.y
-	var body_col := color
-	match state:
-		S.DEAD: body_col = Color(0.3, 0.3, 0.3, 0.5)
-		S.BROKEN: body_col = color.darkened(0.5)
-		S.DODGE: body_col = Color(color, 0.45)
+	# 影子
+	draw_rect(Rect2(-8, -1, 16, 2), Color(0, 0, 0, 0.35))
+
+	var tint := Color(0, 0, 0, 0)
 	if flash_timer > 0.0:
-		body_col = flash_color
-	var crouch := 8.0 if state == S.DEAD else 0.0
-	draw_rect(Rect2(-w / 2.0, -h + crouch, w, h - crouch), body_col)
-	# 头巾和眼睛，表示朝向
-	draw_rect(Rect2(-w / 2.0, -h + crouch, w, 5), body_col.darkened(0.35))
-	draw_rect(Rect2(facing * 4.0 - 1.5, -h + 8 + crouch, 3, 3), Color(0.05, 0.05, 0.08))
+		tint = Color(flash_color, 0.85)
+	elif state == S.BROKEN:
+		tint = Color(0.2, 0.2, 0.25, 0.35)
+	var alpha := 0.55 if state == S.DODGE else 1.0
 
-	_draw_blade()
+	# 围巾画在身体后面
+	if _scarf.size() > 1 and state != S.DEAD:
+		var pts := PackedVector2Array()
+		for pt in _scarf:
+			pts.append(pt - global_position)
+		draw_polyline(pts, Color(0.05, 0.05, 0.08, alpha), 4.0)
+		draw_polyline(pts, Color(scarf_color, alpha), 2.0)
 
-	if state == S.GUARD:
-		var gcol := Color(1.0, 0.95, 0.4) if parry_timer > 0.0 else Color(0.6, 0.85, 1.0, 0.8)
-		draw_rect(Rect2(facing * (w / 2.0 + 3.0) - 1.5, -h - 2, 3, h), gcol)
+	if state == S.DEAD:
+		Puppet.draw(self, _pose, look, facing, Vector2(-facing * 4.0, -3.0), Color(0.2, 0.2, 0.25, 0.4), 1.0, -facing * PI / 2.0)
+	else:
+		Puppet.draw(self, _pose, look, facing, Vector2.ZERO, tint, alpha)
+
+	# 弹反窗口内刀身发光
+	if state == S.GUARD and parry_timer > 0.0:
+		var tip := Puppet.sword_tip(_pose, look, facing)
+		draw_circle(tip, 2.5, Color(1.0, 0.95, 0.5, 0.9))
 	if state == S.CHARGE:
 		var ratio := clampf(charge_time / HEAVY_CHARGE_TIME, 0.0, 1.0)
 		draw_rect(Rect2(-12, 4, 24, 3), Color(0, 0, 0, 0.6))
-		draw_rect(Rect2(-12, 4, 24 * ratio, 3), Color(1.0, 0.6, 0.2))
+		draw_rect(Rect2(-12, 4, 24 * ratio, 3), Color(1.0, 0.6, 0.2) if ratio < 1.0 else Color(1, 1, 1))
 	if state == S.BROKEN:
-		_draw_label("破防", Vector2(0, -h - 20), Color(1.0, 0.5, 0.2), 11)
+		_draw_label("破防", Vector2(0, -44), Color(1.0, 0.5, 0.2), 11)
 
 	# 头顶：编号和架势条
-	_draw_label("%dP" % index, Vector2(0, -h - 12), color.lightened(0.3), 9)
+	_draw_label("%dP" % index, Vector2(0, -38), color.lightened(0.3), 9)
 	if posture > 0.5 and state != S.DEAD:
-		draw_posture_bar(Vector2(0, -h - 6), 30.0, posture / max_posture)
+		draw_posture_bar(Vector2(0, -35), 30.0, posture / max_posture)
 
 	if Game.show_hitboxes:
+		var w := body_size.x
+		var h := body_size.y
 		draw_rect(Rect2(-w / 2.0, -h, w, h), Color(0, 1, 0, 0.6), false)
 		if state == S.ATTACK and attack_phase == 1:
 			var size: Vector2 = attack["size"]
 			draw_rect(to_local_rect(front_rect(attack["reach"], size, attack["height"])), Color(1, 0, 0, 0.6), false)
 
 
-func _draw_blade() -> void:
-	var hand := Vector2(facing * 6.0, -18.0)
-	var blade_col := Color(0.92, 0.92, 0.98)
-	if state == S.ATTACK:
-		var heavy: bool = attack["heavy"]
-		var length := 30.0 if heavy else 24.0
-		if attack_phase == 0:
-			draw_line(hand, hand + Vector2(-facing * 8.0, -length), blade_col, 2.0)
-		elif attack_phase == 1:
-			var size: Vector2 = attack["size"]
-			var r := to_local_rect(front_rect(attack["reach"], size, attack["height"]))
-			draw_rect(r, Color(1, 1, 1, 0.35))
-			draw_line(hand, hand + Vector2(facing * length, -2.0), blade_col, 3.0 if heavy else 2.0)
-		else:
-			draw_line(hand, hand + Vector2(facing * length * 0.8, 10.0), blade_col, 2.0)
-	elif state == S.GUARD:
-		draw_line(hand + Vector2(facing * 2.0, 6.0), hand + Vector2(facing * 6.0, -18.0), blade_col, 2.0)
-	elif state == S.CHARGE:
-		draw_line(hand, hand + Vector2(-facing * 14.0, -18.0), Color(1.0, 0.75, 0.4), 2.0)
-	elif state != S.DEAD:
-		draw_line(hand, hand + Vector2(facing * 14.0, 12.0), blade_col.darkened(0.2), 2.0)
-
-
 func _draw_label(text: String, pos: Vector2, col: Color, size: int) -> void:
 	var w := Game.font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	draw_string_outline(Game.font, pos - Vector2(w / 2.0, 0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 2, Color(0, 0, 0, 0.8))
 	draw_string(Game.font, pos - Vector2(w / 2.0, 0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)

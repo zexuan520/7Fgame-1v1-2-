@@ -1,5 +1,6 @@
 extends Node2D
 ## 战斗原型主场景：搭建场地、生成角色、管理特效、顿帧和镜头震动。
+## 游戏画面画在 640×360 的低分辨率画布上再放大，得到清晰的像素颗粒；界面文字画在画布外，保持清晰。
 
 const ARENA_W := 640.0
 const FLOOR_Y := 300.0
@@ -10,6 +11,7 @@ const ENEMY_SPAWN := Vector2(440, FLOOR_Y)
 var players: Array[Player] = []
 var enemies: Array[Enemy] = []
 var camera: Camera2D
+var world: Node2D
 var fx_root: Node2D
 var hud: Hud
 
@@ -18,20 +20,37 @@ var _hitstop_until := 0
 
 
 func _ready() -> void:
+	var container := SubViewportContainer.new()
+	container.stretch = true
+	container.size = Vector2(ARENA_W, 360)
+	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(container)
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(int(ARENA_W), 360)
+	viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	viewport.snap_2d_transforms_to_pixel = true
+	viewport.snap_2d_vertices_to_pixel = true
+	container.add_child(viewport)
+	world = Node2D.new()
+	viewport.add_child(world)
+
+	var bg := Background.new()
+	bg.floor_y = FLOOR_Y
+	world.add_child(bg)
 	_build_arena()
 	fx_root = Node2D.new()
 	fx_root.z_index = 10
-	add_child(fx_root)
+	world.add_child(fx_root)
 
 	camera = Camera2D.new()
 	camera.position = Vector2(ARENA_W / 2.0, 180)
-	add_child(camera)
+	world.add_child(camera)
 
 	_spawn_player(1)
 	var e := Enemy.new()
 	e.main = self
 	e.position = ENEMY_SPAWN
-	add_child(e)
+	world.add_child(e)
 	enemies.append(e)
 
 	var layer := CanvasLayer.new()
@@ -45,7 +64,7 @@ func _build_arena() -> void:
 	var ground := StaticBody2D.new()
 	ground.collision_layer = 1
 	ground.collision_mask = 0
-	add_child(ground)
+	world.add_child(ground)
 	_add_box(ground, Rect2(-100, FLOOR_Y, ARENA_W + 200, 100))   # 地面
 	_add_box(ground, Rect2(-40, -200, 40, 600))                  # 左墙
 	_add_box(ground, Rect2(ARENA_W, -200, 40, 600))              # 右墙
@@ -71,7 +90,7 @@ func _spawn_player(index: int) -> Player:
 	else:
 		p.position = P2_SPAWN
 		p.color = Color(0.5, 0.9, 0.45)
-	add_child(p)
+	world.add_child(p)
 	players.append(p)
 	_update_coop()
 	return p
@@ -150,6 +169,78 @@ func spawn_spark(pos: Vector2, color: Color, count: int = 8) -> void:
 	fx_root.add_child(s)
 
 
+## 刀光。from/to 为朝右时的角度（0 向右，正数向下）
+func spawn_slash(pos: Vector2, facing: int, radius: float, from_angle: float, to_angle: float,
+		color: Color = Color(1, 1, 1), thickness: float = 7.0) -> void:
+	var s := Fx.Slash.new()
+	s.position = pos
+	s.facing = facing
+	s.radius = radius
+	s.from_angle = from_angle
+	s.to_angle = to_angle
+	s.color = color
+	s.thickness = thickness
+	fx_root.add_child(s)
+
+
+func spawn_streak(pos: Vector2, facing: int, length: float, color: Color = Color(1, 1, 1)) -> void:
+	var s := Fx.Streak.new()
+	s.position = pos
+	s.facing = facing
+	s.length = length
+	s.color = color
+	fx_root.add_child(s)
+
+
+func spawn_ghost(pos: Vector2, pose: Dictionary, look: Puppet.Look, facing: int, color: Color) -> void:
+	var g := Fx.Ghost.new()
+	g.position = pos
+	g.pose = pose
+	g.look = look
+	g.facing = facing
+	g.color = color
+	fx_root.add_child(g)
+
+
+func spawn_dust(pos: Vector2, dir: float = 0.0, count: int = 5) -> void:
+	var d := Fx.Particles.new()
+	d.position = pos
+	d.color = Color(0.62, 0.58, 0.55)
+	d.count = count
+	d.dir = dir
+	d.speed = Vector2(36, 24)
+	d.gravity = 40.0
+	d.life = 0.35
+	fx_root.add_child(d)
+
+
+func spawn_blood(pos: Vector2, dir: float, count: int = 8) -> void:
+	var b := Fx.Particles.new()
+	b.position = pos
+	b.color = Color(0.75, 0.08, 0.1)
+	b.count = count
+	b.dir = dir
+	b.speed = Vector2(90, 70)
+	b.gravity = 260.0
+	b.life = 0.45
+	fx_root.add_child(b)
+
+
+func spawn_ring(pos: Vector2, color: Color, radius: float = 26.0) -> void:
+	var r := Fx.Ring.new()
+	r.position = pos
+	r.color = color
+	r.max_radius = radius
+	fx_root.add_child(r)
+
+
+func flash_screen(color: Color, life: float = 0.25) -> void:
+	var f := Fx.ScreenFlash.new()
+	f.color = color
+	f.life = life
+	fx_root.add_child(f)
+
+
 ## 顿帧：短暂放慢时间，让弹反和处决有打击感
 func hitstop(seconds: float) -> void:
 	Engine.time_scale = 0.05
@@ -192,15 +283,3 @@ func _unhandled_input(event: InputEvent) -> void:
 			p.respawn()
 	elif event.is_action_pressed("quit"):
 		get_tree().quit()
-
-
-func _draw() -> void:
-	# 背景：远山、地面
-	draw_rect(Rect2(0, 0, ARENA_W, FLOOR_Y), Color(0.11, 0.1, 0.14))
-	draw_colored_polygon(PackedVector2Array([
-		Vector2(0, 230), Vector2(90, 170), Vector2(170, 215), Vector2(280, 150),
-		Vector2(400, 210), Vector2(500, 165), Vector2(640, 220), Vector2(640, FLOOR_Y), Vector2(0, FLOOR_Y),
-	]), Color(0.16, 0.14, 0.2))
-	draw_circle(Vector2(520, 70), 22.0, Color(0.85, 0.82, 0.7, 0.8))
-	draw_rect(Rect2(0, FLOOR_Y, ARENA_W, 60), Color(0.22, 0.18, 0.15))
-	draw_rect(Rect2(0, FLOOR_Y, ARENA_W, 2), Color(0.45, 0.38, 0.3))

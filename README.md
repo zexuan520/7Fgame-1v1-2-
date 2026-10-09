@@ -1,6 +1,6 @@
 # 残刃归途 · 战斗原型
 
-只狼式 2D 横版战斗的第一个可玩原型（设计文档里程碑 1 的第一步）。画面暂时全是色块，不放美术。
+只狼式 2D 横版战斗的第一个可玩原型（设计文档里程碑 1 的第一步）。角色、场景和特效都是用代码画的像素美术：角色由骨骼姿势驱动，画面在 640×360 下渲染再放大成像素颗粒。
 
 ## 怎么运行
 
@@ -63,5 +63,7 @@ godot --headless --path . res://tests/test_combat.tscn
 - `scripts/fighter.gd`：玩家和敌人共用的生命、架势逻辑
 - `scripts/player.gd`：主角
 - `scripts/enemy.gd`：练手敌人「浪人」
-- `scripts/hud.gd`、`scripts/fx_*.gd`：界面和特效
+- `scripts/puppet.gd`：像素小人（骨骼姿势、插值动画）
+- `scripts/background.gd`：夜晚山寺场景
+- `scripts/hud.gd`、`scripts/fx.gd`、`scripts/fx_*.gd`：界面和特效（刀光、残影、血、尘土、冲击环）
 - `scripts/game.gd`：按键映射、字体和全局开关
