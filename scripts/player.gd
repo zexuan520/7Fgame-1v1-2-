@@ -23,6 +23,10 @@ const HITSTUN_TIME := 0.25
 const BROKEN_TIME := 1.2            # 架势满 → 破防僵直 1.2 秒
 const EXECUTE_TIME := 0.55
 const RESPAWN_TIME := 3.0
+const DOWNED_TIME := 15.0           # 双人：倒下后濒死 15 秒，同伴能扶起来
+const REVIVE_HOLD := 2.0            # 同伴按住「下」2 秒扶起
+const REVIVE_HP := 0.3              # 扶起来回 30% 生命
+const REVIVE_RANGE := 40.0
 const GUARD_SPAM_GAP := 0.35        # 连按格挡间隔太短会缩小弹反窗口
 const GUARD_SPAM_FACTOR := 0.4
 const EXECUTE_RANGE := 80.0
@@ -115,6 +119,8 @@ var _sure_crit_t := 0.0            # 影步：下一刀必会心
 var _sure_crit_bonus := 0.0
 var _perfect_used := false         # 这次闪身已经触发过完美闪避
 var perfect_dodges := 0             # 统计
+var downed := 0.0                   # 濒死还剩几秒（0 = 没在濒死；倒下时同伴还站着才会濒死）
+var revive_progress := 0.0          # 同伴扶了多久
 var _counter_t := 0.0              # 太刀：弹反后追击
 var _pierce_t := 0.0               # 修罗面：处决后无视格挡
 var _dodge_buff_t := 0.0           # 风铃：闪身后加伤害
@@ -394,6 +400,11 @@ func _physics_process(delta: float) -> void:
 				_enter(S.FREE)
 		S.DEAD:
 			velocity.x = 0.0
+			if downed > 0.0:
+				downed = maxf(0.0, downed - delta)
+				if downed <= 0.0:
+					revive_progress = 0.0
+					main.spawn_text(global_position + Vector2(0, -60), "倒地不起", Color(0.7, 0.3, 0.3), 12)
 			respawn_timer -= delta
 			if respawn_timer <= 0.0 and auto_respawn:
 				respawn()
@@ -1278,12 +1289,30 @@ func _die() -> void:
 	hp = 0.0
 	_enter(S.DEAD)
 	respawn_timer = RESPAWN_TIME
-	main.spawn_text(global_position + Vector2(0, -70), "倒下", Color(0.9, 0.2, 0.2))
+	revive_progress = 0.0
+	downed = DOWNED_TIME if main.can_be_downed(self) else 0.0
+	main.spawn_text(global_position + Vector2(0, -70), "濒死" if downed > 0.0 else "倒下", Color(0.9, 0.2, 0.2))
+
+
+## 被同伴扶起来
+func revive(ratio: float) -> void:
+	hp = max_hp * ratio
+	posture = 0.0
+	downed = 0.0
+	revive_progress = 0.0
+	invul_timer = 1.0
+	velocity = Vector2.ZERO
+	_enter(S.FREE)
+	flash(Color(0.6, 1.0, 0.7), 0.3)
+	main.spawn_text(global_position + Vector2(0, -70), "扶起", Color(0.6, 1.0, 0.7))
+	main.spawn_ring(global_position + Vector2(0, -26), Color(0.6, 1.0, 0.7), 34.0)
 
 
 func respawn() -> void:
 	hp = max_hp
 	posture = 0.0
+	downed = 0.0
+	revive_progress = 0.0
 	global_position = spawn_pos
 	velocity = Vector2.ZERO
 	_enter(S.FREE)
@@ -1760,6 +1789,12 @@ func _draw() -> void:
 		draw_rect(Rect2(-14, 5, 28 * ratio, 3), Color(1, 1, 1) if full else Color(1.0, 0.6, 0.2))
 	if state == S.BROKEN:
 		_draw_label("破防", Vector2(0, top - 14), Color(1.0, 0.5, 0.2), 12)
+	if state == S.DEAD and downed > 0.0:
+		# 濒死：头上倒数，同伴扶的时候画一圈进度
+		_draw_label("濒死 %d" % ceili(downed), Vector2(0, -44), Color(1.0, 0.45, 0.4), 12)
+		if revive_progress > 0.0:
+			var k := clampf(revive_progress / REVIVE_HOLD, 0.0, 1.0)
+			draw_arc(Vector2(0, -20), 14.0, -PI / 2.0, -PI / 2.0 + TAU * k, 24, Color(0.6, 1.0, 0.7), 2.0)
 
 	# 头顶：编号和架势条
 	_draw_label("%dP" % index, Vector2(0, top - 7), color.lightened(0.3), 12)

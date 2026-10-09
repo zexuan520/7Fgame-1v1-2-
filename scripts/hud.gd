@@ -277,6 +277,8 @@ func _draw_player_panel(font: Font, p: Player, at: Vector2) -> void:
 		_text(font, "不死身 ×%d" % p.revives, at + Vector2(110, 68), Color(1.0, 0.85, 0.4), 12)
 	if p.state == Player.S.DEAD:
 		var msg := "%.0f 秒后复活" % maxf(p.respawn_timer, 0.0) if p.auto_respawn else "清完这间复苏"
+		if p.downed > 0.0:
+			msg = "濒死 · 同伴按住↓扶"
 		_text(font, msg, at + Vector2(110, 54), Color(1, 0.4, 0.4), 12)
 	_draw_build_strip(font, p, at + Vector2(0, 76))
 

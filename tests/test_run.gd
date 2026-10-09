@@ -3,7 +3,7 @@ extends Node
 ##   godot --headless --path . res://tests/test_run.tscn
 ## 验证岔路地图、平台和楼梯、砸罐子开宝箱、破庙出发、房间锁门和波次、掉钱、商人、土地庙、死亡带回 60% 魂玉、打败柳江远、
 ## 装备掉落和换装、武器手感、防具减伤、饰品、流血、商人卖装备、兵器架、拾骨婆天赋、旧存档供台退魂玉、
-## 清房三选一（招式、心法、强化、铜钱、替换、双人各选各的、死了清空）、招式谱、奇遇、记忆碎片和忆境、NPC 和头目台词。
+## 清房三选一（招式、心法、强化、铜钱、替换、双人各选各的、死了清空）、招式谱、奇遇、记忆碎片和忆境、NPC 和头目台词、双人濒死扶起。
 
 var main: Node
 var failures := 0
@@ -41,6 +41,9 @@ func _run() -> void:
 	_reset_save()
 	await _setup()
 	await test_story()
+	_reset_save()
+	await _setup()
+	await test_coop_revive()
 	test_room_layouts()
 	await _setup()
 	await test_features()
@@ -1033,3 +1036,53 @@ func test_story() -> void:
 	main.grant_memory(Story.next_fragment(), Vector2(300, 200))
 	_check(Story.has("five_0"), "掉落的记忆碎片记下来")
 	Game.save["runs"] = 0
+
+
+# ---------- 双人濒死扶起 ----------
+
+func test_coop_revive() -> void:
+	print("双人：濒死，同伴扶起")
+	var p := _p()
+	main.interact(_find("door", "action", "start_run"), p)
+	await _wait_fade()
+	var p2: Player = main._spawn_player(2)
+	await _enter_room("lane")
+	main._close_rewards()
+	await _frames(3)
+	p2.global_position = p.global_position + Vector2(20, 0)
+	await _frames(3)
+	p2.hp = 1.0
+	p2._die()
+	_check(p2.state == Player.S.DEAD and is_equal_approx(p2.downed, Player.DOWNED_TIME), "倒下进入濒死 15 秒")
+	await _frames(60)
+	_check(p2.downed < 14.2 and p2.downed > 13.6, "濒死在倒数（%.1f）" % p2.downed)
+	Input.action_press("p1_down")
+	await _frames(60)
+	_check(p2.state == Player.S.DEAD and p2.revive_progress > 0.8, "按住下在扶（%.1f 秒）" % p2.revive_progress)
+	Input.action_release("p1_down")
+	await _frames(2)
+	_check(p2.revive_progress == 0.0, "松手从头来")
+	Input.action_press("p1_down")
+	await _frames(130)
+	Input.action_release("p1_down")
+	_check(p2.is_alive() and is_equal_approx(p2.hp, p2.max_hp * Player.REVIVE_HP), "按住 2 秒扶起来，30%% 生命（%.0f）" % p2.hp)
+	# 濒死时间过了：倒地不起，清完房间才起来
+	p2._die()
+	p2.downed = 0.05
+	await _frames(10)
+	_check(p2.downed == 0.0 and p2.state == Player.S.DEAD, "15 秒没人扶就倒地不起")
+	Input.action_press("p1_down")
+	await _frames(130)
+	Input.action_release("p1_down")
+	_check(not p2.is_alive(), "倒地不起扶不起来")
+	# 两个人都倒下：这一局结束
+	p.hp = 1.0
+	p._die()
+	_check(p.downed == 0.0, "最后一个倒下的没有濒死")
+	await _frames(int(main.DEATH_DELAY * 60.0) + 10)
+	_check(main.dead_wait, "两人都倒下出结算")
+	main.dead_wait = false
+	main.hud.hide_death()
+	main._remove_player(2)
+	main._finish_run(false)
+	await _wait_fade()

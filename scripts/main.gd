@@ -706,6 +706,43 @@ func collect(kind: String, amount: int, p: Player) -> void:
 
 # ---------- 互动：门、货、香炉、供台 ----------
 
+## 双人闯关时倒下的人进入濒死（还有同伴站着才行；练武场照旧自动复活）
+func can_be_downed(p: Player) -> bool:
+	if mode != "room":
+		return false
+	for q in players:
+		if q != p and q.is_alive():
+			return true
+	return false
+
+
+## 濒死的同伴身边按住「下」：扶的那个人返回被扶的人
+func _revive_target(p: Player) -> Player:
+	if not p.is_alive() or p.frozen or p.state != Player.S.FREE or not p.is_on_floor():
+		return null
+	for q in players:
+		if q != p and q.state == Player.S.DEAD and q.downed > 0.0 \
+				and absf(q.global_position.x - p.global_position.x) < Player.REVIVE_RANGE \
+				and absf(q.global_position.y - p.global_position.y) < 40.0:
+			return q
+	return null
+
+
+func _update_revive(dt: float) -> void:
+	var helped := {}
+	for p in players:
+		var q := _revive_target(p)
+		if q == null or not Input.is_action_pressed(p.prefix + "down"):
+			continue
+		helped[q] = true
+		q.revive_progress += dt
+		if q.revive_progress >= Player.REVIVE_HOLD:
+			q.revive(Player.REVIVE_HP)
+	for q in players:
+		if not helped.has(q):
+			q.revive_progress = 0.0   # 松手就从头来
+
+
 func _update_interact() -> void:
 	focus_gear.clear()
 	for it in interactables:
@@ -731,8 +768,8 @@ func _update_interact() -> void:
 		best.highlight = true
 		if best.kind == "gear":
 			focus_gear[p.index] = best
-		if menu_open():
-			continue
+		if menu_open() or _revive_target(p) != null:
+			continue   # 站在濒死的同伴旁边，「下」是扶人
 		if Input.is_action_just_pressed(p.prefix + "down") and p.state == Player.S.FREE and p.is_on_floor():
 			interact(best, p)
 
@@ -1618,6 +1655,7 @@ func _process(delta: float) -> void:
 		_check_cleared(real_dt)
 	elif mode == "room" and _fade_dir == 0:
 		_update_room(real_dt)
+		_update_revive(delta)
 	_update_interact()
 	_hit_breakables()
 	_update_fade(real_dt)
