@@ -10,6 +10,9 @@ const DOUBLE_TAP := 0.28            # 两次按同一个方向的间隔在这之
 const BUFFER_TIME := 0.2            # 输入缓冲：提前按的键在这段时间内有效，动作一结束马上接上
 const BUFFERED := ["attack", "guard", "dodge", "jump", "art", "heal", "stance"]
 const JUMP_VELOCITY := -520.0
+const RUN_JUMP := 1.15              # 跑着起跳，水平速度再快 15%，跳得更远
+const AIR_ACCEL := 1100.0           # 空中按方向的加速度
+const AIR_DRAG := 260.0             # 空中松开方向，惯性只慢慢减，不会一下停住
 const HEAVY_CHARGE_TIME := 0.6      # 长按 0.6 秒出重攻击
 const DODGE_SPEED := 420.0
 const DODGE_TIME := 0.22
@@ -75,6 +78,7 @@ var weapon: Dictionary = GearData.weapon_stats(GearData.starter("katana"))
 var revives := 0                    # 不动“不死身”：这一局还能站起来几次
 var frozen := false                 # 开着天赋界面时站着不动
 var running := false                # 双击方向键后奔跑，松开方向键变回走路
+var _air_carry := 0.0               # 起跳时带进空中的水平速度，空中不会被压回走路速度
 var _tap := {"left": -10.0, "right": -10.0}
 var _buf := {}                      # 输入缓冲：动作 → 按下的时刻
 var auto_respawn := true            # 练武场倒下 3 秒自动复活；闯关时要清完房间才复活
@@ -200,10 +204,11 @@ static func _build_poses() -> void:
 		"arm_b": Vector2(-0.8, -0.4), "foot_f": Vector2(6, 0), "foot_b": Vector2(-4, 0)})
 	POSES["broken"] = Puppet.pose({"crouch": 6.0, "lean": 0.7, "head": 0.4, "arm_f": Vector2(0.1, 0.0), "sword": 0.25,
 		"arm_b": Vector2(0.1, 0.0), "foot_f": Vector2(4, 0), "foot_b": Vector2(-4, 0)})
+	# 跳起来刀收到身后拖着，不往头上举
 	POSES["jump"] = Puppet.pose({"crouch": 0.0, "foot_f": Vector2(4, -5), "foot_b": Vector2(-3, -3),
-		"arm_f": Vector2(1.8, 2.2), "sword": 2.3, "arm_b": Vector2(-1.2, -0.8), "lean": 0.05})
+		"arm_f": Vector2(-0.3, -0.6), "sword": -1.0, "arm_b": Vector2(0.9, 1.6), "lean": 0.12})
 	POSES["fall"] = Puppet.pose({"crouch": 0.0, "foot_f": Vector2(3, -1), "foot_b": Vector2(-4, -2),
-		"arm_f": Vector2(1.2, 1.9), "sword": 2.0, "arm_b": Vector2(-1.8, -1.4), "lean": 0.0})
+		"arm_f": Vector2(-0.7, -1.1), "sword": -1.5, "arm_b": Vector2(1.0, 1.9), "lean": 0.05})
 	# ---------- 招式（见 Moves）----------
 	# 横斩：刀先拉到身后放平，再整个横扫到身前
 	POSES["yoko_raise"] = Puppet.pose({"crouch": 3.2, "lean": -0.12, "head": 0.05, "foot_f": Vector2(6, 0), "foot_b": Vector2(-7, 0),
@@ -292,7 +297,7 @@ func _record_inputs() -> void:
 			if clock - float(_tap[d]) <= DOUBLE_TAP:
 				running = true
 			_tap[d] = clock
-	if absf(Input.get_axis(prefix + "left", prefix + "right")) < 0.1:
+	if absf(Input.get_axis(prefix + "left", prefix + "right")) < 0.1 and is_on_floor():
 		running = false
 
 
@@ -370,9 +375,17 @@ func _physics_process(delta: float) -> void:
 
 func _state_free(delta: float) -> void:
 	var dir := Input.get_axis(prefix + "left", prefix + "right")
-	# 起步和刹车有很短的加减速，动作才接得上
-	var accel := 2000.0 if absf(dir) > 0.1 else 2600.0
-	velocity.x = move_toward(velocity.x, dir * move_speed(), accel * delta)
+	if is_on_floor():
+		_air_carry = 0.0
+		# 起步和刹车有很短的加减速，动作才接得上
+		var accel := 2000.0 if absf(dir) > 0.1 else 2600.0
+		velocity.x = move_toward(velocity.x, dir * move_speed(), accel * delta)
+	elif absf(dir) > 0.1:
+		# 空中：保住起跳时的速度，往回按才减速
+		var cap := maxf(move_speed(), _air_carry)
+		velocity.x = move_toward(velocity.x, dir * cap, AIR_ACCEL * delta)
+	else:
+		velocity.x = move_toward(velocity.x, 0.0, AIR_DRAG * delta)
 	if absf(dir) > 0.1:
 		facing = 1 if dir > 0.0 else -1
 	if _pressed("jump"):
@@ -615,6 +628,9 @@ func _try_jump() -> void:
 		return
 	if is_on_floor():
 		velocity.y = JUMP_VELOCITY
+		if running and absf(velocity.x) > WALK_SPEED:
+			velocity.x = signf(velocity.x) * move_speed() * RUN_JUMP
+		_air_carry = absf(velocity.x)
 		_squash = Vector2(0.85, 1.15)
 		main.spawn_dust(global_position, 0.0, 6)
 	elif air_jumps > 0:
@@ -1030,7 +1046,7 @@ func _spawn_slash() -> void:
 	var heavy: bool = attack["heavy"]
 	var center := global_position + Vector2(facing * 9.0, -26.0)
 	var big: bool = attack.get("stance", "") == "jodan"
-	var col := Color(1.0, 0.75, 0.4) if heavy or big else Color(0.75, 0.9, 1.0)
+	var col := Color(1.0, 0.62, 0.3) if heavy or big else Color(1.0, 0.82, 0.55)   # 暖色刀光，重击偏橙
 	var fx: Array = attack.get("fx", ["none"])
 	match String(fx[0]):
 		"slash":
@@ -1052,7 +1068,7 @@ func _spawn_slash() -> void:
 			main.spawn_slash(center + Vector2(facing * 4.0, 0), facing, 48.0, -0.5, 0.55, c2, 6.0)
 			main.spawn_streak(global_position + Vector2(facing * 4.0, -25.0), facing, 80.0, c2)
 		"spin":
-			var c3 := Color(0.85, 0.95, 1.0)
+			var c3 := Color(1.0, 0.86, 0.6)
 			var c := global_position + Vector2(0, -24)
 			main.spawn_slash(c, facing, 48.0, -3.0, 0.3, c3, 8.0)
 			main.spawn_slash(c, -facing, 44.0, -2.6, 0.5, c3, 6.0)
@@ -1070,7 +1086,7 @@ func _target_pose() -> Dictionary:
 			if not is_on_floor():
 				if _spin_time >= 0.0:
 					return Puppet.pose({"crouch": 5.0, "lean": 0.5, "foot_f": Vector2(4, -6), "foot_b": Vector2(-2, -5),
-						"arm_f": Vector2(1.2, 2.2), "arm_b": Vector2(1.0, 2.0), "sword": 1.0})
+						"arm_f": Vector2(-0.4, -0.8), "arm_b": Vector2(1.0, 2.0), "sword": -1.2})
 				return POSES["jump"] if velocity.y < 0.0 else POSES["fall"]
 			if _land_timer > 0.0:
 				return POSES["land"]

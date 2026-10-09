@@ -537,12 +537,14 @@ func _on_attack_result(result: String, p: Player) -> void:
 	match result:
 		"parry":
 			# 弹反：敌人受到该招架势值 50% 的反震；杂兵直接被弹开僵直
+			main.spawn_impact(mid, Color(1.0, 0.82, 0.35), 1.7, true, p.facing)
 			main.spawn_spark(mid, Color(1.0, 0.9, 0.4), 14)
-			main.spawn_ring(mid, Color(1.0, 0.95, 0.6))
+			main.spawn_ring(mid, Color(1.0, 0.95, 0.6), 40.0)
 			main.spawn_text(mid + Vector2(0, -16), "弹反", Color(1.0, 0.9, 0.4))
-			main.hitstop(0.07)
-			main.shake(3.0)
-			main.punch(0.03)
+			main.flash_screen(Color(1.0, 0.95, 0.8), 0.18)
+			main.hitstop(0.11)
+			main.shake(4.0)
+			main.punch(0.05)
 			velocity.x = -facing * 120.0
 			if is_grunt():
 				velocity.x = -facing * 200.0
@@ -550,10 +552,12 @@ func _on_attack_result(result: String, p: Player) -> void:
 			else:
 				add_posture(p_amount * 0.5 * (1.0 + float(p.stats["parry_posture"])))
 		"block":
-			main.spawn_spark(mid, Color(0.7, 0.8, 1.0), 6)
+			main.spawn_impact(mid, Color(0.75, 0.85, 1.0), 0.7, false, p.facing)
+			main.hitstop(0.04)
 		"hit":
-			main.spawn_spark(mid, Color(0.9, 0.15, 0.15), 8)
-			main.shake(2.0)
+			main.spawn_impact(p.global_position + Vector2(0, -30), Color(1.0, 0.35, 0.25), 0.9, false, facing)
+			main.hitstop(0.06)
+			main.shake(3.0)
 			if m["kind"] == "grab":
 				# 被抓住：摔在地上
 				main.spawn_text(p.global_position + Vector2(0, -70), "擒拿", Color(1.0, 0.3, 0.2))
@@ -603,14 +607,16 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 	if data.get("shield", false) and from_front and state != S.ACTIVE and state != S.RECOVER and state != S.STAGGER:
 		if heavy:
 			main.spawn_text(global_position + Vector2(0, -80), "破盾", Color(1.0, 0.6, 0.2))
-			main.spawn_spark(mid, Color(1.0, 0.6, 0.2), 14)
-			main.shake(3.0)
+			main.spawn_impact(mid, Color(1.0, 0.6, 0.25), 1.5, false, p.facing)
+			main.hitstop(0.09)
+			main.shake(4.0)
 			_take_damage(dmg * 0.5, p_amount)
 			p.on_hit_landed(self, hit)
 			velocity.x = -facing * 160.0
 			_stagger(1.1)
 			return "guardbreak"
-		main.spawn_spark(mid + Vector2(-facing * 6.0, 0), Color(0.95, 0.8, 0.5), 6)
+		main.spawn_impact(mid + Vector2(-facing * 6.0, 0), Color(0.95, 0.85, 0.6), 0.7, false, p.facing)
+		main.hitstop(0.03)
 		velocity.x = -facing * 40.0
 		block_streak += 1
 		if block_streak >= 3 and state == S.IDLE:
@@ -627,13 +633,14 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 		if heavy:
 			# 重攻击破防
 			main.spawn_text(global_position + Vector2(0, -84), "破招", Color(1.0, 0.6, 0.2))
-			main.spawn_spark(mid, Color(1.0, 0.6, 0.2), 12)
-			main.shake(3.0)
+			main.spawn_impact(mid, Color(1.0, 0.6, 0.25), 1.5, false, p.facing)
+			main.shake(4.0)
 			_take_damage(dmg, p_amount)
 			p.on_hit_landed(self, hit)
 			_stagger(0.5)
 			return "guardbreak"
-		main.spawn_spark(mid, Color(0.8, 0.85, 1.0), 6)
+		main.spawn_impact(mid, Color(0.8, 0.88, 1.0), 0.75, false, p.facing)
+		main.hitstop(0.03)
 		add_posture(p_amount * 0.5)
 		if state == S.BROKEN:
 			return "hit"
@@ -647,8 +654,14 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 		return "blocked"
 
 	block_streak = 0
-	main.spawn_spark(mid, Color(0.95, 0.2, 0.2), 8 if not heavy else 12)
-	main.spawn_blood(global_position + Vector2(0, -body_size.y * 0.6), float(p.facing), 12 if heavy else 8)
+	# 砍中：敌人整个闪白，刀口炸开一团光，血往刀的方向喷，顿一下
+	var cut := Vector2(global_position.x - signf(global_position.x - p.global_position.x) * 6.0, global_position.y - body_size.y * 0.55)
+	main.spawn_impact(cut, Color(1.0, 0.8, 0.45), 1.3 if heavy else 0.95, false, p.facing)
+	main.spawn_blood(cut, float(p.facing), 16 if heavy else 11)
+	main.hitstop(0.09 if heavy else 0.05)
+	main.shake(4.5 if heavy else 2.5)
+	if heavy:
+		main.punch(0.03)
 	_take_damage(dmg, p_amount)
 	p.on_hit_landed(self, hit)
 	if state == S.IDLE or state == S.GUARD or (is_grunt() and state == S.WINDUP):
@@ -689,7 +702,7 @@ func _tick_bleed(delta: float) -> void:
 
 func _take_damage(dmg: float, p_amount: float) -> void:
 	hp = maxf(0.0, hp - dmg)
-	flash(Color(1, 1, 1), 0.08)
+	flash(Color(1, 1, 1), 0.11)
 	if hp <= 0.0:
 		if is_grunt():
 			_die()
@@ -746,6 +759,7 @@ func execute_by(p: Player) -> void:
 	lives -= 1
 	main.spawn_text(global_position + Vector2(0, -88), "处决", Color(1.0, 0.1, 0.1), 22)
 	main.spawn_spark(global_position + Vector2(0, -30), Color(1.0, 0.1, 0.1), 24)
+	main.spawn_impact(global_position + Vector2(0, -32), Color(1.0, 0.3, 0.2), 2.2, true, p.facing)
 	main.spawn_blood(global_position + Vector2(0, -33), float(p.facing), 24)
 	main.flash_screen(Color(0.85, 0.0, 0.0), 0.45)
 	main.hitstop(0.18)

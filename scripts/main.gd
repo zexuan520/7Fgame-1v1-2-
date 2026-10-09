@@ -1138,15 +1138,32 @@ func spawn_dust(pos: Vector2, dir: float = 0.0, count: int = 5) -> void:
 
 
 func spawn_blood(pos: Vector2, dir: float, count: int = 8) -> void:
+	var s := Fx.Splat.new()
+	s.position = pos
+	s.dir = dir
+	s.count = count
+	s.power = clampf(count / 10.0, 0.5, 1.8)
+	fx_root.add_child(s)
 	var b := Fx.Particles.new()
 	b.position = pos
 	b.color = Color(0.75, 0.08, 0.1)
-	b.count = count
+	b.count = count / 2
 	b.dir = dir
-	b.speed = Vector2(90, 70)
-	b.gravity = 260.0
-	b.life = 0.45
+	b.speed = Vector2(110, 90)
+	b.gravity = 300.0
+	b.life = 0.5
 	fx_root.add_child(b)
+
+
+## 命中闪光（见 Fx.Impact）
+func spawn_impact(pos: Vector2, color: Color, size: float = 1.0, orb: bool = false, facing: int = 1) -> void:
+	var f := Fx.Impact.new()
+	f.position = pos
+	f.color = color
+	f.size = size
+	f.orb = orb
+	f.facing = facing
+	fx_root.add_child(f)
 
 
 func spawn_ring(pos: Vector2, color: Color, radius: float = 26.0) -> void:

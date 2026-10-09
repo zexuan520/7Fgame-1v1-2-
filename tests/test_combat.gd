@@ -70,6 +70,8 @@ func _run() -> void:
 	await test_cancels_and_buffer()
 	await _setup()
 	await test_walk_and_run()
+	await _setup()
+	await test_run_jump()
 	print("")
 	if failures == 0:
 		print("全部测试通过")
@@ -644,3 +646,54 @@ func test_walk_and_run() -> void:
 	Input.action_release("p1_right")
 	await _frames(3)
 	_check(not p.running, "松开方向键就不跑了")
+
+
+## 跳一下，返回起跳到落地走了多远；记下空中最慢的水平速度
+var _air_min := 0.0
+func _jump_distance() -> float:
+	var x0 := p.global_position.x
+	await _tap("p1_jump")
+	_air_min = INF
+	for i in range(90):
+		await _frames(1)
+		if p.is_on_floor() and i > 5:
+			break
+		_air_min = minf(_air_min, absf(p.velocity.x))
+	return p.global_position.x - x0
+
+
+func test_run_jump() -> void:
+	print("跑着跳")
+	e.global_position = Vector2(790, 300)
+	p.global_position = Vector2(120, 300)
+	await _frames(3)
+	Input.action_press("p1_right")
+	await _frames(20)
+	var walk := await _jump_distance()
+	Input.action_release("p1_right")
+	await _frames(20)
+	p.global_position = Vector2(120, 300)
+	await _frames(3)
+	await _tap("p1_right")
+	await _frames(3)
+	Input.action_press("p1_right")
+	await _frames(20)
+	var run := await _jump_distance()
+	_check(run > walk * 1.5, "跑着跳比走着跳远（%.0f 对 %.0f）" % [run, walk])
+	_check(_air_min >= Player.MOVE_SPEED - 1.0, "空中不减速（最慢 %.0f）" % _air_min)
+	Input.action_release("p1_right")
+	await _frames(10)
+	_check(not p.running, "落地后松开方向键就不跑了")
+	# 空中松开方向，靠惯性往前飘，不会一下停住
+	p.global_position = Vector2(120, 300)
+	await _frames(3)
+	await _tap("p1_right")
+	await _frames(3)
+	Input.action_press("p1_right")
+	await _frames(20)
+	await _tap("p1_jump")
+	await _frames(2)
+	Input.action_release("p1_right")
+	await _frames(12)
+	_check(p.velocity.x > 150.0, "空中松开方向还带着惯性（%.0f）" % p.velocity.x)
+	await _frames(60)
