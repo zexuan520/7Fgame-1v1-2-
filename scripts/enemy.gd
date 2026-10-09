@@ -556,6 +556,7 @@ func _on_attack_result(result: String, p: Player) -> void:
 		"parry":
 			# 弹反：敌人受到该招架势值 50% 的反震；杂兵直接被弹开僵直
 			main.spawn_impact(mid, Color(1.0, 0.82, 0.35), 1.7, true, p.facing)
+			main.spawn_burst(mid, 1.5)
 			main.spawn_spark(mid, Color(1.0, 0.9, 0.4), 14)
 			main.spawn_ring(mid, Color(1.0, 0.95, 0.6), 40.0)
 			main.spawn_text(mid + Vector2(0, -16), "弹反", Color(1.0, 0.9, 0.4))
@@ -572,6 +573,7 @@ func _on_attack_result(result: String, p: Player) -> void:
 				add_posture(p_amount * (0.5 + float(p.stats["parry_rebound"])) * (1.0 + float(p.stats["parry_posture"])))
 		"block":
 			main.spawn_impact(mid, Color(0.75, 0.85, 1.0), 0.7, false, p.facing)
+			main.spawn_burst(mid, 0.6)
 			main.hitstop(0.04)
 		"hit":
 			main.spawn_impact(p.global_position + Vector2(0, -30), Color(1.0, 0.35, 0.25), 0.9, false, facing)
@@ -681,6 +683,8 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 	var cut := Vector2(global_position.x - signf(global_position.x - p.global_position.x) * 6.0, global_position.y - body_size.y * 0.55)
 	main.spawn_impact(cut, Color(1.0, 0.8, 0.45), 1.3 if heavy else 0.95, false, p.facing)
 	main.spawn_blood(cut, float(p.facing), 16 if heavy else 11)
+	if heavy:
+		main.spawn_burst(cut, 1.0)
 	Game.sfx("hit_heavy" if heavy else "hit")
 	main.hitstop(0.09 if heavy else 0.05)
 	main.shake(4.5 if heavy else 2.5)

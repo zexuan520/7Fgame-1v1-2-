@@ -2133,6 +2133,17 @@ func spawn_ghost(pos: Vector2, pose: Dictionary, look: Puppet.Look, facing: int,
 	fx_root.add_child(g)
 
 
+func spawn_sprite_ghost(pos: Vector2, tex: Texture2D, region: Rect2, origin: Vector2, facing: int, color: Color) -> void:
+	var g := Fx.SpriteGhost.new()
+	g.position = pos.round()
+	g.texture = tex
+	g.region = region
+	g.origin = origin
+	g.facing = facing
+	g.color = color
+	fx_root.add_child(g)
+
+
 func spawn_dust(pos: Vector2, dir: float = 0.0, count: int = 5) -> void:
 	var d := Fx.Particles.new()
 	d.position = pos
@@ -2160,6 +2171,14 @@ func spawn_blood(pos: Vector2, dir: float, count: int = 8) -> void:
 	b.speed = Vector2(110, 90)
 	b.gravity = 300.0
 	b.life = 0.5
+	fx_root.add_child(b)
+
+
+## 星爆火花（见 Fx.Burst）
+func spawn_burst(pos: Vector2, size: float = 1.0) -> void:
+	var b := Fx.Burst.new()
+	b.position = pos.round()
+	b.size = size
 	fx_root.add_child(b)
 
 

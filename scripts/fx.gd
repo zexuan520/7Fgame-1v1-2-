@@ -202,6 +202,33 @@ class Ghost extends Node2D:
 		Puppet.draw(self, pose, look, facing, Vector2.ZERO, Color(color, 1.0), 0.45 * (1.0 - _t / life))
 
 
+## 精灵残影（主角）：这一帧的剪影，整个染成一个颜色，慢慢淡掉
+class SpriteGhost extends Node2D:
+	var texture: Texture2D
+	var region := Rect2()
+	var origin := Vector2.ZERO
+	var facing := 1
+	var color := Color(0.5, 0.8, 1.0)
+	var life := 0.22
+	var _t := 0.0
+
+	func _ready() -> void:
+		var mat := ShaderMaterial.new()
+		mat.shader = preload("res://scripts/sprite_tint.gdshader")
+		mat.set_shader_parameter("tint", Color(color, 1.0))
+		material = mat
+
+	func _process(delta: float) -> void:
+		_t += delta
+		if _t >= life:
+			queue_free()
+		queue_redraw()
+
+	func _draw() -> void:
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(facing, 1.0))
+		draw_texture_rect_region(texture, Rect2(-origin, region.size), region, Color(1, 1, 1, 0.45 * (1.0 - _t / life)))
+
+
 ## 粒子：尘土、血、火星共用
 class Particles extends Node2D:
 	var color := Color(0.6, 0.55, 0.5)
@@ -236,6 +263,53 @@ class Particles extends Node2D:
 		var a := 1.0 - _t / life
 		for pt in _p:
 			draw_rect(Rect2(pt.round() - Vector2(size, size) / 2.0, Vector2(size, size)), Color(color, a))
+
+
+## 星爆火花：弹反、格挡、重击时，一圈长短不一的光芒往外射，中间一点白光，外加几颗火星
+class Burst extends Node2D:
+	var size := 1.0
+	var life := 0.2
+	var _t := 0.0
+	var _rays: Array[Vector3] = []     # 角度、长度、粗细
+	var _embers: Array[Vector4] = []   # 位置 xy、速度 zw
+
+	func _ready() -> void:
+		var n := 12
+		for i in range(n):
+			var a := TAU * i / n + randf_range(-0.2, 0.2)
+			var long := i % 3 == 0
+			_rays.append(Vector3(a, (randf_range(26.0, 34.0) if long else randf_range(10.0, 18.0)) * size, 2.0 if long else 1.0))
+		for i in range(int(8 * size)):
+			var a := randf() * TAU
+			var sp := randf_range(60.0, 160.0) * size
+			_embers.append(Vector4(0, 0, cos(a) * sp, sin(a) * sp - 40.0))
+
+	func _process(delta: float) -> void:
+		_t += delta
+		for i in range(_embers.size()):
+			var e := _embers[i]
+			e.w += 380.0 * delta
+			_embers[i] = Vector4(e.x + e.z * delta, e.y + e.w * delta, e.z * 0.92, e.w)
+		if _t >= life * 2.0:
+			queue_free()
+		queue_redraw()
+
+	func _draw() -> void:
+		var k := clampf(_t / life, 0.0, 1.0)
+		if k < 1.0:
+			# 光芒：从里往外伸出去，越往后越细越淡；颜色白 → 黄 → 橙
+			var col := Color(1.0, 1.0, 0.92).lerp(Color(1.0, 0.75, 0.25), k)
+			for r in _rays:
+				var d := Vector2(cos(r.x), sin(r.x))
+				var r0 := r.y * (0.15 + 0.6 * k)
+				var r1 := r.y * (0.45 + 0.55 * sqrt(k))
+				draw_line((d * r0).round(), (d * r1).round(), Color(col, 1.0 - k * 0.7), maxf(1.0, r.z * (1.0 - k)))
+			var c := 5.0 * size * (1.0 - k)
+			draw_colored_polygon(PackedVector2Array([Vector2(0, -c * 1.4), Vector2(c, 0), Vector2(0, c * 1.4), Vector2(-c, 0)]),
+				Color(1, 1, 1, 1.0 - k))
+		var ea := 1.0 - clampf(_t / (life * 2.0), 0.0, 1.0)
+		for e in _embers:
+			draw_rect(Rect2(Vector2(e.x, e.y).round(), Vector2(2, 2) if ea > 0.5 else Vector2(1, 1)), Color(1.0, 0.7, 0.25, ea))
 
 
 ## 冲击环：弹反时向外扩散的圆圈

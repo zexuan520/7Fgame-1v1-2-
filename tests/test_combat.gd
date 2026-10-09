@@ -115,6 +115,8 @@ func _run() -> void:
 	await test_tool_hook_smoke_flame()
 	await _setup()
 	await test_items()
+	await _setup()
+	await test_sprite()
 	print("")
 	if failures == 0:
 		print("全部测试通过")
@@ -1203,7 +1205,8 @@ func test_tool_dart() -> void:
 	print("飞镖：打下空中的野狗")
 	_pick_sub("dart")
 	var paper: int = p.kit["paper"]
-	e.global_position = Vector2(470, 286)   # 刚扑起来，离地不高
+	# 刚扑起来，离地不高；离主角近一点，不在野狗“保持距离”的边上（不然它往前还是往后挪全看计时，测试时好时坏）
+	e.global_position = Vector2(440, 286)
 	e.velocity = Vector2(0, -220)
 	await _tap("p1_tool")
 	await _frames(12)
@@ -1261,6 +1264,60 @@ func test_tool_hook_smoke_flame() -> void:
 	_pick_sub("dart")
 	await _tap_with("p1_tool", "p1_down")
 	_check(p.current_sub() == "cracker", "按住下 + 副武器键换下一种（%s）" % p.current_sub())
+
+
+# ---------- 像素精灵（主角的逐帧动画） ----------
+
+func test_sprite() -> void:
+	print("像素精灵：动作齐全、按状态换动作、攻击按前摇/判定/后摇对帧")
+	var sh: SpriteSheet = p.sheet
+	var need := ["idle", "relaxed", "walk", "walk_drawn", "run", "run_drawn", "jump", "apex", "fall", "land", "flip",
+		"charge", "guard", "block", "parry", "dodge", "backstep", "hit", "broken", "death", "downed", "throw", "hook",
+		"item", "drink", "execute", "draw", "sheathe", "plunge_raise", "plunge_fall", "plunge_land", "iai_cut"]
+	for id: String in Moves.LIST:
+		if id != "plunge":
+			need.append(id)
+	for st: Dictionary in Stance.LIST:
+		need.append("st_" + String(st["id"]))
+	for k: String in Flourish.PLAYER_IDLE:
+		pass   # 花剑没画的会退回架势，不算缺
+	var missing: Array = need.filter(func(n: String) -> bool: return not sh.has(n))
+	_check(missing.is_empty(), "要用到的动作都画了（缺 %s）" % str(missing))
+	for n: String in sh.anims:
+		var a: Dictionary = sh.anims[n]
+		var ok := (a["frames"] as Array).size() == (a["ms"] as Array).size() and (a["tips"] as Array).size() == (a["ms"] as Array).size()
+		if a.has("phases"):
+			var sum := 0
+			for x in a["phases"]:
+				sum += int(x)
+			ok = ok and sum <= (a["frames"] as Array).size()
+		if not ok:
+			_check(false, "动作 %s 的帧数据对得上" % n)
+	_check(p.body != null and p.body.texture != null, "主角用精灵画")
+	# 攻击：前摇第一帧是 slash1 的第 0 帧，判定段落在判定帧上
+	p._enter(Player.S.FREE)
+	await _tap("p1_attack")
+	for i in range(30):          # 剑在鞘里时先拔剑，拔完才出刀
+		if p.state == Player.S.ATTACK:
+			break
+		await _frames(1)
+	await _frames(1)
+	_check(p._anim_name == "slash1", "出刀播横斩（%s）" % p._anim_name)
+	var ph: Array = sh.anims["slash1"]["phases"]
+	for i in range(30):
+		if p.attack_phase == 1:
+			break
+		await _frames(1)
+	_check(p._anim_frame >= int(ph[0]) and p._anim_frame < int(ph[0]) + int(ph[1]), "判定段播出刀帧（第 %d 帧）" % p._anim_frame)
+	_check(p.sword_tip_local() != null, "出刀时有剑尖位置")
+	# 朝左时精灵翻过来
+	await _frames(40)
+	p.facing = -1
+	await _frames(2)
+	_check(p.body.scale.x < 0.0, "朝左时精灵翻过来")
+	# 2P 用青衣那张图
+	var sh2 := SpriteSheet.load_sheet("res://assets/sprites/heroine.json", "res://assets/sprites/heroine_p2.png")
+	_check(sh2.texture != null and sh2.texture != sh.texture, "2P 换一套颜色")
 
 
 func test_items() -> void:

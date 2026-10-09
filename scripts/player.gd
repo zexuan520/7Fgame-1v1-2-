@@ -307,18 +307,16 @@ static func _tuck(p: Dictionary) -> Dictionary:
 func _ready() -> void:
 	_build_poses()
 	setup_body()
-	if index == 2:
-		look.cloth = Color("2f6b45")
-		look.cloth_dark = Color("1c4630")
-		look.cloth_light = Color("4f9a6a")
-		look.hair = Color("3a2418")
-		look.band = Color("e0b03a")
+	# 头像和残影用的颜色（人物本身是精灵表里的逐帧像素画）
+	look.hair = Color("2a2236")
+	look.skin = Color("f4cdb0")
+	look.cloth = Color("6aa8c8") if index == 2 else Color("ea8cad")
+	look.band = Color("f4f0f8") if index == 2 else Color("f2608f")
 	scarf_color = look.band
 	look.saya = true
+	_setup_sprite()
 	_pose = POSES["relaxed_sheathed"].duplicate()   # 开局刀在鞘里
 	_spring.reset(_pose)
-	for i in range(7):
-		_scarf.append(global_position + Vector2(0, -45))
 	max_hp = 200.0
 	hp = max_hp
 	max_posture = 100.0
@@ -800,7 +798,7 @@ func _art_shadow(_t: float, _delta: float) -> void:
 	_sure_crit_t = float(art["crit_time"])
 	_sure_crit_bonus = float(art["crit_bonus"])
 	var col := Color(0.55, 0.85, 0.8)
-	main.spawn_ghost(from, _pose, look, facing, col)
+	main.spawn_sprite_ghost(from, sheet.texture, body.region_rect, sheet.origin, facing, col)
 	main.spawn_spark(from + Vector2(0, -26), col, 10)
 	main.spawn_spark(global_position + Vector2(0, -26), col, 10)
 	_art_done = true
@@ -1551,7 +1549,7 @@ func _perfect_dodge() -> void:
 	gain_will("perfect")
 	main.slowmo(0.3, float(stats["perfect_slow"]))
 	main.spawn_text(global_position + Vector2(0, -70), "流云", Color(0.6, 0.95, 0.9), 12)
-	main.spawn_ghost(global_position, _pose, look, facing, Color(0.6, 0.95, 0.9))
+	_ghost(Color(0.6, 0.95, 0.9))
 
 
 ## 机关伤人（坑、竹签）：按最大生命扣，弹一下，短暂无敌免得连着扣
@@ -1630,35 +1628,7 @@ func respawn() -> void:
 func _spawn_slash() -> void:
 	var heavy: bool = attack["heavy"]
 	Game.sfx("slash_heavy" if heavy else "slash")
-	var center := global_position + Vector2(facing * 9.0, -26.0)
-	var big: bool = attack.get("stance", "") == "jodan"
-	var col := Color(1.0, 0.62, 0.3) if heavy or big else Color(1.0, 0.82, 0.55)   # 暖色刀光，重击偏橙
-	var fx: Array = attack.get("fx", ["none"])
-	match String(fx[0]):
-		"slash":
-			var r: float = fx[1]
-			var w: float = fx[4]
-			if big:
-				r += 2.0
-				w += 3.0
-			main.spawn_slash(center, facing, r, fx[2], fx[3], col, w)
-		"flat":
-			# 横斩：从侧面看是一道又平又长的刀光
-			main.spawn_slash(center + Vector2(0, 2), facing, fx[1], -0.45, 0.35, col, 6.0)
-			main.spawn_streak(global_position + Vector2(facing * 2.0, -26.0), facing, 54.0, col)
-		"streak":
-			main.spawn_streak(global_position + Vector2(facing * 6.0, -24.0), facing, fx[1], col)
-		"iai":
-			# 居合：一道又长又平的横斩
-			var c2 := Color(1.0, 0.95, 0.75)
-			main.spawn_slash(center + Vector2(facing * 4.0, 0), facing, 48.0, -0.5, 0.55, c2, 6.0)
-			main.spawn_streak(global_position + Vector2(facing * 4.0, -25.0), facing, 80.0, c2)
-		"spin":
-			var c3 := Color(1.0, 0.86, 0.6)
-			var c := global_position + Vector2(0, -24)
-			main.spawn_slash(c, facing, 48.0, -3.0, 0.3, c3, 8.0)
-			main.spawn_slash(c, -facing, 44.0, -2.6, 0.5, c3, 6.0)
-			main.spawn_dust(global_position, float(facing), 6)
+	# 刀光画在精灵帧里（tools/sprites/smear.py），这里只管声音、震屏和扬尘
 	if heavy:
 		main.punch(0.04)
 	if attack.has("vy") and is_on_floor():
@@ -2014,80 +1984,22 @@ func _update_art(delta: float) -> void:
 	var dashing: bool = state == S.ATTACK and attack.get("ghost", false) and attack_phase == 1
 	if (state == S.DODGE or dashing) and _ghost_timer <= 0.0:
 		_ghost_timer = 0.03 if dashing else 0.04
-		main.spawn_ghost(global_position, _pose.duplicate(), look, facing, color)
+		_ghost(color)
 
-	# 头带飘带：每一节跟随前一节，受风和速度影响
-	var j := Puppet.solve(_pose)
-	var head: Vector2 = j["head"]
-	var anchor := global_position + Vector2((head.x - 5.0) * facing, head.y - 2.0) * look.scale
-	_scarf[0] = anchor
-	for i in range(1, _scarf.size()):
-		var wave := sin(clock * 10.0 - i * 0.9) * 1.4
-		var target := _scarf[i - 1] + Vector2(-facing * 3.6 - velocity.x * 0.012, 0.7 + wave - velocity.y * 0.006)
-		_scarf[i] = _scarf[i].lerp(target, 1.0 - exp(-32.0 * delta))
-		if _scarf[i].distance_to(_scarf[i - 1]) > 4.5:
-			_scarf[i] = _scarf[i - 1] + (_scarf[i] - _scarf[i - 1]).normalized() * 4.5
+	_update_sprite(delta)
 
 
 func _draw() -> void:
-	var top := Puppet.head_top(look)
+	var top := HEAD_TOP
 	# 影子
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.25))
 	draw_circle(Vector2.ZERO, 13.0, Color(0, 0, 0, 0.45))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	var tint := Color(0, 0, 0, 0)
-	if flash_timer > 0.0:
-		# 喝药、放招式时只是淡淡一层颜色，受击才整个闪白
-		tint = Color(flash_color, 0.45 if state == S.DRINK or state == S.ART else 1.0)
-	elif state == S.BROKEN:
-		tint = Color(0.2, 0.2, 0.25, 0.35)
-	var alpha := 0.6 if state == S.DODGE else 1.0
 	if smoke_t > 0.0:
-		alpha = 0.35   # 烟幕里看不清
 		for k in range(4):
 			var a := clock * 1.5 + k * 1.6
 			draw_circle(Vector2(cos(a) * 12.0, -24.0 + sin(a * 1.3) * 10.0), 9.0, Color(0.65, 0.68, 0.72, 0.25))
-
-	# 头带飘带画在身体后面
-	if _scarf.size() > 1 and state != S.DEAD:
-		var pts := PackedVector2Array()
-		for pt in _scarf:
-			pts.append(pt - global_position)
-		draw_polyline(pts, Color(0.03, 0.03, 0.06, alpha), 4.0)
-		draw_polyline(pts, Color(scarf_color, alpha), 2.0)
-		draw_polyline(pts.slice(0, 3), Color(scarf_color.lightened(0.3), alpha), 1.0)
-
-	var rim := Color(0.5, 0.62, 0.9, 0.5)
-	if state == S.DEAD:
-		# 先跪下，再往前扑倒
-		var k := _ease_out_bounce(clampf((state_time - 0.35) / 0.4, 0.0, 1.0))
-		var rot := facing * PI / 2.0 * k
-		var pivot := Vector2(facing * 8.0, 0)
-		var off := pivot - pivot.rotated(rot)
-		Puppet.draw_lit(self, _pose, look, facing, rim, off + Vector2(0, -2.0 * k), Color(0.15, 0.15, 0.2, 0.35 * k), 1.0, rot)
-	elif (state == S.ART and art["run"] == "spin" and state_time >= float(art["windup"])) \
-			or (state == S.ATTACK and attack.get("spin", false) and attack_phase == 1):
-		# 回旋斩、旋风斩：横向压扁再翻面，假装在原地转身
-		var turn := 0.0
-		if state == S.ART:
-			turn = (state_time - float(art["windup"])) / float(art["active"]) * float(art["ticks"]) * TAU
-		else:
-			turn = state_time / float(attack["active"]) * TAU
-		var c := cos(turn)
-		var f := facing if c >= 0.0 else -facing
-		var sq := Vector2(maxf(absf(c), 0.25), 1.0) * _squash
-		Puppet.draw_lit(self, _pose, look, f, Color(1.0, 0.85, 0.45, 0.7), Vector2.ZERO, tint, alpha, 0.0, sq, velocity.x)
-	else:
-		var spin := 0.0
-		var spin_off := Vector2.ZERO
-		if _spin_time >= 0.0:
-			spin = facing * TAU * clampf(_spin_time / 0.32, 0.0, 1.0)
-			# 绕身体中心翻转
-			var pivot := Vector2(0, -26)
-			spin_off = pivot - pivot.rotated(spin)
-		var turn := lerpf(0.2, 1.0, smoothstep(0.0, 1.0, _turn_t))
-		Puppet.draw_lit(self, _pose, look, facing, rim, spin_off, tint, alpha, spin, _squash * Vector2(turn, 1.0), velocity.x)
 
 	if state == S.DRINK:
 		_draw_gourd()
@@ -2095,14 +2007,13 @@ func _draw() -> void:
 	# 金刚没：身上一圈金光；影步之后刀尖一点红光（下一刀必会心）
 	if _kongo_t > 0.0 and state != S.DEAD:
 		var ka := 0.25 + 0.15 * sin(clock * 10.0)
-		draw_arc(Vector2(0, -26), 24.0, 0.0, TAU, 24, Color(1.0, 0.85, 0.4, ka), 2.0)
-		draw_arc(Vector2(0, -26), 20.0, 0.0, TAU, 24, Color(1.0, 0.95, 0.7, ka * 0.6), 1.0)
-	if _sure_crit_t > 0.0 and state != S.DEAD:
-		var tip2 := Puppet.sword_tip(_pose, look, facing)
-		draw_circle(tip2, 3.0, Color(1.0, 0.3, 0.25, 0.5 + 0.3 * sin(clock * 12.0)))
-	# 弹反窗口内刀身发光
-	if state == S.GUARD and parry_timer > 0.0:
-		var tip := Puppet.sword_tip(_pose, look, facing)
+		draw_arc(Vector2(0, -24), 24.0, 0.0, TAU, 24, Color(1.0, 0.85, 0.4, ka), 2.0)
+		draw_arc(Vector2(0, -24), 20.0, 0.0, TAU, 24, Color(1.0, 0.95, 0.7, ka * 0.6), 1.0)
+	var tip: Variant = sword_tip_local()
+	if _sure_crit_t > 0.0 and state != S.DEAD and tip != null:
+		draw_circle(tip, 3.0, Color(1.0, 0.3, 0.25, 0.5 + 0.3 * sin(clock * 12.0)))
+	# 弹反窗口内刀尖发光
+	if state == S.GUARD and parry_timer > 0.0 and tip != null:
 		draw_circle(tip, 3.5, Color(1.0, 0.95, 0.6, 0.5))
 		draw_circle(tip, 2.0, Color(1.0, 1.0, 0.85))
 	if state == S.CHARGE:
@@ -2135,9 +2046,8 @@ func _draw() -> void:
 
 ## 葫芦药罐，拿在后手上
 func _draw_gourd() -> void:
-	var j := Puppet.solve(_pose)
-	var hb: Vector2 = j["hand_b"]
-	var at := Vector2(hb.x * facing, hb.y) * look.scale
+	var hb := sheet.hand_b(_anim_name, _anim_frame)
+	var at := Vector2(hb.x * facing, hb.y)
 	var tilt := Vector2(facing * 1.5, -1.5)        # 罐口朝嘴
 	var outline := Color(0.03, 0.02, 0.04)
 	draw_circle(at - tilt, 4.0, outline)
@@ -2146,6 +2056,224 @@ func _draw_gourd() -> void:
 	draw_circle(at + tilt * 0.6, 2.0, Color("a5402f"))
 	draw_rect(Rect2(at - tilt + Vector2(-1, -1), Vector2(1, 1)), Color("d9775a"))
 	draw_line(at + tilt * 0.2, at + tilt * 0.2 + Vector2(0, 2), Color("d8c08a"), 1.0)   # 系绳
+
+
+# ---------- 像素精灵（tools/sprites 生成的逐帧动画） ----------
+
+const HEAD_TOP := -48.0           # 头顶（摆编号和架势条）
+const RUN_CYCLE := 96.0           # 跑一个周期走多远（像素），按距离换帧脚才不打滑
+const WALK_CYCLE := 77.0
+
+var sheet: SpriteSheet
+var body: Sprite2D
+var _anim_name := "idle"
+var _anim_frame := 0
+var _anim_t := 0.0
+var _sprite_dist := 0.0
+var _react := ""                  # 格挡、弹反的反应动作（在格挡姿势上插播一下）
+var _react_t := 0.0
+var _seen_parry := 0
+var _seen_block := 0
+
+
+func _setup_sprite() -> void:
+	var png := "res://assets/sprites/heroine_p2.png" if index == 2 else "res://assets/sprites/heroine.png"
+	sheet = SpriteSheet.load_sheet("res://assets/sprites/heroine.json", png)
+	body = Sprite2D.new()
+	body.texture = sheet.texture
+	body.region_enabled = true
+	body.centered = false
+	body.offset = -sheet.origin
+	var mat := ShaderMaterial.new()
+	mat.shader = preload("res://scripts/sprite_tint.gdshader")
+	body.material = mat
+	add_child(body)
+	_seen_parry = parry_count
+	_seen_block = block_count
+
+
+## 剑尖（本地坐标，已经按朝向翻好）；剑在鞘里返回 null
+func sword_tip_local() -> Variant:
+	if sheet == null:
+		return null
+	var t: Variant = sheet.tip(_anim_name, _anim_frame)
+	return null if t == null else Vector2((t as Vector2).x * facing, (t as Vector2).y)
+
+
+func _ghost(col: Color) -> void:
+	main.spawn_sprite_ghost(global_position, sheet.texture, body.region_rect, sheet.origin, facing, col)
+
+
+func _update_sprite(delta: float) -> void:
+	if absf(velocity.x) > 10.0 and is_on_floor():
+		_sprite_dist += absf(velocity.x) * delta
+	# 弹反、格挡成功时插播反应动作
+	if parry_count != _seen_parry:
+		_seen_parry = parry_count
+		_react = "parry"
+		_react_t = 0.0
+	elif block_count != _seen_block:
+		_seen_block = block_count
+		_react = "block"
+		_react_t = 0.0
+	if _react != "":
+		_react_t += delta
+		if _react_t >= sheet.length(_react) or state != S.GUARD:
+			_react = ""
+	var sel := _sprite_select()
+	var name: String = sel[0]
+	if name != _anim_name:
+		_anim_name = name
+		_anim_t = 0.0
+	else:
+		_anim_t += delta
+	_anim_frame = int(sel[1]) if int(sel[1]) >= 0 else sheet.frame_at(name, _anim_t)
+	body.region_rect = sheet.region(_anim_name, _anim_frame)
+	body.scale = Vector2(facing, 1.0) * _squash
+	body.position = global_position.round() - global_position   # 对齐到整像素，不糊
+	# 受击闪白；喝药、放招式时只是淡淡一层颜色；破防发灰
+	var tint := Color(0, 0, 0, 0)
+	if flash_timer > 0.0:
+		tint = Color(flash_color, 0.45 if state == S.DRINK or state == S.ART else 1.0)
+	elif state == S.BROKEN:
+		tint = Color(0.2, 0.2, 0.25, 0.35)
+	(body.material as ShaderMaterial).set_shader_parameter("tint", tint)
+	var alpha := 0.6 if state == S.DODGE else 1.0
+	if smoke_t > 0.0:
+		alpha = 0.35
+	body.modulate.a = alpha
+
+
+## 这一刻播哪个动作的哪一帧：[动作名, 帧号]；帧号 -1 表示按这个动作自己的时间往下播
+func _sprite_select() -> Array:
+	var t := state_time
+	match state:
+		S.FREE:
+			if not is_on_floor():
+				if _spin_time >= 0.0:
+					return ["flip", sheet.frame_at("flip", _spin_time / 0.32 * sheet.length("flip"))]
+				if velocity.y < -120.0:
+					return ["jump", -1]
+				if velocity.y < 120.0:
+					return ["apex", -1]
+				return ["fall", -1]
+			if _land_timer > 0.0:
+				return ["land", sheet.frame_at("land", (0.1 - _land_timer) * 1.3)]
+			if absf(velocity.x) > 10.0:
+				var name := ("run" if running else "walk") + ("" if is_sheathed() else "_drawn")
+				var n := sheet.count(name)
+				return [name, int(_sprite_dist / (RUN_CYCLE if running else WALK_CYCLE) * n) % n]
+			return _idle_anim()
+		S.CHARGE:
+			if charge_time < 0.12:
+				return _idle_anim()
+			return ["charge", -1]
+		S.ATTACK:
+			return _attack_frame()
+		S.GUARD:
+			if _react != "":
+				return [_react, sheet.frame_at(_react, _react_t)]
+			return ["guard", -1]
+		S.DODGE:
+			var dn := "dodge" if dodge_dir == facing else "backstep"
+			return [dn, sheet.frame_at(dn, t / DODGE_TIME * sheet.length(dn))]
+		S.HITSTUN:
+			return ["broken", -1] if _stun_time > 0.5 else ["hit", sheet.frame_at("hit", t)]
+		S.DEAD:
+			if downed > 0.0 and t >= sheet.length("death") * 0.5:
+				return ["downed", -1]
+			return ["death", sheet.frame_at("death", t)]
+		S.TOOL:
+			if String(tool.get("id", "")) == "hook":
+				return ["hook", 0]
+			return ["throw", sheet.frame_at("throw", t)]
+		S.ITEM:
+			return ["item", sheet.frame_at("item", t / (Items.USE_TIME + 0.15) * sheet.length("item"))]
+		S.DRINK:
+			return ["drink", sheet.frame_at("drink", t / DRINK_TIME * sheet.length("drink"))]
+		S.ART:
+			return _art_frame()
+		S.BROKEN:
+			return ["broken", -1]
+		S.EXECUTE:
+			return ["execute", sheet.frame_at("execute", t / EXECUTE_TIME * sheet.length("execute"))]
+	return ["idle", -1]
+
+
+func _idle_anim() -> Array:
+	if _batto_t >= 0.0:
+		return ["draw", sheet.frame_at("draw", _batto_t / BATTO_TIME * sheet.length("draw"))]
+	if _noto_t >= 0.0:
+		return ["sheathe", sheet.frame_at("sheathe", _noto_t / NOTO_TIME * sheet.length("sheathe"))]
+	if _fl_kind != "" and sheet.has("fl_" + _fl_kind):
+		var fn := "fl_" + _fl_kind
+		return [fn, sheet.frame_at(fn, _fl_t / Flourish.duration(_fl_kind) * sheet.length(fn))]
+	if _ready_blend >= 0.5:
+		var sn := "st_" + String(stance()["id"])
+		if sheet.has(sn):
+			return [sn, -1]
+	return ["idle", -1] if is_sheathed() else ["relaxed", -1]
+
+
+## 攻击：按前摇 / 判定 / 后摇三段对齐帧
+func _attack_frame() -> Array:
+	var id := String(attack.get("id", "slash1"))
+	var name := id
+	if String(attack.get("cut", "")) == "iai_cut":
+		name = "iai_cut"
+	if id == "plunge":
+		match attack_phase:
+			0: return ["plunge_raise", sheet.frame_at("plunge_raise", state_time / float(attack["windup"]) * sheet.length("plunge_raise"))]
+			1: return ["plunge_fall", -1]
+			_: return ["plunge_land", sheet.frame_at("plunge_land", state_time / float(attack["recover"]) * sheet.length("plunge_land"))]
+	if not sheet.has(name):
+		name = "slash1"
+	var dur: float = [float(attack["windup"]), float(attack["active"]), float(attack["recover"])][clampi(attack_phase, 0, 2)]
+	var k := state_time / maxf(dur, 0.001)
+	if attack_phase == 2 and combo_queued:
+		k = 0.0          # 已经按了下一刀：停在收势第一帧，直接接下一招
+	if attack.get("spin", false) and attack_phase == 1:
+		return [name, _spin_frame(name, state_time)]
+	return [name, sheet.frame_in_phase(name, attack_phase, k)]
+
+
+## 旋风斩、回旋斩：判定段那几帧（转身）一直循环
+func _spin_frame(name: String, t: float) -> int:
+	var ph: Array = sheet.anims[name]["phases"]
+	var start := int(ph[0])
+	return start + int(t / 0.038) % int(ph[1])
+
+
+func _art_frame() -> Array:
+	var t := state_time
+	var w := float(art.get("windup", 0.1))
+	var a := float(art.get("active", 0.1))
+	var r := float(art.get("recover", 0.3))
+	var run := String(art.get("run", ""))
+	var name := "slash3"
+	match run:
+		"spin":
+			if t < w:
+				return ["slash5", sheet.frame_in_phase("slash5", 0, t / w)]
+			return ["slash5", _spin_frame("slash5", t - w)]
+		"iai": name = "iai_cut"
+		"wave": name = "slash3"
+		"kongo": return ["guard", -1]
+		"shadow": name = "dash"
+		"quake":
+			if t < w:
+				return ["plunge_raise", sheet.frame_at("plunge_raise", t / w * sheet.length("plunge_raise"))]
+			if not _art_done:
+				return ["plunge_fall", -1]
+			return ["plunge_land", -1]
+		"flurry":
+			var fn := "slash2" if _art_tick % 2 == 0 else "slash3"
+			return [fn, sheet.frame_in_phase(fn, 1, 0.2)]
+	if t < w:
+		return [name, sheet.frame_in_phase(name, 0, t / w)]
+	if t < w + a:
+		return [name, sheet.frame_in_phase(name, 1, (t - w) / a)]
+	return [name, sheet.frame_in_phase(name, 2, (t - w - a) / r)]
 
 
 static func _ease_out_bounce(x: float) -> float:
