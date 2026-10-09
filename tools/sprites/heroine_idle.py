@@ -21,13 +21,13 @@ layers = [
   [(3,9,"HH"),(4,8,"HhH"),(5,7,"HhH"),(6,7,"HhH"),(7,6,"HhH"),(8,6,"HH"),(9,6,"HH"),(10,5,"HH"),(11,5,"HH"),
    (12,5,"HH"),(13,5,"HH"),(14,5,"H"),(15,4,"HH"),(16,4,"H"),(17,4,"H"),(18,3,"H")],
   # 后袖
-  [(y,8,"ppp") for y in range(16,25)] + [(25,8,"p.p"),(26,8,"p")],
-  # 后脚靴
-  [(38,11,"bB"),(39,11,"bB"),(40,11,"bBB"),(41,10,"bBB"),(42,10,"bBBBB"),(43,10,"BBBBBB")],
-  # 长袍后片
-  [(25,9,"pPPPPPPPP"),(26,8,"pPPPPPPPPP"),(27,8,"pPPPPPPPPP"),(28,7,"ppPPPPPPPP"),(29,7,"pPPPPPPPPP"),
-   (30,6,"ppPPPPQPPP"),(31,6,"pPPPPQWQPP"),(32,5,"ppPPPPQPPPP"),(33,5,"pPPPPPPPPPP"),(34,4,"ppPPPPPPPPPP"),
-   (35,4,"ppPPPQPPPPPP"),(36,4,"pPPPQWQPPPP"),(37,3,"ppPPPPQPPPPP"),(38,3,"pPP.pPPP.PPP"),(39,3,"pP..pPP..PP"),(40,3,"p....P....P")],
+  [(y,9,"pp") for y in range(16,23)] + [(23,9,"p")],
+  # 后腿：袍子下面露一截白裤，再是靴子
+  [(y,11,"www") for y in range(33,38)] + [(38,11,"bB"),(39,11,"bB"),(40,11,"bBB"),(41,10,"bBB"),(42,10,"bBBBB"),(43,10,"BBBBBB")],
+  # 长袍后片（到小腿上面就收住）
+  [(25,10,"pPPPPPPP"),(26,10,"pPPPPPPPP"),(27,9,"ppPPPPPPPP"),(28,9,"pPPPPPQPPP"),(29,9,"pPPPPQWQPP"),
+   (30,8,"ppPPPPPQPPP"),(31,8,"pPPPPPPPPPP"),(32,8,"ppPPQPPPPPP"),(33,8,"pPPQWQPPPPP"),(34,8,"pPPPQPPPPP"),
+   (35,8,"pP.pPPP.PP"),(36,8,"p..PP...P")],
   # 前腿：白裤、绑带、黑靴
   [(25,16,"WWWW"),(26,16,"WWWWW"),(27,17,"WWWWW"),(28,17,"WWWWWw"),(29,18,"WWWWWw"),(30,18,"WWWWWw"),
    (31,19,"WWWWWw"),(32,19,"WWWWw"),(33,20,"WWWWw"),(34,20,"WWWw"),(35,20,"WWWw"),(36,20,"WWWw"),
@@ -44,9 +44,11 @@ layers = [
    (12,12,"HHHsHSSSmS"),(13,13,"HssSSSSS")],
   # 发髻、花
   [(1,11,"HHH"),(2,10,"HhHHH"),(3,10,"HhHHH"),(4,11,"HHH"),(0,16,"FfF"),(1,16,"fYf"),(2,16,"FfF")],
-  # 前袖
-  [(15,19,"PP"),(16,19,"PPP"),(17,19,"PPPP"),(18,19,"PPPP"),(19,19,"PPPPP"),(20,19,"PPPPPP"),(21,19,"PPPPPPW"),
-   (22,19,"pPPPPPW"),(23,19,"pPPPPP"),(24,19,"pPPQPP"),(25,19,"ppQWQP"),(26,19,"pPPQP"),(27,19,"p.PP"),(28,20,"P")],
+  # 剑鞘、剑柄（插在腰封上：鞘尾斜向后下，剑柄朝前上）
+  [],
+  # 前袖：胳膊自然垂着，手搭在剑柄上
+  [(15,19,"PP"),(16,18,"PPPQ"),(17,18,"PPPPQ"),(18,18,"PPPPQ"),(19,18,"pPPPPQ"),(20,18,"pPPPPP"),
+   (21,18,"pPPPPW"),(22,18,"pPPPP"),(23,18,"pPPQ"),(24,18,"pP.P"),(25,18,"p")],
 ]
 
 img = Image.new("RGBA", (W_ + 2, H_ + 2), (0, 0, 0, 0))
@@ -59,23 +61,18 @@ for layer in layers:
         for i, c in enumerate(s):
             if c != ".":
                 put(x + i, y, c)
-# 袖子和身子之间的分界、袖子上沿受光
-for y in range(16, 22): put(18, y, "D")
-for (x, y) in [(20, 15), (21, 16), (22, 17), (22, 18), (23, 19), (24, 20)]: put(x, y, "Q")
-# 剑：剑柄、护手、剑身（两像素宽，上沿亮）、剑穗；手握在上面
-def line(x0, y0, x1, y1, c):
-    n = max(abs(x1 - x0), abs(y1 - y0))
-    for k in range(n + 1):
-        put(round(x0 + (x1 - x0) * k / n), round(y0 + (y1 - y0) * k / n), c)
-for x in range(29, 43):
-    y = 22 + round((x - 29) * 0.62)
-    put(x, y, "l"); put(x, y + 1, "L")
-put(43, 31, "l")
-for (x, y) in [(23, 18)]: put(x, y, "T")
-line(24, 19, 26, 21, "M")
-put(29, 21, "T"); put(28, 22, "T"); put(27, 23, "T")
-for (x, y, c) in [(22, 19, "F"), (22, 20, "F"), (21, 21, "f"), (21, 22, "F")]: put(x, y, c)
-for (x, y, c) in [(26, 21, "S"), (27, 21, "S"), (26, 22, "s"), (27, 22, "S")]: put(x, y, c)
+# 剑鞘：两像素宽，上沿亮一点，鞘尾包银
+for x in range(5, 21):
+    y = 25 + round((20 - x) * 0.53)
+    put(x, y, "D"); put(x, y + 1, "M")
+put(4, 33, "T"); put(4, 34, "T"); put(5, 34, "T")
+# 护手、剑柄、柄尾和剑穗
+put(21, 23, "T"); put(21, 24, "T"); put(22, 25, "T")
+for (x, y) in [(22, 23), (23, 23), (24, 22), (25, 22), (26, 21)]: put(x, y, "M")
+put(27, 20, "T"); put(27, 21, "T")
+for (x, y, c) in [(28, 21, "F"), (28, 22, "F"), (28, 23, "f"), (27, 24, "F")]: put(x, y, c)
+# 手搭在剑柄上
+for (x, y, c) in [(23, 22, "S"), (24, 23, "S"), (23, 24, "s"), (24, 24, "S")]: put(x, y, c)
 # 外轮廓
 o = tuple(int(OUTLINE[i:i+2], 16) for i in (0, 2, 4)) + (255,)
 src = img.copy(); sp = src.load()
