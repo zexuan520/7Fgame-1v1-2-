@@ -95,6 +95,54 @@ static func lerp_pose(a: Dictionary, b: Dictionary, t: float) -> Dictionary:
 	return out
 
 
+## 姿势弹簧：每个关节按弹簧运动追目标姿势，带速度和惯性。
+## 比直接插值顺：起动有加速、停下有缓冲，出刀太快时还会甩过头一点再弹回来（跟随动作）。
+## freq 越大跟得越紧（Hz），zeta 越小越容易甩过头（1 为刚好不过冲）。
+class Spring:
+	const SNAP := ["sheathed", "sword_free", "sword_at", "blur"]   # 这些直接跳到目标
+	const ANGLE := ["sword", "lean", "head"]
+	var pose: Dictionary = {}
+	var vel: Dictionary = {}
+
+	func reset(p: Dictionary) -> void:
+		pose = p.duplicate()
+		vel = {}
+
+	func step(target: Dictionary, freq: float, zeta: float, dt: float) -> Dictionary:
+		var w := TAU * freq
+		var n := maxi(1, ceili(dt * w / 0.3))   # 分几小步算，频率高也稳定
+		var h := dt / n
+		for k: String in target:
+			var t = target[k]
+			if not pose.has(k) or k in SNAP:
+				pose[k] = t
+				continue
+			if t is float or t is int:
+				var ang := k in ANGLE
+				var x: float = pose[k]
+				var v: float = vel.get(k, 0.0)
+				for i in range(n):
+					var err := angle_difference(x, float(t)) if ang else float(t) - x
+					v += (w * w * err - 2.0 * zeta * w * v) * h
+					x += v * h
+				pose[k] = x
+				vel[k] = v
+			elif t is Vector2:
+				var ang := k.begins_with("arm")
+				var x: Vector2 = pose[k]
+				var v: Vector2 = vel.get(k, Vector2.ZERO)
+				var tv: Vector2 = t
+				for i in range(n):
+					var err := Vector2(angle_difference(x.x, tv.x), angle_difference(x.y, tv.y)) if ang else tv - x
+					v += (err * w * w - v * 2.0 * zeta * w) * h
+					x += v * h
+				pose[k] = x
+				vel[k] = v
+			else:
+				pose[k] = t
+		return pose
+
+
 ## 按时间在一串关键姿势之间插值（带缓入缓出）。track 为 [[时间, 姿势], ...]，时间递增
 static func sample(track: Array, t: float) -> Dictionary:
 	if t <= float(track[0][0]):

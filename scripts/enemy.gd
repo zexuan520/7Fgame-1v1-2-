@@ -50,6 +50,7 @@ var look := Puppet.Look.new()
 var _pose: Dictionary = {}
 var _clock := 0.0
 var _fell := false
+var _spring := Puppet.Spring.new()
 var _stalk := 0.0           # 0 扛刀放松，1 压低戒备
 var _fl_kind := ""          # 正在做的挑衅/耍刀动作（见 Flourish）
 var _fl_t := 0.0
@@ -99,6 +100,7 @@ func _ready() -> void:
 	look.sword_len = 28.0
 	look.width = 1.15
 	_pose = POSES["shoulder"].duplicate()
+	_spring.reset(_pose)
 	body_size = Vector2(30, 56)
 	setup_body()
 	posture_recover_rate = 25.0
@@ -218,9 +220,23 @@ func _physics_process(delta: float) -> void:
 	var near := target != null and absf(target.global_position.x - global_position.x) < 200.0
 	_stalk = move_toward(_stalk, 1.0 if near else 0.0, delta * 2.5)
 	_update_flourish(delta)
-	var rate := 50.0 if state == S.ACTIVE else 18.0
-	_pose = Puppet.lerp_pose(_pose, _target_pose(), 1.0 - exp(-rate * delta))
+	var sp := _spring_params()
+	_pose = _spring.step(_target_pose(), sp.x, sp.y, delta)
 	queue_redraw()
+
+
+## 弹簧松紧（频率 Hz，阻尼）：蓄力慢、出刀快而甩、收招带惯性
+func _spring_params() -> Vector2:
+	if _fl_kind != "":
+		return Vector2(9.0, 0.95)
+	match state:
+		S.WINDUP: return Vector2(7.0, 0.85)
+		S.ACTIVE: return Vector2(12.0, 0.5)
+		S.RECOVER: return Vector2(5.0, 0.75)
+		S.GUARD: return Vector2(10.0, 0.7)
+		S.FLINCH, S.STAGGER: return Vector2(9.0, 0.45)
+		S.IDLE: return Vector2(7.0, 0.9) if absf(velocity.x) > 5.0 else Vector2(4.0, 0.8)
+	return Vector2(5.0, 0.8)
 
 
 # ---------- AI ----------

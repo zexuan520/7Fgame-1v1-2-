@@ -18,6 +18,8 @@ const RESPAWN_TIME := 3.0
 const GUARD_SPAM_GAP := 0.35        # 连按格挡间隔太短会缩小弹反窗口
 const GUARD_SPAM_FACTOR := 0.4
 const EXECUTE_RANGE := 80.0
+const NOTO_TIME := 0.45             # 收刀入鞘用时
+const TURN_TIME := 0.1
 
 # 药罐：每局 3 次，每次回 40% 生命；喝的时候被打会打断，这一口就浪费了
 const MAX_GOURDS := 3
@@ -67,6 +69,10 @@ var gourds := MAX_GOURDS
 var stance_index := 0               # 当前架势（见 Stance.LIST）
 var _switch_t := -1.0               # 切换架势的转刀动画
 var _drawn_timer := 0.0             # 拔刀式：出过刀后多久收刀入鞘
+var _noto_t := -1.0                 # 收刀入鞘动画（纳刀）
+var _turn_t := 1.0                  # 转身动画
+var _run_phase := 0.0               # 跑步周期按走过的距离算，脚不打滑
+var _spring := Puppet.Spring.new()
 var will := 0.0
 var _drank := false
 var _art_tick := -1
@@ -190,6 +196,7 @@ func _ready() -> void:
 	scarf_color = look.band
 	look.saya = true
 	_pose = POSES["idle"].duplicate()
+	_spring.reset(_pose)
 	for i in range(7):
 		_scarf.append(global_position + Vector2(0, -45))
 	max_hp = 200.0
@@ -265,9 +272,11 @@ func _physics_process(delta: float) -> void:
 
 # ---------- 各状态 ----------
 
-func _state_free(_delta: float) -> void:
+func _state_free(delta: float) -> void:
 	var dir := Input.get_axis(prefix + "left", prefix + "right")
-	velocity.x = dir * MOVE_SPEED
+	# 起步和刹车有很短的加减速，动作才接得上
+	var accel := 2000.0 if absf(dir) > 0.1 else 2600.0
+	velocity.x = move_toward(velocity.x, dir * MOVE_SPEED, accel * delta)
 	if absf(dir) > 0.1:
 		facing = 1 if dir > 0.0 else -1
 	if _pressed("jump"):
@@ -526,7 +535,7 @@ func switch_stance(step: int) -> void:
 
 ## 拔刀式下刀是否收在鞘里
 func is_sheathed() -> bool:
-	return bool(stance()["sheathed"]) and _drawn_timer <= 0.0 and (state == S.FREE or state == S.CHARGE)
+	return bool(stance()["sheathed"]) and _drawn_timer <= 0.0 and _noto_t < 0.0 and (state == S.FREE or state == S.CHARGE)
 
 
 func _start_execute(target: Enemy) -> void:
@@ -723,22 +732,25 @@ func _target_pose() -> Dictionary:
 
 
 func _run_pose() -> Dictionary:
-	var ph := clock * 14.0
+	var ph := _run_phase
 	var s := sin(ph)
 	var c := cos(ph)
-	return Puppet.pose({
+	var run := Puppet.pose({
 		"crouch": 2.2 + absf(s) * 1.6, "lean": 0.34 + absf(s) * 0.04, "head": -0.1,
 		"foot_f": Vector2(6.5 * s, -maxf(0.0, 4.5 * c)),
 		"foot_b": Vector2(-6.5 * s, -maxf(0.0, -4.5 * c)),
 		"arm_f": Vector2(-0.5 + 0.25 * s, 0.1), "sword": -1.0 + 0.15 * s,   # 刀拖在身后
 		"arm_b": Vector2(0.9 * -s, 1.2 + 0.4 * -s),
-	}) if not is_sheathed() else Puppet.pose({
-		"crouch": 2.2 + absf(s) * 1.6, "lean": 0.34 + absf(s) * 0.04, "head": -0.1,
-		"foot_f": Vector2(6.5 * s, -maxf(0.0, 4.5 * c)),
-		"foot_b": Vector2(-6.5 * s, -maxf(0.0, -4.5 * c)),
-		"arm_f": Vector2(0.25, 1.5), "sword": 0.5, "sheathed": 1.0,   # 手按刀柄跑
-		"arm_b": Vector2(0.9 * -s, 1.2 + 0.4 * -s),
 	})
+	if is_sheathed():
+		run["arm_f"] = Vector2(0.25, 1.5)   # 手按刀柄跑
+		run["sword"] = 0.5
+		run["sheathed"] = 1.0
+	# 刚起步、快停下时只迈小步，和站姿混合
+	var k := clampf(absf(velocity.x) / MOVE_SPEED, 0.0, 1.0)
+	if k < 0.999:
+		return Puppet.lerp_pose(_idle_pose(), run, smoothstep(0.0, 1.0, k))
+	return run
 
 
 ## 当前架势的姿势；drawn 为 true 时拔刀式也按出鞘算（刚砍完）
@@ -761,11 +773,35 @@ func _idle_pose() -> Dictionary:
 	p["crouch"] = float(p["crouch"]) + 0.35 * sin(clock * 2.6 + 1.0) * _ready_blend
 	if not is_sheathed():
 		p["sword"] = float(p["sword"]) + 0.07 * sin(clock * 1.9) * _ready_blend
+	if _noto_t >= 0.0:
+		p = _noto_pose(p)
 	# 换架势：刀在手里转一圈再落到新架势
 	if _switch_t >= 0.0 and not is_sheathed():
 		var k := clampf(_switch_t / 0.35, 0.0, 1.0)
 		p["sword"] = float(p["sword"]) - TAU * (1.0 - pow(1.0 - k, 3.0))
 		p["blur"] = -0.35 * (1.0 - k)
+	return p
+
+
+## 纳刀：手往前伸、刀转成和鞘平行，再把手收回鞘口，刀身顺着鞘滑进去
+func _noto_pose(base: Dictionary) -> Dictionary:
+	var p := base.duplicate()
+	var j := Puppet.solve(p)
+	var up: Vector2 = j["up"]
+	var fwd := Vector2(-up.y, up.x) * -1.0
+	if fwd.x < 0.0:
+		fwd = -fwd
+	var back := (-fwd * 0.93 - up * 0.36).normalized()
+	var saya_angle := atan2(back.x, back.y)
+	var k1 := smoothstep(0.0, 1.0, _noto_t / 0.2)
+	var k2 := smoothstep(0.0, 1.0, (_noto_t - 0.2) / (NOTO_TIME - 0.2))
+	var reach := Vector2(1.15, 1.45)                      # 手伸到身前
+	var at_mouth: Vector2 = POSES["relaxed_sheathed"]["arm_f"]
+	var af: Vector2 = base["arm_f"]
+	p["arm_f"] = af.lerp(reach, k1).lerp(at_mouth, k2)
+	p["arm_b"] = (base["arm_b"] as Vector2).lerp(Vector2(0.3, 1.1), k1)   # 后手扶住鞘口
+	p["sword"] = lerp_angle(float(base["sword"]), saya_angle, k1)
+	p["head"] = float(base["head"]) + 0.12 * k1
 	return p
 
 
@@ -796,6 +832,32 @@ func _start_flourish(kind: String) -> void:
 	_fl_t = 0.0
 
 
+## 弹簧松紧（频率 Hz，阻尼）：出刀快而甩，待机慢而稳
+func _spring_params() -> Vector2:
+	if _fl_kind != "" or _switch_t >= 0.0 or _noto_t >= 0.0:
+		return Vector2(9.0, 0.95)
+	match state:
+		S.ATTACK:
+			match attack_phase:
+				0: return Vector2(10.0, 0.85)
+				1: return Vector2(12.0, 0.5)
+				_: return Vector2(6.0, 0.75)
+		S.EXECUTE, S.ART: return Vector2(11.0, 0.55)
+		S.CHARGE: return Vector2(7.0, 0.8)
+		S.GUARD: return Vector2(13.0, 0.6) if parry_timer > 0.0 else Vector2(9.0, 0.8)
+		S.DODGE: return Vector2(9.0, 0.8)
+		S.HITSTUN: return Vector2(9.0, 0.45)
+		S.DRINK: return Vector2(6.0, 0.85)
+		S.DEAD, S.BROKEN: return Vector2(5.0, 0.8)
+	if not is_on_floor():
+		return Vector2(7.0, 0.7)
+	if _land_timer > 0.0:
+		return Vector2(10.0, 0.6)
+	if absf(velocity.x) > 10.0:
+		return Vector2(8.0, 0.9)
+	return Vector2(4.0, 0.8)
+
+
 func _update_art(delta: float) -> void:
 	# 待机时间、落地缓冲、翻身、戒备程度
 	if state == S.FREE and is_on_floor() and absf(velocity.x) < 10.0:
@@ -824,17 +886,28 @@ func _update_art(delta: float) -> void:
 	elif _drawn_timer > 0.0 and is_on_floor() and _fl_kind == "":
 		_drawn_timer -= delta
 		if _drawn_timer <= 0.0 and bool(stance()["sheathed"]):
-			# 收刀入鞘，鞘口一点火星
-			var j := Puppet.solve(_pose)
-			var hip: Vector2 = j["hip"]
-			main.spawn_spark(global_position + Vector2((hip.x + 6.0) * facing, hip.y - 3.5), Color(1.0, 0.9, 0.6), 4)
+			_noto_t = 0.0
+	if _noto_t >= 0.0:
+		if state != S.FREE and state != S.CHARGE:
+			_noto_t = -1.0
+		else:
+			_noto_t += delta
+			if _noto_t >= NOTO_TIME:
+				_noto_t = -1.0
+				# 刀完全入鞘：鞘口一点火星
+				var j := Puppet.solve(_pose)
+				var hip: Vector2 = j["hip"]
+				main.spawn_spark(global_position + Vector2((hip.x + 6.0) * facing, hip.y - 3.5), Color(1.0, 0.9, 0.6), 4)
 	if facing != _prev_facing:
-		_squash = Vector2(0.82, 1.08)   # 转身
+		_turn_t = 0.0   # 转身：身体先收窄再展开，像在原地转过来
 		_prev_facing = facing
+	_turn_t = minf(_turn_t + delta / TURN_TIME, 1.0)
+	if absf(velocity.x) > 10.0 and is_on_floor():
+		_run_phase += absf(velocity.x) * delta * 0.074
 
-	# 姿势平滑过渡；出刀那一下要快
-	var rate := 60.0 if state == S.ATTACK or state == S.EXECUTE else 22.0
-	_pose = Puppet.lerp_pose(_pose, _target_pose(), 1.0 - exp(-rate * delta))
+	# 姿势用弹簧追目标：不同动作用不同的松紧
+	var sp := _spring_params()
+	_pose = _spring.step(_target_pose(), sp.x, sp.y, delta)
 	_squash = _squash.lerp(Vector2.ONE, 1.0 - exp(-14.0 * delta))
 
 	# 落地扬尘和压扁
@@ -911,7 +984,8 @@ func _draw() -> void:
 			# 绕身体中心翻转
 			var pivot := Vector2(0, -26)
 			spin_off = pivot - pivot.rotated(spin)
-		Puppet.draw_lit(self, _pose, look, facing, rim, spin_off, tint, alpha, spin, _squash, velocity.x)
+		var turn := lerpf(0.2, 1.0, smoothstep(0.0, 1.0, _turn_t))
+		Puppet.draw_lit(self, _pose, look, facing, rim, spin_off, tint, alpha, spin, _squash * Vector2(turn, 1.0), velocity.x)
 
 	if state == S.DRINK:
 		_draw_gourd()
