@@ -38,14 +38,9 @@ const WILL_GAIN := {"hit": 4.0, "guardbreak": 6.0, "parry": 12.0, "mikiri": 15.0
 const ART := {"cost": 40.0, "windup": 0.14, "active": 0.42, "recover": 0.3, "ticks": 2,
 	"dmg": 22.0, "posture": 40.0, "size": Vector2(120, 46), "heavy": true}
 
-# 轻攻击三段连击：伤害与架势伤害 1:1
-const LIGHT := [
-	{"windup": 0.07, "active": 0.08, "recover": 0.20, "dmg": 20.0, "posture": 20.0, "reach": 33.0, "size": Vector2(51, 33), "height": 30.0, "heavy": false},
-	{"windup": 0.07, "active": 0.08, "recover": 0.20, "dmg": 20.0, "posture": 20.0, "reach": 33.0, "size": Vector2(51, 33), "height": 30.0, "heavy": false},
-	{"windup": 0.10, "active": 0.10, "recover": 0.32, "dmg": 30.0, "posture": 30.0, "reach": 39.0, "size": Vector2(63, 39), "height": 30.0, "heavy": false},
-]
-# 重攻击：破敌人普通格挡，架势伤害 ×2
-const HEAVY := {"windup": 0.12, "active": 0.10, "recover": 0.40, "dmg": 30.0, "posture": 60.0, "reach": 39.0, "size": Vector2(69, 45), "height": 30.0, "heavy": true}
+# 攻击招式全部在 Moves.LIST 里（地面五连、重劈、升龙斩、空中斩、落雷斩、闪身突刺）
+const AIR_ATTACKS := 2              # 每次跳起最多两下空中攻击（落雷斩不算）
+const DASH_WINDOW := 0.2            # 闪身结束后多久内按攻击还能出闪身突刺
 
 var index := 1
 var prefix := "p1_"
@@ -80,6 +75,8 @@ var _run_phase := 0.0               # 跑步周期按走过的距离算，脚不
 var _spring := Puppet.Spring.new()
 var will := 0.0
 var _drank := false
+var _air_attacks := 0
+var _dodge_end := -10.0
 var _stun_time := HITSTUN_TIME      # 这次挨打的僵直时间（被擒拿更久）
 var _art_tick := -1
 
@@ -190,6 +187,46 @@ static func _build_poses() -> void:
 		"arm_f": Vector2(1.8, 2.2), "sword": 2.3, "arm_b": Vector2(-1.2, -0.8), "lean": 0.05})
 	POSES["fall"] = Puppet.pose({"crouch": 0.0, "foot_f": Vector2(3, -1), "foot_b": Vector2(-4, -2),
 		"arm_f": Vector2(1.2, 1.9), "sword": 2.0, "arm_b": Vector2(-1.8, -1.4), "lean": 0.0})
+	# ---------- 招式（见 Moves）----------
+	# 横斩：刀先拉到身后放平，再整个横扫到身前
+	POSES["yoko_raise"] = Puppet.pose({"crouch": 3.2, "lean": -0.12, "head": 0.05, "foot_f": Vector2(6, 0), "foot_b": Vector2(-7, 0),
+		"arm_f": Vector2(-0.5, -1.3), "arm_b": Vector2(0.2, 0.6), "sword": -1.6})
+	POSES["yoko_cut"] = Puppet.pose({"crouch": 3.2, "lean": 0.38, "foot_f": Vector2(10, 0), "foot_b": Vector2(-7, 0),
+		"arm_f": Vector2(1.45, 1.8), "arm_b": Vector2(0.6, 1.0), "sword": 2.05})
+	# 升龙斩：蹲低刀尖拖在身后，再连人带刀往上撩
+	POSES["rise_prep"] = Puppet.pose({"crouch": 7.5, "lean": 0.25, "head": 0.1, "foot_f": Vector2(7, 0), "foot_b": Vector2(-7, 0),
+		"arm_f": Vector2(0.0, -0.5), "arm_b": Vector2(0.3, 0.7), "sword": -0.4})
+	POSES["rise_cut"] = Puppet.pose({"crouch": 0.0, "lean": -0.15, "head": -0.2, "foot_f": Vector2(3, -7), "foot_b": Vector2(-3, -3),
+		"arm_f": Vector2(2.7, 3.0), "arm_b": Vector2(2.3, 2.7), "sword": 3.1})
+	# 空中斩：腿收起来
+	POSES["air_raise1"] = _tuck(POSES["raise1"])
+	POSES["air_cut1"] = _tuck(POSES["cut1"])
+	POSES["air_raise2"] = _tuck(POSES["raise2"])
+	POSES["air_cut2"] = _tuck(POSES["cut2"])
+	# 落雷斩：举刀 → 刀尖朝下往下砸 → 落地半跪，刀插在地上
+	var pr := _tuck(POSES["raise1"])
+	pr["lean"] = -0.2
+	POSES["plunge_raise"] = pr
+	POSES["plunge_fall"] = Puppet.pose({"crouch": 0.5, "lean": 0.15, "head": 0.25, "foot_f": Vector2(3, -4), "foot_b": Vector2(-3, -6),
+		"arm_f": Vector2(0.6, 0.15), "arm_b": Vector2(0.5, 0.1), "sword": 0.05})
+	POSES["plunge_land"] = Puppet.pose({"crouch": 8.0, "lean": 0.5, "head": 0.3, "foot_f": Vector2(9, 0), "foot_b": Vector2(-8, 0),
+		"arm_f": Vector2(0.9, 0.3), "arm_b": Vector2(0.6, 0.2), "sword": 0.15})
+	# 闪身突刺：身体压得很低，刀往前送到底
+	var dc: Dictionary = POSES["cut3"].duplicate()
+	dc["lean"] = 0.6
+	dc["crouch"] = 5.0
+	dc["foot_f"] = Vector2(14, 0)
+	dc["foot_b"] = Vector2(-10, 0)
+	POSES["dash_cut"] = dc
+
+
+## 空中版本的姿势：腿收起来
+static func _tuck(p: Dictionary) -> Dictionary:
+	var t := p.duplicate()
+	t["crouch"] = minf(float(p["crouch"]), 1.0)
+	t["foot_f"] = Vector2(4, -6)
+	t["foot_b"] = Vector2(-3, -4)
+	return t
 
 
 func _ready() -> void:
@@ -242,6 +279,8 @@ func _physics_process(delta: float) -> void:
 		tick_posture(delta)
 	if is_on_floor():
 		air_jumps = 1
+		if state != S.ATTACK:
+			_air_attacks = 0
 
 	match state:
 		S.FREE: _state_free(delta)
@@ -311,13 +350,18 @@ func _state_charge(delta: float) -> void:
 	elif _pressed("dodge") and dodge_cooldown <= 0.0:
 		_start_dodge(Input.get_axis(prefix + "left", prefix + "right"))
 	elif charge_time >= HEAVY_CHARGE_TIME:
-		_start_attack(HEAVY, 0)
+		_start_move("heavy")
 	elif not _held("attack"):
-		_start_attack(LIGHT[0], 0)
+		_start_move("slash1")
 
 
 func _state_attack(delta: float) -> void:
-	velocity.x = move_toward(velocity.x, 0.0, 1300.0 * delta)
+	var plunge: bool = attack.get("plunge", false)
+	var lunging: bool = attack_phase == 1 and attack.has("lunge")
+	if not plunge and not lunging:
+		velocity.x = move_toward(velocity.x, 0.0, (500.0 if not is_on_floor() else 1300.0) * delta)
+	if attack.get("hang", false) and attack_phase < 2:
+		velocity.y = minf(velocity.y, 30.0)   # 空中出刀时停一下，不往下掉
 	if _pressed("attack"):
 		combo_queued = true
 	# 格挡和闪身可以取消攻击（前摇和后摇时）
@@ -336,26 +380,79 @@ func _state_attack(delta: float) -> void:
 		attack_phase = 1
 		state_time = 0.0
 		hit_targets.clear()
-		velocity.x = facing * 105.0   # 出刀时向前踏一小步
+		velocity.x = facing * float(attack.get("lunge", 105.0))   # 出刀时向前踏一步
+		if attack.has("vy"):
+			velocity.y = float(attack["vy"])
 		_spawn_slash()
 	if attack_phase == 1:
+		if plunge:
+			velocity = Vector2(facing * 40.0, 760.0)
 		_check_attack_hits()
-		if state_time >= active:
+		if plunge and (is_on_floor() or state_time >= active):
+			_plunge_land()
+			attack_phase = 2
+			state_time = 0.0
+		elif not plunge and state_time >= active:
 			attack_phase = 2
 			state_time = 0.0
 	if attack_phase == 2:
-		var is_heavy: bool = attack["heavy"]
 		if combo_queued and state_time >= 0.04:
 			var target: Enemy = main.find_executable(self)
 			if target != null:
 				_start_execute(target)
-			elif not is_heavy and combo_step < LIGHT.size() - 1:
-				_start_attack(LIGHT[combo_step + 1], combo_step + 1)
+				return
+			var nxt := _next_move()
+			if nxt != "":
+				_start_move(nxt)
 			else:
 				combo_queued = false
 		elif state_time >= recover:
 			combo_step = 0
 			_enter(S.FREE)
+
+
+## 连段里下一招：地面按住下是升龙斩，空中按住下是落雷斩，否则接表里的 next
+func _next_move() -> String:
+	if attack.get("heavy", false) and not attack.get("plunge", false):
+		return ""
+	var id: String = attack.get("id", "")
+	if is_on_floor():
+		if _held("down") and id != "rising":
+			return "rising"
+		var n: String = attack.get("next", "")
+		return "" if n.begins_with("air") else n
+	if _held("down") and id != "plunge":
+		return "plunge"
+	var n2: String = attack.get("next", "")
+	if n2 != "" and _air_attacks < AIR_ATTACKS:
+		return n2
+	return ""
+
+
+## 落雷斩落地：前后震开一圈
+func _plunge_land() -> void:
+	var shock: Dictionary = attack["shock"]
+	var size: Vector2 = shock["size"]
+	var r := Rect2(global_position + Vector2(-size.x / 2.0, -size.y), size)
+	var col := Color(1.0, 0.8, 0.45)
+	main.spawn_ring(global_position + Vector2(0, -4), col, 54.0)
+	main.spawn_slash(global_position + Vector2(0, -4), 1, 50.0, -0.25, 0.0, col, 5.0)
+	main.spawn_slash(global_position + Vector2(0, -4), -1, 50.0, -0.25, 0.0, col, 5.0)
+	main.spawn_dust(global_position, 1.0, 10)
+	main.spawn_dust(global_position, -1.0, 10)
+	main.shake(5.0)
+	main.punch(0.05)
+	_squash = Vector2(1.25, 0.8)
+	var info := {"dmg": shock["dmg"], "posture": shock["posture"], "heavy": shock["heavy"]}
+	for e: Enemy in main.get_enemies():
+		if e in hit_targets or not e.is_hittable():
+			continue
+		if r.intersects(e.body_rect()):
+			hit_targets.append(e)
+			var result := e.receive_player_hit(info, self)
+			gain_will(result)
+			if result == "hit" and e.is_grunt() and e.state != Enemy.S.DYING:
+				e.velocity.y = -220.0   # 震起来
 
 
 func _state_guard(delta: float) -> void:
@@ -434,8 +531,14 @@ func _state_art(delta: float) -> void:
 func _state_dodge(_delta: float) -> void:
 	velocity.x = dodge_dir * DODGE_SPEED
 	velocity.y = 0.0   # 空中闪身保持高度
+	if _pressed("attack") and state_time >= 0.06:
+		# 闪身中按攻击：顺势突刺
+		facing = dodge_dir
+		_start_move("dash" if is_on_floor() else "air1")
+		return
 	if state_time >= DODGE_TIME:
 		velocity.x = dodge_dir * 90.0
+		_dodge_end = clock
 		_enter(S.FREE)
 
 
@@ -458,8 +561,27 @@ func _attack_pressed() -> void:
 	if target != null:
 		_start_execute(target)
 		return
+	if not is_on_floor():
+		if _held("down"):
+			_start_move("plunge")
+		elif _air_attacks < AIR_ATTACKS:
+			_start_move("air1")
+		return
+	if _held("down"):
+		_start_move("rising")
+		return
+	if clock - _dodge_end < DASH_WINDOW:
+		_start_move("dash")
+		return
 	charge_time = 0.0
 	_enter(S.CHARGE)
+
+
+func _start_move(id: String) -> void:
+	var m := Moves.get_move(id)
+	if m.get("air", false) and not m.get("plunge", false):
+		_air_attacks += 1
+	_start_attack(m, int(m.get("combo", -1)))
 
 
 func _start_attack(data: Dictionary, step: int) -> void:
@@ -565,9 +687,15 @@ func _start_execute(target: Enemy) -> void:
 	_victory = "overhead" if target.lives <= 0 else "wheel"
 
 
-func _check_attack_hits() -> void:
+func _attack_rect() -> Rect2:
 	var size: Vector2 = attack["size"]
-	var r := front_rect(attack["reach"], size, attack["height"])
+	if attack.get("around", false):
+		return Rect2(global_position + Vector2(-size.x / 2.0, -float(attack["height"]) - size.y / 2.0), size)
+	return front_rect(attack["reach"], size, attack["height"])
+
+
+func _check_attack_hits() -> void:
+	var r := _attack_rect()
 	for e: Enemy in main.get_enemies():
 		if e in hit_targets or not e.is_hittable():
 			continue
@@ -575,6 +703,10 @@ func _check_attack_hits() -> void:
 			hit_targets.append(e)
 			var result := e.receive_player_hit(attack, self)
 			gain_will(result)
+			if result == "hit" and attack.has("launch") and e.is_grunt() and e.state != Enemy.S.DYING:
+				# 挑飞杂兵
+				e.velocity.y = float(attack["launch"])
+				e._stagger(0.8)
 			if result == "blocked":
 				velocity.x = -facing * 135.0
 			elif result == "guardbreak":
@@ -673,24 +805,38 @@ func respawn() -> void:
 func _spawn_slash() -> void:
 	var heavy: bool = attack["heavy"]
 	var center := global_position + Vector2(facing * 9.0, -26.0)
+	var big: bool = attack.get("stance", "") == "jodan"
+	var col := Color(1.0, 0.75, 0.4) if heavy or big else Color(0.75, 0.9, 1.0)
+	var fx: Array = attack.get("fx", ["none"])
+	match String(fx[0]):
+		"slash":
+			var r: float = fx[1]
+			var w: float = fx[4]
+			if big:
+				r += 2.0
+				w += 3.0
+			main.spawn_slash(center, facing, r, fx[2], fx[3], col, w)
+		"flat":
+			# 横斩：从侧面看是一道又平又长的刀光
+			main.spawn_slash(center + Vector2(0, 2), facing, fx[1], -0.45, 0.35, col, 6.0)
+			main.spawn_streak(global_position + Vector2(facing * 2.0, -26.0), facing, 54.0, col)
+		"streak":
+			main.spawn_streak(global_position + Vector2(facing * 6.0, -24.0), facing, fx[1], col)
+		"iai":
+			# 居合：一道又长又平的横斩
+			var c2 := Color(1.0, 0.95, 0.75)
+			main.spawn_slash(center + Vector2(facing * 4.0, 0), facing, 48.0, -0.5, 0.55, c2, 6.0)
+			main.spawn_streak(global_position + Vector2(facing * 4.0, -25.0), facing, 80.0, c2)
+		"spin":
+			var c3 := Color(0.85, 0.95, 1.0)
+			var c := global_position + Vector2(0, -24)
+			main.spawn_slash(c, facing, 48.0, -3.0, 0.3, c3, 8.0)
+			main.spawn_slash(c, -facing, 44.0, -2.6, 0.5, c3, 6.0)
+			main.spawn_dust(global_position, float(facing), 6)
 	if heavy:
-		main.spawn_slash(center, facing, 44.0, -2.4, 0.9, Color(1.0, 0.75, 0.4), 14.0)
 		main.punch(0.04)
-	elif attack.get("cut", "") == "iai_cut":
-		# 居合：一道又长又平的横斩
-		main.spawn_slash(center + Vector2(facing * 4.0, 0), facing, 48.0, -0.5, 0.55, Color(1.0, 0.95, 0.75), 6.0)
-		main.spawn_streak(global_position + Vector2(facing * 4.0, -25.0), facing, 80.0, Color(1.0, 0.95, 0.75))
-		main.punch(0.03)
-	elif attack.get("cut", "") == "cut2":
-		main.spawn_slash(center, facing, 38.0, 0.9, -1.9, Color(0.75, 0.9, 1.0))
-	elif combo_step == 0:
-		var big: bool = attack.get("stance", "") == "jodan"
-		main.spawn_slash(center, facing, 44.0 if big else 36.0, -2.4 if big else -2.2, 0.7 if big else 0.6,
-			Color(1.0, 0.85, 0.6) if big else Color(0.75, 0.9, 1.0), 10.0 if big else 7.0)
-	elif combo_step == 1:
-		main.spawn_slash(center, facing, 36.0, 0.9, -1.7, Color(0.75, 0.9, 1.0))
-	else:
-		main.spawn_streak(global_position + Vector2(facing * 6.0, -24.0), facing, 66.0, Color(0.75, 0.9, 1.0))
+	if attack.has("vy") and is_on_floor():
+		main.spawn_dust(global_position, 0.0, 8)
 
 
 func _target_pose() -> Dictionary:
@@ -714,18 +860,17 @@ func _target_pose() -> Dictionary:
 				cp["dx"] = sin(clock * 90.0) * 0.8   # 蓄满时抖动
 			return cp
 		S.ATTACK:
-			var heavy: bool = attack["heavy"]
-			var keys: Array = ["charge", "smash"] if heavy else [["raise1", "cut1"], ["raise2", "cut2"], ["raise3", "cut3"]][combo_step]
-			if attack.has("raise"):
-				keys = [attack["raise"], attack["cut"]]
-			var windup: float = attack["windup"]
+			var keys: Array = [attack["raise"], attack["cut"]]
 			var active: float = attack["active"]
 			var recover: float = attack["recover"]
 			if attack_phase == 0:
 				return POSES[keys[0]]
 			if attack_phase == 1:
+				if attack.get("plunge", false):
+					return POSES["plunge_fall"]
 				return Puppet.lerp_pose(POSES[keys[0]], POSES[keys[1]], t / (active * 0.6))
-			return Puppet.lerp_pose(POSES[keys[1]], _stance_pose(true), pow(t / recover, 2.0))
+			var after: Dictionary = _stance_pose(true) if is_on_floor() else POSES["fall"]
+			return Puppet.lerp_pose(POSES[keys[1]], after, pow(t / recover, 2.0))
 		S.GUARD:
 			return POSES["parry"] if parry_timer > 0.0 else POSES["guard"]
 		S.DODGE:
@@ -992,8 +1137,9 @@ func _update_art(delta: float) -> void:
 
 	# 闪身残影
 	_ghost_timer -= delta
-	if state == S.DODGE and _ghost_timer <= 0.0:
-		_ghost_timer = 0.04
+	var dashing: bool = state == S.ATTACK and attack.get("ghost", false) and attack_phase == 1
+	if (state == S.DODGE or dashing) and _ghost_timer <= 0.0:
+		_ghost_timer = 0.03 if dashing else 0.04
 		main.spawn_ghost(global_position, _pose.duplicate(), look, facing, color)
 
 	# 头带飘带：每一节跟随前一节，受风和速度影响
@@ -1041,9 +1187,13 @@ func _draw() -> void:
 		var pivot := Vector2(facing * 8.0, 0)
 		var off := pivot - pivot.rotated(rot)
 		Puppet.draw_lit(self, _pose, look, facing, rim, off + Vector2(0, -2.0 * k), Color(0.15, 0.15, 0.2, 0.35 * k), 1.0, rot)
-	elif state == S.ART and state_time >= float(ART["windup"]):
-		# 回旋斩：横向压扁再翻面，假装在原地转身
-		var turn := (state_time - float(ART["windup"])) / float(ART["active"]) * float(ART["ticks"]) * TAU
+	elif (state == S.ART and state_time >= float(ART["windup"])) or (state == S.ATTACK and attack.get("spin", false) and attack_phase == 1):
+		# 回旋斩、旋风斩：横向压扁再翻面，假装在原地转身
+		var turn := 0.0
+		if state == S.ART:
+			turn = (state_time - float(ART["windup"])) / float(ART["active"]) * float(ART["ticks"]) * TAU
+		else:
+			turn = state_time / float(attack["active"]) * TAU
 		var c := cos(turn)
 		var f := facing if c >= 0.0 else -facing
 		var sq := Vector2(maxf(absf(c), 0.25), 1.0) * _squash

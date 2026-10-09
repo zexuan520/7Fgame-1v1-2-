@@ -58,6 +58,14 @@ func _run() -> void:
 	await test_boss_phases()
 	await _setup()
 	await test_boss_intro()
+	await _setup()
+	await test_combo_five()
+	await _setup_kind("dog")
+	await test_rising_launch()
+	await _setup()
+	await test_air_and_plunge()
+	await _setup()
+	await test_dash_attack()
 	print("")
 	if failures == 0:
 		print("全部测试通过")
@@ -493,3 +501,72 @@ func test_boss_intro() -> void:
 	_check(main.hud._title_time > 0.0, "转身亮出名字")
 	await _frames(int((Enemy.INTRO_END - Enemy.INTRO_TURN) * 60.0) + 5)
 	_check(e.state != Enemy.S.INTRO and e.is_hittable(), "演完开打（状态 %d）" % e.state)
+
+
+func test_combo_five() -> void:
+	print("地面五连：横斩、上撩、竖劈、突刺、旋风斩")
+	var seen: Array = []
+	for i in range(140):
+		_hold_enemy()
+		e.global_position = Vector2(445, 300)
+		e.posture = 0.0
+		if i % 4 == 0:
+			await _tap("p1_attack")
+		else:
+			await _frames(1)
+		if p.state == Player.S.ATTACK and not seen.has(p.attack["id"]):
+			seen.append(p.attack["id"])
+	_check(seen == ["slash1", "slash2", "slash3", "slash4", "slash5"], "按住节奏连按出五段（%s）" % str(seen))
+
+
+func test_rising_launch() -> void:
+	print("升龙斩：人往上冲，杂兵被挑飞")
+	_hold_enemy()
+	e.move_key = "bite"
+	e.global_position = Vector2(425, 300)
+	Input.action_press("p1_down")
+	await _tap("p1_attack")
+	await _frames(2)
+	Input.action_release("p1_down")
+	var top := 999.0
+	var etop := 999.0
+	for i in range(30):
+		await _frames(1)
+		top = minf(top, p.global_position.y)
+		etop = minf(etop, e.global_position.y)
+	_check(p.attack.get("id") == "rising", "出的是升龙斩")
+	_check(top < 270.0, "主角升空（最高 y %.0f）" % top)
+	_check(etop < 285.0, "野狗被挑飞（最高 y %.0f）" % etop)
+
+
+func test_air_and_plunge() -> void:
+	print("空中斩两下，落雷斩落地震一圈")
+	await _tap("p1_jump")
+	await _frames(8)
+	await _tap("p1_attack")
+	await _frames(2)
+	_check(p.attack.get("id") == "air1", "空中按攻击出空中斩")
+	await _frames(10)
+	Input.action_press("p1_down")
+	await _tap("p1_attack")
+	await _frames(30)
+	Input.action_release("p1_down")
+	_check(p.attack.get("id") == "plunge", "空中按下加攻击出落雷斩")
+	_hold_enemy()
+	await _frames(30)
+	_check(e.hp < e.max_hp or e.state == Enemy.S.STAGGER, "落地震到旁边的浪人（hp %.0f）" % e.hp)
+
+
+func test_dash_attack() -> void:
+	print("闪身突刺")
+	_hold_enemy()
+	p.global_position = Vector2(340, 300)
+	Input.action_press("p1_right")
+	await _tap("p1_dodge")
+	await _frames(5)
+	Input.action_release("p1_right")
+	await _tap("p1_attack")
+	await _frames(2)
+	_check(p.attack.get("id") == "dash", "闪身中按攻击出闪身突刺")
+	await _frames(25)
+	_check(e.hp < e.max_hp, "冲过去刺中（hp %.0f）" % e.hp)

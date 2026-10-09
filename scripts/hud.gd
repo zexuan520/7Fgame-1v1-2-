@@ -7,8 +7,9 @@ const GOLD_DARK := Color("6b5426")
 const FRAME := Color("0c0a12")
 
 const HELP := [
-	["1P", "A/D 移动  W/空格 跳  J 攻击(长按重击)  K 格挡/弹反  L/Shift 闪身  U 药罐  I 回旋斩  O 换架势"],
-	["2P", "←/→ 移动  ↑ 跳  小键盘1 攻击 2 格挡 3 闪身 4 药罐 5 回旋斩 6 换架势"],
+	["1P", "A/D 移动  W/空格 跳  S 下  J 攻击(长按重击)  K 格挡/弹反  L/Shift 闪身  U 药罐  I 回旋斩  O 换架势"],
+	["2P", "←/→ 移动  ↑ 跳  ↓ 下  小键盘1 攻击 2 格挡 3 闪身 4 药罐 5 回旋斩 6 换架势"],
+	["招式", "连按攻击五连  下+攻击 升龙斩  空中攻击 空中斩  空中下+攻击 落雷斩  闪身中攻击 闪身突刺"],
 	["手柄", "A 跳  X 攻击  RB 格挡  B 闪身  Y 药罐  LB 回旋斩  十字键上 换架势"],
 	["对手", "1 浪人  2 野狗群  3 盾兵与弓手  4 荒村混战  5 头目·柳江远"],
 	["其他", "F2 2P 加入/退出  F1 低难度  F3 判定框  R 重置  Esc 退出"],
@@ -225,7 +226,7 @@ func _draw_boss_bar(font: Font, e: Enemy) -> void:
 
 
 func _draw_help(font: Font) -> void:
-	var r := Rect2(24, 234, 592, 90)
+	var r := Rect2(24, 218, 592, 106)
 	_frame(r)
 	draw_rect(r, Color(0.05, 0.04, 0.08, 0.92))
 	for i in range(HELP.size()):

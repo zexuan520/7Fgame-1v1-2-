@@ -16,7 +16,7 @@ extends RefCounted
 const LIST := [
 	{
 		"id": "seigan", "name": "正眼", "desc": "中段持刀，刀尖指向对方眼睛，攻守均衡",
-		"first": {"raise": "raise1", "cut": "cut1", "windup": 1.0, "dmg": 1.0, "posture": 1.0, "reach": 0.0},
+		"first": {"raise": "yoko_raise", "cut": "yoko_cut", "windup": 1.0, "dmg": 1.0, "posture": 1.0, "reach": 0.0},
 		"parry_bonus": 0.0, "block_posture": 1.0, "recover": 1.0, "will": 1.0, "sheathed": false,
 	},
 	{
@@ -61,5 +61,6 @@ static func first_strike(base: Dictionary, st: Dictionary) -> Dictionary:
 	a["reach"] = float(base["reach"]) + float(f["reach"])
 	a["raise"] = f["raise"]
 	a["cut"] = f["cut"]
+	a["fx"] = Moves.FX_BY_CUT.get(f["cut"], base.get("fx", ["none"]))
 	a["stance"] = st["id"]
 	return a
