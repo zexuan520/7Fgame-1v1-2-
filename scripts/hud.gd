@@ -7,9 +7,9 @@ const GOLD_DARK := Color("6b5426")
 const FRAME := Color("0c0a12")
 
 const HELP := [
-	["1P", "A/D 移动  W/空格 跳  J 攻击(长按重击)  K 格挡/弹反  L/Shift 闪身"],
-	["2P", "←/→ 移动  ↑ 跳  小键盘1 攻击  小键盘2 格挡  小键盘3 闪身"],
-	["手柄", "A 跳  X 攻击  RB/LB 格挡  B 闪身"],
+	["1P", "A/D 移动  W/空格 跳  J 攻击(长按重击)  K 格挡/弹反  L/Shift 闪身  U 药罐  I 回旋斩"],
+	["2P", "←/→ 移动  ↑ 跳  小键盘1 攻击 2 格挡 3 闪身 4 药罐 5 回旋斩"],
+	["手柄", "A 跳  X 攻击  RB 格挡  B 闪身  Y 药罐  LB 回旋斩"],
 	["其他", "F2 2P 加入/退出  F1 低难度  F3 判定框  R 重置  Esc 退出"],
 ]
 
@@ -90,6 +90,31 @@ func _posture(r: Rect2, ratio: float) -> void:
 	draw_rect(Rect2(cx, r.position.y - 1, 1, r.size.y + 2), GOLD)
 
 
+func _will(r: Rect2, ratio: float, ready: bool) -> void:
+	draw_rect(r, Color("10141a"))
+	var col := Color(0.55, 0.85, 1.0) if not ready else Color(1.0, 0.85, 0.4).lerp(Color(1, 1, 1), 0.2 + 0.2 * sin(_time * 8.0))
+	var w := roundf(r.size.x * clampf(ratio, 0.0, 1.0))
+	draw_rect(Rect2(r.position, Vector2(w, r.size.y)), col)
+	draw_rect(Rect2(r.position, Vector2(w, 1)), col.lightened(0.4))
+	# 每 40 一格的刻度
+	var step := r.size.x * float(Player.ART["cost"]) / Player.MAX_WILL
+	var x := step
+	while x < r.size.x - 1.0:
+		draw_rect(Rect2(r.position.x + roundf(x), r.position.y, 1, r.size.y), FRAME)
+		x += step
+
+
+func _gourd(c: Vector2, full: bool) -> void:
+	var body := Color("a5402f") if full else Color("3a3040")
+	draw_circle(c + Vector2(0, 1), 3.5, FRAME)
+	draw_circle(c + Vector2(0, -3), 2.5, FRAME)
+	draw_circle(c + Vector2(0, 1), 2.5, body)
+	draw_circle(c + Vector2(0, -3), 1.5, body)
+	if full:
+		draw_rect(Rect2(c + Vector2(-1, 0), Vector2(1, 1)), Color("e08a6a"))
+	draw_rect(Rect2(c + Vector2(-2, -1), Vector2(4, 1)), GOLD_DARK)
+
+
 func _draw_player_panel(font: Font, p: Player, at: Vector2) -> void:
 	# 头像框
 	var face := Rect2(at, Vector2(26, 26))
@@ -112,10 +137,17 @@ func _draw_player_panel(font: Font, p: Player, at: Vector2) -> void:
 	var po_r := Rect2(at + Vector2(32, 16), Vector2(130, 4))
 	_frame(po_r)
 	_posture(po_r, p.posture / p.max_posture)
+	# 刃意：攒满一格（40）可以放一次回旋斩
+	var wi_r := Rect2(at + Vector2(32, 24), Vector2(130, 3))
+	_frame(wi_r)
+	_will(wi_r, p.will / Player.MAX_WILL, p.will >= float(Player.ART["cost"]))
+	# 药罐
+	for i in range(Player.MAX_GOURDS):
+		_gourd(at + Vector2(140 + i * 9, 36), i < p.gourds)
 	# 弹反次数
-	_text(font, "弹反 × %d" % p.parry_count, at + Vector2(32, 36), Color(0.95, 0.85, 0.55), 12)
+	_text(font, "弹反 × %d" % p.parry_count, at + Vector2(32, 40), Color(0.95, 0.85, 0.55), 12)
 	if p.state == Player.S.DEAD:
-		_text(font, "%.0f 秒后复活" % maxf(p.respawn_timer, 0.0), at + Vector2(100, 36), Color(1, 0.4, 0.4), 12)
+		_text(font, "%.0f 秒后复活" % maxf(p.respawn_timer, 0.0), at + Vector2(32, 54), Color(1, 0.4, 0.4), 12)
 
 
 func _draw_boss_bar(font: Font, e: Enemy) -> void:
@@ -134,7 +166,7 @@ func _draw_boss_bar(font: Font, e: Enemy) -> void:
 
 
 func _draw_help(font: Font) -> void:
-	var r := Rect2(40, 250, 560, 74)
+	var r := Rect2(24, 250, 592, 74)
 	_frame(r)
 	draw_rect(r, Color(0.05, 0.04, 0.08, 0.92))
 	for i in range(HELP.size()):

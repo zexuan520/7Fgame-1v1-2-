@@ -49,6 +49,7 @@ var rng := RandomNumberGenerator.new()
 var look := Puppet.Look.new()
 var _pose: Dictionary = {}
 var _clock := 0.0
+var _fell := false
 var _stalk := 0.0           # 0 扛刀放松，1 压低戒备
 var _fl_kind := ""          # 正在做的挑衅/耍刀动作（见 Flourish）
 var _fl_t := 0.0
@@ -140,6 +141,8 @@ func is_hittable() -> bool:
 func _enter(s: S) -> void:
 	state = s
 	state_time = 0.0
+	if s == S.DYING:
+		_fell = false
 
 
 func _speed() -> float:
@@ -202,7 +205,7 @@ func _physics_process(delta: float) -> void:
 				_enter(S.IDLE)
 		S.DYING:
 			velocity.x = 0.0
-			if state_time >= 1.0:
+			if state_time >= 1.9:
 				visible = false
 				_enter(S.DEAD)
 		S.DEAD:
@@ -488,7 +491,9 @@ func _target_pose() -> Dictionary:
 			return POSES["guard"]
 		S.FLINCH, S.STAGGER:
 			return POSES["hit"]
-		S.BROKEN, S.DYING, S.DEAD:
+		S.DYING:
+			return POSES["kneel"]
+		S.BROKEN, S.DEAD:
 			var bp: Dictionary = POSES["broken"].duplicate()
 			bp["lean"] = 0.7 + sin(_clock * 3.0) * 0.1
 			return bp
@@ -564,9 +569,17 @@ func _draw() -> void:
 	look.eye_glow = Color(1.0, 0.2, 0.1) if phase2 else Color(0, 0, 0, 0)
 
 	if state == S.DYING:
-		var k := clampf(state_time / 0.6, 0.0, 1.0)
-		Puppet.draw(self, _pose, look, facing, Vector2(-facing * 9.0 * k, -4.0 * k), Color(0.15, 0.15, 0.2, 0.5),
-			1.0 - clampf(state_time - 0.5, 0.0, 1.0) * 2.0, -facing * PI / 2.0 * k)
+		# 跪地一会儿，再往前扑倒，最后慢慢消失
+		var x := clampf((state_time - 0.6) / 0.4, 0.0, 1.0)
+		var k := Player._ease_out_bounce(x)
+		var rot := facing * PI / 2.0 * k
+		var pivot := Vector2(facing * 9.0, 0)
+		if x >= 1.0 and not _fell:
+			_fell = true
+			main.spawn_dust(global_position + Vector2(facing * 30.0, 0), 0.0, 12)
+			main.shake(2.0)
+		var fade := 1.0 - clampf((state_time - 1.3) / 0.6, 0.0, 1.0)
+		Puppet.draw(self, _pose, look, facing, pivot - pivot.rotated(rot), Color(0.15, 0.15, 0.2, 0.4 * k), fade, rot)
 		return
 	if state == S.DEAD:
 		return

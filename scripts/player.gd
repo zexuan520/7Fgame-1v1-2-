@@ -1,8 +1,8 @@
 class_name Player
 extends Fighter
-## 主角：移动、二段跳、三段轻攻击、蓄力重攻击、格挡、弹反、闪身、处决。
+## 主角：移动、二段跳、三段轻攻击、蓄力重攻击、格挡、弹反、闪身、处决、药罐、刃意招式。
 
-enum S { FREE, CHARGE, ATTACK, GUARD, DODGE, HITSTUN, BROKEN, EXECUTE, DEAD }
+enum S { FREE, CHARGE, ATTACK, GUARD, DODGE, HITSTUN, BROKEN, EXECUTE, DEAD, DRINK, ART }
 
 const MOVE_SPEED := 190.0
 const JUMP_VELOCITY := -520.0
@@ -18,6 +18,20 @@ const RESPAWN_TIME := 3.0
 const GUARD_SPAM_GAP := 0.35        # 连按格挡间隔太短会缩小弹反窗口
 const GUARD_SPAM_FACTOR := 0.4
 const EXECUTE_RANGE := 80.0
+
+# 药罐：每局 3 次，每次回 40% 生命；喝的时候被打会打断，这一口就浪费了
+const MAX_GOURDS := 3
+const HEAL_RATIO := 0.4
+const DRINK_TIME := 0.95
+const DRINK_HEAL_AT := 0.6
+
+# 刃意：弹反、看破、命中、踩头、处决攒能量，满 40 可以放一次招式
+const MAX_WILL := 100.0
+const WILL_GAIN := {"hit": 4.0, "guardbreak": 6.0, "parry": 12.0, "mikiri": 15.0, "stomp": 8.0, "execute": 35.0}
+
+# 刃意招式·回旋斩：原地转两圈，前后都砍，每圈一次判定，能破格挡；转的时候不吃伤害
+const ART := {"cost": 40.0, "windup": 0.14, "active": 0.42, "recover": 0.3, "ticks": 2,
+	"dmg": 22.0, "posture": 40.0, "size": Vector2(120, 46), "heavy": true}
 
 # 轻攻击三段连击：伤害与架势伤害 1:1
 const LIGHT := [
@@ -49,6 +63,10 @@ var invul_timer := 0.0
 var respawn_timer := 0.0
 var clock := 0.0
 var parry_count := 0                # 统计，用于界面显示
+var gourds := MAX_GOURDS
+var will := 0.0
+var _drank := false
+var _art_tick := -1
 
 # 美术
 var look := Puppet.Look.new()
@@ -94,6 +112,17 @@ static func _build_poses() -> void:
 		"arm_f": Vector2(0.3, 0.7), "arm_b": Vector2(-0.3, 0.1), "sword": 0.6})
 	POSES["land"] = Puppet.pose({"crouch": 6.5, "lean": 0.35, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
 		"arm_f": Vector2(0.6, 1.0), "arm_b": Vector2(-0.8, -0.2), "sword": 0.9})
+	# 喝药：后手把药罐举到嘴边，仰头
+	POSES["drink"] = Puppet.pose({"crouch": 1.0, "lean": -0.12, "head": -0.4, "foot_f": Vector2(5, 0), "foot_b": Vector2(-4, 0),
+		"arm_f": Vector2(0.2, 0.5), "arm_b": Vector2(1.9, 3.7), "sword": 0.5})
+	# 回旋斩：蓄势压低，转的时候双臂平伸、刀横着
+	POSES["art_prep"] = Puppet.pose({"crouch": 5.0, "lean": 0.3, "head": 0.1, "foot_f": Vector2(8, 0), "foot_b": Vector2(-8, 0),
+		"arm_f": Vector2(-0.9, -0.6), "arm_b": Vector2(-0.5, 0.2), "sword": -1.3})
+	POSES["art_spin"] = Puppet.pose({"crouch": 4.0, "lean": 0.05, "foot_f": Vector2(7, 0), "foot_b": Vector2(-7, 0),
+		"arm_f": Vector2(1.57, 1.57), "arm_b": Vector2(-1.4, -1.5), "sword": 1.57})
+	# 倒下：先跪地
+	POSES["kneel"] = Puppet.pose({"crouch": 8.0, "lean": 0.45, "head": 0.45, "foot_f": Vector2(7, 0), "foot_b": Vector2(-4, 0),
+		"arm_f": Vector2(0.3, 0.2), "arm_b": Vector2(0.1, 0.0), "sword": 0.9})
 	POSES["guard"] = Puppet.pose({"crouch": 2.5, "lean": 0.15, "foot_f": Vector2(5, 0), "foot_b": Vector2(-6, 0),
 		"arm_f": Vector2(1.1, 2.4), "arm_b": Vector2(0.7, 1.9), "sword": 2.75})
 	POSES["parry"] = Puppet.pose({"crouch": 3.0, "lean": 0.3, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
@@ -202,6 +231,8 @@ func _physics_process(delta: float) -> void:
 			respawn_timer -= delta
 			if respawn_timer <= 0.0:
 				respawn()
+		S.DRINK: _state_drink(delta)
+		S.ART: _state_art(delta)
 
 	if state != S.DODGE:
 		apply_gravity(delta)
@@ -226,6 +257,10 @@ func _state_free(_delta: float) -> void:
 		_start_dodge(dir)
 	elif _pressed("attack"):
 		_attack_pressed()
+	elif _pressed("art"):
+		_start_art()
+	elif _pressed("heal") and is_on_floor():
+		_start_drink()
 
 
 func _state_charge(delta: float) -> void:
@@ -306,6 +341,56 @@ func _state_guard(delta: float) -> void:
 		_enter(S.FREE)
 
 
+func _state_drink(delta: float) -> void:
+	# 喝药时只能慢慢走
+	var dir := Input.get_axis(prefix + "left", prefix + "right")
+	velocity.x = move_toward(velocity.x, dir * 45.0, 900.0 * delta)
+	if not _drank and state_time >= DRINK_HEAL_AT:
+		_drank = true
+		var amount := minf(max_hp * HEAL_RATIO, max_hp - hp)
+		hp += amount
+		flash(Color(0.5, 1.0, 0.6), 0.2)
+		main.spawn_text(global_position + Vector2(0, -70), "+%d" % roundi(amount), Color(0.5, 1.0, 0.55))
+		main.spawn_spark(global_position + Vector2(0, -30), Color(0.5, 1.0, 0.6), 12)
+	if state_time >= DRINK_TIME:
+		_enter(S.FREE)
+
+
+func _state_art(delta: float) -> void:
+	var windup: float = ART["windup"]
+	var active: float = ART["active"]
+	var recover: float = ART["recover"]
+	var t := state_time - windup
+	if t < 0.0:
+		velocity.x = move_toward(velocity.x, 0.0, 1300.0 * delta)
+		return
+	if t < active:
+		velocity.x = facing * 130.0
+		invul_timer = maxf(invul_timer, 0.05)
+		var tick := int(t / (active / float(ART["ticks"])))
+		if tick != _art_tick:
+			_art_tick = tick
+			hit_targets.clear()
+			var c := global_position + Vector2(0, -26)
+			main.spawn_slash(c, facing, 50.0, -3.0, 0.3, Color(1.0, 0.85, 0.45), 9.0)
+			main.spawn_slash(c, -facing, 46.0, -2.6, 0.5, Color(1.0, 0.85, 0.45), 7.0)
+			main.spawn_dust(global_position, float(facing), 6)
+			main.shake(2.0)
+		var r := Rect2(global_position + Vector2(-60.0 + facing * 8.0, -46.0), ART["size"])
+		for e: Enemy in main.get_enemies():
+			if e in hit_targets or not e.is_hittable():
+				continue
+			if r.intersects(e.body_rect()):
+				hit_targets.append(e)
+				var result := e.receive_player_hit(ART, self)
+				if result == "hit" or result == "guardbreak":
+					main.hitstop(0.05)
+		return
+	velocity.x = move_toward(velocity.x, 0.0, 1300.0 * delta)
+	if t >= active + recover:
+		_enter(S.FREE)
+
+
 func _state_dodge(_delta: float) -> void:
 	velocity.x = dodge_dir * DODGE_SPEED
 	velocity.y = 0.0   # 空中闪身保持高度
@@ -371,10 +456,36 @@ func _start_dodge(dir: float) -> void:
 		main.spawn_dust(global_position, -dodge_dir, 6)
 
 
+func _start_drink() -> void:
+	if gourds <= 0:
+		main.spawn_text(global_position + Vector2(0, -70), "药罐空了", Color(0.7, 0.7, 0.75), 12)
+		return
+	gourds -= 1
+	_drank = false
+	_enter(S.DRINK)
+
+
+func _start_art() -> void:
+	if will < ART["cost"]:
+		main.spawn_text(global_position + Vector2(0, -70), "刃意不足", Color(0.7, 0.7, 0.75), 12)
+		return
+	will -= ART["cost"]
+	_art_tick = -1
+	hit_targets.clear()
+	_enter(S.ART)
+	flash(Color(1.0, 0.85, 0.4), 0.12)
+	main.spawn_text(global_position + Vector2(0, -74), "回旋斩", Color(1.0, 0.85, 0.4), 14)
+
+
+func gain_will(kind: String) -> void:
+	will = minf(MAX_WILL, will + float(WILL_GAIN.get(kind, 0.0)))
+
+
 func _start_execute(target: Enemy) -> void:
 	facing = 1 if target.global_position.x >= global_position.x else -1
 	_enter(S.EXECUTE)
 	target.execute_by(self)
+	gain_will("execute")
 	_victory = "overhead" if target.lives <= 0 else "wheel"
 
 
@@ -387,6 +498,7 @@ func _check_attack_hits() -> void:
 		if r.intersects(e.body_rect()):
 			hit_targets.append(e)
 			var result := e.receive_player_hit(attack, self)
+			gain_will(result)
 			if result == "blocked":
 				velocity.x = -facing * 135.0
 			elif result == "guardbreak":
@@ -407,6 +519,7 @@ func _check_stomp() -> void:
 			velocity.y = JUMP_VELOCITY * 0.85
 			air_jumps = 1
 			e.on_stomped(self)
+			gain_will("stomp")
 			return
 
 
@@ -420,6 +533,7 @@ func receive_enemy_hit(info: Dictionary, attacker: Fighter) -> String:
 	var kind: String = info["kind"]
 	if invul_timer > 0.0:
 		if kind == "thrust" and state == S.DODGE and dodge_dir == -attacker.facing:
+			gain_will("mikiri")
 			return "mikiri"   # 看破：迎着突刺方向闪身
 		return "miss"
 	if kind == "sweep" and not is_on_floor():
@@ -430,6 +544,7 @@ func receive_enemy_hit(info: Dictionary, attacker: Fighter) -> String:
 		if parry_timer > 0.0:
 			parry_timer = 0.0
 			parry_count += 1
+			gain_will("parry")
 			flash(Color(1.0, 0.95, 0.5), 0.15)
 			add_posture(p * 0.25)
 			return "parry"
@@ -526,7 +641,19 @@ func _target_pose() -> Dictionary:
 			return POSES["dodge"] if dodge_dir == facing else POSES["backstep"]
 		S.HITSTUN:
 			return POSES["hit"]
-		S.BROKEN, S.DEAD:
+		S.DEAD:
+			return POSES["kneel"]
+		S.DRINK:
+			if t < 0.22:
+				return Puppet.lerp_pose(POSES["relaxed"], POSES["drink"], t / 0.22)
+			if t < DRINK_TIME - 0.2:
+				var d: Dictionary = POSES["drink"].duplicate()
+				d["head"] = -0.4 - 0.08 * sin(t * 20.0)   # 咕咚咕咚
+				return d
+			return Puppet.lerp_pose(POSES["drink"], POSES["relaxed"], (t - (DRINK_TIME - 0.2)) / 0.2)
+		S.ART:
+			return POSES["art_prep"] if t < float(ART["windup"]) else POSES["art_spin"]
+		S.BROKEN:
 			var bp: Dictionary = POSES["broken"].duplicate()
 			bp["lean"] = 0.7 + sin(clock * 4.0) * 0.08
 			return bp
@@ -647,7 +774,8 @@ func _draw() -> void:
 
 	var tint := Color(0, 0, 0, 0)
 	if flash_timer > 0.0:
-		tint = Color(flash_color, 1.0)
+		# 喝药、放招式时只是淡淡一层颜色，受击才整个闪白
+		tint = Color(flash_color, 0.45 if state == S.DRINK or state == S.ART else 1.0)
 	elif state == S.BROKEN:
 		tint = Color(0.2, 0.2, 0.25, 0.35)
 	var alpha := 0.6 if state == S.DODGE else 1.0
@@ -663,7 +791,19 @@ func _draw() -> void:
 
 	var rim := Color(0.5, 0.62, 0.9, 0.5)
 	if state == S.DEAD:
-		Puppet.draw(self, _pose, look, facing, Vector2(-facing * 6.0, -4.0), Color(0.15, 0.15, 0.2, 0.45), 1.0, -facing * PI / 2.0)
+		# 先跪下，再往前扑倒
+		var k := _ease_out_bounce(clampf((state_time - 0.35) / 0.4, 0.0, 1.0))
+		var rot := facing * PI / 2.0 * k
+		var pivot := Vector2(facing * 8.0, 0)
+		var off := pivot - pivot.rotated(rot)
+		Puppet.draw_lit(self, _pose, look, facing, rim, off + Vector2(0, -2.0 * k), Color(0.15, 0.15, 0.2, 0.35 * k), 1.0, rot)
+	elif state == S.ART and state_time >= float(ART["windup"]):
+		# 回旋斩：横向压扁再翻面，假装在原地转身
+		var turn := (state_time - float(ART["windup"])) / float(ART["active"]) * float(ART["ticks"]) * TAU
+		var c := cos(turn)
+		var f := facing if c >= 0.0 else -facing
+		var sq := Vector2(maxf(absf(c), 0.25), 1.0) * _squash
+		Puppet.draw_lit(self, _pose, look, f, Color(1.0, 0.85, 0.45, 0.7), Vector2.ZERO, tint, alpha, 0.0, sq, velocity.x)
 	else:
 		var spin := 0.0
 		var spin_off := Vector2.ZERO
@@ -673,6 +813,9 @@ func _draw() -> void:
 			var pivot := Vector2(0, -26)
 			spin_off = pivot - pivot.rotated(spin)
 		Puppet.draw_lit(self, _pose, look, facing, rim, spin_off, tint, alpha, spin, _squash, velocity.x)
+
+	if state == S.DRINK:
+		_draw_gourd()
 
 	# 弹反窗口内刀身发光
 	if state == S.GUARD and parry_timer > 0.0:
@@ -699,6 +842,27 @@ func _draw() -> void:
 		if state == S.ATTACK and attack_phase == 1:
 			var size: Vector2 = attack["size"]
 			draw_rect(to_local_rect(front_rect(attack["reach"], size, attack["height"])), Color(1, 0, 0, 0.6), false)
+
+
+## 葫芦药罐，拿在后手上
+func _draw_gourd() -> void:
+	var j := Puppet.solve(_pose)
+	var hb: Vector2 = j["hand_b"]
+	var at := Vector2(hb.x * facing, hb.y) * look.scale
+	var tilt := Vector2(facing * 1.5, -1.5)        # 罐口朝嘴
+	var outline := Color(0.03, 0.02, 0.04)
+	draw_circle(at - tilt, 4.0, outline)
+	draw_circle(at + tilt * 0.6, 3.0, outline)
+	draw_circle(at - tilt, 3.0, Color("8a2f24"))
+	draw_circle(at + tilt * 0.6, 2.0, Color("a5402f"))
+	draw_rect(Rect2(at - tilt + Vector2(-1, -1), Vector2(1, 1)), Color("d9775a"))
+	draw_line(at + tilt * 0.2, at + tilt * 0.2 + Vector2(0, 2), Color("d8c08a"), 1.0)   # 系绳
+
+
+static func _ease_out_bounce(x: float) -> float:
+	if x < 0.7:
+		return pow(x / 0.7, 2.0)
+	return 1.0 - 0.08 * sin((x - 0.7) / 0.3 * PI)
 
 
 func _draw_label(text: String, pos: Vector2, col: Color, size: int) -> void:

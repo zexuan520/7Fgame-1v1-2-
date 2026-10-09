@@ -1,7 +1,7 @@
 extends Node
 ## 战斗规则自动测试（无界面运行）：
 ##   godot --headless --path . res://tests/test_combat.tscn
-## 用模拟按键驱动主角，验证弹反、格挡、看破、跳过横扫、处决、重击、双人加成。
+## 用模拟按键驱动主角，验证弹反、格挡、看破、跳过横扫、处决、重击、药罐、刃意招式、双人加成。
 
 var main: Node
 var p: Player
@@ -28,6 +28,12 @@ func _run() -> void:
 	await test_posture_break_and_execute()
 	await _setup()
 	await test_heavy_attack()
+	await _setup()
+	await test_gourd()
+	await _setup()
+	await test_gourd_interrupted()
+	await _setup()
+	await test_art()
 	await _setup()
 	await test_coop_scaling()
 	print("")
@@ -171,6 +177,7 @@ func test_posture_break_and_execute() -> void:
 	await _tap("p1_attack")
 	await _frames(2)
 	_check(e.lives == 1, "处决扣一管血（剩 %d）" % e.lives)
+	_check(p.will >= 35.0, "处决攒刃意 +35（实际 %.0f）" % p.will)
 	await _frames(90)
 	_check(e.phase2 and is_equal_approx(e.hp, e.max_hp) and e.posture == 0.0, "进入第二管血，生命回满")
 
@@ -186,6 +193,41 @@ func test_heavy_attack() -> void:
 	await _frames(20)
 	_check(is_equal_approx(e.hp, e.max_hp - 30.0), "重击伤害 30（实际 %.1f）" % (e.max_hp - e.hp))
 	_check(is_equal_approx(e.posture, 60.0), "重击架势伤害 ×2 = 60（实际 %.1f）" % e.posture)
+
+
+func test_gourd() -> void:
+	print("药罐")
+	p.hp = 50.0
+	await _tap("p1_heal")
+	await _frames(70)
+	_check(is_equal_approx(p.hp, 130.0), "回 40%% 生命 = +80（实际 %.1f）" % p.hp)
+	_check(p.gourds == Player.MAX_GOURDS - 1, "用掉一个药罐（剩 %d）" % p.gourds)
+
+
+func test_gourd_interrupted() -> void:
+	print("喝药被打断")
+	p.hp = 100.0
+	await _tap("p1_heal")
+	e._start_move("quick")
+	await _frames(70)
+	_check(is_equal_approx(p.hp, 80.0), "被砍中，这口药没喝到（hp %.1f）" % p.hp)
+	_check(p.gourds == Player.MAX_GOURDS - 1, "药罐照样用掉（剩 %d）" % p.gourds)
+
+
+func test_art() -> void:
+	print("刃意招式·回旋斩")
+	await _tap("p1_art")
+	await _frames(5)
+	_check(p.state != Player.S.ART, "刃意不足时放不出来")
+	p.will = 50.0
+	e.state = Enemy.S.WINDUP
+	e.move_key = "sweep"
+	e.state_time = -10.0
+	await _tap("p1_art")
+	await _frames(60)
+	_check(is_equal_approx(p.will, 10.0), "消耗 40 刃意（剩 %.0f）" % p.will)
+	_check(is_equal_approx(e.posture, 80.0), "两圈各一次判定，架势 +40×2 = 80（实际 %.1f）" % e.posture)
+	_check(is_equal_approx(e.max_hp - e.hp, 44.0), "伤害 22×2 = 44（实际 %.1f）" % (e.max_hp - e.hp))
 
 
 func test_coop_scaling() -> void:
