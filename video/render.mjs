@@ -47,7 +47,7 @@ execFileSync('python3', [path.join(here, 'score.py'), cuesPath, wav], { stdio: '
 const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error',
   '-f', 'image2pipe', '-framerate', String(FPS), '-c:v', 'mjpeg', '-i', '-',
   '-i', wav,
-  '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'slow', '-crf', '17', '-tune', 'film',
+  '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'slow', '-crf', '23', '-tune', 'grain', '-maxrate', '5M', '-bufsize', '10M',
   '-c:a', 'aac', '-b:a', '192k', '-shortest', '-movflags', '+faststart', out],
   { stdio: ['pipe', 'inherit', 'inherit'] });
 
