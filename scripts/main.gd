@@ -8,7 +8,7 @@ const ARENA_W := 800.0                # 场地比画面宽，镜头跟着战斗�
 const FLOOR_Y := 300.0
 const P1_SPAWN := Vector2(280, FLOOR_Y)
 const P2_SPAWN := Vector2(220, FLOOR_Y)
-const ENEMY_SPAWN := Vector2(520, FLOOR_Y)
+const MAX_ATTACKERS := 2              # 设计文档：同时最多两个敌人进攻
 
 var players: Array[Player] = []
 var enemies: Array[Enemy] = []
@@ -18,6 +18,8 @@ var fx_root: Node2D
 var hud: Hud
 var background: Background
 var post: ShaderMaterial
+var encounter := 0
+var _clear_timer := -1.0
 
 var _shake := 0.0
 var _punch := 0.0
@@ -58,22 +60,75 @@ func _ready() -> void:
 		world.add_child(l)
 
 	camera = Camera2D.new()
-	camera.position = Vector2((P1_SPAWN.x + ENEMY_SPAWN.x) / 2.0, VIEW_H / 2.0)
+	camera.position = Vector2(P1_SPAWN.x + 120.0, VIEW_H / 2.0)
 	world.add_child(camera)
 
 	_spawn_player(1)
-	var e := Enemy.new()
-	e.main = self
-	e.position = ENEMY_SPAWN
-	world.add_child(e)
-	enemies.append(e)
 
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	hud = Hud.new()
 	hud.main = self
 	layer.add_child(hud)
-	hud.toast("按 H 查看操作说明")
+	start_encounter(0)
+	hud.toast("数字键 1-5 换对手，H 查看操作说明")
+
+
+# ---------- 遭遇 ----------
+
+## 清掉场上的敌人，按 EnemyData.ENCOUNTERS 重新刷一批
+func start_encounter(index: int) -> void:
+	encounter = index
+	_clear_timer = -1.0
+	for e in enemies:
+		e.queue_free()
+	enemies.clear()
+	for a in fx_root.get_children():
+		if a is Arrow:
+			a.queue_free()
+	var enc: Dictionary = EnemyData.ENCOUNTERS[index]
+	for s: Array in enc["spawns"]:
+		var e := spawn_enemy(s[0], Vector2(s[1], FLOOR_Y))
+		if enc.get("intro", false):
+			e.start_intro()
+	hud.clear_lines()
+
+
+func spawn_enemy(kind: String, pos: Vector2) -> Enemy:
+	var e := Enemy.create(kind)
+	e.main = self
+	e.position = pos
+	world.add_child(e)
+	enemies.append(e)
+	e.set_coop(players.size() >= 2)
+	return e
+
+
+## 同一时间最多两个敌人出招，其他的在外圈等
+func can_attack(e: Enemy) -> bool:
+	if e.is_attacking():
+		return true
+	var n := 0
+	for o in enemies:
+		if o != e and o.is_attacking():
+			n += 1
+	return n < MAX_ATTACKERS
+
+
+func _check_cleared(delta: float) -> void:
+	if enemies.is_empty():
+		return
+	if _clear_timer < 0.0:
+		for e in enemies:
+			if e.state != Enemy.S.DEAD:
+				return
+		_clear_timer = 3.0
+		var enc: Dictionary = EnemyData.ENCOUNTERS[encounter]
+		hud.toast(("击破 · " if enc.get("intro", false) else "全部击败 · ") + str(enc["name"]))
+		return
+	_clear_timer -= delta
+	if _clear_timer <= 0.0:
+		start_encounter(encounter)
 
 
 func _build_arena() -> void:
@@ -305,6 +360,7 @@ func _process(delta: float) -> void:
 		Engine.time_scale = 1.0
 
 	_update_camera(real_dt)
+	_check_cleared(real_dt)
 	_flash.a = maxf(0.0, _flash.a - real_dt * 1.6)
 	post.set_shader_parameter("flash", _flash)
 
@@ -352,9 +408,14 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("toggle_help"):
 		hud.show_help = not hud.show_help
 	elif event.is_action_pressed("reset"):
-		for e in enemies:
-			e.reset()
+		start_encounter(encounter)
 		for p in players:
 			p.respawn()
 	elif event.is_action_pressed("quit"):
 		get_tree().quit()
+	for i in range(EnemyData.ENCOUNTERS.size()):
+		if event.is_action_pressed("encounter_%d" % (i + 1)):
+			start_encounter(i)
+			for p in players:
+				p.respawn()
+			hud.toast(str(EnemyData.ENCOUNTERS[i]["name"]))

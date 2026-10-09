@@ -43,6 +43,10 @@ func _setup_inputs() -> void:
 	_add_keys("toggle_hitbox", [KEY_F3])
 	_add_keys("toggle_help", [KEY_H])
 	_add_keys("reset", [KEY_R])
+	# 数字键 1-5 换对手（见 EnemyData.ENCOUNTERS）
+	var nums := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9]
+	for i in range(nums.size()):
+		_add_keys("encounter_%d" % (i + 1), [nums[i]])
 	_add_keys("quit", [KEY_ESCAPE])
 
 

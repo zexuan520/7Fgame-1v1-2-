@@ -80,6 +80,7 @@ var _run_phase := 0.0               # 跑步周期按走过的距离算，脚不
 var _spring := Puppet.Spring.new()
 var will := 0.0
 var _drank := false
+var _stun_time := HITSTUN_TIME      # 这次挨打的僵直时间（被擒拿更久）
 var _art_tick := -1
 
 # 美术
@@ -250,7 +251,7 @@ func _physics_process(delta: float) -> void:
 		S.DODGE: _state_dodge(delta)
 		S.HITSTUN:
 			velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
-			if state_time >= HITSTUN_TIME:
+			if state_time >= _stun_time:
 				_enter(S.FREE)
 		S.BROKEN:
 			velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
@@ -601,13 +602,13 @@ func _check_stomp() -> void:
 # ---------- 受击 ----------
 
 ## 敌人攻击命中判定框时调用。返回 parry / block / hit / miss / mikiri
-func receive_enemy_hit(info: Dictionary, attacker: Fighter) -> String:
+func receive_enemy_hit(info: Dictionary, attacker: Node2D) -> String:
 	if state == S.DEAD or state == S.EXECUTE:
 		return "miss"
 	var to_attacker := 1 if attacker.global_position.x >= global_position.x else -1
 	var kind: String = info["kind"]
 	if invul_timer > 0.0:
-		if kind == "thrust" and state == S.DODGE and dodge_dir == -attacker.facing:
+		if kind == "thrust" and state == S.DODGE and dodge_dir == -int(attacker.get("facing")):
 			gain_will("mikiri")
 			return "mikiri"   # 看破：迎着突刺方向闪身
 		return "miss"
@@ -637,6 +638,9 @@ func receive_enemy_hit(info: Dictionary, attacker: Fighter) -> String:
 		return "hit"
 	add_posture(p * 0.5)
 	if state != S.BROKEN:
+		_stun_time = float(info.get("stun", HITSTUN_TIME))
+		if kind == "grab":
+			velocity = Vector2(-to_attacker * 260.0, -240.0)   # 被抓起来摔出去
 		_enter(S.HITSTUN)
 	return "hit"
 
@@ -727,7 +731,7 @@ func _target_pose() -> Dictionary:
 		S.DODGE:
 			return POSES["dodge"] if dodge_dir == facing else POSES["backstep"]
 		S.HITSTUN:
-			return POSES["hit"]
+			return POSES["broken"] if _stun_time > 0.5 else POSES["hit"]
 		S.DEAD:
 			return POSES["kneel"]
 		S.DRINK:

@@ -40,6 +40,24 @@ func _run() -> void:
 	await test_sheath_when_no_enemy()
 	await _setup()
 	await test_coop_scaling()
+	await _setup_kind("dog")
+	await test_dog_dies_in_cuts()
+	await _setup_kind("dog")
+	await test_grunt_parry_stagger()
+	await _setup_kind("archer")
+	await test_arrow_deflect()
+	await _setup_kind("shield")
+	await test_shield()
+	await _setup()
+	await test_attack_limit()
+	await _setup_kind("liu")
+	await test_boss_feint()
+	await _setup_kind("liu")
+	await test_boss_grab()
+	await _setup_kind("liu")
+	await test_boss_phases()
+	await _setup()
+	await test_boss_intro()
 	print("")
 	if failures == 0:
 		print("全部测试通过")
@@ -66,6 +84,21 @@ func _setup() -> void:
 	e.global_position = Vector2(460, 300)
 	p.facing = 1
 	await _frames(5)
+
+
+## 场上只留一个指定类型的敌人
+func _setup_kind(kind: String) -> void:
+	await _setup()
+	for x in main.enemies:
+		x.queue_free()
+	main.enemies.clear()
+	e = main.spawn_enemy(kind, Vector2(460, 300))
+	e.attack_cooldown = 9999.0
+	e.rng.seed = 1
+	await _frames(5)
+	e.global_position = Vector2(460, 300)
+	e.velocity = Vector2.ZERO
+	await _frames(2)
 
 
 func _frames(n: int) -> void:
@@ -292,3 +325,171 @@ func test_coop_scaling() -> void:
 	main._remove_player(2)
 	await _frames(2)
 	_check(is_equal_approx(e.max_hp, 300.0), "2P 退出后恢复")
+
+
+func test_dog_dies_in_cuts() -> void:
+	print("野狗：没有架势条，几刀砍死")
+	_hold_enemy()
+	e.move_key = "bite"
+	e.global_position = Vector2(440, 300)
+	for i in range(3):
+		await _tap("p1_attack")
+		await _frames(14)
+		if e.state == Enemy.S.DYING:
+			break
+		e.global_position = Vector2(440, 300)
+		_hold_enemy()
+		e.move_key = "bite"
+	await _frames(10)
+	_check(e.state == Enemy.S.DYING or e.state == Enemy.S.DEAD, "三刀后倒下（状态 %d，hp %.0f）" % [e.state, e.hp])
+	_check(not main.find_executable(p), "杂兵不进处决")
+
+
+func test_grunt_parry_stagger() -> void:
+	print("弹反野狗：直接僵直")
+	e.global_position = Vector2(470, 300)
+	e._start_move("bite")
+	await _wait_windup_end(0, 0.05)
+	await _tap("p1_guard")
+	await _frames(14)
+	_check(p.parry_count == 1, "弹反成功（%d）" % p.parry_count)
+	_check(e.state == Enemy.S.STAGGER, "野狗被弹开僵直（状态 %d）" % e.state)
+
+
+func test_arrow_deflect() -> void:
+	print("弓手：格挡箭、弹反把箭打回去")
+	e.global_position = Vector2(640, 300)
+	await _frames(2)
+	Input.action_press("p1_guard")
+	await _frames(20)
+	e._start_move("shot")
+	await _frames(100)
+	Input.action_release("p1_guard")
+	_check(is_equal_approx(p.hp, p.max_hp), "按住格挡挡下箭（hp %.0f）" % p.hp)
+	_check(p.posture > 0.0, "挡箭涨架势（%.1f）" % p.posture)
+	await _frames(40)
+	e.attack_cooldown = 9999.0
+	e._retreat_t = 0.0
+	e.global_position = Vector2(640, 300)
+	e._start_move("shot")
+	var arrow: Arrow = null
+	for i in range(200):
+		await _frames(1)
+		for c in main.fx_root.get_children():
+			if c is Arrow:
+				arrow = c
+		if arrow != null and is_instance_valid(arrow) and arrow.global_position.x - p.global_position.x < 30.0:
+			break
+	await _tap("p1_guard")
+	await _frames(60)
+	_check(is_equal_approx(p.hp, p.max_hp), "弹反没掉血（hp %.0f）" % p.hp)
+	_check(e.hp < e.max_hp, "箭飞回去射中弓手（弓手 hp %.0f/%.0f）" % [e.hp, e.max_hp])
+
+
+func test_shield() -> void:
+	print("盾兵：正面轻攻击被挡，重击破盾")
+	e.attack_cooldown = 9999.0
+	await _tap("p1_attack")
+	await _frames(20)
+	_check(is_equal_approx(e.hp, e.max_hp), "轻攻击被盾挡住（hp %.0f）" % e.hp)
+	await _frames(20)
+	e.global_position = Vector2(460, 300)
+	p.global_position = Vector2(400, 300)
+	Input.action_press("p1_attack")
+	await _frames(45)
+	Input.action_release("p1_attack")
+	await _frames(10)
+	_check(e.state == Enemy.S.STAGGER, "重击破盾，盾兵僵直（状态 %d）" % e.state)
+	_check(e.hp < e.max_hp, "破盾有伤害（hp %.0f）" % e.hp)
+	# 从背后砍
+	await _setup_kind("shield")
+	e.facing = -1
+	e.attack_cooldown = 9999.0
+	p.global_position = Vector2(500, 300)
+	p.facing = -1
+	await _frames(2)
+	e.facing = -1
+	e.state = Enemy.S.WINDUP
+	e.move_key = "bash"
+	e.state_time = -10.0
+	await _tap("p1_attack")
+	await _frames(20)
+	_check(e.hp < e.max_hp, "绕到背后能砍中（hp %.0f）" % e.hp)
+
+
+func test_attack_limit() -> void:
+	print("同时最多两个敌人出招")
+	main.start_encounter(3)
+	await _frames(2)
+	for x: Enemy in main.enemies:
+		x.global_position = Vector2(420 + randf() * 120.0, 300)
+		x.attack_cooldown = 0.0
+	p.invul_timer = 99.0
+	var most := 0
+	for i in range(400):
+		await _frames(1)
+		p.hp = p.max_hp
+		p.invul_timer = 99.0
+		var n := 0
+		for x: Enemy in main.enemies:
+			if x.is_attacking():
+				n += 1
+		most = maxi(most, n)
+	_check(most == 2, "最多两个同时出招（实际最多 %d）" % most)
+
+
+func test_boss_feint() -> void:
+	print("柳江远：虚斩变突刺")
+	e._start_move("feint")
+	_check(not e._danger(), "起手像普通斩击，没有危")
+	await _frames(40)
+	_check(e.move_key == "thrust", "蓄到一半变成突刺（%s）" % e.move_key)
+	_check(e._danger() or e.state != Enemy.S.WINDUP, "变招后亮危")
+
+
+func test_boss_grab() -> void:
+	print("柳江远：擒拿不能挡，要闪开")
+	Input.action_press("p1_guard")
+	await _frames(20)
+	e._start_move("grab")
+	await _frames(80)
+	Input.action_release("p1_guard")
+	_check(is_equal_approx(p.max_hp - p.hp, 56.0), "格挡没用，吃双倍伤害 56（实际 %.0f）" % (p.max_hp - p.hp))
+	await _setup_kind("liu")
+	e._start_move("grab")
+	await _wait_windup_end(0, 0.05)
+	Input.action_press("p1_left")
+	await _tap("p1_dodge")
+	await _frames(3)
+	Input.action_release("p1_left")
+	await _frames(40)
+	_check(is_equal_approx(p.hp, p.max_hp), "往后闪开没被抓（hp %.0f）" % p.hp)
+
+
+func test_boss_phases() -> void:
+	print("柳江远：三个阶段")
+	_check(e.lives == 3, "三管血（%d）" % e.lives)
+	for ph in range(3):
+		e.global_position = Vector2(440, 300)
+		e.posture = e.max_posture - 1.0
+		e.add_posture(5.0)
+		_check(e.state == Enemy.S.BROKEN, "第 %d 阶段架势崩溃" % (ph + 1))
+		await _tap("p1_attack")
+		await _frames(100)
+		e.attack_cooldown = 9999.0
+		if ph < 2:
+			_check(e.phase == ph + 1, "进入第 %d 阶段（phase %d）" % [ph + 2, e.phase])
+			_check(e._speed() < 1.0, "出招变快（×%.2f）" % e._speed())
+	_check(e.state == Enemy.S.DYING or e.state == Enemy.S.DEAD, "第三次处决后倒下（状态 %d）" % e.state)
+
+
+func test_boss_intro() -> void:
+	print("头目登场")
+	main.start_encounter(4)
+	await _frames(2)
+	e = main.enemies[0]
+	_check(e.state == Enemy.S.INTRO and not e.is_hittable(), "登场时不能被打")
+	await _frames(int(Enemy.INTRO_TURN * 60.0) + 5)
+	_check(main.hud._title_time > 0.0, "转身亮出名字")
+	await _frames(int((Enemy.INTRO_END - Enemy.INTRO_TURN) * 60.0) + 5)
+	_check(e.state != Enemy.S.INTRO and e.is_hittable(), "演完开打（状态 %d）" % e.state)

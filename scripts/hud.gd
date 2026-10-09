@@ -10,6 +10,7 @@ const HELP := [
 	["1P", "A/D 移动  W/空格 跳  J 攻击(长按重击)  K 格挡/弹反  L/Shift 闪身  U 药罐  I 回旋斩  O 换架势"],
 	["2P", "←/→ 移动  ↑ 跳  小键盘1 攻击 2 格挡 3 闪身 4 药罐 5 回旋斩 6 换架势"],
 	["手柄", "A 跳  X 攻击  RB 格挡  B 闪身  Y 药罐  LB 回旋斩  十字键上 换架势"],
+	["对手", "1 浪人  2 野狗群  3 盾兵与弓手  4 荒村混战  5 头目·柳江远"],
 	["其他", "F2 2P 加入/退出  F1 低难度  F3 判定框  R 重置  Esc 退出"],
 ]
 
@@ -19,6 +20,32 @@ var _toast := ""
 var _toast_time := 0.0
 var _trail := {}            # 血条掉血时的白色残影
 var _time := 0.0
+var _line_who := ""         # 字幕：说话的人和内容
+var _line := ""
+var _line_time := 0.0
+var _title := ""            # 头目登场的大字
+var _title_sub := ""
+var _title_time := 0.0
+
+const TITLE_TIME := 2.6
+
+
+## 屏幕下方字幕
+func say(who: String, text: String, time: float = 2.4) -> void:
+	_line_who = who
+	_line = text
+	_line_time = time
+
+
+func title_card(title: String, sub: String) -> void:
+	_title = title
+	_title_sub = sub
+	_title_time = TITLE_TIME
+
+
+func clear_lines() -> void:
+	_line_time = 0.0
+	_title_time = 0.0
 
 
 func toast(text: String) -> void:
@@ -29,6 +56,8 @@ func toast(text: String) -> void:
 func _process(delta: float) -> void:
 	_time += delta
 	_toast_time = maxf(0.0, _toast_time - delta)
+	_line_time = maxf(0.0, _line_time - delta)
+	_title_time = maxf(0.0, _title_time - delta)
 	queue_redraw()
 
 
@@ -40,9 +69,21 @@ func _draw() -> void:
 	if not main.has_player(2):
 		_text(font, "2P 按 F2 加入", Vector2(640 - 10, 22), Color(0.75, 0.72, 0.8, 0.55), 12, true)
 
+	# 底部血条只给精英和头目（杂兵头顶有小血条）
 	for e: Enemy in main.get_enemies():
-		if e.visible and e.state != Enemy.S.DEAD:
+		if e.visible and e.state != Enemy.S.DEAD and e.state != Enemy.S.INTRO and not e.is_grunt():
 			_draw_boss_bar(font, e)
+			break
+
+	if _title_time > 0.0:
+		_draw_title(font)
+	if _line_time > 0.0:
+		var la := clampf(_line_time / 0.3, 0.0, 1.0) * clampf((_line_time) * 4.0, 0.0, 1.0)
+		var w := font.get_string_size(_line, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+		var at := Vector2(320 - w / 2.0, 104)
+		draw_rect(Rect2(at + Vector2(-10, -13), Vector2(w + 20, 18)), Color(0, 0, 0, 0.55 * la))
+		_text(font, _line_who, at + Vector2(0, -16), Color(GOLD, la), 12)
+		_text(font, _line, at, Color(0.95, 0.93, 0.9, la), 12)
 
 	if _toast_time > 0.0:
 		var a := clampf(_toast_time / 0.4, 0.0, 1.0)
@@ -152,12 +193,28 @@ func _draw_player_panel(font: Font, p: Player, at: Vector2) -> void:
 		_text(font, "%.0f 秒后复活" % maxf(p.respawn_timer, 0.0), at + Vector2(110, 54), Color(1, 0.4, 0.4), 12)
 
 
+## 头目登场：名字大字，上下两道金线从中间展开
+func _draw_title(font: Font) -> void:
+	var t := TITLE_TIME - _title_time
+	var a := clampf(t / 0.4, 0.0, 1.0) * clampf(_title_time / 0.6, 0.0, 1.0)
+	var spread := clampf(t / 0.5, 0.0, 1.0)
+	var c := Vector2(320, 150)
+	draw_rect(Rect2(0, c.y - 38, 640, 60), Color(0, 0, 0, 0.45 * a))
+	var hw := 150.0 * spread
+	draw_rect(Rect2(c.x - hw, c.y - 32, hw * 2.0, 1), Color(GOLD, a))
+	draw_rect(Rect2(c.x - hw, c.y + 16, hw * 2.0, 1), Color(GOLD, a))
+	_text_centered(font, _title_sub, c + Vector2(0, -14), Color(0.8, 0.78, 0.85, a), 12)
+	_text_centered(font, _title, c + Vector2(0, 10), Color(0.95, 0.97, 1.0, a), 24)
+
+
 func _draw_boss_bar(font: Font, e: Enemy) -> void:
 	var r := Rect2(160, 330, 320, 7)
-	_text_centered(font, "无名浪人", Vector2(320, 322), Color(0.92, 0.86, 0.78), 12)
+	_text_centered(font, e.display_name(), Vector2(320, 322), Color(0.92, 0.86, 0.78), 12)
 	# 剩余血管
-	for i in range(Enemy.LIVES):
-		var c := Vector2(320 + 40 + i * 9, 316)
+	var total: int = (e.data["phases"] as Array).size()
+	var w := font.get_string_size(e.display_name(), HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+	for i in range(total):
+		var c := Vector2(320 + w / 2.0 + 10 + i * 9, 316)
 		draw_rect(Rect2(c - Vector2(3, 3), Vector2(6, 6)), FRAME)
 		draw_rect(Rect2(c - Vector2(2, 2), Vector2(4, 4)), Color("c42a2a") if i < e.lives else Color("3a3040"))
 	_frame(r)
@@ -168,7 +225,7 @@ func _draw_boss_bar(font: Font, e: Enemy) -> void:
 
 
 func _draw_help(font: Font) -> void:
-	var r := Rect2(24, 250, 592, 74)
+	var r := Rect2(24, 234, 592, 90)
 	_frame(r)
 	draw_rect(r, Color(0.05, 0.04, 0.08, 0.92))
 	for i in range(HELP.size()):

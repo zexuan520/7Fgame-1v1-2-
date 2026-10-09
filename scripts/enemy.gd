@@ -1,39 +1,25 @@
 class_name Enemy
 extends Fighter
-## 练手敌人「浪人」（精英）：两管血，四个招式，会格挡。
-## 三连斩、快斩可以弹反；下段横扫（危）要跳起踩头；突刺（危）要朝它闪身「看破」。
+## 敌人：数值、招式、AI 全部来自 EnemyData.TYPES，这里只有通用的状态机、受击和画法。
+## 可弹反的招式出刀前刀尖闪光；危招（下段横扫要跳、突刺要看破、擒拿要闪开）身上亮红光。
+## 杂兵没有架势条，血空直接倒下；精英和头目要打崩架势再处决，每处决一次扣一管血、进入下一阶段。
 
-enum S { IDLE, WINDUP, ACTIVE, RECOVER, GUARD, FLINCH, STAGGER, BROKEN, REVIVE, DYING, DEAD }
+enum S { IDLE, WINDUP, ACTIVE, RECOVER, GUARD, FLINCH, STAGGER, BROKEN, REVIVE, DYING, DEAD, INTRO }
 
-const BASE_HP := 300.0
-const BASE_POSTURE := 200.0
 const COOP_HP_MULT := 1.6           # 双人时生命 ×1.6
 const COOP_POSTURE_MULT := 1.4      # 双人时架势 ×1.4
-const LIVES := 2                    # 精英：处决一次扣一管
-const WALK_SPEED := 105.0
 const BROKEN_TIME := 2.0            # 架势满 → 处决窗口 2 秒
-const GUARD_CHANCE := 0.4
-const RESPAWN_TIME := 3.0
+const INTRO_TURN := 4.2             # 头目登场：说完话转身拔刀
+const INTRO_END := 5.2
 
-# 每段攻击的时间：前摇 / 判定 / 后摇（秒）
-const MOVES := {
-	"slash": {"name": "三连斩", "kind": "slash", "unblockable": false,
-		"dmg": 25.0, "posture": 30.0, "reach": 39.0, "size": Vector2(66, 36), "height": 30.0, "lunge": 0.0,
-		"hits": [[0.45, 0.10, 0.18], [0.28, 0.10, 0.18], [0.34, 0.12, 0.60]]},
-	"quick": {"name": "快斩", "kind": "slash", "unblockable": false,
-		"dmg": 20.0, "posture": 30.0, "reach": 39.0, "size": Vector2(63, 36), "height": 30.0, "lunge": 0.0,
-		"hits": [[0.24, 0.10, 0.45]]},
-	"sweep": {"name": "下段横扫", "kind": "sweep", "unblockable": true,
-		"dmg": 35.0, "posture": 40.0, "reach": 45.0, "size": Vector2(96, 18), "height": 9.0, "lunge": 0.0,
-		"hits": [[0.60, 0.16, 0.65]]},
-	"thrust": {"name": "突刺", "kind": "thrust", "unblockable": true,
-		"dmg": 40.0, "posture": 40.0, "reach": 33.0, "size": Vector2(60, 21), "height": 30.0, "lunge": 780.0,
-		"hits": [[0.65, 0.20, 0.65]]},
-}
-
+var kind := "ronin"
+var data: Dictionary = {}
+var moves: Dictionary = {}
 var state := S.IDLE
-var lives := LIVES
-var phase2 := false
+var lives := 1
+var phase := 0
+var phase2: bool:
+	get: return phase >= 1
 var coop := false
 var spawn_pos := Vector2.ZERO
 var move_key := ""
@@ -44,6 +30,11 @@ var block_streak := 0
 var stagger_time := 0.0
 var target: Player = null
 var rng := RandomNumberGenerator.new()
+var _feinted := false
+var _retreat_t := 0.0
+var _intro_said := 0
+var _keep_jitter := 0.0     # 每个敌人想站的距离稍微错开，不会挤在一个点上
+var _side := 1              # 包抄的一边（ai.flank 为 true 时有一半会绕到玩家另一边）
 
 # 美术
 var look := Puppet.Look.new()
@@ -51,13 +42,20 @@ var _pose: Dictionary = {}
 var _clock := 0.0
 var _fell := false
 var _spring := Puppet.Spring.new()
-var _stalk := 0.0           # 0 扛刀放松，1 压低戒备
+var _stalk := 0.0           # 0 远处放松，1 近处戒备
 var _fl_kind := ""          # 正在做的挑衅/耍刀动作（见 Flourish）
 var _fl_t := 0.0
 var _fl_wait := 1.5
 var _fl_last := ""
 
 static var POSES := {}
+
+
+## 按类型建敌人：特殊画法的类型用子类
+static func create(type_key: String) -> Enemy:
+	var e: Enemy = Dog.new() if type_key == "dog" else Enemy.new()
+	e.kind = type_key
+	return e
 
 
 static func _build_poses() -> void:
@@ -70,49 +68,91 @@ static func _build_poses() -> void:
 		"sword": -1.4, "foot_f": Vector2(7, 0), "foot_b": Vector2(-8, 0)})
 	POSES["sweep_cut"] = Puppet.pose({"crouch": 8.0, "lean": 0.5, "arm_f": Vector2(1.5, 1.6), "arm_b": Vector2(-0.6, -0.4),
 		"sword": 1.75, "foot_f": Vector2(9, 0), "foot_b": Vector2(-8, 0)})
-	# 远处：刀扛在肩上，身体放松
+	# 浪人：远处刀扛在肩上，近处压低身体刀尖低垂
 	POSES["shoulder"] = Puppet.pose({"crouch": 0.8, "lean": -0.04, "foot_f": Vector2(4, 0), "foot_b": Vector2(-4, 0),
 		"arm_f": Vector2(0.75, 3.0), "arm_b": Vector2(-0.15, 0.15), "sword": 4.1, "head": 0.05})
-	# 近处：压低身体，刀尖低垂，伺机出手
 	POSES["stalk"] = Puppet.pose({"crouch": 3.2, "lean": 0.26, "foot_f": Vector2(7, 0), "foot_b": Vector2(-6, 0),
 		"arm_f": Vector2(0.7, 1.15), "arm_b": Vector2(0.5, 1.1), "sword": 0.95, "head": -0.12})
 	var tp: Dictionary = Player.POSES["raise3"].duplicate()
 	tp["lean"] = -0.3
 	tp["crouch"] = 4.0
 	POSES["thrust_prep"] = tp
+	POSES["hop"] = Puppet.pose({"crouch": 1.0, "lean": -0.22, "foot_f": Vector2(5, -6), "foot_b": Vector2(-6, -3),
+		"arm_f": Vector2(0.9, 1.3), "arm_b": Vector2(1.2, 1.6), "sword": 1.1, "head": -0.1})
+
+	# 弓手（前手握弓，后手拉弦）
+	POSES["bow_idle"] = Puppet.pose({"crouch": 0.6, "lean": 0.02, "foot_f": Vector2(4, 0), "foot_b": Vector2(-4, 0),
+		"arm_f": Vector2(0.25, 0.55), "arm_b": Vector2(-0.15, 0.2), "head": 0.05})
+	POSES["bow_ready"] = Puppet.pose({"crouch": 1.8, "lean": 0.08, "foot_f": Vector2(6, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(0.9, 1.15), "arm_b": Vector2(0.6, 1.4), "head": -0.05})
+	POSES["bow_draw"] = Puppet.pose({"crouch": 2.2, "lean": -0.06, "foot_f": Vector2(8, 0), "foot_b": Vector2(-7, 0),
+		"arm_f": Vector2(1.55, 1.57), "arm_b": Vector2(1.9, -1.4), "head": 0.0})
+	POSES["bow_loose"] = Puppet.pose({"crouch": 2.2, "lean": -0.1, "foot_f": Vector2(8, 0), "foot_b": Vector2(-7, 0),
+		"arm_f": Vector2(1.6, 1.6), "arm_b": Vector2(1.3, -0.4), "head": -0.05})
+	POSES["kick_prep"] = Puppet.pose({"crouch": 1.0, "lean": -0.15, "foot_f": Vector2(5, -9), "foot_b": Vector2(-4, 0),
+		"arm_f": Vector2(0.9, 1.1), "arm_b": Vector2(0.4, 0.9)})
+	POSES["kick"] = Puppet.pose({"crouch": 1.0, "lean": -0.35, "foot_f": Vector2(17, -13), "foot_b": Vector2(-5, 0),
+		"arm_f": Vector2(0.6, 0.9), "arm_b": Vector2(-0.4, 0.2)})
+
+	# 盾兵（后手持盾挡在身前，前手握长枪）
+	POSES["shield_stance"] = Puppet.pose({"crouch": 2.6, "lean": 0.16, "foot_f": Vector2(7, 0), "foot_b": Vector2(-6, 0),
+		"arm_f": Vector2(0.5, 1.25), "arm_b": Vector2(1.25, 1.6), "sword": 1.45, "head": -0.05})
+	POSES["bash_prep"] = Puppet.pose({"crouch": 3.0, "lean": -0.12, "foot_f": Vector2(5, 0), "foot_b": Vector2(-8, 0),
+		"arm_f": Vector2(0.3, 1.0), "arm_b": Vector2(0.8, 1.2), "sword": 1.3})
+	POSES["bash"] = Puppet.pose({"crouch": 2.0, "lean": 0.4, "foot_f": Vector2(12, 0), "foot_b": Vector2(-7, 0),
+		"arm_f": Vector2(0.5, 1.2), "arm_b": Vector2(1.6, 1.6), "sword": 1.4})
+	POSES["spear_prep"] = Puppet.pose({"crouch": 3.2, "lean": -0.08, "foot_f": Vector2(6, 0), "foot_b": Vector2(-8, 0),
+		"arm_f": Vector2(0.1, 0.6), "arm_b": Vector2(1.2, 1.5), "sword": 1.6})
+	POSES["spear"] = Puppet.pose({"crouch": 2.4, "lean": 0.32, "foot_f": Vector2(12, 0), "foot_b": Vector2(-8, 0),
+		"arm_f": Vector2(1.5, 1.6), "arm_b": Vector2(1.1, 1.4), "sword": 1.57})
+
+	# 柳江远：平时刀尖斜指地面，像在河边站着
+	POSES["liu_calm"] = Puppet.pose({"crouch": 0.6, "lean": 0.0, "foot_f": Vector2(4, 0), "foot_b": Vector2(-4, 0),
+		"arm_f": Vector2(0.2, 0.45), "arm_b": Vector2(-0.1, 0.1), "sword": 0.6, "head": 0.08})
+	POSES["grab_prep"] = Puppet.pose({"crouch": 4.5, "lean": 0.3, "foot_f": Vector2(7, 0), "foot_b": Vector2(-9, 0),
+		"arm_f": Vector2(0.3, 0.1), "arm_b": Vector2(2.3, 1.9), "sword": -0.5, "head": -0.1})
+	POSES["grab_reach"] = Puppet.pose({"crouch": 5.0, "lean": 0.6, "foot_f": Vector2(13, 0), "foot_b": Vector2(-10, 0),
+		"arm_f": Vector2(0.2, 0.0), "arm_b": Vector2(1.65, 1.6), "sword": -0.7, "head": -0.2})
 
 
 func _ready() -> void:
 	_build_poses()
-	look.scale = 1.12
-	look.hat = true
-	look.cape = true
-	look.cloth = Color("6e2a2a")
-	look.cloth_dark = Color("461a1d")
-	look.cloth_light = Color("9a4438")
-	look.collar = Color("b8ab96")
-	look.pants = Color("2f2c36")
-	look.pants_dark = Color("1d1b22")
-	look.pants_light = Color("4a4656")
-	look.hair = Color("2a1a14")
-	look.belt = Color("6d6247")
-	look.cape_color = Color("3b2e2b")
-	look.sword_len = 28.0
-	look.width = 1.15
-	_pose = POSES["shoulder"].duplicate()
+	data = EnemyData.get_type(kind)
+	moves = data["moves"]
+	lives = (data["phases"] as Array).size()
+	var lk: Dictionary = data["look"]
+	for k: String in lk:
+		if k in look:
+			look.set(k, lk[k])
+	_pose = POSES[_idle_keys()[0]].duplicate()
 	_spring.reset(_pose)
-	body_size = Vector2(30, 56)
+	body_size = data["body"]
 	setup_body()
 	posture_recover_rate = 25.0
 	spawn_pos = global_position
 	_apply_stats(true)
+	rng.randomize()
+	_keep_jitter = rng.randf_range(0.0, 36.0)
+	_side = -1 if (data["ai"] as Dictionary).get("flank", false) and rng.randf() < 0.5 else 1
+
+
+func rank() -> String:
+	return data["rank"]
+
+
+func is_grunt() -> bool:
+	return data["rank"] == "grunt"
+
+
+func display_name() -> String:
+	return data["name"]
 
 
 func _apply_stats(full: bool) -> void:
 	var hp_ratio := 1.0 if full else hp / max_hp
 	var posture_ratio := 0.0 if full else posture / max_posture
-	max_hp = BASE_HP * (COOP_HP_MULT if coop else 1.0)
-	max_posture = BASE_POSTURE * (COOP_POSTURE_MULT if coop else 1.0)
+	max_hp = float(data["hp"]) * (COOP_HP_MULT if coop else 1.0)
+	max_posture = float(data["posture"]) * (COOP_POSTURE_MULT if coop else 1.0)
 	hp = max_hp * hp_ratio
 	posture = max_posture * posture_ratio
 
@@ -125,8 +165,8 @@ func set_coop(value: bool) -> void:
 
 
 func reset() -> void:
-	lives = LIVES
-	phase2 = false
+	lives = (data["phases"] as Array).size()
+	phase = 0
 	global_position = spawn_pos
 	velocity = Vector2.ZERO
 	attack_cooldown = 1.0
@@ -136,8 +176,19 @@ func reset() -> void:
 	_enter(S.IDLE)
 
 
+## 头目登场：背对玩家站着，说两句话再转身
+func start_intro() -> void:
+	facing = 1
+	_intro_said = 0
+	_enter(S.INTRO)
+
+
 func is_hittable() -> bool:
-	return state != S.DYING and state != S.DEAD and state != S.REVIVE
+	return state != S.DYING and state != S.DEAD and state != S.REVIVE and state != S.INTRO
+
+
+func is_attacking() -> bool:
+	return state == S.WINDUP or state == S.ACTIVE or state == S.RECOVER
 
 
 func _enter(s: S) -> void:
@@ -147,12 +198,25 @@ func _enter(s: S) -> void:
 		_fell = false
 
 
+func _phase_data() -> Dictionary:
+	var phases: Array = data["phases"]
+	return phases[mini(phase, phases.size() - 1)]
+
+
+## AI 参数：当前阶段有就用阶段的，没有就用 ai 里的
+func _ai(key: String, default: Variant = null) -> Variant:
+	var pd := _phase_data()
+	if pd.has(key):
+		return pd[key]
+	return (data["ai"] as Dictionary).get(key, default)
+
+
 func _speed() -> float:
-	return 0.85 if phase2 else 1.0   # 第二管血出招更快
+	return float(_phase_data().get("speed", 1.0))
 
 
 func _move() -> Dictionary:
-	return MOVES[move_key]
+	return moves[move_key]
 
 
 func _hit_times() -> Array:
@@ -199,21 +263,16 @@ func _physics_process(delta: float) -> void:
 		S.REVIVE:
 			velocity.x = 0.0
 			if state_time >= 1.2:
-				hp = max_hp
-				posture = 0.0
-				phase2 = true
-				attack_cooldown = 0.4
-				main.spawn_text(global_position + Vector2(0, -84), "第二管血", Color(1.0, 0.4, 0.3))
-				_enter(S.IDLE)
+				_next_phase()
 		S.DYING:
 			velocity.x = 0.0
 			if state_time >= 1.9:
 				visible = false
 				_enter(S.DEAD)
-		S.DEAD:
-			if state_time >= RESPAWN_TIME:
-				reset()
+		S.INTRO: _state_intro(delta)
 
+	if state != S.DEAD and state != S.DYING:
+		_separate(delta)
 	apply_gravity(delta)
 	move_and_slide()
 	_clock += delta
@@ -223,6 +282,34 @@ func _physics_process(delta: float) -> void:
 	var sp := _spring_params()
 	_pose = _spring.step(_target_pose(), sp.x, sp.y, delta)
 	queue_redraw()
+
+
+func _next_phase() -> void:
+	hp = max_hp
+	posture = 0.0
+	phase += 1
+	attack_cooldown = 0.4
+	var aura: Color = _phase_data().get("aura", Color(1, 1, 1))
+	var line: Variant = _phase_data().get("line")
+	if line is Array:
+		main.hud.say(line[0], line[1])
+		main.flash_screen(aura, 0.3)
+		main.spawn_ring(global_position + Vector2(0, -30), aura, 60.0)
+		main.shake(4.0)
+	elif line is String:
+		main.spawn_text(global_position + Vector2(0, -84), line, Color(1.0, 0.4, 0.3))
+	_enter(S.IDLE)
+
+
+## 敌人之间轻轻推开，不要叠成一团
+func _separate(delta: float) -> void:
+	for o: Enemy in main.get_enemies():
+		if o == self or not o.visible or o.state == S.DEAD or o.state == S.DYING:
+			continue
+		var dx := global_position.x - o.global_position.x
+		if absf(dx) < (body_size.x + o.body_size.x) * 0.5 + 4.0:
+			var dir := signf(dx) if dx != 0.0 else (1.0 if get_instance_id() > o.get_instance_id() else -1.0)
+			global_position.x += dir * 40.0 * delta
 
 
 ## 弹簧松紧（频率 Hz，阻尼）：蓄力慢、出刀快而甩、收招带惯性
@@ -236,6 +323,7 @@ func _spring_params() -> Vector2:
 		S.GUARD: return Vector2(10.0, 0.7)
 		S.FLINCH, S.STAGGER: return Vector2(9.0, 0.45)
 		S.IDLE: return Vector2(7.0, 0.9) if absf(velocity.x) > 5.0 else Vector2(4.0, 0.8)
+		S.INTRO: return Vector2(3.5, 0.9)
 	return Vector2(5.0, 0.8)
 
 
@@ -247,22 +335,50 @@ func _state_idle(delta: float) -> void:
 		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
 		return
 	var dx := target.global_position.x - global_position.x
-	facing = 1 if dx >= 0.0 else -1
 	var dist := absf(dx)
+	var speed: float = data["speed"]
+	if _side < 0 and attack_cooldown > 0.0 and dist < 160.0 and _retreat_t <= 0.0:
+		# 包抄：从玩家身边窜过去，绕到另一边
+		var goal := target.global_position.x + signf(-dx if dx != 0.0 else 1.0) * -90.0
+		if goal < 30.0 or goal > float(main.ARENA_W) - 30.0:
+			_side = 1   # 那边是墙，绕不过去
+		elif absf(goal - global_position.x) > 12.0:
+			velocity.x = move_toward(velocity.x, signf(goal - global_position.x) * speed * 1.2, 1500.0 * delta)
+			facing = 1 if velocity.x >= 0.0 else -1
+			return
+		else:
+			_side = 1
+	facing = 1 if dx >= 0.0 else -1
+	var accel := 900.0 if speed < 150.0 else 1500.0
 
-	if attack_cooldown <= 0.0 and is_on_floor():
-		if dist < 93.0:
-			_start_move(_pick([["slash", 45], ["sweep", 20], ["quick", 15], ["thrust", 20]]))
+	if _retreat_t > 0.0:
+		# 打完就跑：往后跳开拉距离（野狗、弓手）
+		_retreat_t -= delta
+		velocity.x = move_toward(velocity.x, -facing * speed, accel * 1.5 * delta)
+		return
+
+	var my_turn: bool = main.can_attack(self)
+	if attack_cooldown <= 0.0 and is_on_floor() and my_turn:
+		if dist < float(_ai("attack_range")):
+			_start_move(_pick(_ai("picks")))
 			return
-		if dist < 240.0 and rng.randf() < 0.012:
-			_start_move("thrust")   # 中距离偶尔突刺
-			return
+		for f: Array in _ai("far", []):
+			if dist >= float(f[2]) and dist <= float(f[3]) and rng.randf() < float(f[1]) * delta:
+				_start_move(f[0])
+				return
+	var keep: Array = _ai("keep", [45.0, 81.0])
+	var near_d: float = float(keep[0]) + _keep_jitter * 0.5
+	var far_d: float = float(keep[1]) + _keep_jitter
+	if not my_turn:
+		# 已经有两个人在砍了：在外圈转，等机会
+		near_d = maxf(near_d, 110.0)
+		far_d = maxf(far_d, 150.0)
 	var want := 0.0
-	if dist > 81.0:
-		want = facing * WALK_SPEED
-	elif dist < 45.0:
-		want = -facing * WALK_SPEED * 0.7
-	velocity.x = move_toward(velocity.x, want, 900.0 * delta)
+	if dist > far_d:
+		want = facing * speed
+	elif dist < near_d:
+		want = -facing * speed * 0.7
+	velocity.x = move_toward(velocity.x, want, accel * delta)
 
 
 func _pick(options: Array) -> String:
@@ -280,52 +396,86 @@ func _pick(options: Array) -> String:
 func _start_move(key: String) -> void:
 	move_key = key
 	hit_index = 0
+	_feinted = false
+	if target == null:
+		target = main.nearest_player(global_position)
 	if target != null:
 		facing = 1 if target.global_position.x >= global_position.x else -1
 	_enter(S.WINDUP)
 
 
 func _state_windup(delta: float) -> void:
-	if move_key == "thrust" and state_time < 0.25:
+	var m := _move()
+	if m["kind"] == "thrust" and state_time < 0.25:
 		velocity.x = -facing * 60.0   # 后撤蓄力
 	else:
 		velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
-	if state_time >= _hit_times()[0] * _speed():
+	var windup: float = _hit_times()[0] * _speed()
+	if m.has("feint") and not _feinted and state_time >= windup * float(m["feint"]["at"]):
+		# 假动作：举刀举到一半突然换招
+		_feinted = true
+		move_key = m["feint"]["into"]
+		hit_index = 0
+		state_time = 0.0
+		main.spawn_dust(global_position, float(-facing), 4)
+		return
+	if state_time >= windup:
 		hit_targets.clear()
 		_enter(S.ACTIVE)
-		_spawn_slash()
+		_on_active_start()
+
+
+func _on_active_start() -> void:
+	var m := _move()
+	if m.has("hop"):
+		velocity.y = float(m["hop"])
+	_spawn_fx()
 
 
 func _state_active(_delta: float) -> void:
 	var m := _move()
 	var lunge: float = m["lunge"]
-	velocity.x = facing * lunge if lunge > 0.0 else facing * 45.0
-	var size: Vector2 = m["size"]
-	var r := front_rect(m["reach"], size, m["height"])
-	for p: Player in main.get_players():
-		if p in hit_targets or not p.is_alive():
-			continue
-		if r.intersects(p.body_rect()):
-			hit_targets.append(p)
-			var result := p.receive_enemy_hit(m, self)
-			_on_attack_result(result, p)
-			if state != S.ACTIVE:
-				return
+	velocity.x = facing * lunge if lunge != 0.0 else facing * 45.0
+	if not m.get("nohit", false):
+		var size: Vector2 = m["size"]
+		var r := front_rect(m["reach"], size, m["height"])
+		for p: Player in main.get_players():
+			if p in hit_targets or not p.is_alive():
+				continue
+			if r.intersects(p.body_rect()):
+				hit_targets.append(p)
+				var result := p.receive_enemy_hit(m, self)
+				_on_attack_result(result, p)
+				if state != S.ACTIVE:
+					return
 	if state_time >= _hit_times()[1]:
 		_enter(S.RECOVER)
 
 
 func _next_hit() -> void:
-	var hits: Array = _move()["hits"]
+	var m := _move()
+	var hits: Array = m["hits"]
 	if hit_index + 1 < hits.size():
 		hit_index += 1
 		target = main.nearest_player(global_position)
 		if target != null:
 			facing = 1 if target.global_position.x >= global_position.x else -1
 		_enter(S.WINDUP)
+	elif m.has("then"):
+		_start_move(m["then"])
 	else:
 		attack_cooldown = rng.randf_range(0.5, 1.2) * _speed()
+		_retreat_t = float(_ai("retreat", 0.0))
+		if (data["ai"] as Dictionary).get("flank", false) and rng.randf() < 0.35:
+			_side = -1
 		_enter(S.IDLE)
+
+
+func _stagger(t: float) -> void:
+	if state == S.BROKEN or state == S.DYING or state == S.DEAD:
+		return
+	stagger_time = t
+	_enter(S.STAGGER)
 
 
 func _on_attack_result(result: String, p: Player) -> void:
@@ -334,7 +484,7 @@ func _on_attack_result(result: String, p: Player) -> void:
 	var mid := (global_position + p.global_position) / 2.0 + Vector2(0, -33)
 	match result:
 		"parry":
-			# 弹反：敌人受到该招架势值 50% 的反震
+			# 弹反：敌人受到该招架势值 50% 的反震；杂兵直接被弹开僵直
 			main.spawn_spark(mid, Color(1.0, 0.9, 0.4), 14)
 			main.spawn_ring(mid, Color(1.0, 0.95, 0.6))
 			main.spawn_text(mid + Vector2(0, -16), "弹反", Color(1.0, 0.9, 0.4))
@@ -342,22 +492,34 @@ func _on_attack_result(result: String, p: Player) -> void:
 			main.shake(3.0)
 			main.punch(0.03)
 			velocity.x = -facing * 120.0
-			add_posture(p_amount * 0.5)
+			if is_grunt():
+				velocity.x = -facing * 200.0
+				_stagger(0.7)
+			else:
+				add_posture(p_amount * 0.5)
 		"block":
 			main.spawn_spark(mid, Color(0.7, 0.8, 1.0), 6)
 		"hit":
 			main.spawn_spark(mid, Color(0.9, 0.15, 0.15), 8)
 			main.shake(2.0)
+			if m["kind"] == "grab":
+				# 被抓住：摔在地上
+				main.spawn_text(p.global_position + Vector2(0, -70), "擒拿", Color(1.0, 0.3, 0.2))
+				main.spawn_dust(p.global_position, 0.0, 12)
+				main.flash_screen(Color(0.6, 0.0, 0.0), 0.3)
+				main.hitstop(0.1)
+				main.shake(5.0)
+				velocity.x = 0.0
+				_enter(S.RECOVER)
 		"mikiri":
 			main.spawn_text(global_position + Vector2(0, -84), "看破", Color(0.6, 1.0, 0.8))
 			main.spawn_spark(global_position + Vector2(0, -30), Color(0.6, 1.0, 0.8), 12)
 			main.hitstop(0.1)
 			main.shake(4.0)
 			main.punch(0.06)
-			add_posture(max_posture * 0.4)
-			if state != S.BROKEN:
-				stagger_time = 0.9
-				_enter(S.STAGGER)
+			if not is_grunt():
+				add_posture(max_posture * 0.4)
+			_stagger(0.9)
 
 
 # ---------- 受击 ----------
@@ -371,9 +533,30 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 	var heavy: bool = atk["heavy"]
 	var from_front := (p.global_position.x >= global_position.x) == (facing == 1)
 	var mid := (global_position + p.global_position) / 2.0 + Vector2(0, -33)
-	var guard_chance := GUARD_CHANCE + (0.15 if phase2 else 0.0)
-	var can_guard := from_front and (state == S.IDLE or state == S.GUARD or state == S.FLINCH)
 
+	# 盾兵：正面的轻攻击全挡，出招和僵直时才有破绽
+	if data.get("shield", false) and from_front and state != S.ACTIVE and state != S.RECOVER and state != S.STAGGER:
+		if heavy:
+			main.spawn_text(global_position + Vector2(0, -80), "破盾", Color(1.0, 0.6, 0.2))
+			main.spawn_spark(mid, Color(1.0, 0.6, 0.2), 14)
+			main.shake(3.0)
+			_take_damage(dmg * 0.5, p_amount)
+			velocity.x = -facing * 160.0
+			_stagger(1.1)
+			return "guardbreak"
+		main.spawn_spark(mid + Vector2(-facing * 6.0, 0), Color(0.95, 0.8, 0.5), 6)
+		velocity.x = -facing * 40.0
+		block_streak += 1
+		if block_streak >= 3 and state == S.IDLE:
+			block_streak = 0
+			target = p
+			_start_move("bash")   # 挡了三下就用盾顶回去
+		return "blocked"
+
+	var guard_chance: float = float(data["guard"])
+	if phase >= 1 and guard_chance > 0.0:
+		guard_chance += 0.15
+	var can_guard := from_front and (state == S.IDLE or state == S.GUARD or state == S.FLINCH)
 	if can_guard and (state == S.GUARD or rng.randf() < guard_chance):
 		if heavy:
 			# 重攻击破防
@@ -381,9 +564,7 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 			main.spawn_spark(mid, Color(1.0, 0.6, 0.2), 12)
 			main.shake(3.0)
 			_take_damage(dmg, p_amount)
-			if state != S.BROKEN:
-				stagger_time = 0.5
-				_enter(S.STAGGER)
+			_stagger(0.5)
 			return "guardbreak"
 		main.spawn_spark(mid, Color(0.8, 0.85, 1.0), 6)
 		add_posture(p_amount * 0.5)
@@ -395,15 +576,16 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 			# 连续被打三下格挡后立刻反击，逼玩家等待和弹反
 			block_streak = 0
 			target = p
-			_start_move("quick")
+			_start_move("quick" if moves.has("quick") else moves.keys()[0])
 		return "blocked"
 
 	block_streak = 0
 	main.spawn_spark(mid, Color(0.95, 0.2, 0.2), 8 if not heavy else 12)
-	main.spawn_blood(global_position + Vector2(0, -33), float(p.facing), 12 if heavy else 8)
+	main.spawn_blood(global_position + Vector2(0, -body_size.y * 0.6), float(p.facing), 12 if heavy else 8)
 	_take_damage(dmg, p_amount)
-	if state == S.IDLE or state == S.GUARD:
-		velocity.x = -facing * 90.0
+	if state == S.IDLE or state == S.GUARD or (is_grunt() and state == S.WINDUP):
+		# 杂兵挨刀会被打断出招
+		velocity.x = -facing * (140.0 if is_grunt() else 90.0)
 		_enter(S.FLINCH)
 	return "hit"
 
@@ -412,19 +594,23 @@ func _take_damage(dmg: float, p_amount: float) -> void:
 	hp = maxf(0.0, hp - dmg)
 	flash(Color(1, 1, 1), 0.08)
 	if hp <= 0.0:
-		_break()   # 生命归零也会给出处决机会
+		if is_grunt():
+			_die()
+		else:
+			_break()   # 生命归零也会给出处决机会
 		return
 	add_posture(p_amount)
 
 
 func on_stomped(_p: Player) -> void:
-	if move_key == "sweep" and (state == S.WINDUP or state == S.ACTIVE or state == S.RECOVER):
-		main.spawn_text(global_position + Vector2(0, -84), "踩踏", Color(0.6, 1.0, 0.8))
+	var sweeping: bool = move_key != "" and moves.has(move_key) and _move()["kind"] == "sweep" \
+		and (state == S.WINDUP or state == S.ACTIVE or state == S.RECOVER)
+	if sweeping or data.get("stomp_stagger", false):
+		main.spawn_text(global_position + Vector2(0, -body_size.y - 28.0), "踩踏", Color(0.6, 1.0, 0.8))
 		main.hitstop(0.06)
-		add_posture(max_posture * 0.3)
-		if state != S.BROKEN:
-			stagger_time = 0.5
-			_enter(S.STAGGER)
+		if not is_grunt():
+			add_posture(max_posture * 0.3)
+		_stagger(0.5)
 	else:
 		add_posture(8.0)
 
@@ -436,10 +622,27 @@ func _on_posture_full() -> void:
 func _break() -> void:
 	if state == S.BROKEN or state == S.DYING or state == S.DEAD or state == S.REVIVE:
 		return
+	if is_grunt():
+		# 杂兵没有处决：架势满了只是踉跄一下
+		posture = 0.0
+		_stagger(0.8)
+		return
 	posture = max_posture
 	main.spawn_text(global_position + Vector2(0, -88), "架势崩溃", Color(1.0, 0.25, 0.2))
 	main.shake(3.0)
 	_enter(S.BROKEN)
+
+
+## 杂兵血空：直接倒下
+func _die() -> void:
+	lives = 0
+	hp = 0.0
+	main.spawn_text(global_position + Vector2(0, -body_size.y - 24.0), "斩", Color(1.0, 0.2, 0.15), 18)
+	main.spawn_blood(global_position + Vector2(0, -body_size.y * 0.6), float(-facing), 16)
+	main.hitstop(0.05)
+	main.shake(3.0)
+	velocity.x = -facing * 120.0
+	_enter(S.DYING)
 
 
 func execute_by(p: Player) -> void:
@@ -457,36 +660,98 @@ func execute_by(p: Player) -> void:
 		_enter(S.REVIVE)
 	else:
 		hp = 0.0
+		if data.has("death_line"):
+			main.hud.say(data["death_line"][0], data["death_line"][1])
 		_enter(S.DYING)
+
+
+func _state_intro(delta: float) -> void:
+	velocity.x = move_toward(velocity.x, 0.0, 900.0 * delta)
+	# 有人走近了就不等他说完
+	var p: Player = main.nearest_player(global_position)
+	if p != null and absf(p.global_position.x - global_position.x) < 90.0 and state_time < INTRO_TURN:
+		state_time = INTRO_TURN
+	var lines: Array = data.get("intro", [])
+	var at := [0.5, 2.3]
+	if _intro_said < lines.size() and _intro_said < at.size() and state_time >= at[_intro_said] and state_time < INTRO_TURN:
+		var line: Array = lines[_intro_said]
+		main.hud.say(line[0], line[1], 1.8)
+		_intro_said += 1
+	if state_time >= INTRO_TURN and _intro_said < 99:
+		_intro_said = 99
+		if p != null:
+			facing = 1 if p.global_position.x >= global_position.x else -1
+		main.hud.title_card(display_name(), "第一层 · 山脚荒村")
+		main.shake(2.0)
+		main.spawn_dust(global_position, 0.0, 10)
+	if state_time >= INTRO_END:
+		attack_cooldown = 0.6
+		_enter(S.IDLE)
 
 
 # ---------- 美术 ----------
 
-func _spawn_slash() -> void:
+func _spawn_fx() -> void:
 	var red := Color(1.0, 0.35, 0.25)
+	var white := Color(1.0, 0.9, 0.85)
 	var center := global_position + Vector2(facing * 10.0, -29.0)
-	match move_key:
+	match String(_move().get("fx", "slash")):
 		"sweep":
 			main.spawn_slash(global_position + Vector2(facing * 12.0, -9.0), facing, 46.0, -0.6, 0.35, red, 9.0)
 			main.spawn_dust(global_position + Vector2(facing * 30.0, 0), float(facing), 10)
-		"thrust":
+		"streak":
 			main.spawn_streak(global_position + Vector2(facing * 9.0, -27.0), facing, 78.0, red)
 			main.spawn_dust(global_position, float(-facing), 8)
-		_:
-			if hit_index == 1:
-				main.spawn_slash(center, facing, 42.0, 0.9, -1.7, Color(1.0, 0.9, 0.85))
+		"iai":
+			main.spawn_streak(global_position + Vector2(facing * 4.0, -30.0), facing, 120.0, Color(0.7, 0.9, 1.0))
+			main.spawn_slash(center, facing, 54.0, -0.5, 0.5, Color(0.8, 0.95, 1.0), 9.0)
+			main.spawn_dust(global_position, float(-facing), 10)
+			main.shake(2.0)
+		"bite":
+			main.spawn_dust(global_position, float(-facing), 4)
+		"arrow":
+			var info: Dictionary = _move()["arrow"]
+			var a := Arrow.new()
+			a.main = main
+			a.facing = facing
+			a.velocity = Vector2(facing * float(info["speed"]), 0.0)
+			a.dmg = info["dmg"]
+			a.posture = info["posture"]
+			a.position = global_position + Vector2(facing * 14.0, -34.0)
+			main.fx_root.add_child(a)
+		"slash":
+			if hit_index % 2 == 1:
+				main.spawn_slash(center, facing, 42.0, 0.9, -1.7, white)
 			else:
-				main.spawn_slash(center, facing, 42.0, -2.2, 0.6, Color(1.0, 0.9, 0.85))
+				main.spawn_slash(center, facing, 42.0, -2.2, 0.6, white)
 
 
+## 当前这一段的 [蓄力姿势, 出手姿势]
 func _move_keys() -> Array:
-	match move_key:
-		"sweep": return ["sweep_prep", "sweep_cut"]
-		"thrust": return ["thrust_prep", "cut3"]
-		_: return ["raise2", "cut2"] if hit_index == 1 else ["raise1", "cut1"]
+	var m := _move()
+	if not m.has("poses"):
+		return ["raise1", "cut1"]
+	var poses: Array = m["poses"]
+	return poses[mini(hit_index, poses.size() - 1)]
+
+
+func _idle_keys() -> Array:
+	return data.get("idle", ["stalk", "stalk"])
+
+
+func _ready_pose() -> Dictionary:
+	return POSES[_idle_keys()[1]]
 
 
 func _target_pose() -> Dictionary:
+	var p := _target_pose_raw()
+	if data["prop"] == "bow":
+		p = p.duplicate()
+		p["sheathed"] = 1.0   # 弓手不带刀
+	return p
+
+
+func _target_pose_raw() -> Dictionary:
 	var t := state_time
 	match state:
 		S.IDLE:
@@ -494,7 +759,7 @@ func _target_pose() -> Dictionary:
 		S.WINDUP:
 			var keys := _move_keys()
 			var windup: float = _hit_times()[0] * _speed()
-			return Puppet.lerp_pose(POSES["stalk"], POSES[keys[0]], t / maxf(windup * 0.6, 0.01))
+			return Puppet.lerp_pose(_ready_pose(), POSES[keys[0]], t / maxf(windup * 0.6, 0.01))
 		S.ACTIVE:
 			var keys := _move_keys()
 			var active: float = _hit_times()[1]
@@ -502,7 +767,7 @@ func _target_pose() -> Dictionary:
 		S.RECOVER:
 			var keys := _move_keys()
 			var recover: float = _hit_times()[2] * _speed()
-			return Puppet.lerp_pose(POSES[keys[1]], POSES["stalk"], pow(t / recover, 2.0))
+			return Puppet.lerp_pose(POSES[keys[1]], _ready_pose(), pow(t / recover, 2.0))
 		S.GUARD:
 			return POSES["guard"]
 		S.FLINCH, S.STAGGER:
@@ -514,13 +779,18 @@ func _target_pose() -> Dictionary:
 			bp["lean"] = 0.7 + sin(_clock * 3.0) * 0.1
 			return bp
 		S.REVIVE:
-			return Puppet.lerp_pose(POSES["broken"], POSES["stalk"], (t - 0.6) / 0.6)
-	return POSES["stalk"]
+			return Puppet.lerp_pose(POSES["broken"], _ready_pose(), (t - 0.6) / 0.6)
+		S.INTRO:
+			var calm: Dictionary = POSES[_idle_keys()[0]]
+			if t < INTRO_TURN:
+				return Puppet.breathe(calm, _clock * 0.7, 1.0)
+			return Puppet.lerp_pose(calm, _ready_pose(), (t - INTRO_TURN) / 0.5)
+	return _ready_pose()
 
 
-## 走着走着会扛刀敲肩、转刀、压斗笠、勾手挑衅；一出招就打断
+## 浪人走着走着会扛刀敲肩、转刀、压斗笠、勾手挑衅；一出招就打断
 func _update_flourish(delta: float) -> void:
-	if state != S.IDLE:
+	if state != S.IDLE or not data.get("flourish", false):
 		_fl_kind = ""
 		return
 	if _fl_kind == "":
@@ -536,21 +806,26 @@ func _update_flourish(delta: float) -> void:
 		_fl_wait = rng.randf_range(1.5, 3.5)
 
 
-## 待机/走动：远处扛刀晃着走，近处压低身体横移
+func _base_pose() -> Dictionary:
+	var keys := _idle_keys()
+	return Puppet.lerp_pose(POSES[keys[0]], POSES[keys[1]], _stalk)
+
+
+## 待机/走动：远处放松，近处压低身体横移
 func _idle_pose() -> Dictionary:
 	var p := _move_pose()
 	if _fl_kind != "":
-		var base := Puppet.lerp_pose(POSES["shoulder"], POSES["stalk"], _stalk)
-		return Flourish.overlay(p, Flourish.sample(_fl_kind, _fl_t, base))
+		return Flourish.overlay(p, Flourish.sample(_fl_kind, _fl_t, _base_pose()))
 	return p
 
 
 func _move_pose() -> Dictionary:
-	var base := Puppet.lerp_pose(POSES["shoulder"], POSES["stalk"], _stalk)
+	var base := _base_pose()
 	var speed := absf(velocity.x)
+	var walk: float = data["speed"]
 	if speed < 5.0:
 		return Puppet.breathe(base, _clock * 0.85, 1.2 - _stalk * 0.5)
-	var k := clampf(speed / WALK_SPEED, 0.0, 1.0)
+	var k := clampf(speed / walk, 0.0, 1.0)
 	var back := signf(velocity.x) != float(facing)
 	var ph := _clock * (7.0 + 3.0 * _stalk) * (-1.0 if back else 1.0)
 	var stride := lerpf(5.0, 4.0, _stalk) * k
@@ -562,9 +837,14 @@ func _move_pose() -> Dictionary:
 	w["lean"] = float(base["lean"]) + sin(ph * 2.0) * 0.03 + (-0.18 if back else 0.0)
 	w["head"] = float(base["head"]) - sin(ph * 2.0) * 0.04
 	w["sword"] = float(base["sword"]) + sin(ph * 2.0 + 0.5) * lerpf(0.12, 0.04, _stalk)
-	var ab: Vector2 = base["arm_b"]
-	w["arm_b"] = ab + Vector2(-sin(ph) * 0.35 * (1.0 - _stalk), 0.0)
+	if data["prop"] != "shield":
+		var ab: Vector2 = base["arm_b"]
+		w["arm_b"] = ab + Vector2(-sin(ph) * 0.35 * (1.0 - _stalk), 0.0)
 	return w
+
+
+func _danger() -> bool:
+	return state == S.WINDUP and move_key != "" and bool(_move()["unblockable"])
 
 
 func _draw() -> void:
@@ -573,16 +853,11 @@ func _draw() -> void:
 	draw_circle(Vector2.ZERO, 16.0, Color(0, 0, 0, 0.45))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
-	var danger := state == S.WINDUP and move_key != "" and bool(_move()["unblockable"])
-	var tint := Color(0, 0, 0, 0)
+	var danger := _danger()
+	var tint := _tint()
 	var pulse := 0.5 + 0.5 * sin(state_time * 30.0)
-	if flash_timer > 0.0:
-		tint = Color(flash_color, 1.0)
-	elif danger:
-		tint = Color(1.0, 0.1, 0.05, 0.2 + 0.3 * pulse)
-	elif state == S.BROKEN or state == S.REVIVE:
-		tint = Color(0.2, 0.2, 0.25, 0.35)
-	look.eye_glow = Color(1.0, 0.2, 0.1) if phase2 else Color(0, 0, 0, 0)
+	var aura: Color = _phase_data().get("aura", Color(0, 0, 0, 0))
+	look.eye_glow = Color(aura, 1.0) if aura.a > 0.0 else Color(0, 0, 0, 0)
 
 	if state == S.DYING:
 		# 跪地一会儿，再往前扑倒，最后慢慢消失
@@ -600,48 +875,152 @@ func _draw() -> void:
 	if state == S.DEAD:
 		return
 
-	if phase2:
-		# 第二管血：身上冒出红色的气
-		for i in range(5):
+	if aura.a > 0.0:
+		# 后面的阶段：身上冒出气
+		for i in range(6):
 			var x := sin(_clock * 5.0 + i * 1.7) * 10.0
 			var y := -fmod(_clock * 40.0 + i * 13.0, 60.0)
-			draw_rect(Rect2(x - 1, y, 2, 2), Color(1, 0.25, 0.1, 0.7 * (1.0 + y / 60.0)))
+			draw_rect(Rect2(x - 1, y, 2, 2), Color(aura, 0.7 * (1.0 + y / 60.0)))
 	# 危招时身后亮起红光
 	if danger:
 		draw_circle(Vector2(0, -30), 24.0 + pulse * 4.0, Color(1, 0.1, 0.05, 0.12))
 	var rim := Color(1.0, 0.4, 0.3, 0.7) if danger else Color(0.5, 0.62, 0.9, 0.5)
+	if data["prop"] == "bow":
+		_draw_bow(tint, true)
 	Puppet.draw_lit(self, _pose, look, facing, rim, Vector2.ZERO, tint, 1.0, 0.0, Vector2.ONE, velocity.x)
+	if data["prop"] == "bow":
+		_draw_bow(tint, false)
+	elif data["prop"] == "shield":
+		_draw_shield(tint)
 
+	_draw_overlay(top, danger)
+
+
+func _tint() -> Color:
+	var pulse := 0.5 + 0.5 * sin(state_time * 30.0)
+	if flash_timer > 0.0:
+		return Color(flash_color, 1.0)
+	if _danger():
+		return Color(1.0, 0.1, 0.05, 0.2 + 0.3 * pulse)
+	if state == S.BROKEN or state == S.REVIVE:
+		return Color(0.2, 0.2, 0.25, 0.35)
+	return Color(0, 0, 0, 0)
+
+
+## 角色本身之外的提示：危字、出手闪光、处决点、架势条/血条
+func _draw_overlay(top: float, danger: bool) -> void:
 	if danger:
 		_draw_label("危", Vector2(0, top - 10), Color(1, 0.2, 0.1), 24)
-	elif state == S.WINDUP:
-		# 可弹反的招式：出刀前刀尖闪光
+	elif state == S.WINDUP and (not _move().get("nohit", false) or _move().get("fx") == "arrow"):
+		# 可弹反的招式：出手前闪光
 		var windup_t: float = _hit_times()[0]
 		if state_time >= windup_t * _speed() - 0.12:
-			var tip := Puppet.sword_tip(_pose, look, facing)
-			draw_circle(tip, 4.0, Color(1, 1, 1, 0.35))
-			draw_circle(tip, 2.0, Color(1, 1, 1))
-			draw_line(tip - Vector2(8, 0), tip + Vector2(8, 0), Color(1, 1, 1, 0.9), 1.0)
-			draw_line(tip - Vector2(0, 8), tip + Vector2(0, 8), Color(1, 1, 1, 0.9), 1.0)
+			_draw_glint(_glint_pos())
 	if state == S.BROKEN:
-		# 处决点
 		var bp := 0.5 + 0.5 * sin(state_time * 12.0)
 		draw_circle(Vector2(0, -36), 7.0 + bp * 3.0, Color(1, 0.05, 0.05, 0.25))
 		draw_circle(Vector2(0, -36), 4.5 + bp * 1.5, Color(0, 0, 0, 0.7))
 		draw_circle(Vector2(0, -36), 3.5 + bp * 1.5, Color(0.9, 0.02, 0.02))
 		_draw_label("按攻击键处决", Vector2(0, top - 12), Color(1, 0.4, 0.4), 12)
 
-	if posture > 0.5:
+	if is_grunt():
+		if hp < max_hp:
+			_draw_small_hp(Vector2(0, top + 2), 26.0)
+	elif posture > 0.5:
 		draw_posture_bar(Vector2(0, top), 64.0, posture / max_posture)
 
 	if Game.show_hitboxes:
 		var w := body_size.x
 		var h := body_size.y
 		draw_rect(Rect2(-w / 2.0, -h, w, h), Color(0, 1, 0, 0.6), false)
-		if state == S.ACTIVE:
+		if state == S.ACTIVE and not _move().get("nohit", false):
 			var m := _move()
 			var size: Vector2 = m["size"]
 			draw_rect(to_local_rect(front_rect(m["reach"], size, m["height"])), Color(1, 0, 0, 0.8), false)
+
+
+func _glint_pos() -> Vector2:
+	if data["prop"] == "bow":
+		return _hand(true) + Vector2(facing * 6.0, 0)
+	return Puppet.sword_tip(_pose, look, facing)
+
+
+func _draw_glint(tip: Vector2) -> void:
+	draw_circle(tip, 4.0, Color(1, 1, 1, 0.35))
+	draw_circle(tip, 2.0, Color(1, 1, 1))
+	draw_line(tip - Vector2(8, 0), tip + Vector2(8, 0), Color(1, 1, 1, 0.9), 1.0)
+	draw_line(tip - Vector2(0, 8), tip + Vector2(0, 8), Color(1, 1, 1, 0.9), 1.0)
+
+
+func _draw_small_hp(c: Vector2, width: float) -> void:
+	var at := (c - Vector2(width / 2.0, 0)).round()
+	draw_rect(Rect2(at - Vector2(1, 1), Vector2(width + 2, 4)), Color(0.02, 0.02, 0.04, 0.85))
+	draw_rect(Rect2(at, Vector2(roundf(width * hp / max_hp), 2)), Color("c42a2a"))
+
+
+## 手的位置（本地坐标）
+func _hand(front: bool) -> Vector2:
+	var j := Puppet.solve(_pose)
+	var h: Vector2 = j["hand_f"] if front else j["hand_b"]
+	return Vector2(h.x * facing, h.y) * look.scale
+
+
+## 弓：前手握弓背，弦拉到后手。behind 为 true 时只画身体后面的弦
+func _draw_bow(tint: Color, behind: bool) -> void:
+	var hf := _hand(true)
+	var hb := _hand(false)
+	var arm: Vector2 = _pose["arm_f"]
+	var dir := Vector2(sin(arm.y) * facing, cos(arm.y))     # 前臂方向
+	var axis := Vector2(-dir.y, dir.x)                       # 弓身方向
+	var half := 14.0
+	var top := hf + axis * half - dir * 3.0
+	var bot := hf - axis * half - dir * 3.0
+	var drawing: bool = state == S.WINDUP and _move().get("fx") == "arrow"
+	var nock := hb if drawing else (top + bot) / 2.0
+	var wood := Color("5a3a22")
+	var string_col := Color(0.85, 0.82, 0.75, 0.9)
+	if tint.a >= 1.0:
+		wood = Color(tint, 1.0)
+		string_col = wood
+	if behind:
+		draw_line(top, nock, string_col, 1.0)
+		draw_line(nock, bot, string_col, 1.0)
+		return
+	var pts := PackedVector2Array()
+	for i in range(9):
+		var s := -1.0 + i / 4.0
+		pts.append(hf + axis * half * s + dir * (2.5 * (1.0 - s * s) - 3.0))
+	draw_polyline(pts, Color(0.05, 0.03, 0.03), 3.0)
+	draw_polyline(pts, wood, 1.5)
+	if drawing:
+		# 搭在弦上的箭
+		var tip := hf + dir * 8.0
+		draw_line(nock, tip, Color("c9b08a"), 1.0)
+		draw_rect(Rect2(tip - Vector2(1, 1), Vector2(2, 2)), Color(0.9, 0.9, 0.95))
+
+
+## 木盾：后手拿着挡在身前
+func _draw_shield(tint: Color) -> void:
+	var h := _hand(false) + Vector2(facing * 4.0, -2.0)
+	var r := Rect2(h - Vector2(6, 15), Vector2(12, 28))
+	var wood := Color("6b4a2e")
+	var dark := Color("43301f")
+	var iron := Color("8a8f99")
+	if tint.a >= 1.0:
+		wood = Color(tint, 1.0)
+		dark = wood
+		iron = wood
+	elif tint.a > 0.0:
+		wood = wood.lerp(Color(tint, 1.0), tint.a)
+	draw_rect(r.grow(1), Color(0.03, 0.02, 0.04))
+	draw_rect(r, wood)
+	draw_rect(Rect2(r.position, Vector2(r.size.x, 1)), wood.lightened(0.25))
+	for i in range(1, 3):
+		var x := r.position.x + r.size.x * i / 3.0
+		draw_line(Vector2(x, r.position.y + 1), Vector2(x, r.end.y), dark, 1.0)
+	draw_rect(Rect2(r.position + Vector2(0, 5), Vector2(r.size.x, 2)), iron)
+	draw_rect(Rect2(r.position + Vector2(0, r.size.y - 7), Vector2(r.size.x, 2)), iron)
+	draw_circle(r.get_center(), 1.5, iron.lightened(0.3))
 
 
 func _draw_label(text: String, pos: Vector2, col: Color, size: int) -> void:
