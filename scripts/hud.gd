@@ -108,6 +108,9 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var font: Font = Game.font
+	if main.sys_menu == "title":
+		_draw_sys(font)   # 标题画面：只画标题，别的界面都不画
+		return
 	for p: Player in main.get_players():
 		var at := Vector2(10, 10) if p.index == 1 else Vector2(640 - 10 - 168, 10)
 		_draw_player_panel(font, p, at)
@@ -176,6 +179,8 @@ func _draw() -> void:
 		_draw_death(font)
 	if fade > 0.0:
 		draw_rect(Rect2(0, 0, 640, 360), Color(0.02, 0.01, 0.03, fade))
+	if main.sys_menu != "":
+		_draw_sys(font)
 
 
 func _frame(r: Rect2) -> void:
@@ -1087,3 +1092,61 @@ func _draw_facility(font: Font) -> void:
 	if menu_note_time > 0.0:
 		_text_centered(font, menu_note, Vector2(320, box.end.y - 22), Color(1.0, 0.85, 0.5), 12)
 	_text(font, "跳/下 选  攻击 买下  格挡 离开", Vector2(box.position.x + 12, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)
+
+
+# ---------- 系统菜单：标题、暂停、设置、改键 ----------
+
+func _draw_sys(font: Font) -> void:
+	var rows: Array = main.sys_rows()
+	var cur: int = main.sys_cursor
+	if main.sys_menu == "title":
+		draw_rect(Rect2(0, 0, 640, 360), Color(0.02, 0.01, 0.04, 0.86))
+		# 标题：大字，上下两道金线
+		var a := clampf(_time / 1.2, 0.0, 1.0)
+		_text_centered(font, "残刃归途", Vector2(320, 128), Color(0.96, 0.92, 0.84, a), 48)
+		draw_rect(Rect2(200, 140, 240, 1), Color(GOLD, a))
+		draw_rect(Rect2(230, 84, 180, 1), Color(GOLD, a * 0.6))
+		_text_centered(font, "只狼式格挡弹反 · 横版肉鸽 · 单人 / 本地双人", Vector2(320, 160), Color(0.75, 0.72, 0.8, a), 12)
+		var ob := Rect2(240, 192, 160, 26 + rows.size() * 24)
+		draw_rect(ob, Color(0.04, 0.03, 0.06, 0.92))
+		_frame(ob)
+		for i in range(rows.size()):
+			var sel := i == cur
+			var y := 210 + i * 24
+			if sel:
+				draw_rect(Rect2(250, y - 14, 140, 20), Color(GOLD, 0.18))
+				_text(font, "▶", Vector2(256, y), GOLD, 12)
+			_text_centered(font, rows[i]["label"], Vector2(320, y), Color(1.0, 0.95, 0.8) if sel else Color(0.7, 0.68, 0.74), 12)
+		_text_centered(font, "跳/下 选  攻击 确定（1P、2P 的键都行）", Vector2(320, 330), Color(0.6, 0.58, 0.64, 0.8), 12)
+		return
+	draw_rect(Rect2(0, 0, 640, 360), Color(0, 0, 0, 0.55))
+	var titles := {"pause": "暂停", "settings": "设置", "keys": "改键"}
+	var w := 300.0 if main.sys_menu == "pause" else 420.0
+	var box := Rect2(320 - w / 2.0, 40, w, 280)
+	draw_rect(box, Color(0.04, 0.03, 0.06, 0.96))
+	_frame(box)
+	_text_centered(font, titles.get(main.sys_menu, ""), Vector2(320, 60), Color(0.95, 0.9, 0.8), 12)
+	var per := 9
+	var first := clampi(cur - per + 1, 0, maxi(0, rows.size() - per))
+	for i in range(first, mini(rows.size(), first + per)):
+		var row: Dictionary = rows[i]
+		var r := Rect2(box.position.x + 14, 72 + (i - first) * 24, box.size.x - 28, 20)
+		var sel := i == cur
+		draw_rect(r, Color(0.18, 0.14, 0.1) if sel else Color(0.08, 0.06, 0.1))
+		if sel:
+			draw_rect(r, Color(1.0, 0.95, 0.75).lerp(GOLD, 0.3 + 0.2 * sin(_time * 6.0)), false, 2.0)
+		_text(font, row["label"], r.position + Vector2(10, 14), Color(0.95, 0.92, 0.86), 12)
+		var value: String = row.get("value", "")
+		if main.sys_wait == row["id"]:
+			value = "按下新的键…（Esc 取消）"
+		if value != "":
+			var vc := Color(1.0, 0.85, 0.5) if main.sys_wait == row["id"] else Color(0.7, 0.85, 0.8)
+			_text(font, value, Vector2(r.end.x - 10, r.position.y + 14), vc, 12, true)
+	if rows.size() > per:
+		_text(font, "%d / %d" % [cur + 1, rows.size()], Vector2(box.end.x - 14, box.end.y - 24), Color(0.6, 0.58, 0.62), 12, true)
+	var hint := "跳/下 选  攻击 确定  格挡 返回"
+	if main.sys_menu == "settings":
+		hint = "跳/下 选  ←→ 调音量  攻击 切换  格挡 返回"
+	elif main.sys_menu == "keys":
+		hint = "攻击 改这个键  格挡 返回（手柄按键不变）"
+	_text(font, hint, Vector2(box.position.x + 14, box.end.y - 8), Color(0.7, 0.68, 0.74), 12)

@@ -11,6 +11,7 @@ var show_hitboxes := false
 var font: Font
 
 var practice := false             # 练武场：旧的单场地，数字键换对手（F4 切换）
+var title_done := false           # 这次启动已经过了标题画面
 var run: Run = null               # 正在进行的一局；null 时在破庙
 var last_result := {}             # 上一局的结算，回到破庙时显示
 var save_path := "user://save.cfg"
@@ -208,21 +209,38 @@ func parry_window() -> float:
 	return PARRY_WINDOW_EASY if easy_mode else PARRY_WINDOW
 
 
+## 默认键盘按键。1P：键盘左手区 + 1 号手柄；2P：方向键 + 小键盘（没有小键盘可用右边的字母和标点）+ 2 号手柄
+const P1_KEYS := {
+	"left": [KEY_A], "right": [KEY_D], "jump": [KEY_W, KEY_SPACE], "down": [KEY_S],
+	"attack": [KEY_J], "guard": [KEY_K], "dodge": [KEY_L, KEY_SHIFT],
+	"heal": [KEY_U], "art": [KEY_I], "stance": [KEY_O], "tool": [KEY_P], "item": [KEY_Y],
+}
+const P2_KEYS := {
+	"left": [KEY_LEFT], "right": [KEY_RIGHT], "jump": [KEY_UP], "down": [KEY_DOWN],
+	"attack": [KEY_KP_1, KEY_COMMA], "guard": [KEY_KP_2, KEY_PERIOD], "dodge": [KEY_KP_3, KEY_SLASH],
+	"heal": [KEY_KP_4, KEY_M], "art": [KEY_KP_5, KEY_N], "stance": [KEY_KP_6, KEY_B],
+	"tool": [KEY_KP_7, KEY_V], "item": [KEY_KP_8, KEY_C],
+}
+## 设置里改键的顺序和名字
+const ACTION_NAMES := {
+	"left": "左", "right": "右", "jump": "跳 / 上", "down": "下", "attack": "攻击", "guard": "格挡", "dodge": "闪身",
+	"heal": "药罐", "art": "招式", "stance": "换架势", "tool": "副武器", "item": "道具",
+}
+
+
+## 恢复默认按键
+func reset_keys() -> void:
+	for prefix: String in ["p1_", "p2_"]:
+		var keys: Dictionary = P1_KEYS if prefix == "p1_" else P2_KEYS
+		for a: String in keys:
+			rebind(prefix + a, keys[a], false)
+	settings["keys"] = {}
+	write_settings()
+
+
 func _setup_inputs() -> void:
-	# 1P：键盘左手区 + 1 号手柄
-	_bind_player("p1_", {
-		"left": [KEY_A], "right": [KEY_D], "jump": [KEY_W, KEY_SPACE], "down": [KEY_S],
-		"attack": [KEY_J], "guard": [KEY_K], "dodge": [KEY_L, KEY_SHIFT],
-		"heal": [KEY_U], "art": [KEY_I], "stance": [KEY_O], "tool": [KEY_P], "item": [KEY_Y],
-	}, 0)
-	# 2P：方向键 + 小键盘 1/2/3（没有小键盘可用 , . /），药罐小键盘 4 或 M，招式小键盘 5 或 N，架势小键盘 6 或 B，
-	# 副武器小键盘 7 或 V，道具小键盘 8 或 C + 2 号手柄
-	_bind_player("p2_", {
-		"left": [KEY_LEFT], "right": [KEY_RIGHT], "jump": [KEY_UP], "down": [KEY_DOWN],
-		"attack": [KEY_KP_1, KEY_COMMA], "guard": [KEY_KP_2, KEY_PERIOD], "dodge": [KEY_KP_3, KEY_SLASH],
-		"heal": [KEY_KP_4, KEY_M], "art": [KEY_KP_5, KEY_N], "stance": [KEY_KP_6, KEY_B],
-		"tool": [KEY_KP_7, KEY_V], "item": [KEY_KP_8, KEY_C],
-	}, 1)
+	_bind_player("p1_", P1_KEYS, 0)
+	_bind_player("p2_", P2_KEYS, 1)
 	_add_keys("toggle_p2", [KEY_F2])
 	_add_keys("toggle_easy", [KEY_F1])
 	_add_keys("toggle_hitbox", [KEY_F3])
@@ -237,7 +255,9 @@ func _setup_inputs() -> void:
 	var nums := [KEY_1, KEY_2, KEY_3, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9]
 	for i in range(nums.size()):
 		_add_keys("encounter_%d" % (i + 1), [nums[i]])
-	_add_keys("quit", [KEY_ESCAPE])
+	_add_keys("quit", [KEY_ESCAPE])   # 暂停菜单
+	_add_pad_button("quit", 0, JOY_BUTTON_START)
+	_add_pad_button("quit", 1, JOY_BUTTON_START)
 
 
 func _bind_player(prefix: String, keys: Dictionary, pad: int) -> void:

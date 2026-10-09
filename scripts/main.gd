@@ -88,8 +88,16 @@ var _hitstop_until := 0
 var _slow_until := 0
 var _slow_scale := 1.0
 
+## 系统菜单：title 标题 / pause 暂停 / settings 设置 / keys 改键（暂停时游戏世界停住，菜单照常走）
+var sys_menu := ""
+var sys_cursor := 0
+var sys_wait := ""                    # 改键：正在等按新键的动作
+var _sys_from := ""                   # 设置从哪个菜单进来的（关掉回去）
+var _sys_frame := -1                  # 菜单打开的那一帧（这一帧的按键是打开菜单用的，不算）
+
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS   # 暂停时菜单照常走；游戏世界在 world 下面，会停住
 	var container := SubViewportContainer.new()
 	container.stretch = true
 	container.size = Vector2(VIEW_W, VIEW_H)
@@ -105,6 +113,7 @@ func _ready() -> void:
 	viewport.snap_2d_vertices_to_pixel = true
 	container.add_child(viewport)
 	world = Node2D.new()
+	world.process_mode = Node.PROCESS_MODE_PAUSABLE
 	viewport.add_child(world)
 
 	fx_root = Node2D.new()
@@ -127,6 +136,8 @@ func _ready() -> void:
 		_load_room()
 	else:
 		_load_hub()
+		if not Game.title_done:
+			open_sys("title")
 
 
 # ---------- 房间搭建 ----------
@@ -1499,6 +1510,156 @@ func shop_do(row: Dictionary) -> void:
 	Game.sfx("ui_select")
 
 
+# ---------- 系统菜单：标题、暂停、设置、改键 ----------
+
+func open_sys(which: String) -> void:
+	sys_menu = which
+	sys_cursor = 0
+	sys_wait = ""
+	_sys_frame = Engine.get_process_frames()
+	if which == "title":
+		for p in players:
+			p.frozen = true
+	elif which == "pause":
+		get_tree().paused = true
+	Game.sfx("ui_select")
+
+
+func close_sys() -> void:
+	if sys_menu == "title":
+		Game.title_done = true
+		for p in players:
+			_unfreeze(p)
+		hud.room_banner("破庙", "据点")
+	sys_menu = ""
+	sys_wait = ""
+	get_tree().paused = false
+	for p in players:
+		p._buf.clear()
+
+
+## 这个菜单现在的每一行：{id, label, value（设置的当前值，可以为空）}
+func sys_rows() -> Array:
+	match sys_menu:
+		"title":
+			return [{"id": "start", "label": "开始"}, {"id": "settings", "label": "设置"}, {"id": "quit", "label": "退出"}]
+		"pause":
+			var rows := [{"id": "resume", "label": "继续"}, {"id": "settings", "label": "设置"}]
+			if mode == "room" and Game.run != null:
+				rows.append({"id": "abandon", "label": "放弃这一局", "value": "回破庙，魂玉按身死带回"})
+			elif mode == "practice":
+				rows.append({"id": "leave_practice", "label": "离开练武场", "value": "回破庙"})
+			rows.append({"id": "quit", "label": "退出游戏"})
+			return rows
+		"settings":
+			var st: Dictionary = Game.settings
+			return [
+				{"id": "master", "label": "总音量", "value": "%d%%" % roundi(float(st["master"]) * 100.0)},
+				{"id": "music", "label": "音乐", "value": "%d%%" % roundi(float(st["music"]) * 100.0)},
+				{"id": "sfx", "label": "音效", "value": "%d%%" % roundi(float(st["sfx"]) * 100.0)},
+				{"id": "easy", "label": "弹反窗口", "value": "%.2f 秒（%s）" % [Game.parry_window(), "低难度" if Game.easy_mode else "普通"]},
+				{"id": "hitbox", "label": "显示判定框", "value": "开" if Game.show_hitboxes else "关"},
+				{"id": "keys", "label": "改键"},
+				{"id": "back", "label": "返回"},
+			]
+		"keys":
+			var rows := []
+			for prefix: String in ["p1_", "p2_"]:
+				for a: String in Game.ACTION_NAMES:
+					rows.append({"id": prefix + a, "label": "%s %s" % [prefix.substr(0, 2).to_upper(), Game.ACTION_NAMES[a]],
+						"value": Game.key_names(prefix + a)})
+			rows.append({"id": "reset_keys", "label": "恢复默认按键"})
+			rows.append({"id": "back", "label": "返回"})
+			return rows
+	return []
+
+
+## 谁按都算（1P、2P 的键都能操作菜单）
+func _sys_pressed(action: String) -> bool:
+	return Input.is_action_just_pressed("p1_" + action) or Input.is_action_just_pressed("p2_" + action)
+
+
+func _update_sys() -> void:
+	if sys_wait != "" or Engine.get_process_frames() == _sys_frame:
+		return
+	var rows := sys_rows()
+	if _sys_pressed("jump"):
+		sys_cursor = posmod(sys_cursor - 1, rows.size())
+		Game.sfx("ui_move")
+	elif _sys_pressed("down"):
+		sys_cursor = posmod(sys_cursor + 1, rows.size())
+		Game.sfx("ui_move")
+	sys_cursor = mini(sys_cursor, rows.size() - 1)
+	var row: Dictionary = rows[sys_cursor]
+	var step := 0
+	if _sys_pressed("left"):
+		step = -1
+	elif _sys_pressed("right"):
+		step = 1
+	if step != 0 and row["id"] in ["master", "music", "sfx"]:
+		Game.settings[row["id"]] = clampf(snappedf(float(Game.settings[row["id"]]) + step * 0.1, 0.1), 0.0, 1.0)
+		Game.apply_volume()
+		Game.write_settings()
+		Game.sfx("ui_move")
+		return
+	if _sys_pressed("attack"):
+		sys_do(String(row["id"]))
+	elif _sys_pressed("guard") or _sys_pressed("dodge") or Input.is_action_just_pressed("quit"):
+		sys_back()
+
+
+## 选了菜单里的一项
+func sys_do(id: String) -> void:
+	Game.sfx("ui_select")
+	match id:
+		"start", "resume":
+			close_sys()
+		"settings":
+			_sys_from = sys_menu
+			sys_menu = "settings"
+			sys_cursor = 0
+		"keys":
+			sys_menu = "keys"
+			sys_cursor = 0
+		"back":
+			sys_back()
+		"quit":
+			get_tree().quit()
+		"abandon":
+			close_sys()
+			_finish_run(false)
+		"leave_practice":
+			close_sys()
+			Game.practice = false
+			get_tree().reload_current_scene()
+		"easy":
+			Game.easy_mode = not Game.easy_mode
+			Game.write_settings()
+		"hitbox":
+			Game.show_hitboxes = not Game.show_hitboxes
+		"reset_keys":
+			Game.reset_keys()
+		_:
+			if id.begins_with("p1_") or id.begins_with("p2_"):
+				sys_wait = id   # 等下一个按键
+
+
+## 返回上一层：设置 → 进来的菜单；改键 → 设置；暂停 → 继续；标题不能返回
+func sys_back() -> void:
+	match sys_menu:
+		"settings":
+			sys_menu = _sys_from
+			sys_cursor = 0
+		"keys":
+			sys_menu = "settings"
+			sys_cursor = 5
+		"pause":
+			close_sys()
+		_:
+			return
+	Game.sfx("ui_back")
+
+
 # ---------- 破庙的设施（铁铺、药房、老钱的铺子、训练场） ----------
 
 func open_facility(kind: String, p: Player) -> void:
@@ -2029,6 +2190,10 @@ func flash_screen(color: Color, strength: float = 0.35) -> void:
 
 
 func _process(delta: float) -> void:
+	if sys_menu != "":
+		_update_sys()
+		if get_tree().paused:
+			return
 	var now := Time.get_ticks_msec()
 	var real_dt := delta / maxf(Engine.time_scale, 0.05)
 	if _hitstop_until > 0 and now >= _hitstop_until:
@@ -2105,7 +2270,21 @@ func _update_camera(dt: float) -> void:
 		camera.offset = Vector2.ZERO
 
 
+## 改键：等玩家按下新的键（Esc 取消）
+func _input(event: InputEvent) -> void:
+	if sys_wait == "" or not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	var k := event as InputEventKey
+	if k.physical_keycode != KEY_ESCAPE:
+		Game.rebind(sys_wait, [k.physical_keycode if k.physical_keycode != 0 else k.keycode])
+		Game.sfx("ui_select")
+	sys_wait = ""
+	get_viewport().set_input_as_handled()
+
+
 func _unhandled_input(event: InputEvent) -> void:
+	if sys_menu != "":
+		return
 	if menu_player != null:
 		if event.is_action_pressed("toggle_map") or event.is_action_pressed("quit"):
 			close_talents()
@@ -2170,7 +2349,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		for p in players:
 			p.respawn()
 	elif event.is_action_pressed("quit"):
-		get_tree().quit()
+		open_sys("pause")
 	if mode != "practice":
 		return
 	for i in range(EnemyData.ENCOUNTERS.size()):

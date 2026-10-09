@@ -59,6 +59,8 @@ func _run() -> void:
 	_reset_save()
 	await _setup()
 	await test_audio()
+	_reset_save()
+	await test_system_menus()
 	test_room_layouts()
 	await _setup()
 	await test_features()
@@ -83,6 +85,7 @@ func _setup() -> void:
 	for a in InputMap.get_actions():
 		Input.action_release(a)
 	Engine.time_scale = 1.0
+	Game.title_done = true   # 测试里不看标题画面
 	Game.practice = false
 	Game.run = null
 	Game.last_result = {}
@@ -1450,3 +1453,85 @@ func test_audio() -> void:
 	Game.sfx("parry")
 	Game.sfx("parry")
 	_check(true, "连着放同一个音效不出错")
+
+
+# ---------- 标题、暂停、设置、改键 ----------
+
+func _esc() -> void:
+	var ev := InputEventAction.new()
+	ev.action = "quit"
+	ev.pressed = true
+	main._unhandled_input(ev)
+	await _frames(2)
+
+
+func test_system_menus() -> void:
+	print("标题画面、暂停菜单、设置、改键")
+	Game.settings_path = "user://test_settings.cfg"
+	Game.title_done = false
+	await _setup()
+	Game.title_done = false
+	main.open_sys("title")
+	var p := _p()
+	_check(main.sys_menu == "title" and p.frozen, "启动先出标题画面，人站住")
+	await _frames(1)
+	await _press("p1_attack")
+	_check(main.sys_menu == "" and Game.title_done and not p.frozen, "选开始进破庙")
+	# 暂停：游戏世界停住
+	main.interact(_find("door", "action", "start_run"), p)
+	await _wait_fade()
+	await _esc()
+	_check(main.sys_menu == "pause" and get_tree().paused, "Esc 打开暂停菜单，游戏停住")
+	var x := p.global_position.x
+	Input.action_press("p1_right")
+	await _frames(20)
+	Input.action_release("p1_right")
+	_check(p.global_position.x == x, "暂停时人不动")
+	# 设置：音量、低难度
+	await _press("p1_down")
+	await _press("p1_attack")
+	_check(main.sys_menu == "settings", "进设置")
+	var vol := float(Game.settings["master"])
+	await _press("p1_right")
+	_check(is_equal_approx(float(Game.settings["master"]), minf(1.0, vol + 0.1)), "←→ 调总音量（%.1f）" % float(Game.settings["master"]))
+	var easy := Game.easy_mode
+	main.sys_cursor = 3
+	await _press("p1_attack")
+	_check(Game.easy_mode != easy, "切换弹反窗口难度")
+	Game.easy_mode = easy
+	# 改键
+	main.sys_cursor = 5
+	await _press("p1_attack")
+	_check(main.sys_menu == "keys", "进改键")
+	main.sys_do("p1_attack")
+	_check(main.sys_wait == "p1_attack", "等按新的键")
+	var ev := InputEventKey.new()
+	ev.physical_keycode = KEY_F
+	ev.pressed = true
+	main._input(ev)
+	_check(Game.key_names("p1_attack") == "F" and main.sys_wait == "", "1P 攻击改成 F")
+	var cfg := ConfigFile.new()
+	_check(cfg.load(Game.settings_path) == OK and cfg.get_value("settings", "keys", {}).has("p1_attack"), "改键写进设置文件")
+	main.sys_do("reset_keys")
+	_check(Game.key_names("p1_attack") == "J", "恢复默认按键")
+	await _press("p1_guard")
+	await _press("p1_guard")
+	_check(main.sys_menu == "pause", "格挡一层层返回")
+	await _press("quit")   # 菜单开着时 Esc 由菜单自己读
+	_check(main.sys_menu == "" and not get_tree().paused, "再按 Esc 继续")
+	# 放弃这一局：按身死结算
+	Game.run.jade = 10
+	var before := int(Game.save["jade"])
+	await _esc()
+	var rows: Array = main.sys_rows()
+	var ab := -1
+	for i in range(rows.size()):
+		if rows[i]["id"] == "abandon":
+			ab = i
+	main.sys_cursor = ab
+	await _press("p1_attack")
+	await _wait_fade()
+	_check(main.mode == "hub" and not get_tree().paused and int(Game.save["jade"]) == before + 6, "放弃这一局回破庙，魂玉带回 60%")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(Game.settings_path))
+	Game.settings_path = "user://settings.cfg"
+	Game.title_done = true

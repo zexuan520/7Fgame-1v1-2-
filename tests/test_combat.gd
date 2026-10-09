@@ -130,6 +130,7 @@ func _setup() -> void:
 	for a in InputMap.get_actions():
 		Input.action_release(a)
 	Engine.time_scale = 1.0
+	Game.title_done = true   # 测试里不看标题画面
 	Game.practice = true   # 战斗测试都在练武场里跑
 	Game.run = null
 	main = load("res://scenes/main.tscn").instantiate()
