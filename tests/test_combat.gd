@@ -117,6 +117,8 @@ func _run() -> void:
 	await test_items()
 	await _setup()
 	await test_sprite()
+	await _setup()
+	await test_enemy_sprites()
 	print("")
 	if failures == 0:
 		print("全部测试通过")
@@ -1318,6 +1320,42 @@ func test_sprite() -> void:
 	# 2P 用青衣那张图
 	var sh2 := SpriteSheet.load_sheet("res://assets/sprites/heroine.json", "res://assets/sprites/heroine_p2.png")
 	_check(sh2.texture != null and sh2.texture != sh.texture, "2P 换一套颜色")
+
+
+func test_enemy_sprites() -> void:
+	print("敌人像素精灵：第一层敌人都有精灵表，每招用到的姿势都画了，按状态换动作")
+	for kind: String in ["ronin", "dog", "archer", "shield", "liu", "tutor"]:
+		var path := "res://assets/sprites/enemy_%s" % kind
+		_check(FileAccess.file_exists(path + ".json"), "%s 有精灵表" % kind)
+		var sh := SpriteSheet.load_sheet(path + ".json", path + ".png")
+		var need := ["idle_far", "idle_near", "walk_far", "walk_near", "guard", "hit", "broken", "death"]
+		var data: Dictionary = EnemyData.get_type(kind)
+		for key: String in data["moves"]:
+			var m: Dictionary = data["moves"][key]
+			if not m.has("poses"):
+				need.append(key)
+				continue
+			for pr: Array in m["poses"]:
+				need.append("%s>%s" % [pr[0], pr[1]])
+		var missing: Array = need.filter(func(n: String) -> bool: return not sh.has(n))
+		_check(missing.is_empty(), "%s 用到的动作都画了（缺 %s）" % [kind, str(missing)])
+	# 浪人：出招时播这一招的动作，前摇停在蓄力那几帧
+	for x in main.enemies:
+		x.queue_free()
+	main.enemies.clear()
+	e = main.spawn_enemy("ronin", Vector2(460, 300))
+	e.attack_cooldown = 9999.0
+	await _frames(3)
+	_check(e.sheet != null and e.body != null, "浪人用精灵画")
+	e._start_move("slash")
+	await _frames(2)
+	_check(e._anim_name == "raise1>cut1", "出招播这一招的动作（%s）" % e._anim_name)
+	_check(e._anim_frame < 2, "前摇停在蓄力帧（第 %d 帧）" % e._anim_frame)
+	_check(e._glint_pos().y < -20.0, "出手闪光在刀尖上")
+	# 第二层的敌人还没画：照旧用骨骼小人
+	var s: Enemy = main.spawn_enemy("sohei", Vector2(560, 300))
+	await _frames(2)
+	_check(s.sheet == null, "没画的敌人照旧画（僧兵）")
 
 
 func test_items() -> void:

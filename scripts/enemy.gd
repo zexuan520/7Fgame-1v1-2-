@@ -141,6 +141,7 @@ func _ready() -> void:
 			look.set(k, lk[k])
 	_pose = POSES[_idle_keys()[0]].duplicate()
 	_spring.reset(_pose)
+	_setup_sprite()
 	body_size = data["body"]
 	setup_body()
 	posture_recover_rate = 25.0
@@ -304,6 +305,8 @@ func _physics_process(delta: float) -> void:
 	_update_flourish(delta)
 	var sp := _spring_params()
 	_pose = _spring.step(_target_pose(), sp.x, sp.y, delta)
+	if sheet != null:
+		_update_sprite(delta)
 	queue_redraw()
 
 
@@ -849,14 +852,17 @@ func _spawn_fx() -> void:
 	var center := global_position + Vector2(facing * 10.0, -29.0)
 	match String(_move().get("fx", "slash")):
 		"sweep":
-			main.spawn_slash(global_position + Vector2(facing * 12.0, -9.0), facing, 46.0, -0.6, 0.35, red, 9.0)
+			if sheet == null:   # 用精灵画的敌人，刀光已经画在帧里
+				main.spawn_slash(global_position + Vector2(facing * 12.0, -9.0), facing, 46.0, -0.6, 0.35, red, 9.0)
 			main.spawn_dust(global_position + Vector2(facing * 30.0, 0), float(facing), 10)
 		"streak":
-			main.spawn_streak(global_position + Vector2(facing * 9.0, -27.0), facing, 78.0, red)
+			if sheet == null:
+				main.spawn_streak(global_position + Vector2(facing * 9.0, -27.0), facing, 78.0, red)
 			main.spawn_dust(global_position, float(-facing), 8)
 		"iai":
-			main.spawn_streak(global_position + Vector2(facing * 4.0, -30.0), facing, 120.0, Color(0.7, 0.9, 1.0))
-			main.spawn_slash(center, facing, 54.0, -0.5, 0.5, Color(0.8, 0.95, 1.0), 9.0)
+			if sheet == null:
+				main.spawn_streak(global_position + Vector2(facing * 4.0, -30.0), facing, 120.0, Color(0.7, 0.9, 1.0))
+				main.spawn_slash(center, facing, 54.0, -0.5, 0.5, Color(0.8, 0.95, 1.0), 9.0)
 			main.spawn_dust(global_position, float(-facing), 10)
 			main.shake(2.0)
 		"bite":
@@ -882,6 +888,8 @@ func _spawn_fx() -> void:
 			a.position = global_position + Vector2(facing * 14.0, -34.0)
 			main.fx_root.add_child(a)
 		"slash":
+			if sheet != null:
+				return
 			if hit_index % 2 == 1:
 				main.spawn_slash(center, facing, 42.0, 0.9, -1.7, white)
 			else:
@@ -1021,6 +1029,9 @@ func _draw() -> void:
 	var aura: Color = _phase_data().get("aura", Color(0, 0, 0, 0))
 	look.eye_glow = Color(aura, 1.0) if aura.a > 0.0 else Color(0, 0, 0, 0)
 
+	if sheet != null:
+		_draw_sprite_extras(top, danger, aura, pulse)
+		return
 	if state == S.DYING:
 		# 跪地一会儿，再往前扑倒，最后慢慢消失
 		var x := clampf((state_time - 0.6) / 0.4, 0.0, 1.0)
@@ -1102,6 +1113,10 @@ func _draw_overlay(top: float, danger: bool) -> void:
 
 
 func _glint_pos() -> Vector2:
+	if sheet != null:
+		var t: Variant = sheet.tip(_anim_name, _anim_frame)
+		if t != null:
+			return Vector2((t as Vector2).x * facing, (t as Vector2).y)
 	if data["prop"] == "bow":
 		return _hand(true) + Vector2(facing * 6.0, 0)
 	return Puppet.sword_tip(_pose, look, facing)
@@ -1190,3 +1205,133 @@ func _draw_label(text: String, pos: Vector2, col: Color, size: int) -> void:
 	var at := (pos - Vector2(tw / 2.0, 0)).round()
 	draw_string_outline(Game.font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 2, Color(0, 0, 0, 0.9))
 	draw_string(Game.font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
+
+
+# ---------- 像素精灵（tools/sprites/build_enemies.py 生成；没有精灵表的敌人还用骨骼小人画） ----------
+
+const WALK_CYCLE_FAR := 52.0       # 走一个周期挪多远（像素），按距离换帧脚不打滑
+const WALK_CYCLE_NEAR := 40.0
+
+var sheet: SpriteSheet
+var body: Sprite2D
+var _anim_name := ""
+var _anim_frame := 0
+var _anim_t := 0.0
+var _walk_dist := 0.0
+
+
+func _setup_sprite() -> void:
+	var path := "res://assets/sprites/enemy_%s" % kind
+	if not FileAccess.file_exists(path + ".json") or not ResourceLoader.exists(path + ".png"):
+		return
+	sheet = SpriteSheet.load_sheet(path + ".json", path + ".png")
+	body = Sprite2D.new()
+	body.texture = sheet.texture
+	body.region_enabled = true
+	body.centered = false
+	body.offset = -sheet.origin
+	var mat := ShaderMaterial.new()
+	mat.shader = preload("res://scripts/sprite_tint.gdshader")
+	body.material = mat
+	add_child(body)
+	_anim_name = "idle_far"
+
+
+## 这一段招式的动作名：“蓄力姿势>出手姿势”，没画的退回第一刀
+func _pair_anim() -> String:
+	if sheet.has(move_key):
+		return move_key       # 野狗这种没有姿势名的，直接按招式名
+	var keys := _move_keys()
+	var name := "%s>%s" % [keys[0], keys[1]]
+	if sheet.has(name):
+		return name
+	if sheet.has("raise1>cut1"):
+		return "raise1>cut1"
+	for n: String in sheet.anims:
+		if ">" in n:
+			return n
+	return "idle_near"
+
+
+## 这一刻播哪个动作的哪一帧：[动作名, 帧号]；帧号 -1 表示按动作自己的时间往下播
+func _sprite_select() -> Array:
+	var t := state_time
+	match state:
+		S.IDLE:
+			if _fl_kind != "" and sheet.has("fl_" + _fl_kind):
+				var fn := "fl_" + _fl_kind
+				return [fn, sheet.frame_at(fn, _fl_t / Flourish.duration(_fl_kind) * sheet.length(fn))]
+			var near := _stalk > 0.5
+			if absf(velocity.x) > 5.0 and is_on_floor():
+				var wn := "walk_near" if near else "walk_far"
+				var n := sheet.count(wn)
+				var i := int(_walk_dist / (WALK_CYCLE_NEAR if near else WALK_CYCLE_FAR) * n) % n
+				if signf(velocity.x) != float(facing):
+					i = n - 1 - i      # 往后退：倒着播
+				return [wn, i]
+			return ["idle_near" if near else "idle_far", -1]
+		S.WINDUP:
+			return [_pair_anim(), sheet.frame_in_phase(_pair_anim(), 0, t / maxf(_hit_times()[0] * _speed(), 0.01))]
+		S.ACTIVE:
+			return [_pair_anim(), sheet.frame_in_phase(_pair_anim(), 1, t / maxf(_hit_times()[1], 0.01))]
+		S.RECOVER:
+			return [_pair_anim(), sheet.frame_in_phase(_pair_anim(), 2, t / maxf(_hit_times()[2] * _speed(), 0.01))]
+		S.GUARD:
+			return ["guard", -1]
+		S.FLINCH, S.STAGGER:
+			return ["hit", sheet.frame_at("hit", t)]
+		S.DYING:
+			return ["death", sheet.frame_at("death", t)]
+		S.BROKEN, S.DEAD:
+			return ["broken", -1]
+		S.REVIVE:
+			return ["broken", -1] if t < 0.6 else ["idle_near", -1]
+		S.INTRO:
+			return ["idle_far", -1] if t < INTRO_TURN else ["idle_near", -1]
+	return ["idle_near", -1]
+
+
+func _update_sprite(delta: float) -> void:
+	if absf(velocity.x) > 5.0 and is_on_floor():
+		_walk_dist += absf(velocity.x) * delta
+	var sel := _sprite_select()
+	var name: String = sel[0]
+	if name != _anim_name:
+		_anim_name = name
+		_anim_t = 0.0
+	else:
+		_anim_t += delta
+	_anim_frame = int(sel[1]) if int(sel[1]) >= 0 else sheet.frame_at(name, _anim_t)
+	body.region_rect = sheet.region(_anim_name, _anim_frame)
+	body.scale = Vector2(facing, 1.0)
+	body.position = global_position.round() - global_position
+	(body.material as ShaderMaterial).set_shader_parameter("tint", _tint())
+	var alpha := 1.0
+	if state == S.DYING:
+		alpha = 1.0 - clampf((state_time - 1.3) / 0.6, 0.0, 1.0)
+		if state_time >= 1.0 and not _fell:
+			_fell = true
+			main.spawn_dust(global_position + Vector2(facing * 30.0, 0), 0.0, 12)
+			main.shake(2.0)
+	body.modulate.a = alpha
+	body.visible = state != S.DEAD
+
+
+## 用精灵画的时候，身子之外要画的：阶段的气、危招的红光、发光的眼睛、头顶的提示
+func _draw_sprite_extras(top: float, danger: bool, aura: Color, pulse: float) -> void:
+	if state == S.DYING or state == S.DEAD:
+		return
+	if aura.a > 0.0:
+		for i in range(6):
+			var x := sin(_clock * 5.0 + i * 1.7) * 10.0
+			var y := -fmod(_clock * 40.0 + i * 13.0, 60.0)
+			draw_rect(Rect2(x - 1, y, 2, 2), Color(aura, 0.7 * (1.0 + y / 60.0)))
+		# 眼睛发光
+		var eyes: Array = sheet.anims[_anim_name].get("eye", [])
+		if _anim_frame < eyes.size() and eyes[_anim_frame] != null:
+			var e := Vector2(float(eyes[_anim_frame][0]) * facing, float(eyes[_anim_frame][1])).round()
+			draw_rect(Rect2(e - Vector2(1, 1), Vector2(2, 1)), Color(aura, 1.0))
+			draw_line(e, e + Vector2(-facing * 5.0, -1.0), Color(aura, 0.5), 1.0)
+	if danger:
+		draw_circle(Vector2(0, -30), 24.0 + pulse * 4.0, Color(1, 0.1, 0.05, 0.12))
+	_draw_overlay(top, danger)

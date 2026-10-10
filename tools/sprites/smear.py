@@ -34,17 +34,25 @@ def _color(age, x, y, fade, colors=COLORS):
     return colors[min(i, len(colors) - 1)]
 
 
-def render(cv, sm, p):
+# 敌人的刀光：普通招暖橙色，危招（不能挡的）红色
+WARM = ["fffaf0", "ffe6b8", "f6b86a", "d8743a", "8a3a1e"]
+RED = ["fff0ec", "ffb8a8", "f06a4a", "c02a1e", "6a0e0e"]
+PALETTES = {"pink": COLORS, "white": WHITE, "warm": WARM, "red": RED}
+
+
+def render(cv, sm, p, skeleton_fn=None):
     kind = sm["type"]
     fade = sm.get("fade", False)
     part = Part()
     best = {}           # 像素 -> (年龄, 径向位置 0..1)
     if kind == "sweep":
         a = sm["from"]
-        ja, jb = hz.skeleton(a), hz.skeleton(p)
+        sk = skeleton_fn or hz.skeleton
+        ja, jb = sk(a), sk(p)
         wa, wb = ja["wrist_f"], jb["wrist_f"]
-        sa, sb = a["sw"], p["sw"]
-        la, lb = a["swlen"], p["swlen"]
+        sb = p["sw"]
+        sa = a["sw"] if a["sw"] is not None else sb - 1.5
+        la, lb = ja.get("swlen", a["swlen"]), jb.get("swlen", p["swlen"])
         steps = 64
         inner = sm.get("inner", 0.45) + (0.2 if fade else 0.0)
         reach = sm.get("reach", 3.0)
@@ -106,7 +114,8 @@ def render(cv, sm, p):
     for q, (age, r) in best.items():
         if q[1] >= cv.oy:          # 地面以下不画
             continue
-        col = _color(age, q[0], q[1], fade, WHITE if sm.get("white") else COLORS)
+        pal = PALETTES[sm.get("colors", "white" if sm.get("white") else "pink")]
+        col = _color(age, q[0], q[1], fade, pal)
         if col:
             part.put(q, col)
     return part

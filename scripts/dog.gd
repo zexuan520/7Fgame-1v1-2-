@@ -10,6 +10,8 @@ func _mouth() -> Vector2:
 
 
 func _glint_pos() -> Vector2:
+	if sheet != null:
+		return super._glint_pos()
 	return _mouth()
 
 
@@ -18,6 +20,11 @@ func _draw() -> void:
 	draw_circle(Vector2.ZERO, 14.0, Color(0, 0, 0, 0.45))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if state == S.DEAD:
+		return
+	if sheet != null:
+		# 身子是精灵表里的逐帧像素画，这里只画头顶的提示
+		if state != S.DYING:
+			_draw_overlay(-34.0, _danger())
 		return
 
 	var lk: Dictionary = data["look"]
