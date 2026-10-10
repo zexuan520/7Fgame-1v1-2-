@@ -75,6 +75,57 @@ const MOODS := {
 
 var P: Dictionary
 
+## 离线画好的场景件（tools/sprites/build_village.py）：每种天色一张图集
+const ATLAS_JSON := "res://assets/scenes/village.json"
+static var _atlas_data: Dictionary = {}
+static var _atlas_tex: Dictionary = {}
+var _tex: Texture2D
+var _pieces: Dictionary      # 名字 -> {rect, layer}
+var _pmeta: Dictionary       # 名字 -> 这个天色下的 {origin, windows, smoke}
+var _decals: Array = []      # 地上的草簇和石头：[名字, x]
+const NEAR_HOUSES := ["house_thatch", "house_tile", "storehouse", "house_thatch"]
+const BROKEN_HOUSES := ["house_thatch_b", "house_ruin"]
+const FAR_HOUSES := ["far_a", "far_b", "far_c", "far_d", "far_e"]
+
+
+func _load_atlas() -> void:
+	if _atlas_data.is_empty():
+		var f := FileAccess.open(ATLAS_JSON, FileAccess.READ)
+		if f == null:
+			return
+		_atlas_data = JSON.parse_string(f.get_as_text())
+	if not _atlas_tex.has(mood):
+		_atlas_tex[mood] = load("res://assets/scenes/village_%s.png" % mood)
+	_tex = _atlas_tex[mood]
+	_pieces = _atlas_data["pieces"]
+	_pmeta = _atlas_data["moods"][mood]
+
+
+func has_atlas() -> bool:
+	return _tex != null
+
+
+## 把一个场景件画在 at（件的贴地点对齐 at）
+func _piece(c: CanvasItem, name: String, at: Vector2, mod := Color.WHITE) -> Rect2:
+	var r: Array = _pieces[name]["rect"]
+	var o: Array = _pmeta[name]["origin"]
+	var dst := Rect2(roundf(at.x) - o[0], roundf(at.y) - o[1], r[2], r[3])
+	c.draw_texture_rect_region(_tex, dst, Rect2(r[0], r[1], r[2], r[3]), mod)
+	return dst
+
+
+func _piece_size(name: String) -> Vector2:
+	var r: Array = _pieces[name]["rect"]
+	return Vector2(r[2], r[3])
+
+
+## 近景房子用哪张图
+func _house_piece(h: Array) -> String:
+	var i := int(h[0]) / 7
+	if h[3]:
+		return BROKEN_HOUSES[i % BROKEN_HOUSES.size()]
+	return NEAR_HOUSES[i % NEAR_HOUSES.size()]
+
 
 func _c(k: String) -> Color:
 	return Color(P[k])
@@ -100,7 +151,10 @@ func _scene() -> String:
 
 
 func _build() -> void:
-	P = MOODS.get(mood, MOODS["dusk"])
+	if not MOODS.has(mood):
+		mood = "dusk"
+	P = MOODS[mood]
+	_load_atlas()
 	_rng.seed = 100 + seed_value
 	var far_w := span(0.3)
 	var near_w := span(0.6)
@@ -117,8 +171,11 @@ func _build() -> void:
 			x = 30.0 + _rng.randf_range(0, 80)
 			while x < near_w:
 				var w := _rng.randf_range(70, 110)
-				_houses_near.append([x, w, _rng.randf_range(38, 52), _rng.randf() < 0.4, P["fires"] and _rng.randf() < 0.3])
-				x += w + _rng.randf_range(120, 260)
+				var h := [x, w, _rng.randf_range(38, 52), _rng.randf() < 0.4, P["fires"] and _rng.randf() < 0.3]
+				if has_atlas():
+					h[1] = _piece_size(_house_piece(h)).x
+				_houses_near.append(h)
+				x += float(h[1]) + _rng.randf_range(110, 240)
 		"graves":
 			x = _rng.randf_range(10, 60)
 			while x < near_w:
@@ -142,6 +199,12 @@ func _build() -> void:
 			x += _rng.randf_range(gap, gap * 1.8)
 	if _fires.is_empty():
 		_fires.append(far_w * 0.6)
+	if has_atlas():
+		x = _rng.randf_range(0, 40)
+		var names := ["tuft_a", "tuft_b", "tuft_c", "tuft_d", "rock_a", "rock_b", "tuft_a", "tuft_c"]
+		while x < arena_w + 100.0:
+			_decals.append([names[_rng.randi() % names.size()], x])
+			x += _rng.randf_range(24, 90)
 	var nm := {"ember": 40, "firefly": 26, "wisp": 12, "none": 0}
 	for i in range(int(nm.get(P["motes"], 0))):
 		_motes.append(Vector3(_rng.randf() * arena_w, _rng.randf() * floor_y, _rng.randf() * TAU))
@@ -325,6 +388,14 @@ func _paint_far_village(c: CanvasItem) -> void:
 	var lit := _c("far_lit")
 	var ground := 270.0
 	c.draw_rect(Rect2(-20, ground, span(0.3) + 40, floor_y - ground), col)
+	if has_atlas():
+		var k := 0
+		for h in _houses_far:
+			var name: String = FAR_HOUSES[(k + seed_value) % FAR_HOUSES.size()]
+			_piece(c, name, Vector2(float(h[0]) + float(h[1]) * 0.5, ground + 1))
+			k += 1
+		_piece(c, "tower", Vector2(span(0.3) * 0.45 + 7, ground + 1))
+		return
 	for h in _houses_far:
 		var x: float = h[0]
 		var w: float = h[1]
@@ -507,11 +578,17 @@ func _paint_crows(c: CanvasItem) -> void:
 
 func _paint_near(c: CanvasItem) -> void:
 	for t in _trees:
-		_dead_tree(c, Vector2(t[0], floor_y), t[1], t[2])
+		if has_atlas():
+			_piece(c, _tree_piece(t), Vector2(t[0], floor_y + 1))
+		else:
+			_dead_tree(c, Vector2(t[0], floor_y), t[1], t[2])
 	match _scene():
 		"village":
 			for h in _houses_near:
-				_house(c, h[0], floor_y, h[1], h[2], h[3], h[4])
+				if has_atlas():
+					_piece(c, _house_piece(h), Vector2(float(h[0]) + float(h[1]) * 0.5, floor_y + 1))
+				else:
+					_house(c, h[0], floor_y, h[1], h[2], h[3], h[4])
 			_fence(c)
 		"graves":
 			for g in _graves:
@@ -525,11 +602,25 @@ func _paint_near(c: CanvasItem) -> void:
 				_near_tent(c, t[0], t[1])
 
 
+func _tree_piece(t: Array) -> String:
+	var k := int(t[2]) % 3
+	if mood == "fog" or mood == "night":
+		return ["pine", "tree_dead", "pine"][k]
+	return ["tree_dead", "tree_dead_b", "tree_dead"][k]
+
+
 func _fence(c: CanvasItem) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 71 + seed_value
 	var x := rng.randf_range(0, 100)
 	var w := span(0.6)
+	if has_atlas():
+		while x < w:
+			var n := rng.randi_range(1, 3)
+			for k in range(n):
+				_piece(c, "fence_b" if rng.randf() < 0.3 else "fence", Vector2(x + k * 70.0, floor_y + 1))
+			x += n * 70.0 + rng.randf_range(200, 380)
+		return
 	var col := _c("beam").lightened(0.06)
 	while x < w:
 		var n := rng.randi_range(3, 7)
@@ -717,6 +808,8 @@ func _branch(c: CanvasItem, from: Vector2, angle: float, length: float, depth: i
 
 
 func _paint_near_glow(c: CanvasItem) -> void:
+	if has_atlas() and _scene() == "village":
+		_paint_windows(c)
 	for h in _houses_near:
 		if not h[4]:
 			continue
@@ -742,9 +835,38 @@ func _paint_near_glow(c: CanvasItem) -> void:
 			c.draw_rect(Rect2(p.x - 3, p.y - 3, 6, 4), Color(1.0, 0.55, 0.2, flick))
 
 
+## 近景房子窗里的光：着火的屋子窗里是跳动的火光，月夜零星几户点着灯，纸拉门透一层暖光
+func _paint_windows(c: CanvasItem) -> void:
+	for h in _houses_near:
+		var name := _house_piece(h)
+		var o: Array = _pmeta[name]["origin"]
+		var base := Vector2(roundf(float(h[0]) + float(h[1]) * 0.5) - o[0], floor_y + 1 - o[1])
+		var x: float = h[0]
+		var lamp: bool = P.get("lamps", false) and int(x) % 3 != 1
+		if not h[4] and not lamp:
+			continue
+		var flick := 0.75 + 0.25 * sin(time * 11.0 + x) * sin(time * 6.0 + x * 0.3)
+		if not h[4]:
+			flick = 0.92 + 0.08 * sin(time * 2.0 + x)
+		var col := Color(1.0, 0.5, 0.16) if h[4] else Color(1.0, 0.72, 0.36)
+		for wv: Array in _pmeta[name]["windows"]:
+			var r := Rect2(base + Vector2(wv[0], wv[1]), Vector2(wv[2], wv[3]))
+			var paper := wv.size() > 4
+			var a := (0.28 if paper else 0.55) * flick
+			c.draw_rect(r, Color(col, a))
+			if not paper:
+				c.draw_rect(r.grow(-1), Color(col, a * 0.6))
+			var ctr := r.get_center()
+			for i in range(3):
+				c.draw_circle(ctr, r.size.length() * 0.5 + 4.0 + i * 6.0, Color(col * 0.45, 0.06 * flick))
+
+
 # ---------- 地面 ----------
 
 func _paint_ground(c: CanvasItem) -> void:
+	if has_atlas():
+		_paint_ground_tiles(c)
+		return
 	var w := arena_w + 200.0
 	c.draw_rect(Rect2(-100, floor_y, w, VIEW_H - floor_y + 40), _c("ground"))
 	c.draw_rect(Rect2(-100, floor_y, w, 3), _c("ground_top"))
@@ -776,6 +898,28 @@ func _paint_ground(c: CanvasItem) -> void:
 		for i in range(int(w / 14.0)):
 			var x := rng.randi_range(-100, int(arena_w + 100))
 			c.draw_rect(Rect2(x, floor_y + rng.randi_range(1, 4), rng.randi_range(3, 5), 1), gb.darkened(0.2))
+
+
+func _paint_ground_tiles(c: CanvasItem) -> void:
+	var r: Array = _pieces["ground"]["rect"]
+	var o: Array = _pmeta["ground"]["origin"]
+	var x := -128.0
+	var src := Rect2(r[0], r[1], r[2], r[3])
+	while x < arena_w + 200.0:
+		c.draw_texture_rect_region(_tex, Rect2(x, floor_y - o[1], r[2], r[3]), src)
+		x += float(r[2])
+	var bottom := floor_y - float(o[1]) + float(r[3])
+	if bottom < VIEW_H + 40.0:
+		c.draw_rect(Rect2(-128, bottom, arena_w + 400, VIEW_H + 40 - bottom), Color(P["front"]))
+	for d in _decals:
+		_piece(c, d[0], Vector2(d[1], floor_y + 1))
+	if mood == "bamboo":
+		var rng := RandomNumberGenerator.new()
+		rng.seed = 83 + seed_value
+		var gb := Color(P["grass"][1])
+		for i in range(int(arena_w / 14.0)):
+			var lx := rng.randi_range(-100, int(arena_w + 100))
+			c.draw_rect(Rect2(lx, floor_y + rng.randi_range(1, 4), rng.randi_range(3, 5), 1), gb.darkened(0.2))
 
 
 # ---------- 前景 ----------
@@ -838,8 +982,11 @@ func _paint_front(c: CanvasItem) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 91 + seed_value
 	var x := -40.0
+	var clumps := ["front_a", "front_b", "front_c"]
 	while x < span(1.3) + 200.0:
-		for i in range(12):
+		if has_atlas():
+			_piece(c, clumps[rng.randi() % 3], Vector2(x + rng.randf_range(-40, 60), VIEW_H + rng.randf_range(2, 14)))
+		for i in range(0 if has_atlas() else 12):
 			var gx := x + rng.randf_range(-40, 60)
 			var h := rng.randf_range(12, 34)
 			var lean := rng.randf_range(-9, 9)

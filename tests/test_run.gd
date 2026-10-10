@@ -65,6 +65,7 @@ func _run() -> void:
 	await _setup()
 	await test_tutorial()
 	test_room_layouts()
+	test_scene_art()
 	await _setup()
 	await test_features()
 	_reset_save()
@@ -190,6 +191,50 @@ func _gate(id: String) -> Dictionary:
 
 
 ## 每间房的机关都摆得通：门有开关、坑跳得过去、门和出口不挤在一起
+func test_scene_art() -> void:
+	print("场景像素画")
+	# 荒村背景：每种天色都有图集，房子、树、地面、远景、前景都画得出来
+	var missing := []
+	for mood: String in BgVillage.MOODS:
+		var bv := BgVillage.new()
+		bv.mood = mood
+		bv.arena_w = 1600.0
+		bv._load_atlas()
+		if not bv.has_atlas():
+			missing.append(mood)
+			bv.free()
+			continue
+		for name: String in BgVillage.NEAR_HOUSES + BgVillage.BROKEN_HOUSES + BgVillage.FAR_HOUSES + \
+				["ground", "tower", "pine", "tree_dead", "fence", "front_a", "tuft_a", "rock_a"]:
+			if not bv._pieces.has(name) or not bv._pmeta.has(name):
+				missing.append("%s/%s" % [mood, name])
+		bv.free()
+	_check(missing.is_empty(), "荒村六种天色的场景件齐全 %s" % str(missing))
+	# 房间摆设：所有房间用到的会画的摆设都有像素图，平台高度落在图里
+	var props_missing := []
+	for key: String in LevelData.ROOMS:
+		var def: Dictionary = LevelData.ROOMS[key]
+		var rp := RoomProps.new()
+		rp.mood = RoomProps.mood_for(def)
+		rp._load_atlas()
+		if rp._tex == null:
+			props_missing.append("%s 没有 %s 图集" % [key, rp.mood])
+		for pr: Array in def.get("props", []):
+			var kind := String(pr[0])
+			if Breakable.KINDS.has(kind) or kind in ["chest", "note", "banner", "bamboo"]:
+				continue
+			if not RoomProps._atlas_data.has(kind):
+				props_missing.append(kind)
+				continue
+			if RoomProps.PLATFORMS.has(kind):
+				var d: Dictionary = RoomProps._atlas_data[kind]
+				for spec: Array in RoomProps.PLATFORMS[kind]:
+					if float(spec[0]) > float(d["origin"][1]):
+						props_missing.append("%s 的平台高过图" % kind)
+		rp.free()
+	_check(props_missing.is_empty(), "房间摆设都有像素图 %s" % str(props_missing))
+
+
 func test_room_layouts() -> void:
 	print("房间机关布局")
 	var bad := []

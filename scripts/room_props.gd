@@ -28,6 +28,11 @@ const RAMPS := {
 
 var props: Array = []
 var floor_y := 300.0
+## 天色：决定用哪张摆设图集（tools/sprites/build_village.py 画的），没有图集就用下面的程序画法
+var mood := "night"
+static var _atlas_data: Dictionary = {}
+static var _atlas_tex: Dictionary = {}
+var _tex: Texture2D
 var time := 0.0
 var _glow: Node2D
 
@@ -40,12 +45,55 @@ class Glow extends Node2D:
 
 
 func _ready() -> void:
+	_load_atlas()
 	_glow = Glow.new()
 	_glow.owner_props = self
 	var add := CanvasItemMaterial.new()
 	add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 	_glow.material = add
 	add_child(_glow)
+
+
+func _load_atlas() -> void:
+	if _atlas_data.is_empty():
+		var f := FileAccess.open("res://assets/scenes/props.json", FileAccess.READ)
+		if f == null:
+			return
+		_atlas_data = JSON.parse_string(f.get_as_text())
+	var path := "res://assets/scenes/props_%s.png" % mood
+	if not ResourceLoader.exists(path):
+		return
+	if not _atlas_tex.has(mood):
+		_atlas_tex[mood] = load(path)
+	_tex = _atlas_tex[mood]
+
+
+## 画一个摆设的像素图（贴地点对齐 (x, y)）；没有这张图返回 false
+func _sprite(kind: String, x: float, y: float) -> bool:
+	if _tex == null or not _atlas_data.has(kind):
+		return false
+	var d: Dictionary = _atlas_data[kind]
+	var r: Array = d["rect"]
+	var o: Array = d["origin"]
+	draw_texture_rect_region(_tex, Rect2(roundf(x) - o[0], roundf(y) - o[1], r[2], r[3]), Rect2(r[0], r[1], r[2], r[3]))
+	var flick := 0.8 + 0.2 * sin(time * 11.0 + x)
+	for wv: Array in d["windows"]:
+		if wv.size() > 4:
+			var wr := Rect2(roundf(x) - o[0] + wv[0], roundf(y) - o[1] + wv[1], wv[2], wv[3])
+			draw_rect(wr, Color(1.0, 0.62, 0.26, flick))
+			draw_rect(wr.grow(-1), Color(1.0, 0.82, 0.5, flick))
+	return true
+
+
+## 房间摆设用哪种天色的图集（和背景的光对上）
+static func mood_for(def: Dictionary) -> String:
+	var m := String(def.get("mood", ""))
+	match String(def.get("theme", "temple")):
+		"village":
+			return m if m != "" else "dusk"
+		"bamboo_temple":
+			return {"mist": "fog", "dusk": "dusk", "night": "night"}.get(m, "fog")
+	return "night"
 
 
 static func _base(pr: Array) -> float:
@@ -90,6 +138,13 @@ func _draw() -> void:
 				continue
 			var x: float = pr[1]
 			var y := floor_y - _base(pr)
+			if _sprite(String(pr[0]), x, y):
+				match String(pr[0]):
+					"fire": _fire_flames(x, y)
+					"lantern": _lantern_box(x, y)
+					"laundry": _laundry_cloth(x, y)
+					"house2": _house2_lantern(x, y)
+				continue
 			match String(pr[0]):
 				"well": _well(x, y)
 				"cart": _cart(x, y)
@@ -269,6 +324,10 @@ func _fire(x: float, y: float) -> void:
 	for k in range(5):
 		var a := k * TAU / 5.0
 		draw_rect(Rect2(x + cos(a) * 11 - 2, y - 2, 4, 2), STONE)
+	_fire_flames(x, y)
+
+
+func _fire_flames(x: float, y: float) -> void:
 	# 火苗：几层颜色叠起来，抖动
 	for k in range(3):
 		var f := sin(time * (11.0 + k * 3.0) + k) * 1.5
@@ -421,6 +480,12 @@ func _house2(x: float, y: float) -> void:
 	for k in range(4):
 		var p := a.lerp(b, (k + 0.2) / 4.0)
 		draw_line(p, p + Vector2(0, -14), WOOD_DARK, 1.0)
+	_house2_lantern(x, y)
+
+
+func _house2_lantern(x: float, y: float) -> void:
+	var rt := y - 128.0
+	var flick := 0.8 + 0.2 * sin(time * 9.0 + x)
 	# 挂在檐下的灯笼
 	draw_line(Vector2(x + 34, rt + 10), Vector2(x + 34, rt + 18), Color("3a2a22"), 1.0)
 	draw_rect(Rect2(x + 30, rt + 18, 8, 9), Color(0.85, 0.3, 0.15, flick))
@@ -475,6 +540,10 @@ func _tower(x: float, y: float) -> void:
 func _lantern(x: float, y: float) -> void:
 	draw_rect(Rect2(x - 1, y - 52, 3, 52), WOOD_DARK)
 	draw_rect(Rect2(x - 1, y - 52, 12, 2), WOOD_DARK)
+	_lantern_box(x, y)
+
+
+func _lantern_box(x: float, y: float) -> void:
 	draw_line(Vector2(x + 7, y - 50), Vector2(x + 7, y - 46), Color("3a2a22"), 1.0)
 	var flick := 0.8 + 0.2 * sin(time * 11.0 + x)
 	var sway := roundf(sin(time * 1.5 + x) * 1.0)
@@ -488,6 +557,10 @@ func _laundry(x: float, y: float) -> void:
 	# 两根竹竿之间拉一根绳，挂着破衣服随风摆
 	draw_rect(Rect2(x - 42, y - 50, 2, 50), Color("4a5a3a"))
 	draw_rect(Rect2(x + 40, y - 50, 2, 50), Color("4a5a3a"))
+	_laundry_cloth(x, y)
+
+
+func _laundry_cloth(x: float, y: float) -> void:
 	var pts := PackedVector2Array()
 	for k in range(9):
 		var t := k / 8.0

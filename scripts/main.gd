@@ -203,6 +203,7 @@ func _build_room(def: Dictionary) -> void:
 		_add_ramp(plat, rp[0], rp[1])
 	var pr := RoomProps.new()
 	pr.props = props
+	pr.mood = RoomProps.mood_for(def)
 	pr.floor_y = FLOOR_Y
 	room_root.add_child(pr)
 	features = RoomFeatures.new()
