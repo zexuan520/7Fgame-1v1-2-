@@ -15,7 +15,11 @@
   skirt        袍子后摆长度（0 = 没有）
   cape         披风：ragged 破披风 / haori 外褂（长到膝盖）
   armor        胸甲（铁片）和肩甲
-  weapon       katana 刀 / spear 长枪 / bow 弓 / none
+  weapon       katana 刀 / spear 长枪 / staff 长棍（两头包铁，双手分开握）/ bow 弓 / none
+  grip_gap     双手握时两只手隔多远（长棍握得开）
+  canvas       画布 (宽, 高, 原点 x, 原点 y)，长兵器、大个子用大一点的；不写就是 W, H, OX, OY
+  kesa         袈裟：一条斜挂过胸的布（ramps 里的 kesa）
+  beads        挂在胸前的一串大念珠（ramps 里的 beads）
   shield       后手拿木盾挡在身前
   quiver       背上挂箭袋
   sheath       腰上挂刀鞘
@@ -27,6 +31,10 @@ from rig import (OUTLINE, v, add, sub, mul, lerp, norm, length, adir, rot, ik,
 
 W, H = 128, 96
 OX, OY = 56, 88
+
+
+def canvas_of(C):
+    return C.get("canvas", (W, H, OX, OY))
 
 DEF = dict(hip=(0.0, -18.0), lean=0.06, rot=0.0, head="n", head_off=(0.0, 0.0),
            ff=(4.0, 0.0), fb=(-4.0, 0.0), ffa=0.0, fba=0.0,
@@ -137,6 +145,76 @@ HEADS = {
         "...KHHsSBBBS..",
         "....KssSBBS...",
     ]},
+    # 僧兵：白布裹头（裹头巾），只露出眼睛到鼻子，下巴也包着
+    "sohei": {"neck": (8.5, 15.0), "tails": None, "rows": [
+        "....KKKKK.....",
+        "...KWWWWWK....",
+        "..KWWWWWWWK...",
+        ".KWWWWWWWWWK..",
+        ".KWWWWWWWWWWK.",
+        ".KwWWWWWWWWWK.",
+        ".KwWWWWWKKSSK.",
+        ".KwWWWWWSSSSS.",
+        ".KwWWwWWSEKSS.",
+        ".KwWWwWWSEESS.",
+        ".KwWWWWWWWWWWK",
+        ".KwWWwWWWWWWK.",
+        "..KwWwWWWWWK..",
+        "...KwwWWWWK...",
+        "....KwwwwK....",
+    ]},
+    # 忍者：黑头巾蒙面，只留一道眼缝，扎红头带（两条飘带）
+    "shinobi": {"neck": (8.5, 14.0), "tails": (2.0, 5.0), "rows": [
+        "....KKKKK.....",
+        "...KHHHHhK....",
+        "..KHHHHHhHK...",
+        ".KHHHHHHHHHK..",
+        ".KWWWWWWWWWWK.",
+        ".KwwHHHHHWWWK.",
+        ".KHHHHHHKKKHK.",
+        ".KHHHHHHSSEKS.",
+        ".KHHHHHHSSEES.",
+        ".KHHHHHHHHHHHK",
+        ".KHHHhHHHHHHK.",
+        "..KHHhHHHHHK..",
+        "...KHHHHHHK...",
+        "....KHHHHK....",
+    ]},
+    # 破戒僧：光头、横眉、络腮胡，凶相
+    "hakai": {"neck": (8.5, 15.0), "tails": None, "rows": [
+        "....KKKKK.....",
+        "..KKsSSSGKK...",
+        ".KsSSSSSSGGK..",
+        ".KsSSSSSSSSSK.",
+        "KssSSSSSSSSSK.",
+        "KssSSSSSSSSSK.",
+        "KssSSSSKKKKSS.",
+        "KsSSSSsSSEKSS.",
+        ".KsSSSsSSEESS.",
+        ".KsSSSSSSSSSSK",
+        ".KsSBSsSBBBBS.",
+        "..KsBBBBBRBB..",
+        "..KBBBBBBBBB..",
+        "...KBBBBBBK...",
+        "....KBBBBK....",
+    ]},
+    # 寂光：剃得干净的光头，眼睛半垂，神情静
+    "jakko": {"neck": (8.5, 14.0), "tails": None, "rows": [
+        "....KKKK......",
+        "...KSSSGK.....",
+        "..KsSSSSGGK...",
+        ".KsSSSSSSSGK..",
+        ".KsSSSSSSSSSK.",
+        ".KsSSSSSSSSSK.",
+        ".KsSSSSSSKKSK.",
+        ".KssSsSSSSSSS.",
+        ".KssSsSSSEKSS.",
+        "..KsSsSSSSSSSK",
+        "..KsSSSSSSSSS.",
+        "..KssSSSSSRS..",
+        "...KssSSSSS...",
+        "....KssSSS....",
+    ]},
     # 教头：发髻，浓眉
     "topknot": {"neck": (9.5, 14.0), "tails": None, "rows": [
         "....KKK.......",
@@ -202,7 +280,7 @@ def skeleton(p, C):
         sh = j["sh_" + side]
         target = p["h" + side]
         if side == "b" and p["grip2"] and p["sw"] is not None and p["hf"] is not None:
-            target = add(v(*p["hf"]), mul(adir(p["sw"]), -2.5))
+            target = add(v(*p["hf"]), mul(adir(p["sw"]), -C.get("grip_gap", 2.5)))
         if target is not None:
             wrist = S(v(*target))
             elbow = ik(sh, wrist, UPPER * s, FORE * s, p["eb" + side])
@@ -376,6 +454,31 @@ def _torso(cv, p, j, C):
                 if q in ap.px:
                     ap.px[q] = M[1]
         parts.append(ap)
+    if C.get("kesa"):
+        # 袈裟：从后肩斜挂到前腰的一条宽布，边上一道深色缝线
+        K = C["ramps"]["kesa"]
+        kp = Part(line=K[0])
+        a0 = add(add(hip, mul(up, 9.5 * s)), mul(fwd, -3.6 * s * w))
+        a1 = add(add(hip, mul(up, 9.5 * s)), mul(fwd, -0.6 * s * w))
+        b1 = add(add(hip, mul(up, 1.5 * s)), mul(fwd, 4.2 * s * w))
+        b0 = add(add(hip, mul(up, 1.5 * s)), mul(fwd, 0.6 * s * w))
+        kp.px.update(shade(poly_mask(cv, [a0, a1, b1, b0]) & tm, K))
+        for q in line_px(cv, lerp(a0, a1, 0.5), lerp(b0, b1, 0.5)):
+            if q in kp.px:
+                kp.px[q] = K[1]
+        parts.append(kp)
+    if C.get("beads"):
+        # 大念珠：一圈木珠从后颈挂到胸口，隔一个像素一颗
+        D = C["ramps"]["beads"]
+        bp_ = Part()
+        c = add(add(neck, mul(up, -3.5 * s)), mul(fwd, 0.6 * s))
+        for k in range(9):
+            a = -0.2 + k / 8 * math.pi * 0.95
+            q = add(add(c, mul(fwd, math.cos(a) * 3.6 * s * w)), mul(up, -math.sin(a) * 2.2 * s + 1.0 * s))
+            px = cv.to_px(q)
+            bp_.put(px, D[3] if k % 2 == 0 else D[2])
+            bp_.put((px[0], px[1] + 1), D[1])
+        parts.append(bp_)
     # 腰带
     B = C["ramps"]["belt"]
     bp = Part()
@@ -494,6 +597,33 @@ def _spear(cv, p, j, C):
         tas.put(q, TR[2])
     parts.append(tas)
     return parts
+
+
+def _staff(cv, p, j, C):
+    """长棍：从前手往前伸 swlen，往后还留一截（双手分开握在中段偏后），两头包铁箍"""
+    s = j["s"]
+    wr, d = j["wrist_f"], j["sw_d"]
+    WR, M = C["ramps"]["wood"], C["ramps"]["metal"]
+    L = j["swlen"]
+    tail = add(wr, mul(d, -C.get("staff_tail", 14.0) * s))
+    tip = add(wr, mul(d, L + 3.0 * s))
+    parts = []
+    shaft = Part(line=WR[0])
+    shaft.px.update(shade(capsule_mask(cv, tail, tip, 0.9 * s), WR))
+    # 木纹：沿着棍子隔几像素一点暗色
+    for k, q in enumerate(line_px(cv, lerp(tail, tip, 0.1), lerp(tail, tip, 0.9))):
+        if k % 5 == 2 and q in shaft.px:
+            shaft.px[q] = WR[1]
+    parts.append(shaft)
+    for a, b in ((tip, add(tip, mul(d, -3.5 * s))), (tail, add(tail, mul(d, 3.0 * s)))):
+        cap = Part(line=M[0])
+        cap.px.update(shade(capsule_mask(cv, a, b, 1.05 * s), M))
+        parts.append(cap)
+    return parts
+
+
+def _long(weapon):
+    return {"katana": _katana, "spear": _spear, "staff": _staff}.get(weapon)
 
 
 def _bow(cv, p, j, C, front):
@@ -640,7 +770,8 @@ def _tails(cv, pts, C):
 # ---------------- 画一帧 ----------------
 
 def draw(p, C, tails=None, smear=None, flip=False, glow=None):
-    cv = Canvas(W, H, OX, OY)
+    cw, ch, cox, coy = canvas_of(C)
+    cv = Canvas(cw, ch, cox, coy)
     j = skeleton(p, C)
     fr = Frame(cv)
 
@@ -662,8 +793,8 @@ def draw(p, C, tails=None, smear=None, flip=False, glow=None):
     if not hold_back and not C.get("shield"):
         fr.add(back_hand)
 
-    if p["sw"] is not None and p["sw_back"] and weapon in ("katana", "spear"):
-        for part in (_katana if weapon == "katana" else _spear)(cv, p, j, C):
+    if p["sw"] is not None and p["sw_back"] and _long(weapon):
+        for part in _long(weapon)(cv, p, j, C):
             fr.add(part)
 
     for part in _leg(cv, p, j, "b", C):
@@ -685,8 +816,8 @@ def draw(p, C, tails=None, smear=None, flip=False, glow=None):
         fr.add(back_hand)
     if hold_back:
         fr.add(back_hand)
-    if p["sw"] is not None and not p["sw_back"] and weapon in ("katana", "spear"):
-        for part in (_katana if weapon == "katana" else _spear)(cv, p, j, C):
+    if p["sw"] is not None and not p["sw_back"] and _long(weapon):
+        for part in _long(weapon)(cv, p, j, C):
             fr.add(part)
     front_parts, front_hand = _arm(cv, p, j, "f", C)
     for part in front_parts:
@@ -712,9 +843,9 @@ def draw(p, C, tails=None, smear=None, flip=False, glow=None):
     if flip:
         from PIL import Image as _I
         img = img.transpose(_I.FLIP_LEFT_RIGHT)
-        shift = 2 * OX - W
+        shift = 2 * cox - cw
         out = _I.new("RGBA", img.size, (0, 0, 0, 0))
-        out.alpha_composite(img, (shift, 0)) if shift >= 0 else out.alpha_composite(img.crop((-shift, 0, W, H)), (0, 0))
+        out.alpha_composite(img, (shift, 0)) if shift >= 0 else out.alpha_composite(img.crop((-shift, 0, cw, ch)), (0, 0))
         img = out
         tip = (-tip[0], tip[1]) if tip else None
     hd = HEADS[C["head"]]

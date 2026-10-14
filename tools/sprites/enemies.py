@@ -1,4 +1,4 @@
-"""第一层的人形敌人：行头（外观）和姿势表，按敌人数据表里用到的招式生成动作。
+"""第一、二层的人形敌人：行头（外观）和姿势表，按敌人数据表里用到的招式生成动作。
 
 每个敌人一份行头 COSTUMES[kind]，一份姿势 POSES（所有人形敌人共用，个别敌人覆盖）。
 动作的名字游戏里直接用：
@@ -18,7 +18,7 @@ OUT = "1c1424"
 
 def _hc(r, extra=None):
     """头的调色：r 是行头的 ramps"""
-    c = {"K": OUT, "H": r["hair"][2], "h": r["hair"][3], "S": r["skin"][2], "s": r["skin"][1], "E": "1a1418",
+    c = {"K": OUT, "H": r["hair"][2], "h": r["hair"][3], "S": r["skin"][2], "s": r["skin"][1], "G": r["skin"][3], "E": "1a1418",
          "e": "f0e0b0", "B": r["hair"][1], "R": "7a3a32"}
     if "hat" in r:
         c.update({"T": r["hat"][2], "t": r["hat"][1], "L": r["hat"][3]})
@@ -84,6 +84,42 @@ COSTUMES = {
         "belt": ["1e1408", "4a3218", "8a6a3a", "aa8a5a"], "wrap": WRAP, "blade": STEEL,
         "hilt": ["0c0a10", "2a2230", "3e3446", "5a4e66"], "guard": ["4a3410", "8a6a2a", "c9a24a", "eed27a"],
         "sheath": ["0a0808", "1e1616", "2e2222", "463434"]}),
+
+    # ===== 第二层：竹林古寺 =====
+    # 僧兵：白布裹头、赭黄僧衣、绑腿草鞋、两头包铁的长棍
+    "sohei": _costume(scale=1.1, head="sohei", sleeves="wide", legs="wrapped", skirt=8, weapon="staff", width=1.18,
+                      swlen=30.0, grip_gap=7.0, canvas=(176, 120, 80, 110), ramps={
+        "cloth": ["3a200c", "7a4a1c", "b8742e", "d8964a"], "collar": ["5a5040", "a89c84", "e0d0b0", "f4ecd8"],
+        "pants": ["1a120c", "2e241a", "4a3a2a", "6a5440"], "skin": SKIN, "hair": ["0c0808", "1e1612", "2e2018", "4a3426"],
+        "band": ["6a6252", "b0a894", "e0d8c8", "f6f2e8"], "belt": ["2a140a", "4a2410", "6a3a1a", "8a5a2e"],
+        "wrap": ["2a2418", "6a6250", "a89e86", "d0c6ae"], "wood": ["1e1208", "4a2e18", "7a5432", "9a7448"],
+        "metal": ["1e1c18", "4a4840", "7a766a", "a8a294"]}),
+    # 忍者：一身黑、蒙面、红头带，短直刀，个子小
+    "shinobi": _costume(scale=0.95, head="shinobi", sleeves="tight", legs="wrapped", band_tails=True, swlen=17.0,
+                        width=0.92, ramps={
+        "cloth": ["0a0a10", "1a1a22", "2a2a34", "3e3e4c"], "collar": ["0a0a10", "1a1a22", "22222c", "34343e"],
+        "pants": ["08080c", "15151c", "22222c", "34343e"], "skin": SKIN, "hair": ["08080c", "15151c", "26262f", "3a3a46"],
+        "band": ["4a0a0a", "7a1818", "a02a2a", "c84a3a"], "belt": ["140e0e", "2a1e1e", "3a2a2a", "543e3e"],
+        "wrap": ["0a0a10", "1a1a22", "2a2a34", "40404e"], "blade": STEEL,
+        "hilt": ["0a0a10", "1e1a22", "2e2832", "463e4c"], "guard": ["0e0e12", "2a2a30", "44444c", "62626c"]}),
+    # 破戒僧：大个子、光头络腮胡、暗紫僧衣、胸前大念珠、铁箍长棍
+    "hakai": _costume(scale=1.25, head="hakai", sleeves="wide", legs="hakama", skirt=10, weapon="staff", width=1.32,
+                      swlen=32.0, grip_gap=8.0, beads=True, canvas=(176, 120, 80, 110), ramps={
+        "cloth": ["1a0e14", "2e1a24", "4a2a3a", "6a3e54"], "collar": ["5a4a36", "8a7a5e", "c8b090", "e0d0b4"],
+        "pants": ["0e0a0c", "1a1418", "2a2026", "40323a"], "skin": ["4a2a1c", "8a5a40", "b88468", "d8a888"],
+        "hair": ["0c0808", "1e1410", "2e2018", "4a3426"], "belt": ["2a0808", "5a1414", "8a2a2a", "aa4040"],
+        "wrap": WRAP, "wood": ["140c08", "2e2018", "4a3a2a", "6a5844"], "metal": ["3a2a08", "7a5a14", "c9a227", "eed27a"],
+        "beads": ["1a0c06", "4a2a14", "7a4a24", "a8743c"]}),
+    # 寂光：白僧衣、深红外褂和袈裟、光头，腰挂刀
+    "jakko": _costume(scale=1.14, head="jakko", cape="haori", legs="hakama", skirt=12, sheath=True, kesa=True,
+                      swlen=27.0, width=1.05, ramps={
+        "cloth": ["5a5448", "9a9080", "d8d0c0", "f0ece4"], "collar": ["2a0e0e", "4a1a1a", "6a2a28", "8a3a36"],
+        "pants": ["140c0c", "241a1a", "3a2a2a", "54403c"], "skin": ["5a3424", "a87858", "d8a888", "f0c8a8"],
+        "hair": ["5a3424", "a87858", "c89878", "e0b494"], "belt": ["2a0808", "5a1414", "8a2a2a", "aa4040"],
+        "cape": ["1e0a0a", "3a1616", "542424", "703430"], "kesa": ["3a0e0e", "6a1a18", "8e2c28", "b44c3c"],
+        "wrap": WRAP, "blade": ["2a3040", "8a98aa", "cad6e2", "f4f8ff"],
+        "hilt": ["0c0a10", "2a1a1a", "3e2626", "5a3a36"], "guard": ["3a2a08", "7a5a14", "c9a227", "eed27a"],
+        "sheath": ["0a0606", "1e1010", "321a1a", "4a2828"]}),
 }
 
 # ---------------- 姿势（人形敌人共用；数字和主角同一套，按身材放大） ----------------
@@ -104,6 +140,9 @@ _p("st_gedan", hip=(-1.0, -16.5), lean=0.12, ff=(7.0, 0.0), fb=(-6.5, 0.0), hf=(
 _p("st_jodan", hip=(-1.0, -17.0), lean=-0.06, ff=(7.0, 0.0), fb=(-6.5, 0.0), hf=(2.0, -36.0), sw=3.45, grip2=True,
    ebf=1, sw_back=True)
 _p("st_iai", hip=(-1.0, -15.0), lean=0.28, ff=(8.0, 0.0), fb=(-7.0, 0.0), hf=(6.0, -18.0), hb=(1.5, -17.0))
+# 八相：刀竖在右肩旁，刀尖朝天（寂光近处的架势）
+_p("st_hasso", hip=(-1.0, -17.0), lean=0.04, ff=(7.0, 0.0), fb=(-6.5, 0.0), hf=(4.0, -28.0), sw=3.3, grip2=True,
+   ebf=1)
 _p("liu_calm", hip=(0.0, -18.5), lean=-0.03, ff=(3.5, 0.0), fb=(-3.5, 0.0), hf=(5.5, -19.0), hb=(-4.5, -17.5))
 # 招式：蓄力 / 出手
 _p("raise1", hip=(-1.0, -17.5), lean=-0.1, ff=(7.0, 0.0), fb=(-7.0, 0.0), hf=(2.0, -35.0), sw=3.6, grip2=True,
@@ -115,6 +154,9 @@ _p("cut2", hip=(1.0, -18.0), lean=-0.05, ff=(10.0, 0.0), fb=(-5.0, -1.0), fba=0.
    grip2=True, lift=1.0)
 _p("raise3", hip=(-2.0, -16.0), lean=-0.05, ff=(6.0, 0.0), fb=(-8.0, 0.0), hf=(0.0, -23.0), sw=1.6, grip2=True)
 _p("cut3", hip=(3.0, -14.5), lean=0.35, ff=(13.0, 0.0), fb=(-9.0, 0.0), fba=0.4, hf=(16.0, -22.0), sw=1.6,
+   grip2=True, robe=4.0)
+# 迟砸：从上段整个砸到地上，身子跟着扑下去
+_p("smash", hip=(3.0, -13.0), lean=0.5, ff=(13.0, 0.0), fb=(-9.0, 0.0), fba=0.4, hf=(15.0, -13.0), sw=1.42,
    grip2=True, robe=4.0)
 _p("thrust_prep", hip=(-2.5, -15.0), lean=-0.06, ff=(6.0, 0.0), fb=(-9.0, 0.0), hf=(-2.0, -21.0), sw=1.6, grip2=True)
 _p("sweep_prep", hip=(0.0, -12.0), lean=0.4, ff=(8.0, 0.0), fb=(-8.0, 0.0), hf=(-2.0, -11.0), sw=-1.35, grip2=True,
@@ -173,6 +215,17 @@ USES = {
                       ("st_iai", "iai_cut"), ("hop", "hop")]},
     "tutor": {"idle": ("st_gedan", "st_gedan"),
               "pairs": [("raise1", "cut1"), ("sweep_prep", "sweep_cut"), ("thrust_prep", "cut3")]},
+    "sohei": {"idle": ("shoulder", "stalk"),
+              "pairs": [("raise1", "cut1"), ("raise2", "cut2"), ("sweep_prep", "sweep_cut"), ("spear_prep", "spear")]},
+    "shinobi": {"idle": ("stalk", "stalk"),
+                "pairs": [("thrust_prep", "cut3"), ("raise2", "cut2"), ("hop", "hop")]},
+    "hakai": {"idle": ("shoulder", "stalk"),
+              "pairs": [("raise1", "cut1"), ("raise2", "cut2"), ("raise3", "cut3"), ("st_jodan", "smash"),
+                        ("sweep_prep", "sweep_cut"), ("spear_prep", "spear")]},
+    "jakko": {"idle": ("liu_calm", "st_hasso"),
+              "pairs": [("raise1", "cut1"), ("raise2", "cut2"), ("raise3", "cut3"), ("st_jodan", "cut1"),
+                        ("thrust_prep", "cut3"), ("sweep_prep", "sweep_cut"), ("grab_prep", "grab_reach"),
+                        ("st_iai", "iai_cut"), ("st_iai", "st_iai"), ("hop", "hop")]},
 }
 
 # 危招（不能挡）用红色刀光
@@ -189,4 +242,7 @@ def get(kind, name, **over):
         # 盾兵不双手握：后手拿盾
         d["grip2"] = False
         d["hb"] = d.get("hb") or (8.0, -20.0)
+    if COSTUMES[kind]["weapon"] == "staff" and name in ("spear_prep", "spear"):
+        # 长棍戳出去是双手推的（盾兵那套是单手枪）
+        d["grip2"] = True
     return P(**d)

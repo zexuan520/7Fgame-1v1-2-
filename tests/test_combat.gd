@@ -1323,8 +1323,8 @@ func test_sprite() -> void:
 
 
 func test_enemy_sprites() -> void:
-	print("敌人像素精灵：第一层敌人都有精灵表，每招用到的姿势都画了，按状态换动作")
-	for kind: String in ["ronin", "dog", "archer", "shield", "liu", "tutor"]:
+	print("敌人像素精灵：第一、二层敌人都有精灵表，每招用到的姿势都画了，按状态换动作")
+	for kind: String in ["ronin", "dog", "archer", "shield", "liu", "tutor", "sohei", "shinobi", "hakai", "jakko"]:
 		var path := "res://assets/sprites/enemy_%s" % kind
 		_check(FileAccess.file_exists(path + ".json"), "%s 有精灵表" % kind)
 		var sh := SpriteSheet.load_sheet(path + ".json", path + ".png")
@@ -1352,10 +1352,23 @@ func test_enemy_sprites() -> void:
 	_check(e._anim_name == "raise1>cut1", "出招播这一招的动作（%s）" % e._anim_name)
 	_check(e._anim_frame < 2, "前摇停在蓄力帧（第 %d 帧）" % e._anim_frame)
 	_check(e._glint_pos().y < -20.0, "出手闪光在刀尖上")
-	# 第二层的敌人还没画：照旧用骨骼小人
-	var s: Enemy = main.spawn_enemy("sohei", Vector2(560, 300))
+	# 第二层：寂光变招时动作跟着换成变出来的那一招
+	var j: Enemy = main.spawn_enemy("jakko", Vector2(560, 300))
+	j.attack_cooldown = 9999.0
+	await _frames(3)
+	_check(j.sheet != null, "寂光用精灵画")
+	j._start_move("feint_thrust")
 	await _frames(2)
-	_check(s.sheet == null, "没画的敌人照旧画（僧兵）")
+	_check(j._anim_name == "raise1>cut1", "变招起手像第一刀（%s）" % j._anim_name)
+	j.state_time = float(j._hit_times()[0]) * j._speed() * 0.61
+	await _frames(2)
+	_check(j._anim_name == "thrust_prep>cut3", "变招后播突刺的动作（%s）" % j._anim_name)
+	j.queue_free()
+	main.enemies.erase(j)
+	# 没有精灵表的照旧用骨骼小人画
+	var s: Enemy = main.spawn_enemy("dummy", Vector2(560, 300))
+	await _frames(2)
+	_check(s.sheet == null, "没画的照旧画（稻草木桩）")
 
 
 func test_items() -> void:

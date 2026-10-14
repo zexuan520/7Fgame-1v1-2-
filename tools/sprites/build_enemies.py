@@ -1,4 +1,4 @@
-"""把第一层人形敌人的动作画成精灵表：assets/sprites/enemy_<种类>.png 和 .json（格式和主角的一样）。
+"""把第一、二层人形敌人的动作画成精灵表：assets/sprites/enemy_<种类>.png 和 .json（格式和主角的一样）。
 
   python3 tools/sprites/build_enemies.py                 全部生成
   python3 tools/sprites/build_enemies.py --preview 目录 [种类...]   另外出总览图
@@ -23,7 +23,7 @@ B = hu.lerp_pose
 
 # 出手姿势是往前扎的（突刺、长枪、居合、盾击、踢、擒拿）：刀光画成一道直光或者不画
 STREAK = {"cut3", "spear", "iai_cut"}
-NO_SMEAR = {"bash", "kick", "grab_reach", "bow_loose", "hop"}
+NO_SMEAR = {"bash", "kick", "grab_reach", "bow_loose", "hop", "st_iai"}
 
 
 def _breath(kind, name, n, drop, ms, sway=0.4, sw_amp=0.05):
@@ -170,16 +170,16 @@ def _r(q):
 
 
 def write(kind, A, R):
-    mod = dg if kind == "dog" else hu
+    fw, fh, ox, oy = (dg.W, dg.H, dg.OX, dg.OY) if kind == "dog" else hu.canvas_of(en.COSTUMES[kind])
     total = sum(len(v) for v in R.values())
     rows = (total + COLS - 1) // COLS
-    sheet = Image.new("RGBA", (COLS * mod.W, rows * mod.H), (0, 0, 0, 0))
-    data = {"frame": [mod.W, mod.H], "origin": [mod.OX, mod.OY], "cols": COLS, "anims": {}}
+    sheet = Image.new("RGBA", (COLS * fw, rows * fh), (0, 0, 0, 0))
+    data = {"frame": [fw, fh], "origin": [ox, oy], "cols": COLS, "anims": {}}
     i = 0
     for name, frames in R.items():
         idx, tips, hbs, eyes = [], [], [], []
         for img, meta in frames:
-            sheet.alpha_composite(img, ((i % COLS) * mod.W, (i // COLS) * mod.H))
+            sheet.alpha_composite(img, ((i % COLS) * fw, (i // COLS) * fh))
             idx.append(i)
             tips.append(_r(meta.get("tip")))
             hbs.append(_r(meta["hand_b"]))
@@ -200,6 +200,9 @@ def write(kind, A, R):
 def preview(kind, A, R, out, per=6, scale=3, box=(10, 6, 124, 92)):
     if kind == "dog":
         box = (8, 20, 88, 62)
+    elif hu.canvas_of(en.COSTUMES[kind]) != (hu.W, hu.H, hu.OX, hu.OY):
+        cw, ch, cox, coy = hu.canvas_of(en.COSTUMES[kind])
+        box = (0, 0, cw, ch)
     rows = []
     for name, frames in R.items():
         w, h = box[2] - box[0], box[3] - box[1]
