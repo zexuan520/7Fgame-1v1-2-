@@ -49,3 +49,4 @@ windmill MEDIEVAL/buildings/yellow/building_windmill_yellow.gltf h=200
 house_ruin MEDIEVAL/buildings/neutral/building_destroyed.gltf h=110
 trees MEDIEVAL/decoration/nature/trees_B_large.gltf h=150
 tent MEDIEVAL/decoration/props/tent.gltf h=80
+well MEDIEVAL/buildings/red/building_well_red.gltf h=60

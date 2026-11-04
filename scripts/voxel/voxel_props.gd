@@ -59,6 +59,19 @@ static func build(kind: String, seed_value: int) -> Dictionary:
 	return {"grid": g, "glow": glow if glow.size() > 0 else null, "lights": lights}
 
 
+## 这件结构占的方框（像素，本地坐标），给换成开源件时对齐用
+static func bounds(kind: String) -> AABB:
+	var d := build(kind, 7)
+	if d.is_empty():
+		return AABB()
+	var lo := Vector3i(1 << 20, 1 << 20, 1 << 20)
+	var hi := -lo
+	for p: Vector3i in (d["grid"] as VoxelGrid).cells:
+		lo = Vector3i(mini(lo.x, p.x), mini(lo.y, p.y), mini(lo.z, p.z))
+		hi = Vector3i(maxi(hi.x, p.x), maxi(hi.y, p.y), maxi(hi.z, p.z))
+	return AABB(Vector3(lo) * ES, Vector3(hi - lo + Vector3i.ONE) * ES)
+
+
 static func _crates(g: VoxelGrid, cx: int, top: int) -> void:
 	# 两个底箱一个顶箱，箱子有深色边框
 	for c in [[-5, 0, 4], [0, 0, 4], [-2, 4, top - 4]]:

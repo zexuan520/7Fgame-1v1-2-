@@ -195,6 +195,10 @@ const KIT_SWAP := {"lantern": "lantern", "stone_lantern": "post_lantern", "woodp
 	"grave": "gravestone", "rubble": "rubble", "scarecrow": "post_skull"}
 
 
+## 能站的结构 → 拉伸到原来方框里的开源件（形状差太多的木楼、望楼、脚手架、棚子、板车还用自己画的）
+const KIT_FIT := {"crates": "crates", "hay": "barrel_small", "wall": "wall_broken", "well": "well"}
+
+
 func _build_props(def: Dictionary, cache: Dictionary) -> void:
 	var i := 0
 	for pr: Array in def.get("props", []):
@@ -205,6 +209,18 @@ func _build_props(def: Dictionary, cache: Dictionary) -> void:
 		if KIT_SWAP.has(kind) and not VoxelKit.get_piece(KIT_SWAP[kind]).is_empty():
 			# 小摆设换成开源模型，放在人物身后一点
 			_kit_piece(KIT_SWAP[kind], Vector3(x, -(FLOOR_Y - base), -14.0), 1.0, 0.25 * sin(x))
+			i += 1
+			continue
+		if KIT_FIT.has(kind) and not VoxelKit.get_piece(KIT_FIT[kind]).is_empty():
+			# 能站的结构：开源件拉伸到原来那件的方框里，平台高度不变
+			if not cache.has(key + "|box"):
+				cache[key + "|box"] = VoxelProps.bounds(kind)
+			var bx: AABB = cache[key + "|box"]
+			var pc := VoxelKit.get_piece(KIT_FIT[kind])
+			var ksz: Vector3 = pc["size"]
+			var sc := Vector3(bx.size.x / maxf(ksz.x, 1.0), bx.size.y / maxf(ksz.y, 1.0), bx.size.z / maxf(ksz.z, 1.0))
+			var mi := _mi(pc["mesh"], Vector3(x, -(FLOOR_Y - base), 0.0) + bx.position - (pc["lo"] as Vector3) * sc)
+			mi.scale = sc
 			i += 1
 			continue
 		if not cache.has(key):
@@ -230,8 +246,8 @@ func _build_props(def: Dictionary, cache: Dictionary) -> void:
 
 ## 天色：天空、环境光、雾、主光（太阳或月亮）、逆光，以及中景摆什么
 const MOODS := {
-	"dusk": {"top": "2a2248", "hor": "b8644a", "gnd": "7a4a42", "amb": "6a6a9e", "amb_e": 0.5, "fog": "5e4a7a", "fog_d": 0.0004,
-		"sun": [1.0, 0.76, 0.56], "sun_e": 1.05, "rim": [0.55, 0.62, 1.0], "rim_e": 0.7, "disc": "sun", "bg": "village", "mtn": ["3e3256", "5a4266"]},
+	"dusk": {"top": "2a2248", "hor": "b8644a", "gnd": "7a4a42", "amb": "5a5a8e", "amb_e": 0.42, "fog": "5e4a7a", "fog_d": 0.0005,
+		"sun": [1.0, 0.72, 0.5], "sun_e": 0.85, "rim": [0.55, 0.62, 1.0], "rim_e": 0.7, "disc": "sun", "bg": "village", "mtn": ["3e3256", "5a4266"]},
 	"night": {"top": "080c1e", "hor": "26304e", "gnd": "141a2a", "amb": "3a4a7a", "amb_e": 0.55, "fog": "1c2440", "fog_d": 0.0005,
 		"sun": [0.6, 0.72, 1.0], "sun_e": 0.55, "rim": [1.0, 0.7, 0.45], "rim_e": 0.35, "disc": "moon", "bg": "village", "mtn": ["161c32", "222a44"]},
 	"graves": {"top": "0c1214", "hor": "2a3a36", "gnd": "141a1a", "amb": "3a5a5a", "amb_e": 0.5, "fog": "26383a", "fog_d": 0.0009,

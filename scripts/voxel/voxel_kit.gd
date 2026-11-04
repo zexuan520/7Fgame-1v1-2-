@@ -4,6 +4,7 @@ extends RefCounted
 ## 原点在底面中心，+z 朝镜头。读进来合成一个网格并缓存；带火的件附带灯光位置。
 
 const DIR := "res://assets/voxel/kit/%s.json"
+const DIM := 0.85          # KayKit 原色偏亮、像玩具，压暗一点配暗色光照
 
 ## 会发光的件：[相对底面中心的位置（以件的高度为 1）, 颜色, 半径]
 const LIGHTS := {
@@ -20,7 +21,7 @@ const LIGHTS := {
 static var _cache := {}
 
 
-## 返回 {"mesh": ArrayMesh, "size": Vector3（像素）, "light": [位置, 颜色, 半径] 或 []}；没有这个文件返回空字典
+## 返回 {"mesh": ArrayMesh, "size": Vector3（像素）, "lo": 最小角（像素）, "light": [位置, 颜色, 半径] 或 []}；没有这个文件返回空字典
 static func get_piece(id: String) -> Dictionary:
 	if _cache.has(id):
 		return _cache[id]
@@ -33,7 +34,7 @@ static func get_piece(id: String) -> Dictionary:
 	var g := VoxelGrid.new(1)
 	var v: Array = d["vox"]
 	for i in range(0, v.size(), 6):
-		g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3]), int(v[i + 4]), int(v[i + 5]))
+		g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3] * DIM), int(v[i + 4] * DIM), int(v[i + 5] * DIM))
 	var sz: Array = d["size"]
 	var size := Vector3(float(sz[0]), float(sz[1]), float(sz[2])) * vs
 	var light := []
@@ -41,6 +42,7 @@ static func get_piece(id: String) -> Dictionary:
 		var l: Array = LIGHTS[id]
 		var rel: Vector3 = l[0]
 		light = [Vector3(rel.x * size.x * 0.5, rel.y * size.y, rel.z * size.z * 0.5), l[1], l[2]]
-	var out := {"mesh": g.build(vs), "size": size, "light": light}
+	var mn: Array = d.get("min", [0, 0, 0])
+	var out := {"mesh": g.build(vs), "size": size, "lo": Vector3(float(mn[0]), float(mn[1]), float(mn[2])) * vs, "light": light}
 	_cache[id] = out
 	return out
