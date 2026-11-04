@@ -2149,6 +2149,21 @@ func spawn_text(pos: Vector2, text: String, color: Color, size: int = 14) -> voi
 	fx_root.add_child(t)
 
 
+## 伤害数字：弹出来放大一下再缩回，往外斜着飞、落下来
+func spawn_damage(pos: Vector2, amount: float, dir: float, big: bool = false) -> void:
+	if not Game.show_damage:
+		return
+	var t := FxText.new()
+	t.text = str(roundi(amount))
+	t.color = Color(1.0, 0.82, 0.3) if big else Color(1, 1, 1)
+	t.size = 16 if big else 12
+	t.pop = true
+	t.life = 0.7
+	t.vel = Vector2(dir * randf_range(30.0, 60.0), randf_range(-120.0, -90.0))
+	t.position = pos + Vector2(randf_range(-6, 6), 0)
+	fx_root.add_child(t)
+
+
 func spawn_spark(pos: Vector2, color: Color, count: int = 8) -> void:
 	var s := FxSpark.new()
 	s.color = color

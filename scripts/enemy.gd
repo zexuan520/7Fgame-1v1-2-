@@ -694,6 +694,7 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 	if heavy:
 		main.punch(0.03)
 	_take_damage(dmg, p_amount)
+	main.spawn_damage(cut + Vector2(0, -14), dmg, float(p.facing), heavy or bool(hit.get("crit", false)))
 	p.on_hit_landed(self, hit)
 	if state == S.IDLE or state == S.GUARD or (is_grunt() and state == S.WINDUP):
 		# 杂兵挨刀会被打断出招

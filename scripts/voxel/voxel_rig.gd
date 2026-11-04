@@ -24,6 +24,12 @@ var _eye_light: OmniLight3D
 var _motes: Array[MeshInstance3D] = []   # 身上往上冒的气
 var _mote_mat: StandardMaterial3D
 var _clock := 0.0
+var trail: VoxelTrail               # 刀光拖尾（放在世界里，不跟着人物镜像）
+var _recoil := 0.0                  # 挨刀后仰，1 → 0
+var _last_flash := 0.0
+var _twist := 0.0                   # 挥刀时身子跟着拧（绕竖轴转），让 3D 有纵深
+var _last_sword := 0.0
+const YAW := 0.32                   # 平时侧身朝镜头转一点（3/4 侧面），不是纯侧面
 
 static var _mesh_cache := {}
 
@@ -32,6 +38,12 @@ func setup(f: Node2D) -> void:
 	fighter = f
 	look = f.look
 	is_player = f is Player
+	trail = VoxelTrail.new()
+	if is_player:
+		trail.color = Color(0.62, 0.85, 1.0)
+	else:
+		trail.color = Color(1.0, 0.78, 0.62)
+	get_parent().add_child.call_deferred(trail)
 	_overlay = StandardMaterial3D.new()
 	_overlay.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
@@ -353,9 +365,86 @@ func sync(dt: float) -> void:
 		var flap := sin(Time.get_ticks_msec() * 0.012) * 0.15 * (0.4 + _sway)
 		_place("tail", t0, t0 + Vector2(-0.3 - _sway * 1.4, 1.0 - _sway * 0.5 + flap), -1.5)
 
+	_update_twist(dt, float(pose["sword"]))
+	_update_recoil(dt)
 	_update_state(dt)
+	_update_trail(dt, sw)
 	if _eyes != null:
 		_update_aura(dt)
+
+
+## 侧身朝镜头一点；刀转得快时身子跟着拧过去，刀停了再慢慢回正
+func _update_twist(dt: float, sword: float) -> void:
+	var gdt := dt * Engine.time_scale
+	if gdt > 0.0001:
+		var w := wrapf(sword - _last_sword, -PI, PI) / gdt   # 刀每秒转多少
+		var goal := clampf(-w * 0.03, -0.55, 0.55)
+		var k := 1.0 - exp(-(18.0 if absf(goal) > absf(_twist) else 5.0) * gdt)
+		_twist = lerpf(_twist, goal, k)
+	_last_sword = sword
+	var f: int = fighter.facing
+	rotation.y = (-YAW + _twist) * f
+
+
+## 挨刀：身子往后一仰、压扁一下再弹回来（敌人每次闪白、主角进硬直时触发）
+func _update_recoil(dt: float) -> void:
+	var fl: float = fighter.flash_timer
+	var hurt := false
+	if fighter is Enemy:
+		hurt = fl > _last_flash + 0.05 and (fighter as Enemy).state != Enemy.S.DYING
+	else:
+		hurt = (fighter as Player).state == Player.S.HITSTUN and (fighter as Player).state_time < 0.02
+	_last_flash = fl
+	if hurt:
+		_recoil = 1.0
+	if _recoil <= 0.0:
+		return
+	_recoil = maxf(0.0, _recoil - dt * Engine.time_scale * 5.0)
+	var k := sin(_recoil * PI * 0.5)   # 一下仰到底，再慢慢回来
+	var f: int = fighter.facing
+	rotation.z += k * 0.24 * f
+	scale.x *= 1.0 + 0.10 * k
+	scale.y *= 1.0 - 0.10 * k
+
+
+func _exit_tree() -> void:
+	if is_instance_valid(trail):
+		trail.queue_free()
+
+
+## 刀光：刀可见、人没倒下的时候，把刀根和刀尖交给拖尾；主角出手和敌人出招时一定出，别的时候看挥得快不快
+func _update_trail(dt: float, sw: MeshInstance3D) -> void:
+	if not is_instance_valid(trail) or not trail.is_inside_tree():
+		return
+	var gdt := dt * Engine.time_scale
+	if not sw.visible or not visible:
+		trail.clear()
+		return
+	var force := false
+	var heavy := false
+	if is_player:
+		var p: Player = fighter
+		force = p.state == Player.S.ATTACK and p.attack_phase == 1
+		heavy = p.state == Player.S.ATTACK and bool(p.attack.get("heavy", false))
+	else:
+		var e: Enemy = fighter
+		if e.state == Enemy.S.DYING or e.state == Enemy.S.DEAD:
+			trail.clear()
+			return
+		force = e.state == Enemy.S.ACTIVE
+		trail.color = Color(1.0, 0.3, 0.2) if e._danger() or (e.state == Enemy.S.ACTIVE and bool(e._move().get("unblockable", false))) \
+			else Color(1.0, 0.78, 0.62)
+		var aura: Color = e._phase_data().get("aura", Color(0, 0, 0, 0))
+		if aura.a > 0.0 and trail.color.g > 0.5:
+			trail.color = aura.lightened(0.2)
+	trail.width = 1.25 if heavy else 1.0
+	var blade := maxf(4.0, roundf(look.sword_len / VS)) * VS
+	var gt := sw.global_transform
+	var grip := gt * Vector3(0, -blade * 0.15, 0)
+	var tip := gt * Vector3(0, -blade * 1.05, 0)
+	grip.z += 2.0
+	tip.z += 2.0
+	trail.push(grip, tip, gdt, force)
 
 
 ## 后面阶段：眼睛亮起、身上冒气（跟 2D 版一样的颜色），倒地以后就灭
