@@ -20,6 +20,8 @@ const TYPES := {
 		"hp": 42.0, "speed": 3.4, "detect": 16.0, "range": 11.0, "dmg": 14.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 6, "keep": 7.5},
 	"boss": {"name": "夜樱剑鬼", "model": "barbarian", "weapon": "sword2", "wlen": 52.0, "tint": Color(0.78, 0.72, 0.9), "k": 1.55,
 		"hp": 900.0, "speed": 3.6, "detect": 40.0, "range": 3.2, "dmg": 24.0, "windup": 0.6, "attack": "boss", "poise": 120.0, "coins": 60, "boss": true},
+	"boss2": {"name": "寂光", "model": "knight", "weapon": "sword2", "wlen": 56.0, "tint": Color(0.85, 0.9, 1.05), "k": 1.6,
+		"hp": 1300.0, "speed": 3.9, "detect": 40.0, "range": 3.4, "dmg": 28.0, "windup": 0.55, "attack": "boss", "poise": 160.0, "coins": 90, "boss": true},
 }
 
 var kind := "skeleton"
@@ -292,7 +294,7 @@ func _choose_attack(_dist: float) -> String:
 			return "lunge"
 		"samurai":
 			return "heavy"
-		"boss":
+		"boss", "boss2":
 			return "boss_combo"
 	return "slash"
 

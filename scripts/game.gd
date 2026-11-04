@@ -23,7 +23,7 @@ var save_path := "user://save.cfg"
 ## memories 拿到的记忆碎片，meets 每个头目见过几次，hub 破庙设施（见 Facilities）
 var save := {"jade": 0, "talents": {}, "weapons": ["katana"], "start_weapon": "katana", "arts": [],
 	"memories": [], "meets": {}, "boss_kills": {}, "best_floor": 0, "hub": {}, "tutorial_done": false,
-	"runs": 0, "clears": 0, "deaths": 0, "best_row": 0}
+	"runs": 0, "clears": 0, "deaths": 0, "best_row": 0, "arpg_weapons": ["sword"], "arpg_weapon": "sword"}
 ## 旧版破庙供台的价格：读到旧存档时把供奉过的魂玉退回来（供台换成了天赋树）
 const OLD_ALTAR_COSTS := {"vigor": [5, 10, 15], "gourd": [8, 16], "purse": [4, 8, 12]}
 

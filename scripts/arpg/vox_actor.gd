@@ -83,6 +83,20 @@ func setup(model_id: String, weapon_id: String = "", wlen: float = 30.0, tint: C
 	apply({})
 
 
+## 换手里的兵器
+func set_weapon(weapon_id: String, wlen: float) -> void:
+	if weapon != null:
+		weapon.queue_free()
+		weapon = null
+	weapon_len = wlen
+	var wm := VoxelModel.weapon_mesh(weapon_id, wlen)
+	if wm != null:
+		weapon = MeshInstance3D.new()
+		weapon.mesh = wm
+		weapon.material_override = mat
+		body.add_child(weapon)
+
+
 func set_tint(c: Color) -> void:
 	mat.set_shader_parameter("tint", Vector3(c.r, c.g, c.b))
 

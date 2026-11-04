@@ -13,6 +13,7 @@ var point := Vector3.ZERO      # 命中点
 var dir := Vector3.FORWARD     # 打过去的方向（击退方向）
 var knock := 4.0               # 击退速度
 var bleed := 0                 # 叠几层出血
+var bleed_mult := 1.0          # 出血伤害倍率
 var stun := 0.25               # 硬直时间
 var hitstop := -1.0            # < 0 时按重量取默认值
 var shake := -1                # < 0 时按重量取默认值

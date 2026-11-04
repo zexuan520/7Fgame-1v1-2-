@@ -48,6 +48,81 @@ var _dash_to := Vector3.ZERO
 var _combo_reset := 0.0
 var foot_ring: MeshInstance3D
 var invincible := false          # 调试：不掉血
+## 加成（apply_stats 从天赋、兵器、护甲、护符、心法算出来）
+var crit_bonus := 0.0
+var crit_mult := 1.8
+var energy_mult := 1.0
+var bleed_bonus := 0
+var bleed_dmg := 1.0
+var lifesteal := 0.0
+var taken_mult := 1.0
+var beam_mult := 1.0
+var finish_mult := 1.0
+var gourd_heal := 0.4
+var revives := 0
+var weapon_id := "sword"
+const BASE_HP := 120.0
+const BASE_MOVE := 7.2
+const BASE_DASH_CD := 3.5
+const BASE_FINISH_CD := 5.0
+const BASE_IFRAMES := 0.26
+
+
+## 把一局的加成套到主角身上；fill_hp 时生命和药葫芦补满（开局用）
+func apply_stats(st: Dictionary, wid: String, fill_hp: bool = false) -> void:
+	var old_max := max_hp
+	max_hp = BASE_HP + ArpgData.stat(st, "hp")
+	if fill_hp:
+		hp = max_hp
+	else:
+		hp = minf(hp + maxf(max_hp - old_max, 0.0), max_hp)
+	var w := ArpgData.weapon(wid)
+	if wid != weapon_id or combo.is_empty():
+		weapon_id = wid
+		combo = _weapon_combo(w)
+		if rig != null:
+			rig.set_weapon(String(w["model"]), float(w["len"]))
+	dmg_mult = (1.0 + ArpgData.stat(st, "atk")) * float(w["dmg"])
+	crit_bonus = ArpgData.stat(st, "crit")
+	crit_mult = 1.8 + ArpgData.stat(st, "crit_dmg")
+	energy_mult = 1.0 + ArpgData.stat(st, "energy")
+	bleed_bonus = int(ArpgData.stat(st, "bleed"))
+	bleed_dmg = 1.0 + ArpgData.stat(st, "bleed_dmg")
+	lifesteal = ArpgData.stat(st, "lifesteal")
+	taken_mult = maxf(0.3, 1.0 + ArpgData.stat(st, "dmg_taken"))
+	beam_mult = 1.0 + ArpgData.stat(st, "beam")
+	finish_mult = 1.0 + ArpgData.stat(st, "finish")
+	gourd_heal = 0.4 + ArpgData.stat(st, "gourd_heal")
+	move_speed = BASE_MOVE * (1.0 + ArpgData.stat(st, "move"))
+	dash_cd = BASE_DASH_CD * maxf(0.3, 1.0 - ArpgData.stat(st, "dash_cd"))
+	finish_cd = BASE_FINISH_CD * maxf(0.3, 1.0 - ArpgData.stat(st, "finish_cd"))
+	roll_iframes = BASE_IFRAMES + ArpgData.stat(st, "iframes")
+	var mg := 3 + int(ArpgData.stat(st, "gourds"))
+	if fill_hp:
+		gourds = mg
+	else:
+		gourds += maxi(mg - max_gourds, 0)
+	max_gourds = mg
+	if fill_hp:
+		revives = int(ArpgData.stat(st, "revive"))
+
+
+## 兵器决定连招：伤害倍率在 dmg_mult 里，这里改快慢和攻击范围
+func _weapon_combo(w: Dictionary) -> Array[AttackStep]:
+	var c := AttackStep.default_combo()
+	var sp := float(w.get("speed", 1.0))
+	var rc := float(w.get("reach", 1.0))
+	for s: AttackStep in c:
+		s.startup /= sp
+		s.active /= sp
+		s.recovery /= sp
+		s.cancel_at /= sp
+		s.reach *= rc
+		s.slash_radius *= rc
+		if bool(w.get("heavy", false)):
+			s.heavy = true
+			s.knock *= 1.3
+	return c
 
 
 func _ready() -> void:
@@ -59,6 +134,28 @@ func _ready() -> void:
 	max_hp = 120.0
 	hp = max_hp
 	radius = 0.45
+	_ready_body()
+
+
+## 复活/重开时重置状态
+func reset_for_run() -> void:
+	alive = true
+	state = "move"
+	step_i = -1
+	energy = 0.0
+	bleed = 0
+	knock = Vector3.ZERO
+	for k: String in cd:
+		cd[k] = 0.0
+	visible = true
+
+
+func clear_buffer() -> void:
+	_buf_action = ""
+	_buf_t = 0.0
+
+
+func _ready_body() -> void:
 	var cs := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
 	cap.radius = radius
@@ -115,7 +212,7 @@ func input_dir() -> Vector3:
 
 
 func gain_energy(v: float) -> void:
-	energy = minf(energy + v, max_energy)
+	energy = minf(energy + v * energy_mult, max_energy)
 	energy_changed.emit()
 
 
@@ -215,6 +312,11 @@ func _try_actions(allowed: Array) -> bool:
 
 
 # ---------- 移动 ----------
+
+func _leech(dmg: float) -> void:
+	if lifesteal > 0.0 and alive:
+		hp = minf(hp + dmg * lifesteal, max_hp)
+
 
 func _st_move(dt: float) -> void:
 	if _try_actions(["attack", "roll", "dash", "beam", "finish", "heal"]):
@@ -367,16 +469,18 @@ func _do_hits(s: AttackStep) -> void:
 			if ang > s.arc * 0.5:
 				continue
 		_hit_set[a] = true
-		var crit := randf() < s.crit_chance
-		var dmg := s.damage * dmg_mult * (1.8 if crit else 1.0) * randf_range(0.92, 1.08)
+		var crit := randf() < s.crit_chance + crit_bonus
+		var dmg := s.damage * dmg_mult * (crit_mult if crit else 1.0) * randf_range(0.92, 1.08)
 		var info := HitInfo.make(self, a, dmg, HitInfo.Weight.HEAVY if s.heavy else HitInfo.Weight.LIGHT)
 		info.crit = crit
 		info.knock = s.knock
-		info.bleed = s.bleed
+		info.bleed = s.bleed + (bleed_bonus if s.bleed > 0 else 0)
+		info.bleed_mult = bleed_dmg
 		info.stun = 0.35 if s.heavy else 0.25
 		info.gain = 6.0 if not s.heavy else 9.0
 		if Feel.I.on_hit(info):
 			landed = true
+			_leech(info.damage)
 	if landed and not _called:
 		_called = true
 		Feel.I.callout(head_top() + Vector3(0.6, 0.3, 0), s.label, Color(0.75, 1.0, 1.0), 0.9 if step_i < 3 else 1.2)
@@ -419,6 +523,7 @@ func _st_roll(dt: float) -> void:
 # ---------- 受击 ----------
 
 func take_hit(info: HitInfo) -> bool:
+	info.damage *= taken_mult
 	if invincible:
 		info.damage = 0.0
 	if state == "dash":
@@ -446,6 +551,14 @@ func _st_hurt(dt: float) -> void:
 
 
 func die(impulse: Vector3) -> void:
+	if revives > 0:
+		revives -= 1
+		hp = max_hp * 0.5
+		iframes = 2.0
+		Feel.I.callout(head_top(), "不死身!", Color(1.0, 0.85, 0.4), 1.4)
+		Feel.I.screen_flash(Color(1.0, 0.85, 0.4, 0.5), 2.0)
+		Vfx.I.shock_ring(global_position, Color(1.0, 0.8, 0.4), 0.5, 6.0, 0.5)
+		return
 	super.die(impulse)
 	state = "dead"
 	Game.sfx("death")
@@ -509,12 +622,14 @@ func _do_dash() -> void:
 			var info := HitInfo.make(self, a, 22.0 * dmg_mult * randf_range(0.95, 1.1), HitInfo.Weight.HEAVY)
 			info.dir = (a.global_position - closest).normalized() if (a.global_position - closest).length() > 0.1 else facing
 			info.knock = 7.0
-			info.bleed = 2
+			info.bleed = 2 + bleed_bonus
+			info.bleed_mult = bleed_dmg
 			info.gain = 8.0
 			info.crit = randf() < 0.2
 			info.attacker = null    # 瞬移后主角不停顿，只让敌人停
 			if Feel.I.on_hit(info):
 				gain_energy(8.0)
+				_leech(info.damage)
 			n += 1
 	Game.sfx("slash_heavy", 0.0)
 	var base := Transform3D(Basis(Vector3.UP, rotation.y), global_position + Vector3(0, 0.9, 0))
@@ -583,7 +698,7 @@ func _fire_beam() -> void:
 		var t := clampf((a.global_position - f2).dot(seg) / seg.length_squared(), 0.0, 1.0)
 		var closest := f2 + seg * t
 		if (a.global_position - closest).length() <= 1.5 + a.radius:
-			var info := HitInfo.make(self, a, 60.0 * dmg_mult * randf_range(0.95, 1.1), HitInfo.Weight.ULT)
+			var info := HitInfo.make(self, a, 60.0 * dmg_mult * beam_mult * randf_range(0.95, 1.1), HitInfo.Weight.ULT)
 			info.dir = dir
 			info.knock = 12.0
 			info.bleed = 1
@@ -630,7 +745,7 @@ func _detonate() -> void:
 			continue
 		var stacks := a.bleed
 		a.bleed = 0
-		var info := HitInfo.make(self, a, (14.0 + 16.0 * stacks) * dmg_mult, HitInfo.Weight.ULT)
+		var info := HitInfo.make(self, a, (14.0 + 16.0 * stacks) * dmg_mult * finish_mult, HitInfo.Weight.ULT)
 		info.crit = stacks >= 3
 		info.knock = 8.0
 		info.attacker = null
@@ -651,10 +766,10 @@ func _st_heal(dt: float) -> void:
 	_target_pose(Poses.cast(clampf(st_t / 0.3, 0, 1), st_t))
 	if st_t >= 0.5 and st_t - dt < 0.5:
 		gourds -= 1
-		hp = minf(hp + max_hp * 0.4, max_hp)
+		hp = minf(hp + max_hp * gourd_heal, max_hp)
 		Game.sfx("drink", -2.0)
 		Vfx.I.pop(chest(), "magic_03", Color(0.4, 1.0, 0.6), 0.5, 2.5, 0.5)
-		Feel.I.number(head_top(), "+%d" % int(max_hp * 0.4), Color(0.5, 1.0, 0.6), 1.0)
+		Feel.I.number(head_top(), "+%d" % int(max_hp * gourd_heal), Color(0.5, 1.0, 0.6), 1.0)
 	if _take_buffer(["roll"]) == "roll":
 		_start_roll()
 		return

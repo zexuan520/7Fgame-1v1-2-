@@ -8,6 +8,8 @@ var _t := 0.0
 var _press := {}          # 动作 → 剩余按住时间
 var _atk_t := 0.0
 var _roll_t := 0.0
+var _skill_t := 0.0
+var _menu_t := 0.0
 
 
 func _act(n: String) -> String:
@@ -15,6 +17,9 @@ func _act(n: String) -> String:
 
 
 func _tap(n: String) -> void:
+	# 已经按着的先松开一帧，不然 is_action_just_pressed 不会再触发（一直按住就卡住了）
+	if _press.has(n) or Input.is_action_pressed(_act(n)):
+		return
 	Input.action_press(_act(n))
 	_press[n] = 0.05
 
@@ -26,6 +31,18 @@ func _physics_process(dt: float) -> void:
 		if float(_press[n]) <= 0.0:
 			Input.action_release(_act(n))
 			_press.erase(n)
+	# 菜单开着（心法三选一、分岔路）：看一会儿再随手选一个
+	var menu := get_parent().get("_menu") as Control
+	if is_instance_valid(menu):
+		_set_move(Vector3.ZERO)
+		_menu_t += dt
+		if _menu_t > 1.6:
+			_menu_t = 0.0
+			_tap("attack")
+		elif _menu_t > 0.8 and _menu_t - dt <= 0.8:
+			_tap("right")
+		return
+	_menu_t = 0.0
 	if not is_instance_valid(hero) or not hero.alive:
 		return
 	var foes := get_tree().get_nodes_in_group("foes")
@@ -55,13 +72,15 @@ func _physics_process(dt: float) -> void:
 	_set_move(move)
 	_atk_t -= dt
 	_roll_t -= dt
+	_skill_t -= dt
 	if near == null:
 		return
 	if danger and _roll_t <= 0.0:
 		_roll_t = 0.9
 		_tap("roll")
 		return
-	if hero.energy >= hero.max_energy and foes.size() >= 3:
+	if hero.energy >= hero.max_energy and foes.size() >= 3 and _skill_t <= 0.0:
+		_skill_t = 0.5
 		_tap("beam")
 		return
 	if bleeding >= 2 and hero.cd["finish"] <= 0.0:

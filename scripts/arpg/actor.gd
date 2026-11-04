@@ -21,6 +21,7 @@ var iframes := 0.0             # 无敌剩余时间
 var bleed := 0                 # 出血层数
 var bleed_t := 0.0             # 出血剩余时间（每次叠层刷新）
 var _bleed_acc := 0.0
+var bleed_mult := 1.0          # 出血伤害倍率（施加者的“溃血”等加成）
 var hit_stun := 0.0
 var facing := Vector3(0, 0, 1)   # 地面上面朝的方向
 var display_name := ""
@@ -56,7 +57,7 @@ func tick_common(dt: float) -> float:
 		_bleed_acc += dt
 		if _bleed_acc >= BLEED_TICK:
 			_bleed_acc -= BLEED_TICK
-			var d := BLEED_DPS * bleed
+			var d := BLEED_DPS * bleed * bleed_mult
 			if alive:
 				hp -= d
 				if Feel.I != null:
@@ -71,9 +72,10 @@ func tick_common(dt: float) -> float:
 	return dt
 
 
-func add_bleed(n: int) -> void:
+func add_bleed(n: int, mult: float = 1.0) -> void:
 	if not alive or n <= 0:
 		return
+	bleed_mult = maxf(bleed_mult, mult)
 	bleed = mini(bleed + n, BLEED_MAX)
 	bleed_t = 5.0
 
@@ -112,7 +114,7 @@ func take_hit(info: HitInfo) -> bool:
 	if rig != null:
 		rig.flash(0.1)
 	if info.bleed > 0:
-		add_bleed(info.bleed)
+		add_bleed(info.bleed, info.bleed_mult)
 	var kd := info.dir
 	kd.y = 0
 	knock = kd.normalized() * info.knock
