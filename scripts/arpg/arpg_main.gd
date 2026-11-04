@@ -30,7 +30,15 @@ var _room_done := false
 var _portal: Node3D
 var _portal_kind := ""       # next 下一间 / run 出发 / floor 下一层
 var _going := false
-var _menu: ArpgMenu
+var _menu: Control             # 打开着的菜单或对话框（ArpgMenu / DialogBox）
+var _hold_waves := false       # 头目登场对话还没说完，先别刷怪
+var _secret: Node3D            # 这间房里的裂墙（打三下开出密室）
+var _secret_hits := 0
+var _trial_t := 0.0            # 试炼房剩余时间
+var _trial_ok := true
+var _extra_portals: Array[Node3D] = []   # 密室光门（和“前路”光门同时存在）
+var _sw_step := -1
+var _sw_t := 0.0
 var _title: TitleCard
 var _npcs: Array[ArpgNpc] = []
 var _args := {}
@@ -52,6 +60,9 @@ func _ready() -> void:
 			_shots.append(float(t))
 	if _args.has("demo") or _args.has("room") or _args.has("zone"):
 		_start_run(false)
+		for i in range(int(_args.get("floor", "0"))):
+			state.run.next_floor()
+			state.remap()
 		var kind := String(_args.get("room", "fight"))
 		if kind == "1":
 			kind = "fight"
@@ -79,6 +90,29 @@ func _ready() -> void:
 			var p := hero.global_position + Vector3(-9.0 + (i % 5) * 4.5, 0, -7.5 + (i / 5) * 6.0)
 			vfx.sheet(ids[i], p, 3.0, Color.WHITE, 1.6, false, 30.0, float(_args["fxtest"]) if _args["fxtest"] != "1" else 1.0)
 			vfx.shock_ring(p, Color.RED, 0.2, 0.3, 30.0)
+	if _args.has("secret") and is_instance_valid(_secret):
+		# 测试：站到裂墙旁边，清场后自动砍三刀
+		_place_hero(_secret.global_position + Vector3(-signf(_secret.global_position.x) * 1.8, 0, 0.5), Vector3(signf(_secret.global_position.x), 0, 0))
+		for k in range(4):
+			get_tree().create_timer(1.0 + k * 0.6).timeout.connect(func() -> void:
+				Input.action_press(ArpgInput.act(0, "attack"))
+				get_tree().create_timer(0.05).timeout.connect(func() -> void: Input.action_release(ArpgInput.act(0, "attack"))))
+	if _args.has("lineup"):
+		# 测试：一排角色模型站好，拍特写对比
+		var ids := [["rogue", "sword"], ["skel_minion", ""], ["skel_warrior", "skel_blade"], ["skel_mage", "skel_staff"], ["skel_rogue", ""], ["knight", "axe2"], ["barbarian", "sword2"]]
+		for i in range(ids.size()):
+			var n := _npc(ids[i][0], hero.global_position + Vector3(-4.5 + i * 1.5, 0, -2.2), {"model": ids[i][0], "weapon": ids[i][1]}, func(_x: ArpgNpc) -> void: pass)
+			n.rotation.y = PI
+			n.radius = 0.0
+		hero.visible = false
+	if _args.has("outro"):
+		# 测试：直接当作头目已经打倒
+		get_tree().create_timer(1.0).timeout.connect(func() -> void: _room_cleared())
+	if _args.has("givegear") and state != null:
+		# 测试：往行囊里塞几件装备，过一会儿打开行囊
+		for i in range(int(_args["givegear"])):
+			state.bag.append(ArpgGear.roll(_rng, i % 3))
+		get_tree().create_timer(1.5).timeout.connect(func() -> void: _open_bag())
 	if _args.has("interact"):
 		# 测试：过一会儿自动和第一个互动物说话（拍菜单截图用）
 		get_tree().create_timer(float(_args["interact"]) if _args["interact"] != "1" else 1.5).timeout.connect(func() -> void:
@@ -189,6 +223,10 @@ func _clear_scene() -> void:
 	if is_instance_valid(_portal):
 		_portal.queue_free()
 	_portal = null
+	for p: Node3D in _extra_portals:
+		if is_instance_valid(p):
+			p.queue_free()
+	_extra_portals.clear()
 	for n: ArpgNpc in _npcs:
 		if is_instance_valid(n):
 			n.queue_free()
@@ -274,6 +312,17 @@ func _enter_hub() -> void:
 	_npc("拾骨婆 · 天赋", Vector3(-4.0, 0, 1.0), {"model": "skel_mage", "weapon": "skel_staff", "tint": Color(1.1, 0.95, 0.8)}, _open_talents)
 	_npc("兵器架", Vector3(4.0, 0, 1.0), {"kit": "sword_shield", "scale": 1.3}, _open_weapons)
 	_make_portal(Vector3(0, 0, -hz + 2.5), "run", Color(1.0, 0.8, 0.45))
+	# 残页石：看已经找到的寂光残页（隐藏剧情）
+	if not ArpgStory.pages().is_empty():
+		_npc("残页 %d / %d" % [ArpgStory.pages().size(), ArpgStory.PAGES.size()], Vector3(0, 0, 2.5), {"kit": "gravestone", "scale": 1.2}, _read_pages)
+	# 第一次进山门：拾骨婆说开场白
+	if not bool(Game.save.get("arpg_intro", false)) and not _args.has("demo"):
+		get_tree().create_timer(1.0).timeout.connect(func() -> void:
+			if mode != "hub":
+				return
+			Game.save["arpg_intro"] = true
+			Game.write_save()
+			_say(ArpgStory.INTRO))
 
 
 func _npc(label: String, p: Vector3, spec: Dictionary, cb: Callable) -> ArpgNpc:
@@ -328,6 +377,15 @@ func _open_talents(_n: ArpgNpc, keep_index: int = -1) -> void:
 		_open_talents(_n, i))
 
 
+func _read_pages(_n: ArpgNpc) -> void:
+	var lines := [["", "你找到了寂光写下的几页残页。"]]
+	for i: int in ArpgStory.pages():
+		lines.append(["寂光的残页 · 其%s" % ["一", "二", "三", "四", "五"][i], ArpgStory.PAGES[i], ArpgStory.C_MASTER])
+	if ArpgStory.has_all_pages():
+		lines.append(["", "五页都齐了。打倒寂光之后，也许能换一个结局。"])
+	_say(lines)
+
+
 func _open_weapons(_n: ArpgNpc) -> void:
 	var owned: Array = Game.save.get("arpg_weapons", ["sword"])
 	var cur := String(Game.save.get("arpg_weapon", "sword"))
@@ -380,17 +438,22 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	if zone_override != "":
 		zone_id = zone_override
 	var sz := Vector2(30, 22)
-	if room_kind in ["shop", "rest", "event", "start"]:
+	if room_kind in ["shop", "rest", "event", "start", "story", "treasure", "secret"]:
 		sz = Vector2(24, 18)
 	elif room_kind == "boss":
 		sz = Vector2(32, 24)
-	_build_arena(zone_id, state.seed_value + fl * 1000 + state.run.row * 37 + state.run.col * 7, sz)
+	_build_arena(zone_id, state.seed_value + fl * 1000 + state.run.row * 37 + state.run.col * 7 + (500 if room_kind == "secret" else 0), sz)
 	_place_hero(arena.entry_pos)
 	state.rooms += 1
 	wave_i = -1
 	waves = _make_waves(room_kind, fl)
 	_wave_delay = 1.4
 	_room_done = waves.is_empty()
+	_hold_waves = false
+	_secret = null
+	_secret_hits = 0
+	_trial_t = 50.0
+	_trial_ok = true
 	var title := "%s · %s" % [ArpgState.FLOOR_NAMES[mini(fl, 1)], ArpgState.TYPE_NAMES.get(room_kind, "")]
 	if room_kind == "boss":
 		title = "夜樱广场" if fl == 0 else "古寺 · 寂光殿"
@@ -403,14 +466,47 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	match room_kind:
 		"boss":
 			Game.music("boss")
-		"shop", "rest", "event", "start":
+		"shop", "rest", "event", "start", "story", "treasure", "secret":
 			Game.music("hub")
 		_:
 			Game.music("bamboo" if zone_id == "temple" else "village")
 	var mid := Vector3(-3.5, 0, -1.5)   # 摆在一边，别挡住去光门的路
+	if room_kind in ["fight", "elite", "trial"] and not state.secrets_done.has(state.run.room_id()):
+		var hint := state.flags.has("secret_hint")
+		if hint or _args.has("secret") or _rng.randf() < 0.3:
+			state.flags.erase("secret_hint")
+			_make_secret_wall(sz)
 	match room_kind:
 		"start":
 			_open_portal()
+			if state.run.row == 0 and fl < ArpgStory.FLOOR_START.size() and not _args.has("demo") and not _args.has("lineup"):
+				get_tree().create_timer(1.2).timeout.connect(func() -> void:
+					if mode == "room" and _menu == null:
+						_say(ArpgStory.FLOOR_START[fl]))
+		"story":
+			var en := ArpgStory.encounter_for(fl, state.flags, state.seen)
+			if en.is_empty():
+				var ev2 := state.event_for_room()
+				_npc(String(ev2["name"]), mid, {"kit": "grave_a", "scale": 1.1}, _open_event)
+			else:
+				_npc(String(en["name"]), mid, {"kit": en["kit"], "scale": 1.1}, func(n: ArpgNpc) -> void: _open_story(n, en))
+			_open_portal()
+		"treasure":
+			_npc("宝箱", Vector3(0, 0, -1.0), {"kit": "box", "scale": 1.4}, _open_chest)
+			_open_portal()
+		"secret":
+			var pg := ArpgStory.next_page()
+			if pg >= 0:
+				_npc("刻字石碑", mid, {"kit": "gravestone", "scale": 1.3}, func(n: ArpgNpc) -> void: _take_page(n, pg))
+			_npc("宝箱", Vector3(3.5, 0, -1.5), {"kit": "box", "scale": 1.4}, func(n: ArpgNpc) -> void: _open_chest(n, 2))
+			arena.spirit_fire(Vector3(0, 0.6, -2.5), Color(0.8, 0.6, 1.0), 1.6, 2.4, 9.0)
+			hud.banner("密室", "裂墙后面藏着的房间", 2.4)
+			_open_portal()
+		"boss":
+			# 头目先说话，说完再出手
+			_hold_waves = not _args.has("demo")
+			if _hold_waves:
+				get_tree().create_timer(1.3).timeout.connect(_boss_intro.bind(fl))
 		"shop":
 			_npc("游商", mid, {"model": "barbarian", "tint": Color(0.95, 0.85, 0.7)}, _open_shop)
 			_open_portal()
@@ -438,6 +534,8 @@ func _make_waves(kind: String, fl: int) -> Array:
 			return [["skeleton", 4, "mage", 2], ["samurai", 1 + fl, "crawler", 4], ["samurai", 2, "mage", 2, "skeleton", 2]]
 		"boss":
 			return [["boss" if fl == 0 else "boss2", 1]]
+		"trial":
+			return [["crawler", 8, "skeleton", 3], ["crawler", 8, "mage", 2, "skeleton", 3], ["samurai", 1 + fl, "crawler", 10]]
 	return []
 
 
@@ -477,7 +575,7 @@ func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
 	add_child(f)
 	f.global_position = p
 	f.face_to(hero.global_position - p)
-	f.dropped.connect(_on_drop)
+	f.dropped.connect(_on_drop.bind(kind))
 	if f.is_boss:
 		hud.boss = f
 		var sub := "守在樱树下的无名剑客" if kind == "boss" else "古寺深处，一盏不灭的灯"
@@ -485,9 +583,13 @@ func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
 		cam_rig.punch_zoom(0.4, 0.8)
 
 
-func _on_drop(pos: Vector3, c: int, j: int) -> void:
-	if state != null:
+func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
+	if state != null and kind != "":
 		state.kills += 1
+		# 装备掉落：赤甲武士常掉，小怪偶尔掉
+		var chance := {"samurai": 0.35, "mage": 0.06, "skeleton": 0.04, "crawler": 0.015}
+		if _rng.randf() < float(chance.get(kind, 0.0)):
+			_drop_gear(pos, -1, 0.1 if kind == "samurai" else 0.0)
 	for i in range(mini(c, 12)):
 		_loot(pos, "coin", maxi(1, c / mini(c, 12)))
 	for i in range(j):
@@ -514,17 +616,229 @@ func _room_cleared() -> void:
 	hud.wave_text = "清场"
 	Game.sfx("door")
 	if room_kind == "boss":
-		if state.floor_i() >= ArpgState.FLOOR_ZONES.size() - 1:
-			hud.banner("胜", "寂光熄灭，残刃归途", 4.0)
-			Game.sfx("reward")
-			get_tree().create_timer(3.0).timeout.connect(func() -> void: _game_over(true))
-			return
-		hud.banner("夜樱散尽", "光门那头是古寺，第二层", 3.0)
-		state.add_jade(5)
-		get_tree().create_timer(1.2).timeout.connect(func() -> void: _offer_boons(3, "floor"))
+		get_tree().create_timer(1.6).timeout.connect(_boss_outro.bind(state.floor_i()))
 		return
+	if room_kind == "elite":
+		_drop_gear(hero.global_position + hero.facing * 1.5, -1, 0.25)
+	if room_kind == "trial":
+		hud.wave_text = "试炼完成" if _trial_ok else "试炼超时"
+		_drop_gear(hero.global_position + hero.facing * 1.5, 3 if _trial_ok else 1)
 	hud.banner("清场", "选一个心法", 1.6)
 	get_tree().create_timer(0.9).timeout.connect(func() -> void: _offer_boons(3 if room_kind != "elite" else 4, "next"))
+
+
+# ---------- 主线：头目战前战后、结局 ----------
+
+func _boss_intro(fl: int) -> void:
+	if mode != "room":
+		return
+	var key := "boss" if fl == 0 else "boss2"
+	var lines: Array = ArpgStory.BOSS_PRE[key].duplicate()
+	var extra: Dictionary = ArpgStory.BOSS_PRE_FLAGS.get(key, {})
+	for f: String in extra:
+		if state.flags.has(f):
+			lines.append_array(extra[f])
+	var d := _say(lines)
+	d.finished.connect(func() -> void:
+		if key == "boss2" and state.flags.has("ronin_saved"):
+			hero.revives += 1
+		_hold_waves = false
+		_wave_delay = 0.3)
+
+
+func _boss_outro(fl: int) -> void:
+	if mode != "room":
+		return
+	var key := "boss" if fl == 0 else "boss2"
+	_drop_gear(hero.global_position + hero.facing * 1.5, 3, 0.0)
+	var d := _say(ArpgStory.BOSS_POST[key])
+	if fl == 0:
+		d.finished.connect(_sakura_choice)
+	else:
+		d.finished.connect(_ending_choice)
+
+
+func _sakura_choice() -> void:
+	var items := []
+	for c: Array in ArpgStory.SAKURA_CHOICE:
+		items.append({"title": c[0], "desc": c[1], "color": ArpgStory.C_SAKURA})
+	var m := _open_menu("夜樱散尽", "阿樱的刀插在樱树下。", items, "list", false)
+	m.chosen.connect(func(i: int) -> void:
+		var fx: Dictionary = ArpgStory.SAKURA_CHOICE[i][2]
+		state.flags[fx["flag"]] = true
+		_close_menu()
+		if fx.has("jade"):
+			state.add_jade(int(fx["jade"]))
+			feel.callout(hero.head_top(), "魂玉 +%d" % int(fx["jade"]), Color(0.55, 1.0, 0.85), 1.2)
+		hud.banner("第一层 · 完", "光门那头是寂光寺，第二层", 3.0)
+		state.add_jade(5)
+		_offer_boons(3, "floor"))
+
+
+func _ending_choice() -> void:
+	var opts := [["douse", "熄灭残灯", "让死者安息。师父也会跟着灯一起走"], ["keep", "接过残灯", "像师父一样守着它"]]
+	if ArpgStory.has_all_pages():
+		opts.append(["true", "把五页残页交给师父", "（隐藏）你找齐了他写下的每一页"])
+	var items := []
+	for o: Array in opts:
+		items.append({"title": o[1], "desc": o[2], "color": Color(1.0, 0.85, 0.5) if o[0] == "true" else ArpgStory.C_MASTER})
+	var m := _open_menu("残灯", "灯就悬在你面前。", items, "list", false)
+	m.chosen.connect(func(i: int) -> void:
+		var id: String = opts[i][0]
+		_close_menu()
+		var e: Dictionary = ArpgStory.ENDINGS[id]
+		var seen: Dictionary = Game.save.get("arpg_endings", {})
+		seen[id] = true
+		Game.save["arpg_endings"] = seen
+		if id == "true":
+			state.add_jade(30)
+		var d := _say(e["lines"])
+		d.finished.connect(func() -> void:
+			hud.banner(String(e["title"]), "残刃归途", 4.0)
+			Game.sfx("reward")
+			get_tree().create_timer(3.0).timeout.connect(func() -> void: _game_over(true, String(e["title"])))))
+
+
+# ---------- 剧情遭遇、宝箱、密室 ----------
+
+func _open_story(n: ArpgNpc, en: Dictionary) -> void:
+	if n.used:
+		return
+	var d := _say(en["lines"])
+	d.finished.connect(func() -> void:
+		var items := []
+		for op: Array in en["options"]:
+			var fx: Dictionary = op[2]
+			var ok := state.coins >= -int(fx.get("coins", 0)) and (int(fx.get("gourd", 0)) >= 0 or hero.gourds > 0)
+			items.append({"title": op[0], "desc": String(op[1]) if ok else "做不到", "enabled": ok})
+		var m := _open_menu(String(en["name"]), "", items, "list", false)
+		m.chosen.connect(func(i: int) -> void:
+			n.used = true
+			state.seen[en["id"]] = true
+			_close_menu()
+			_story_effect(en["options"][i][2], n)))
+
+
+func _story_effect(fx: Dictionary, n: ArpgNpc) -> void:
+	if fx.has("flag"):
+		state.flags[fx["flag"]] = true
+	if fx.has("coins"):
+		state.coins += int(fx["coins"])
+	if fx.has("jade"):
+		state.add_jade(int(fx["jade"]))
+	if fx.has("gourd"):
+		hero.gourds = maxi(0, hero.gourds + int(fx["gourd"]))
+	if fx.has("curse"):
+		state.curse += int(fx["curse"])
+		hud.banner("诅咒", "这一局受到的伤害 +10%", 2.0)
+		feel.screen_flash(Color(0.4, 0.0, 0.2, 0.5), 1.5)
+	if fx.has("boon_id"):
+		_take_boon(String(fx["boon_id"]))
+	hero.apply_stats(state.stats(), state.weapon)
+	if fx.has("gear"):
+		_drop_gear(n.global_position + Vector3(0, 0, 1.5), maxi(int(fx["gear"]), 1) if int(fx["gear"]) > 1 else -1, 0.2)
+	if fx.has("fight"):
+		hud.banner("守灯僧", "他拔出了刀", 1.6)
+		_room_done = false
+		waves = [[String(fx["fight"]), 1, "skeleton", 2]]
+		wave_i = -1
+		_wave_delay = 0.6
+		room_kind = "elite"
+		if is_instance_valid(_portal):
+			_portal.queue_free()
+		n.queue_free()
+	if fx.has("boon"):
+		_offer_boons_then(int(fx["boon"]))
+
+
+func _open_chest(n: ArpgNpc, min_rarity: int = 0) -> void:
+	if n.used:
+		return
+	n.used = true
+	Game.sfx("chest")
+	vfx.sheet("crit-hit", n.global_position + Vector3(0, 0.3, 0), 3.0, Color(1.0, 0.9, 0.6), 2.2)
+	vfx.shock_ring(n.global_position, Color(1.0, 0.85, 0.4), 0.3, 3.5, 0.5)
+	var p := n.global_position + Vector3(0, 0, 1.2)
+	_drop_gear(p, -1 if min_rarity <= 0 else min_rarity + (1 if _rng.randf() < 0.3 else 0), 0.15)
+	if _rng.randf() < 0.45:
+		_drop_gear(p + Vector3(0.6, 0, 0), -1, 0.0)
+	_on_drop(p, 25 + state.floor_i() * 15, 1, "")
+
+
+func _take_page(n: ArpgNpc, pg: int) -> void:
+	if n.used:
+		return
+	n.used = true
+	ArpgStory.take_page(pg)
+	Game.sfx("memory")
+	vfx.sheet("soul-rise", n.global_position, 3.5, Color(0.9, 0.8, 1.0), 1.8)
+	var lines := [["", "石碑背面压着一页发黄的纸，是师父的字。"],
+		["寂光的残页 · 其%s" % ["一", "二", "三", "四", "五"][pg], ArpgStory.PAGES[pg], ArpgStory.C_MASTER],
+		["", "（残页 %d / %d）" % [ArpgStory.pages().size(), ArpgStory.PAGES.size()]]]
+	if ArpgStory.has_all_pages():
+		lines.append(["", "五页都齐了。打倒寂光之后，也许能换一个结局。"])
+	_say(lines)
+
+
+## 裂墙：靠墙放一段带裂缝的墙，墙缝里透一点紫光；清完房间后打三下就塌，后面是去密室的光门
+func _make_secret_wall(sz: Vector2) -> void:
+	var side := -1.0 if _rng.randf() < 0.5 else 1.0
+	var p := Vector3(side * (sz.x * 0.5 - 1.6), 0, _rng.randf_range(-sz.y * 0.5 + 4.0, sz.y * 0.5 - 6.0))
+	_secret = Node3D.new()
+	arena.add_child(_secret)
+	_secret.global_position = p
+	var w := arena.kit("wall_broken", p, PI * 0.5, 1.0, false)
+	if w != null:
+		w.reparent(_secret)
+	var f := vfx.sheet("spirit-flame", p + Vector3(-signf(p.x) * 0.6, 0.1, 0), 1.1, Color(0.85, 0.55, 1.0, 0.8), 2.0, false, 1.0e6)
+	f.reparent(_secret)
+	var l := OmniLight3D.new()
+	l.light_color = Color(0.75, 0.45, 1.0)
+	l.light_energy = 1.6
+	l.omni_range = 3.5
+	_secret.add_child(l)
+	l.position = Vector3(-signf(p.x) * 0.8, 0.8, 0)
+
+
+func _hit_secret_wall() -> void:
+	# 每一刀只算一次：换了连段、或者同一段重新开始，算新的一刀
+	var new_swing := hero.state == "attack" and (hero.step_i != _sw_step or hero.st_t < _sw_t)
+	_sw_step = hero.step_i if hero.state == "attack" else -1
+	_sw_t = hero.st_t
+	if not new_swing or not is_instance_valid(_secret):
+		return
+	if hero.global_position.distance_to(_secret.global_position) > 2.6:
+		return
+	pass
+	if not _room_done:
+		feel.callout(_secret.global_position + Vector3(0, 2, 0), "墙后有风声……", Color(0.8, 0.7, 1.0), 0.8)
+		return
+	_secret_hits += 1
+	Game.sfx("block", -4.0)
+	vfx.chips(_secret.global_position + Vector3(0, 1, 0), hero.facing, Color(0.4, 0.38, 0.36), 10, 6.0, 0.12)
+	CamRig.I.shake(0)
+	if _secret_hits >= 3:
+		var p := _secret.global_position
+		_secret.queue_free()
+		_secret = null
+		state.secrets_done[state.run.room_id()] = true
+		Game.sfx("boom")
+		CamRig.I.shake(1)
+		vfx.dust(p, 2.5)
+		vfx.chips(p + Vector3(0, 1, 0), Vector3.UP, Color(0.4, 0.38, 0.36), 24, 8.0, 0.14)
+		hud.banner("裂墙塌了", "后面藏着一间密室", 2.0)
+		_make_secret_portal(p - Vector3(signf(p.x) * 1.5, 0, 0))
+
+
+func _make_secret_portal(p: Vector3) -> void:
+	var keep := _portal
+	var keep_kind := _portal_kind
+	_make_portal(p, "secret", Color(0.75, 0.5, 1.0))
+	var sp := _portal
+	sp.set_meta("kind", "secret")
+	_portal = keep
+	_portal_kind = keep_kind
+	_extra_portals.append(sp)
 
 
 ## 清房后选一个心法（卡片横排）
@@ -567,7 +881,8 @@ func _open_shop(_n: ArpgNpc) -> void:
 		if it["kind"] == "refill" and hero.gourds >= hero.max_gourds:
 			en = false
 		items.append({"title": it["name"], "desc": it["desc"], "right": "已售" if gone else "%d 铜钱" % pr, "enabled": en,
-			"tag": {"boon": "心法", "armor": "护甲", "charm": "护符", "refill": "补给"}.get(it["kind"], "")})
+			"tag": {"boon": "心法", "gear": "装备", "refill": "补给"}.get(it["kind"], ""),
+			"color": ArpgGear.color(it["item"]) if it["kind"] == "gear" else Color(0.95, 0.92, 0.85)})
 	var m := _open_menu("游商", "“兵荒马乱的，什么都贵。”　　铜钱 %d" % state.coins, items, "list", true)
 	m.chosen.connect(func(i: int) -> void:
 		var it: Dictionary = stock[i]
@@ -577,10 +892,8 @@ func _open_shop(_n: ArpgNpc) -> void:
 		match String(it["kind"]):
 			"boon":
 				_take_boon(String(it["id"]))
-			"armor":
-				state.armor = String(it["id"])
-			"charm":
-				state.charm = String(it["id"])
+			"gear":
+				_gain_gear(it["item"])
 			"refill":
 				hero.gourds = hero.max_gourds
 		hero.apply_stats(state.stats(), state.weapon)
@@ -734,7 +1047,7 @@ func _make_portal(p: Vector3, kind: String, col: Color) -> void:
 	lab.pixel_size = 0.008
 	lab.modulate = Color(col.lightened(0.4), 0.9)
 	lab.position.y = 3.2
-	lab.text = {"run": "出发", "floor": "前往第二层", "next": "前路"}.get(kind, "")
+	lab.text = {"run": "出发", "floor": "前往第二层", "next": "前路", "secret": "密室"}.get(kind, "")
 	_portal.add_child(lab)
 
 
@@ -747,6 +1060,7 @@ func _step_portal() -> void:
 			_fade_then(func() -> void: _enter_room())
 		"floor":
 			state.run.next_floor()
+			state.remap()
 			_fade_then(func() -> void: _enter_room())
 		_:
 			var ex := state.run.exits()
@@ -812,6 +1126,112 @@ func _draw_map(c: Control, vs: Vector2) -> void:
 				c.draw_arc(p, 11.0, 0, TAU, 20, ArpgMenu.GOLD, 1.5)
 
 
+# ---------- 剧情对话 ----------
+
+## 放一段对话，返回对话框（await 它的 finished 等说完）
+func _say(lines: Array) -> DialogBox:
+	_close_menu()
+	var d := DialogBox.new()
+	d.lines = lines
+	ui_layer.add_child(d)
+	_menu = d
+	hud.visible = false
+	hero.clear_buffer()
+	d.finished.connect(func() -> void:
+		if _menu == d:
+			_menu = null
+		hud.visible = mode != "title"
+		hero.clear_buffer())
+	return d
+
+
+# ---------- 装备：掉落、行囊、合成 ----------
+
+func _drop_gear(pos: Vector3, rarity: int = -1, luck: float = 0.0) -> void:
+	if state == null:
+		return
+	var it := ArpgGear.roll(_rng, rarity, luck + state.floor_i() * 0.08)
+	var l := Loot.new()
+	l.kind = "gear"
+	l.item = it
+	add_child(l)
+	l.global_position = pos + Vector3(0, 0.8, 0)
+	l.collected.connect(func(_k: String, _a: int) -> void: _gain_gear(it))
+
+
+## 捡到装备：那个部位空着就直接穿上，否则放进行囊（满了就换成铜钱）
+func _gain_gear(it: Dictionary) -> void:
+	if state == null:
+		return
+	var slot := String(it["slot"])
+	var where := ""
+	if (state.gear[slot] as Dictionary).is_empty():
+		state.gear[slot] = it
+		hero.apply_stats(state.stats(), state.weapon)
+		where = "（已装备）"
+	elif state.bag.size() < ArpgGear.BAG_MAX:
+		state.bag.append(it)
+		where = "（放进行囊，Tab 查看）"
+	else:
+		var c := state.add_coins(15 + 15 * int(it["rarity"]))
+		where = "（行囊满了，换成 %d 铜钱）" % c
+	feel.callout(hero.head_top() + Vector3(0, 0.3, 0), String(it["name"]), ArpgGear.color(it), 1.3)
+	hud.banner(String(it["name"]), ArpgGear.describe(it) + where, 2.2)
+
+
+func _open_bag(keep_index: int = -1) -> void:
+	if state == null:
+		return
+	var items := []
+	var acts := []
+	for slot: String in ["armor", "charm"]:
+		var it: Dictionary = state.gear[slot]
+		var sname := "护甲" if slot == "armor" else "护符"
+		if it.is_empty():
+			items.append({"tag": sname, "title": "（空）", "desc": "", "enabled": false})
+		else:
+			items.append({"tag": sname, "title": it["name"], "desc": ArpgGear.describe(it), "color": ArpgGear.color(it),
+				"right": "卸下", "enabled": state.bag.size() < ArpgGear.BAG_MAX})
+		acts.append(["unequip", slot])
+	for i in range(state.bag.size()):
+		var it: Dictionary = state.bag[i]
+		items.append({"tag": "行囊", "title": it["name"], "desc": ("护甲：" if it["slot"] == "armor" else "护符：") + ArpgGear.describe(it),
+			"color": ArpgGear.color(it), "right": "换上"})
+		acts.append(["equip", i])
+	for r: int in ArpgGear.craftable(state.bag):
+		items.append({"tag": "合成", "tag_color": Color(1.0, 0.8, 0.4), "title": "三件「%s」合成一件「%s」" % [ArpgGear.RARITY_NAMES[r], ArpgGear.RARITY_NAMES[r + 1]],
+			"desc": "用掉行囊里三件同品质的装备，随机得到一件高一档的", "color": ArpgGear.RARITY_COLORS[r + 1], "right": "合成"})
+		acts.append(["craft", r])
+	var sub := "行囊 %d / %d　·　心法 %d 个　·　残页 %d / %d" % [state.bag.size(), ArpgGear.BAG_MAX, state.boons.size(), ArpgStory.pages().size(), ArpgStory.PAGES.size()]
+	var m := _open_menu("行囊", sub, items, "list", true)
+	m.footer = "J 选择　　Tab / 空格 关闭"
+	if keep_index >= 0:
+		m.index = mini(keep_index, items.size() - 1)
+	m.chosen.connect(func(i: int) -> void:
+		var a: Array = acts[i]
+		match String(a[0]):
+			"unequip":
+				state.bag.append(state.gear[a[1]])
+				state.gear[a[1]] = {}
+			"equip":
+				var it: Dictionary = state.bag[int(a[1])]
+				state.bag.remove_at(int(a[1]))
+				var old: Dictionary = state.gear[it["slot"]]
+				if not old.is_empty():
+					state.bag.append(old)
+				state.gear[it["slot"]] = it
+			"craft":
+				var made := ArpgGear.craft(state.bag, int(a[1]), _rng)
+				state.bag.append(made)
+				Game.sfx("reward")
+				vfx.shock_ring(hero.global_position, ArpgGear.color(made), 0.3, 4.0, 0.5)
+				vfx.sheet("crit-hit", hero.chest() - Vector3(0, 0.6, 0), 3.0, ArpgGear.color(made), 2.0)
+				feel.callout(hero.head_top(), "合成：" + String(made["name"]), ArpgGear.color(made), 1.5)
+		hero.apply_stats(state.stats(), state.weapon)
+		_close_menu()
+		_open_bag(i))
+
+
 # ---------- 菜单 ----------
 
 func _open_menu(title: String, sub: String, items: Array, layout: String, cancellable: bool) -> ArpgMenu:
@@ -849,7 +1269,7 @@ func _on_hero_died(_a: Actor) -> void:
 	get_tree().create_timer(2.2).timeout.connect(func() -> void: _game_over(false))
 
 
-func _game_over(won: bool) -> void:
+func _game_over(won: bool, ending: String = "") -> void:
 	if mode == "over":
 		return
 	mode = "over"
@@ -857,7 +1277,7 @@ func _game_over(won: bool) -> void:
 	var sub := "第 %d 层　走过 %d 间　斩敌 %d　铜钱 %d" % [r["floor"], r["rooms"], r["kills"], r["coins"]]
 	var desc := "魂玉 %d，全部带回" % r["jade"] if won else "魂玉 %d，带回 %d" % [r["jade"], r["kept"]]
 	var items := [{"title": "回到山门", "desc": desc, "right": "存档魂玉 %d" % int(Game.save["jade"])}]
-	var m := _open_menu("登顶" if won else "身死", sub, items, "list", false)
+	var m := _open_menu(ending if ending != "" else ("登顶" if won else "身死"), sub, items, "list", false)
 	m.chosen.connect(func(_i: int) -> void:
 		_close_menu()
 		feel.screen_flash(Color(0, 0, 0, 1), 0.0)
@@ -886,7 +1306,28 @@ func _process(dt: float) -> void:
 		_shot_n += 1
 		if _shots.is_empty():
 			get_tree().quit()
-	if mode == "room" and not _room_done and is_instance_valid(hero) and hero.alive:
+	if mode == "room" and is_instance_valid(_secret) and is_instance_valid(hero):
+		_hit_secret_wall()
+	if (mode == "room" or mode == "hub") and _menu == null and state != null and is_instance_valid(hero) and hero.alive \
+			and Input.is_action_just_pressed(ArpgInput.act(0, "bag")):
+		_open_bag()
+	if mode == "room" and room_kind == "trial" and not _room_done and wave_i >= 0:
+		_trial_t -= dt if feel.world_pause <= 0.0 else 0.0
+		if _trial_t <= 0.0 and _trial_ok:
+			_trial_ok = false
+			hud.banner("超时", "还能打完，但奖励差一些", 1.6)
+		hud.wave_text = "第 %d 波 / 共 %d 波　限时 %d 秒" % [wave_i + 1, waves.size(), maxi(0, int(ceil(_trial_t)))] if _trial_ok else "第 %d 波 / 共 %d 波　已超时" % [wave_i + 1, waves.size()]
+	for sp: Node3D in _extra_portals:
+		if is_instance_valid(sp):
+			sp.rotation.y += dt
+			if not _going and _menu == null and is_instance_valid(hero) and hero.alive:
+				var dd := hero.global_position - sp.global_position
+				dd.y = 0
+				if dd.length() < 1.3:
+					_going = true
+					Game.sfx("door")
+					_fade_then(func() -> void: _enter_room("secret"))
+	if mode == "room" and not _room_done and not _hold_waves and is_instance_valid(hero) and hero.alive:
 		if get_tree().get_nodes_in_group("foes").is_empty():
 			_wave_delay -= dt
 			if _wave_delay <= 0.0:

@@ -7,9 +7,12 @@ static var cur: ArpgState
 
 const FLOOR_ZONES := ["forest", "temple"]
 const FLOOR_NAMES := ["幽林遗迹", "古寺"]
-const TYPE_NAMES := {"start": "林口", "fight": "战", "elite": "精英", "shop": "商人", "rest": "歇脚", "event": "奇遇", "boss": "头目"}
-const TYPE_DESC := {"start": "", "fight": "成群的敌人，清完选一个心法", "elite": "赤甲武士带队，心法更好、铜钱更多",
-	"shop": "游商：买心法、护甲、护符、补药", "rest": "土地庙：回血或者补满药葫芦", "event": "说不准会碰到什么", "boss": "这一层的守关头目"}
+const TYPE_NAMES := {"start": "林口", "fight": "战", "elite": "精英", "shop": "商人", "rest": "歇脚", "event": "奇遇", "boss": "头目",
+	"treasure": "宝箱", "trial": "试炼", "story": "故人", "secret": "密室"}
+const TYPE_DESC := {"start": "", "fight": "成群的敌人，清完选一个心法", "elite": "赤甲武士带队，心法更好，必掉装备",
+	"shop": "游商：买心法、装备、补药，也能合成装备", "rest": "土地庙：回血或者补满药葫芦，也能合成装备", "event": "说不准会碰到什么",
+	"boss": "这一层的守关头目", "treasure": "没人看守的宝箱，开出装备和铜钱", "trial": "限时击杀一大群敌人，按时完成奖励珍品装备",
+	"story": "路上遇到的人。你的选择会改变后面的事", "secret": "藏在裂墙后面的房间"}
 
 var run: Run
 var coins := 0
@@ -17,8 +20,12 @@ var jade := 0
 var kills := 0
 var rooms := 0
 var weapon := "sword"
-var armor := ""
-var charm := ""
+var gear := {"armor": {}, "charm": {}}   # 身上穿的装备（ArpgGear 字典，空字典表示没穿）
+var bag: Array = []                      # 行囊里的装备
+var flags := {}                          # 这一局的剧情选择（ronin_saved、sakura_blade ...）
+var seen := {}                           # 这一局见过的剧情遭遇
+var curse := 0                           # 拿了地藏的钱：受伤 +10% 每层
+var secrets_done := {}                   # 已经打开过的隐藏房间（房间坐标）
 var boons: Array[String] = []
 var revives := 0
 var seed_value := 0
@@ -35,8 +42,35 @@ static func start_new() -> ArpgState:
 	var st := ArpgData.talent_stats()
 	s.coins = int(ArpgData.stat(st, "start_coins"))
 	s.revives = int(ArpgData.stat(st, "revive"))
+	s.remap()
 	cur = s
 	return s
+
+
+## 在原来的地图上换出新房间：一部分战斗房变成宝箱房、试炼房，每层第一个奇遇房变成剧情遭遇（故人）。
+## 换层（run.next_floor）之后也要再调一次。
+func remap() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value + run.floor_index * 101
+	var rows: Array = run.rows
+	var story_done := false
+	for r in range(1, rows.size() - 2):
+		for nd: Dictionary in rows[r]:
+			var t := String(nd["type"])
+			if t == "fight" and r >= 2:
+				var x := rng.randf()
+				if x < 0.14:
+					nd["type"] = "treasure"
+				elif x < 0.26:
+					nd["type"] = "trial"
+			elif t == "event" and not story_done:
+				nd["type"] = "story"
+				story_done = true
+	if not story_done:
+		for nd: Dictionary in rows[2]:
+			if nd["type"] == "fight":
+				nd["type"] = "story"
+				break
 
 
 func floor_i() -> int:
@@ -59,9 +93,10 @@ func stats() -> Dictionary:
 		ArpgData.add_stats(st, {"bleed": w["bleed"]})
 	if w.has("crit_dmg"):
 		ArpgData.add_stats(st, {"crit_dmg": w["crit_dmg"]})
-	for gid: String in [armor, charm]:
-		if gid != "":
-			ArpgData.add_stats(st, ArpgData.gear(gid).get("stats", {}))
+	for slot: String in gear:
+		ArpgData.add_stats(st, ArpgGear.stats(gear[slot]))
+	if curse > 0:
+		ArpgData.add_stats(st, {"dmg_taken": 0.1 * curse})
 	for b: String in boons:
 		ArpgData.add_stats(st, ArpgData.boon(b).get("stats", {}))
 	return st
@@ -106,10 +141,11 @@ func shop_stock() -> Array:
 	var items := []
 	for b: Dictionary in roll_boons(2, rng):
 		items.append({"kind": "boon", "id": b["id"], "name": b["name"], "desc": b["desc"], "price": 45 + run.row * 3})
-	var ar: Dictionary = ArpgData.ARMORS[rng.randi_range(0, ArpgData.ARMORS.size() - 1)]
-	items.append({"kind": "armor", "id": ar["id"], "name": ar["name"], "desc": "护甲：" + String(ar["desc"]), "price": ar["price"]})
-	var ch: Dictionary = ArpgData.CHARMS[rng.randi_range(0, ArpgData.CHARMS.size() - 1)]
-	items.append({"kind": "charm", "id": ch["id"], "name": ch["name"], "desc": "护符：" + String(ch["desc"]), "price": ch["price"]})
+	for slot: String in ["armor", "charm"]:
+		var it := ArpgGear.roll(rng, rng.randi_range(1, 2), 0.0, slot)
+		var base := ArpgData.gear(String(it["base"]))
+		items.append({"kind": "gear", "item": it, "name": it["name"], "desc": ("护甲：" if slot == "armor" else "护符：") + ArpgGear.describe(it),
+			"price": int(base["price"]) + 25 * int(it["rarity"])})
 	items.append({"kind": "refill", "id": "refill", "name": "补药", "desc": "补满药葫芦", "price": 20})
 	shop_cache[key] = items
 	return items

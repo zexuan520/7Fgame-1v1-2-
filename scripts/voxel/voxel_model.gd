@@ -25,9 +25,12 @@ static func load_model(id: String) -> VoxelModel:
 	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	var m := VoxelModel.new()
 	m.source = String(d.get("source", ""))
+	# res：精细体素（2 表示一格切成 2×2×2 的小格）。关节、长度都换回原来的格子单位，网格按小格画，
+	# 所以姿势、武器、碰撞这些按“格”算的东西都不用改。
+	var res := float(d.get("res", 1))
 	for k: String in d["joints"]:
 		var a: Array = d["joints"][k]
-		m.joints[k] = Vector3(a[0], a[1], a[2])
+		m.joints[k] = Vector3(a[0], a[1], a[2]) / res
 	for pname: String in d["parts"]:
 		var pd: Dictionary = d["parts"][pname]
 		var g := VoxelGrid.new(1)
@@ -35,7 +38,7 @@ static func load_model(id: String) -> VoxelModel:
 		for i in range(0, v.size(), 6):
 			g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3]), int(v[i + 4]), int(v[i + 5]))
 		var an: Array = pd["anchor"]
-		m.parts[pname] = {"anchor": Vector3(an[0], an[1], an[2]), "len": float(pd["len"]), "mesh": g.build(1.0)}
+		m.parts[pname] = {"anchor": Vector3(an[0], an[1], an[2]) / res, "len": float(pd["len"]) / res, "mesh": g.build(1.0 / res)}
 	_cache[id] = m
 	return m
 

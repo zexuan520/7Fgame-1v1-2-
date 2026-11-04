@@ -62,7 +62,7 @@ func _process(dt: float) -> void:
 			chosen.emit(index)
 		else:
 			Game.sfx("block", -8.0)
-	elif cancellable and (_act("roll") or Input.is_action_just_pressed("ui_cancel")):
+	elif cancellable and (_act("roll") or _act("bag") or Input.is_action_just_pressed("ui_cancel")):
 		cancelled.emit()
 
 
