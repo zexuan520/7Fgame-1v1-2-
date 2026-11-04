@@ -684,15 +684,19 @@ func receive_player_hit(atk: Dictionary, p: Player) -> String:
 	block_streak = 0
 	# 砍中：敌人整个闪白，刀口炸开一团光，血往刀的方向喷，顿一下
 	var cut := Vector2(global_position.x - signf(global_position.x - p.global_position.x) * 6.0, global_position.y - body_size.y * 0.55)
+	var lethal := hp - dmg <= 0.0
+	var big := heavy or lethal or bool(hit.get("crit", false))
 	main.spawn_impact(cut, Color(1.0, 0.8, 0.45), 1.3 if heavy else 0.95, false, p.facing)
+	main.spawn_shatter(cut, 1.6 if lethal else (1.3 if big else 0.9), float(p.facing))
 	main.spawn_blood(cut, float(p.facing), 16 if heavy else 11)
 	if heavy:
 		main.spawn_burst(cut, 1.0)
 	Game.sfx("hit_heavy" if heavy else "hit")
-	main.hitstop(0.09 if heavy else 0.05)
-	main.shake(4.5 if heavy else 2.5)
-	if heavy:
-		main.punch(0.03)
+	main.hitstop(0.14 if lethal else (0.11 if big else 0.06))
+	main.shake(6.0 if lethal else (4.5 if heavy else 3.0))
+	if big:
+		main.punch(0.04)
+		main.flash_screen(Color(0.85, 1.0, 0.97), 0.12)
 	_take_damage(dmg, p_amount)
 	main.spawn_damage(cut + Vector2(0, -14), dmg, float(p.facing), heavy or bool(hit.get("crit", false)))
 	p.on_hit_landed(self, hit)

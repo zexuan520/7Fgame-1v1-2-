@@ -20,55 +20,62 @@ extends RefCounted
 ##   plunge                下劈：一直往下砸直到落地，落地震一圈
 ##   spin                  转身画法（像在原地转一圈）
 ##   ghost                 出手时留残影
+##   sprite                2D 像素精灵借用哪一招的帧（没写就用招式 id）
+##   hook                  钩锁突进接的一刀（空中砍中也会弹起）
 ##   fx                    刀光 ["slash", 半径, 起始角, 结束角, 粗细] / ["streak", 长度] / ["flat", 半径] /
 ##                         ["spin"] / ["none"]；角度朝右为 0、向下为正
 
 const LIST := {
 	# ---------- 地面五连：横斩 → 上撩 → 竖劈 → 突刺 → 旋风斩 ----------
 	"slash1": {"name": "横斩", "raise": "yoko_raise", "cut": "yoko_cut", "follow": "yoko_follow", "combo": 0, "next": "slash2",
-		"windup": 0.07, "active": 0.08, "recover": 0.20, "dmg": 20.0, "posture": 20.0,
+		"windup": 0.07, "active": 0.08, "recover": 0.16, "dmg": 20.0, "posture": 20.0,
 		"reach": 33.0, "size": Vector2(54, 30), "height": 28.0, "heavy": false, "fx": ["flat", 40.0]},
 	"slash2": {"name": "上撩", "raise": "raise2", "cut": "cut2", "follow": "follow2", "combo": 1, "next": "slash3",
-		"windup": 0.07, "active": 0.08, "recover": 0.20, "dmg": 20.0, "posture": 20.0,
+		"windup": 0.07, "active": 0.08, "recover": 0.16, "dmg": 20.0, "posture": 20.0,
 		"reach": 33.0, "size": Vector2(51, 36), "height": 30.0, "heavy": false, "fx": ["slash", 36.0, 0.9, -1.8, 7.0]},
 	"slash3": {"name": "竖劈", "raise": "raise1", "cut": "cut1", "follow": "follow1", "combo": 2, "next": "slash4",
-		"windup": 0.09, "active": 0.08, "recover": 0.22, "dmg": 22.0, "posture": 24.0,
+		"windup": 0.09, "active": 0.08, "recover": 0.18, "dmg": 22.0, "posture": 24.0,
 		"reach": 34.0, "size": Vector2(54, 40), "height": 30.0, "heavy": false, "fx": ["slash", 42.0, -2.3, 0.7, 8.0]},
 	"slash4": {"name": "突刺", "raise": "raise3", "cut": "cut3", "follow": "follow3", "combo": 3, "next": "slash5", "lunge": 240.0,
-		"windup": 0.08, "active": 0.10, "recover": 0.24, "dmg": 24.0, "posture": 26.0,
+		"windup": 0.08, "active": 0.10, "recover": 0.19, "dmg": 24.0, "posture": 26.0,
 		"reach": 42.0, "size": Vector2(66, 24), "height": 28.0, "heavy": false, "fx": ["streak", 72.0]},
 	"slash5": {"name": "旋风斩", "raise": "art_prep", "cut": "art_spin", "combo": 4, "lunge": 170.0, "spin": true,
-		"windup": 0.12, "active": 0.30, "recover": 0.36, "dmg": 30.0, "posture": 34.0, "around": true,
+		"windup": 0.12, "active": 0.30, "recover": 0.29, "dmg": 30.0, "posture": 34.0, "around": true,
 		"reach": 0.0, "size": Vector2(100, 44), "height": 26.0, "heavy": false, "fx": ["spin"]},
 
 	# 长按蓄力：重劈
 	"heavy": {"name": "重劈", "raise": "charge", "cut": "smash", "follow": "follow_heavy", "combo": -1,
-		"windup": 0.12, "active": 0.10, "recover": 0.40, "dmg": 30.0, "posture": 60.0,
+		"windup": 0.12, "active": 0.10, "recover": 0.32, "dmg": 30.0, "posture": 60.0,
 		"reach": 39.0, "size": Vector2(69, 45), "height": 30.0, "heavy": true, "fx": ["slash", 44.0, -2.4, 0.9, 14.0]},
 
 	# 下 + 攻击：升龙斩，人跟着刀往上冲，杂兵被挑飞；空中可以接空中斩
 	"rising": {"name": "升龙斩", "raise": "rise_prep", "cut": "rise_cut", "combo": -1, "next": "air1",
-		"windup": 0.10, "active": 0.16, "recover": 0.26, "dmg": 22.0, "posture": 26.0, "vy": -470.0, "lunge": 60.0,
+		"windup": 0.10, "active": 0.16, "recover": 0.21, "dmg": 22.0, "posture": 26.0, "vy": -470.0, "lunge": 60.0,
 		"launch": -380.0, "reach": 20.0, "size": Vector2(46, 70), "height": 44.0, "heavy": false,
 		"fx": ["slash", 42.0, 1.2, -1.9, 9.0]},
 
 	# 空中：两下空中斩
 	"air1": {"name": "空中斩", "raise": "air_raise1", "cut": "air_cut1", "combo": -1, "next": "air2", "air": true, "hang": true,
-		"windup": 0.06, "active": 0.08, "recover": 0.16, "dmg": 18.0, "posture": 18.0, "lunge": 60.0,
+		"windup": 0.06, "active": 0.08, "recover": 0.13, "dmg": 18.0, "posture": 18.0, "lunge": 60.0,
 		"reach": 30.0, "size": Vector2(50, 40), "height": 28.0, "heavy": false, "fx": ["slash", 38.0, -2.2, 0.8, 7.0]},
 	"air2": {"name": "空中回斩", "raise": "air_raise2", "cut": "air_cut2", "combo": -1, "air": true, "hang": true,
-		"windup": 0.06, "active": 0.08, "recover": 0.22, "dmg": 18.0, "posture": 18.0, "lunge": 60.0,
+		"windup": 0.06, "active": 0.08, "recover": 0.18, "dmg": 18.0, "posture": 18.0, "lunge": 60.0,
 		"reach": 30.0, "size": Vector2(50, 40), "height": 28.0, "heavy": false, "fx": ["slash", 38.0, 1.0, -1.8, 7.0]},
 
 	# 空中 下 + 攻击：落雷斩，刀尖朝下砸到地上，落地震开一圈，能破格挡
 	"plunge": {"name": "落雷斩", "raise": "plunge_raise", "cut": "plunge_land", "combo": -1, "air": true, "plunge": true,
-		"windup": 0.12, "active": 1.5, "recover": 0.34, "dmg": 24.0, "posture": 30.0,
+		"windup": 0.12, "active": 1.5, "recover": 0.27, "dmg": 24.0, "posture": 30.0,
 		"reach": 6.0, "size": Vector2(34, 40), "height": 8.0, "heavy": true, "fx": ["none"],
 		"shock": {"dmg": 18.0, "posture": 30.0, "size": Vector2(104, 26), "heavy": true}},
 
+	# 钩锁突进飞到敌人身边接的一刀：空中也能出，砍中会弹起来
+	"hook_cut": {"name": "钩锁斩", "sprite": "slash3", "raise": "raise1", "cut": "cut1", "follow": "follow1", "combo": -1, "hook": true, "hang": true,
+		"windup": 0.02, "active": 0.09, "recover": 0.13, "dmg": 26.0, "posture": 30.0, "lunge": 160.0,
+		"reach": 34.0, "size": Vector2(60, 46), "height": 30.0, "heavy": false, "fx": ["slash", 44.0, -2.3, 0.8, 9.0]},
+
 	# 闪身中或刚闪完按攻击：闪身突刺，冲得很远
 	"dash": {"name": "闪身突刺", "raise": "raise3", "cut": "dash_cut", "combo": -1, "lunge": 400.0, "ghost": true,
-		"windup": 0.04, "active": 0.12, "recover": 0.26, "dmg": 24.0, "posture": 28.0,
+		"windup": 0.04, "active": 0.12, "recover": 0.21, "dmg": 24.0, "posture": 28.0,
 		"reach": 40.0, "size": Vector2(80, 26), "height": 28.0, "heavy": false, "fx": ["streak", 96.0]},
 }
 

@@ -64,6 +64,9 @@ func _run() -> void:
 	if "boss" in OS.get_cmdline_user_args():
 		_boss()
 		return
+	if "feel" in OS.get_cmdline_user_args():
+		_feel()
+		return
 	if tour:
 		main.mode = "room"
 		main.waves = def.get("waves", [])
@@ -112,6 +115,58 @@ func _boss() -> void:
 				Input.action_release("p1_guard")
 				print("boss demo ms ", Time.get_ticks_msec() - t0)
 				get_tree().quit()
+
+
+## 快节奏手感演示：一群小怪（野狗、忍者、高处的弓手），机器人按“钩锁突进 → 空中连砍弹起 → 空中冲刺 → 再钩”打
+##   xvfb-run godot --path . --fixed-fps 30 --write-movie /tmp/f.png res://tools/voxel_demo/voxel_demo.tscn -- feel
+func _feel() -> void:
+	var p: Player = main.players[0]
+	p.global_position = Vector2(300.0, 300.0)
+	for sp in [["dog", 560.0, 0.0], ["dog", 640.0, 0.0], ["shinobi", 760.0, 0.0], ["shinobi", 880.0, 0.0], ["dog", 980.0, 0.0]]:
+		var e: Enemy = main.spawn_enemy(sp[0], Vector2(sp[1], 300.0 - sp[2]))
+		e.attack_cooldown = 1.5
+	var frames := 0
+	var held := {}
+	var last_atk := 0
+	while frames < 30 * 14:
+		await get_tree().process_frame
+		frames += 1
+		p.hp = p.max_hp
+		for a in held.keys():
+			held[a] -= 1
+			if held[a] <= 0:
+				Input.action_release(a)
+				held.erase(a)
+		var press := func(a: String, n: int = 2) -> void:
+			Input.action_press(a)
+			held[a] = n
+		var alive: Array = main.get_enemies().filter(func(e): return e.is_hittable())
+		if alive.is_empty():
+			if frames % 60 == 0:
+				for sp in [["dog", p.global_position.x + 260.0], ["shinobi", p.global_position.x + 340.0], ["dog", p.global_position.x + 420.0]]:
+					main.spawn_enemy(sp[0], Vector2(minf(sp[1], main.arena_w - 40.0), 300.0)).attack_cooldown = 1.0
+			press.call("p1_right", 4)
+			continue
+		var near: Enemy = alive[0]
+		for e in alive:
+			if absf(e.global_position.x - p.global_position.x) < absf(near.global_position.x - p.global_position.x):
+				near = e
+		var dx: float = near.global_position.x - p.global_position.x
+		if p.state == Player.S.FREE and p.hook_cd <= 0.0 and absf(dx) > 60.0:
+			press.call("p1_right" if dx > 0 else "p1_left", 3)
+			press.call("p1_hook")
+		elif p.state == Player.S.FREE and p.is_on_floor() and absf(dx) <= 60.0 and frames - last_atk > 6:
+			press.call("p1_jump")
+			last_atk = frames
+		elif not p.is_on_floor() and frames - last_atk > 5:
+			if p.air_dashes > 0 and absf(dx) > 90.0 and p.state == Player.S.FREE:
+				press.call("p1_right" if dx > 0 else "p1_left", 3)
+				press.call("p1_dodge")
+			else:
+				press.call("p1_attack")
+			last_atk = frames
+	print("feel demo done")
+	get_tree().quit()
 
 
 func _gallery() -> void:

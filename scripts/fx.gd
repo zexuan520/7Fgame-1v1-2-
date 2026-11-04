@@ -183,6 +183,37 @@ class Streak extends Node2D:
 		draw_line(Vector2(x * 0.1, 0), Vector2(x, 0), Color(1, 1, 1, a), 1.0)
 
 
+## 钩锁链子：甩出去 0.06 秒，钩住以后连着主角的手和敌人，主角不在钩锁状态就收回消失
+class Chain extends Node2D:
+	var player: Node2D
+	var target: Node2D
+	var _t := 0.0
+	var _out := 0.0
+
+	func _process(delta: float) -> void:
+		_t += delta
+		var alive: bool = is_instance_valid(player) and is_instance_valid(target) and player.state == Player.S.HOOK
+		_out = clampf(_t / 0.06, 0.0, 1.0) if alive else _out - delta * 8.0
+		if _out <= 0.0 and _t > 0.1:
+			queue_free()
+			return
+		queue_redraw()
+
+	func _draw() -> void:
+		if not is_instance_valid(player) or not is_instance_valid(target):
+			return
+		var a: Vector2 = player.global_position + Vector2(player.facing * 8.0, -30.0)
+		var b: Vector2 = target.global_position + Vector2(0, -target.body_size.y * 0.55)
+		var e := a.lerp(b, _out)
+		var n := int(a.distance_to(e) / 5.0)
+		for i in range(n + 1):
+			var p := a.lerp(e, float(i) / maxf(n, 1))
+			draw_rect(Rect2(p.round() - Vector2(1, 1), Vector2(2, 2)), Color(0.75, 0.8, 0.85) if i % 2 == 0 else Color(0.45, 0.48, 0.55))
+		draw_line(a, e, Color(0.6, 0.95, 0.9, 0.35), 3.0)
+		if _out >= 1.0:
+			draw_circle(b, 4.0 + sin(_t * 40.0), Color(0.6, 0.95, 0.9, 0.6))
+
+
 ## 残影：闪身时留下的半透明人影
 class Ghost extends Node2D:
 	var pose: Dictionary
@@ -263,6 +294,72 @@ class Particles extends Node2D:
 		var a := 1.0 - _t / life
 		for pt in _p:
 			draw_rect(Rect2(pt.round() - Vector2(size, size) / 2.0, Vector2(size, size)), Color(color, a))
+
+
+## 大白光（快节奏改造）：命中时炸开一大团不规则的尖刺白光，青色描边，同时沿着刀的方向划过一道长光，
+## 再崩出一把玻璃碎片似的三角块转着飞出去。size 1 是普通命中，1.5 以上是重击、击杀
+class Shatter extends Node2D:
+	var size := 1.0
+	var rim := Color(0.6, 0.95, 0.9)
+	var dir := 1.0               # 刀往哪边走
+	var life := 0.16
+	var _t := 0.0
+	var _spikes: Array[float] = []
+	var _rot := 0.0
+	var _shards: Array = []       # [位置, 速度, 角度, 角速度, 大小]
+
+	func _ready() -> void:
+		_rot = randf() * TAU
+		for i in range(16):
+			_spikes.append(randf_range(0.55, 1.0) if i % 2 == 0 else randf_range(0.18, 0.32))
+		for i in range(int(9 * size)):
+			var a := randf() * TAU
+			var sp := randf_range(120.0, 300.0) * size
+			_shards.append([Vector2.ZERO, Vector2(cos(a) * sp + dir * 80.0, sin(a) * sp - 60.0), randf() * TAU,
+				randf_range(-18.0, 18.0), randf_range(2.0, 4.5) * size])
+
+	func _process(delta: float) -> void:
+		_t += delta
+		for sh: Array in _shards:
+			var v: Vector2 = sh[1]
+			v.y += 500.0 * delta
+			v *= 1.0 - 2.5 * delta
+			sh[1] = v
+			sh[0] = (sh[0] as Vector2) + v * delta
+			sh[2] = float(sh[2]) + float(sh[3]) * delta
+		if _t >= 0.5:
+			queue_free()
+		queue_redraw()
+
+	func _draw() -> void:
+		var k := clampf(_t / life, 0.0, 1.0)
+		if k < 1.0:
+			# 尖刺白光：一出来最大，然后往里收、变淡
+			var r := 64.0 * size * (1.0 - 0.55 * k) * (0.8 + 0.2 * minf(_t / 0.03, 1.0))
+			var outer := PackedVector2Array()
+			var inner := PackedVector2Array()
+			for i in _spikes.size():
+				var a := _rot + TAU * i / _spikes.size()
+				var d := Vector2(cos(a), sin(a) * 0.8)
+				outer.append(d * r * _spikes[i])
+				inner.append(d * r * _spikes[i] * 0.72)
+			draw_colored_polygon(outer, Color(rim, 0.9 * (1.0 - k)))
+			draw_colored_polygon(inner, Color(1, 1, 1, 1.0 - k * k))
+			# 刀路：一道很长的斜光
+			var len := 150.0 * size * (0.6 + 0.4 * k)
+			var w := 5.0 * size * (1.0 - k)
+			var t := Vector2(dir, -0.28).normalized()
+			var n := Vector2(-t.y, t.x)
+			draw_colored_polygon(PackedVector2Array([-t * len * 0.5, n * w, t * len * 0.5, -n * w]), Color(1, 1, 1, 1.0 - k))
+		var fade := clampf(1.0 - (_t - 0.15) / 0.35, 0.0, 1.0)
+		for sh: Array in _shards:
+			var p: Vector2 = sh[0]
+			var a: float = sh[2]
+			var sz: float = sh[4]
+			var d := Vector2(cos(a), sin(a)) * sz
+			var n := Vector2(-d.y, d.x) * 0.55
+			draw_colored_polygon(PackedVector2Array([p + d, p + n, p - d * 0.7]), Color(1, 1, 1, fade))
+			draw_line(p + d, p - d * 0.7, Color(rim, fade * 0.8), 1.0)
 
 
 ## 星爆火花：弹反、格挡、重击时，一圈长短不一的光芒往外射，中间一点白光，外加几颗火星

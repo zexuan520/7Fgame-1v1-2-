@@ -4,22 +4,22 @@ extends Fighter
 ## 刃意招式和心法见 Arts：招式键单按 / 按住左右 / 按住下 各放一格。
 ## 副武器和道具见 Items：副武器键、道具键单按用，按住下再按换一种。
 
-enum S { FREE, CHARGE, ATTACK, GUARD, DODGE, HITSTUN, BROKEN, EXECUTE, DEAD, DRINK, ART, TOOL, ITEM }
+enum S { FREE, CHARGE, ATTACK, GUARD, DODGE, HITSTUN, BROKEN, EXECUTE, DEAD, DRINK, ART, TOOL, ITEM, HOOK }
 
-const MOVE_SPEED := 200.0           # 奔跑（双击 左/右）
-const WALK_SPEED := 120.0           # 平时走路
+const MOVE_SPEED := 235.0           # 奔跑（双击 左/右）
+const WALK_SPEED := 165.0           # 平时走路（快节奏改造后提速）
 const DOUBLE_TAP := 0.28            # 两次按同一个方向的间隔在这之内算双击
 const BUFFER_TIME := 0.2            # 输入缓冲：提前按的键在这段时间内有效，动作一结束马上接上
-const BUFFERED := ["attack", "guard", "dodge", "jump", "art", "heal", "stance", "tool", "item"]
+const BUFFERED := ["attack", "guard", "dodge", "jump", "art", "heal", "stance", "tool", "item", "hook"]
 const JUMP_VELOCITY := -520.0
 const RUN_JUMP := 1.15              # 跑着起跳，水平速度再快 15%，跳得更远
 const AIR_ACCEL := 1100.0           # 空中按方向的加速度
 const AIR_DRAG := 260.0             # 空中松开方向，惯性只慢慢减，不会一下停住
 const HEAVY_CHARGE_TIME := 0.6      # 长按 0.6 秒出重攻击
-const DODGE_SPEED := 420.0
+const DODGE_SPEED := 540.0
 const DODGE_TIME := 0.22
 const DODGE_INVUL := 0.2            # 闪身无敌 0.2 秒
-const DODGE_COOLDOWN := 0.4
+const DODGE_COOLDOWN := 0.22
 const HITSTUN_TIME := 0.25
 const BROKEN_TIME := 1.2            # 架势满 → 破防僵直 1.2 秒
 const EXECUTE_TIME := 0.55
@@ -50,7 +50,14 @@ const WILL_GAIN := {"hit": 4.0, "guardbreak": 6.0, "parry": 12.0, "mikiri": 15.0
 const PERFECT_DODGE := 0.12         # 闪身开始这么久之内被砍到（本来要挨刀）算完美闪避（心法“流云”）
 
 # 攻击招式全部在 Moves.LIST 里（地面五连、重劈、升龙斩、空中斩、落雷斩、闪身突刺）
-const AIR_ATTACKS := 2              # 每次跳起最多两下空中攻击（落雷斩不算）
+const AIR_ATTACKS := 2              # 每次跳起最多两下空中攻击（落雷斩不算）；空中砍中敌人会弹起来并重置
+const AIR_DASHES := 1               # 每次离地能空中冲刺几次（砍中敌人重置）
+const AIR_BOUNCE := -210.0          # 空中砍中敌人往上弹的速度，可以一直不落地
+# 钩锁突进：甩链子钩住前方的敌人，把自己拉过去，到了顺势一刀
+const HOOK_RANGE := Vector2(280.0, 190.0)   # 能钩到多远（水平、竖直）
+const HOOK_SPEED := 980.0
+const HOOK_TIME := 0.36             # 最多飞这么久
+const HOOK_CD := 0.45
 ## 出刀时各关节跟得多快：脚和腰先到位、肩膀跟上、手再跟上、刀最后被甩出去（像鞭子一样一节带一节）
 const SWING_LAG := {"crouch": 1.6, "dx": 1.6, "foot_f": 1.7, "foot_b": 1.7, "lean": 1.35, "twist": 1.3, "head": 1.1,
 	"arm_f": 1.0, "arm_b": 1.0, "sword": 0.82}
@@ -65,6 +72,9 @@ var spawn_pos := Vector2.ZERO
 
 var state := S.FREE
 var air_jumps := 1
+var air_dashes := AIR_DASHES
+var hook_cd := 0.0
+var hook_target: Enemy
 var combo_step := 0
 var combo_queued := false
 var attack: Dictionary = {}
@@ -367,6 +377,7 @@ func _physics_process(delta: float) -> void:
 	state_time += delta
 	parry_timer = maxf(0.0, parry_timer - delta)
 	dodge_cooldown = maxf(0.0, dodge_cooldown - delta)
+	hook_cd = maxf(0.0, hook_cd - delta)
 	invul_timer = maxf(0.0, invul_timer - delta)
 	_counter_t = maxf(0.0, _counter_t - delta)
 	_pierce_t = maxf(0.0, _pierce_t - delta)
@@ -382,6 +393,7 @@ func _physics_process(delta: float) -> void:
 		tick_posture(delta)
 	if is_on_floor():
 		air_jumps = 1
+		air_dashes = AIR_DASHES
 		if state != S.ATTACK:
 			_air_attacks = 0
 
@@ -426,8 +438,9 @@ func _physics_process(delta: float) -> void:
 		S.ART: _state_art(delta)
 		S.TOOL: _state_tool(delta)
 		S.ITEM: _state_item(delta)
+		S.HOOK: _state_hook(delta)
 
-	if state != S.DODGE:
+	if state != S.DODGE and state != S.HOOK:
 		apply_gravity(delta)
 	_check_stomp()
 	move_and_slide()
@@ -458,6 +471,8 @@ func _state_free(delta: float) -> void:
 		_start_guard()
 	elif dodge_cooldown <= 0.0 and _pressed("dodge"):
 		_start_dodge(dir)
+	elif _pressed("hook"):
+		_start_hook()
 	elif _pressed("attack"):
 		_attack_pressed()
 	elif _pressed("stance"):
@@ -511,7 +526,12 @@ func _state_attack(delta: float) -> void:
 			return
 		if dodge_cooldown <= 0.0 and _pressed("dodge"):
 			_start_dodge(Input.get_axis(prefix + "left", prefix + "right"))
-			return
+			if state == S.DODGE:
+				return
+		if attack_phase == 2 and _pressed("hook"):
+			_start_hook()
+			if state == S.HOOK:
+				return
 	if attack_phase != 1 and not plunge and (is_on_floor() or air_jumps > 0) and _pressed("jump"):
 		_enter(S.FREE)
 		_try_jump()
@@ -1180,6 +1200,10 @@ func _arm_parry() -> void:
 
 
 func _start_dodge(dir: float) -> void:
+	if not is_on_floor():
+		if air_dashes <= 0:
+			return
+		air_dashes -= 1
 	if absf(dir) > 0.1:
 		dodge_dir = 1 if dir > 0.0 else -1
 	else:
@@ -1460,6 +1484,7 @@ func strike(atk: Dictionary, e: Enemy) -> Dictionary:
 
 ## 这一刀真的砍到肉了（没被挡）：吸血、流血
 func on_hit_landed(e: Enemy, hit: Dictionary) -> void:
+	_air_hit_bounce(e)
 	if float(stats["lifesteal"]) > 0.0:
 		hp = minf(max_hp, hp + float(hit["dmg"]) * float(stats["lifesteal"]))
 	if weapon["trait"] == "bleed":
@@ -1468,6 +1493,84 @@ func on_hit_landed(e: Enemy, hit: Dictionary) -> void:
 		main.spawn_text(e.global_position + Vector2(randf_range(-8, 8), -e.body_size.y - 40.0), "会心", Color(1.0, 0.85, 0.3), 12)
 	elif hit["counter"]:
 		main.spawn_text(e.global_position + Vector2(0, -e.body_size.y - 40.0), "追击", Color(0.9, 0.95, 1.0), 12)
+
+
+## 空中砍中：自己往上弹、空中斩和空中冲刺都重置，杂兵被托在空中（可以一直不落地地连下去）
+func _air_hit_bounce(e: Enemy) -> void:
+	if is_on_floor() or state != S.ATTACK or attack.get("plunge", false):
+		return
+	if not (attack.get("air", false) or attack.get("hook", false) or attack.get("id", "") == "rising"):
+		return
+	if attack.get("id", "") != "rising":
+		velocity.y = minf(velocity.y, AIR_BOUNCE)
+	_air_attacks = 0
+	air_dashes = AIR_DASHES
+	air_jumps = maxi(air_jumps, 1)
+	if e.is_grunt() and e.state != Enemy.S.DYING and e.hp > 0.0:
+		e.velocity.y = minf(e.velocity.y, -250.0)
+		e.velocity.x = facing * 50.0
+
+
+# ---------- 钩锁突进 ----------
+
+## 前方（按着方向就是那边）最近的能钩的敌人
+func _hook_pick() -> Enemy:
+	var dir := Input.get_axis(prefix + "left", prefix + "right")
+	var want := facing if absf(dir) < 0.1 else (1 if dir > 0.0 else -1)
+	var best: Enemy = null
+	var bd := 1e9
+	var me := global_position + Vector2(0, -28)
+	for e: Enemy in main.get_enemies():
+		if not e.is_hittable() or e.state == Enemy.S.DYING:
+			continue
+		var c := e.global_position + Vector2(0, -e.body_size.y * 0.5)
+		var d := c - me
+		if signf(d.x) != float(want) and absf(d.x) > 12.0:
+			continue
+		if absf(d.x) > HOOK_RANGE.x or absf(d.y) > HOOK_RANGE.y:
+			continue
+		var score := d.length()
+		if score < bd:
+			bd = score
+			best = e
+	return best
+
+
+func _start_hook() -> void:
+	if hook_cd > 0.0:
+		return
+	var e := _hook_pick()
+	hook_cd = HOOK_CD
+	if e == null:
+		main.spawn_text(global_position + Vector2(0, -70), "够不着", Color(0.7, 0.7, 0.75), 11)
+		return
+	hook_target = e
+	facing = 1 if e.global_position.x >= global_position.x else -1
+	Game.sfx("hook")
+	invul_timer = maxf(invul_timer, 0.2)
+	_enter(S.HOOK)
+	main.spawn_chain(self, e)
+
+
+func _state_hook(_delta: float) -> void:
+	var e := hook_target
+	if e == null or not is_instance_valid(e) or not e.is_hittable():
+		velocity *= 0.3
+		_enter(S.FREE)
+		return
+	if state_time < 0.06:
+		velocity = Vector2.ZERO   # 先甩出链子
+		return
+	var goal := e.global_position + Vector2(-facing * (e.body_size.x * 0.5 + 16.0), -4.0)
+	var d := goal - global_position
+	if d.length() < 18.0 or state_time >= HOOK_TIME:
+		velocity = Vector2(facing * 160.0, minf(velocity.y * 0.2, -60.0))
+		_start_move("hook_cut")
+		return
+	velocity = d.normalized() * HOOK_SPEED
+	if _ghost_timer <= 0.0:
+		_ghost_timer = 0.03
+		_ghost(Color(0.6, 0.95, 0.9))
 
 
 # ---------- 受击 ----------
@@ -1681,6 +1784,8 @@ func _target_pose() -> Dictionary:
 			return POSES["broken"] if _stun_time > 0.5 else POSES["hit"]
 		S.DEAD:
 			return POSES["kneel"]
+		S.HOOK:
+			return POSES["dash_cut"] if state_time >= 0.06 else POSES["cut3"]
 		S.TOOL:
 			match String(tool.get("id", "")):
 				"dart": return POSES["raise2"] if t < 0.08 else POSES["cut2"]
@@ -2183,6 +2288,8 @@ func _sprite_select() -> Array:
 			if downed > 0.0 and t >= sheet.length("death") * 0.5:
 				return ["downed", -1]
 			return ["death", sheet.frame_at("death", t)]
+		S.HOOK:
+			return ["hook", 0]
 		S.TOOL:
 			if String(tool.get("id", "")) == "hook":
 				return ["hook", 0]
@@ -2218,7 +2325,7 @@ func _idle_anim() -> Array:
 ## 攻击：按前摇 / 判定 / 后摇三段对齐帧
 func _attack_frame() -> Array:
 	var id := String(attack.get("id", "slash1"))
-	var name := id
+	var name := String(attack.get("sprite", id))
 	if String(attack.get("cut", "")) == "iai_cut":
 		name = "iai_cut"
 	if id == "plunge":

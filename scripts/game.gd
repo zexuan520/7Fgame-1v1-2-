@@ -218,18 +218,18 @@ func parry_window() -> float:
 const P1_KEYS := {
 	"left": [KEY_A], "right": [KEY_D], "jump": [KEY_W, KEY_SPACE], "down": [KEY_S],
 	"attack": [KEY_J], "guard": [KEY_K], "dodge": [KEY_L, KEY_SHIFT],
-	"heal": [KEY_U], "art": [KEY_I], "stance": [KEY_O], "tool": [KEY_P], "item": [KEY_Y],
+	"heal": [KEY_U], "art": [KEY_I], "stance": [KEY_O], "tool": [KEY_P], "item": [KEY_Y], "hook": [KEY_E],
 }
 const P2_KEYS := {
 	"left": [KEY_LEFT], "right": [KEY_RIGHT], "jump": [KEY_UP], "down": [KEY_DOWN],
 	"attack": [KEY_KP_1, KEY_COMMA], "guard": [KEY_KP_2, KEY_PERIOD], "dodge": [KEY_KP_3, KEY_SLASH],
 	"heal": [KEY_KP_4, KEY_M], "art": [KEY_KP_5, KEY_N], "stance": [KEY_KP_6, KEY_B],
-	"tool": [KEY_KP_7, KEY_V], "item": [KEY_KP_8, KEY_C],
+	"tool": [KEY_KP_7, KEY_V], "item": [KEY_KP_8, KEY_C], "hook": [KEY_KP_9, KEY_X],
 }
 ## 设置里改键的顺序和名字
 const ACTION_NAMES := {
 	"left": "左", "right": "右", "jump": "跳 / 上", "down": "下", "attack": "攻击", "guard": "格挡", "dodge": "闪身",
-	"heal": "药罐", "art": "招式", "stance": "换架势", "tool": "副武器", "item": "道具",
+	"heal": "药罐", "art": "招式", "stance": "换架势", "tool": "副武器", "item": "道具", "hook": "钩锁突进",
 }
 
 
@@ -269,7 +269,7 @@ func _setup_inputs() -> void:
 func _bind_player(prefix: String, keys: Dictionary, pad: int) -> void:
 	for action: String in keys:
 		_add_keys(prefix + action, keys[action])
-	# 手柄：左摇杆/十字键移动（往下 = 下），A 跳，X 攻击，RB 格挡，B 闪身，Y 药罐，LB 招式，十字键上 换架势，
+	# 手柄：左摇杆/十字键移动（往下 = 下），A 跳，X 攻击，RB 格挡，B 闪身，Y 钩锁突进，LB 招式，十字键上 药罐，按左摇杆 换架势，
 	# RT 副武器，LT 道具
 	_add_pad_axis(prefix + "left", pad, JOY_AXIS_LEFT_X, -1.0)
 	_add_pad_axis(prefix + "right", pad, JOY_AXIS_LEFT_X, 1.0)
@@ -281,8 +281,9 @@ func _bind_player(prefix: String, keys: Dictionary, pad: int) -> void:
 	_add_pad_button(prefix + "attack", pad, JOY_BUTTON_X)
 	_add_pad_button(prefix + "guard", pad, JOY_BUTTON_RIGHT_SHOULDER)
 	_add_pad_button(prefix + "art", pad, JOY_BUTTON_LEFT_SHOULDER)
-	_add_pad_button(prefix + "heal", pad, JOY_BUTTON_Y)
-	_add_pad_button(prefix + "stance", pad, JOY_BUTTON_DPAD_UP)
+	_add_pad_button(prefix + "hook", pad, JOY_BUTTON_Y)
+	_add_pad_button(prefix + "heal", pad, JOY_BUTTON_DPAD_UP)
+	_add_pad_button(prefix + "stance", pad, JOY_BUTTON_LEFT_STICK)
 	_add_pad_button(prefix + "dodge", pad, JOY_BUTTON_B)
 	_add_pad_axis(prefix + "tool", pad, JOY_AXIS_TRIGGER_RIGHT, 1.0)
 	_add_pad_axis(prefix + "item", pad, JOY_AXIS_TRIGGER_LEFT, 1.0)

@@ -2164,6 +2164,14 @@ func spawn_damage(pos: Vector2, amount: float, dir: float, big: bool = false) ->
 	fx_root.add_child(t)
 
 
+## 钩锁：从主角手上甩到敌人身上的链子，主角飞到之前一直连着
+func spawn_chain(p: Node2D, e: Node2D) -> void:
+	var c := Fx.Chain.new()
+	c.player = p
+	c.target = e
+	fx_root.add_child(c)
+
+
 func spawn_spark(pos: Vector2, color: Color, count: int = 8) -> void:
 	var s := FxSpark.new()
 	s.color = color
@@ -2262,6 +2270,16 @@ func spawn_burst(pos: Vector2, size: float = 1.0) -> void:
 	b.position = pos.round()
 	b.size = size
 	fx_root.add_child(b)
+
+
+## 大白光（见 Fx.Shatter）
+func spawn_shatter(pos: Vector2, size: float = 1.0, dir: float = 1.0, rim: Color = Color(0.6, 0.95, 0.9)) -> void:
+	var f := Fx.Shatter.new()
+	f.position = pos
+	f.size = size
+	f.dir = dir
+	f.rim = rim
+	fx_root.add_child(f)
 
 
 ## 命中闪光（见 Fx.Impact）

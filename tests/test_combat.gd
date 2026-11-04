@@ -255,8 +255,8 @@ func test_jump_over_sweep() -> void:
 	var stomped := false
 	for i in range(80):
 		await _frames(1)
-		if p.global_position.x >= e.global_position.x:
-			Input.action_release("p1_right")
+		if p.global_position.x >= e.global_position.x - 40.0:
+			Input.action_release("p1_right")   # 走路提速后惯性更大，早点松手
 		if e.posture >= 59.0:
 			stomped = true
 			break
@@ -1278,7 +1278,7 @@ func test_sprite() -> void:
 		"item", "drink", "execute", "draw", "sheathe", "plunge_raise", "plunge_fall", "plunge_land", "iai_cut"]
 	for id: String in Moves.LIST:
 		if id != "plunge":
-			need.append(id)
+			need.append(String(Moves.LIST[id].get("sprite", id)))
 	for st: Dictionary in Stance.LIST:
 		need.append("st_" + String(st["id"]))
 	for k: String in Flourish.PLAYER_IDLE:
