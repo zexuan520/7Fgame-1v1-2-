@@ -47,6 +47,10 @@ func on_hit(info: HitInfo) -> bool:
 		CamRig.I.shake(sl, 1.0 + clampf(info.damage / 150.0, 0.0, 0.6))
 	if Vfx.I != null:
 		Vfx.I.hit_spark(info.point, w >= 1, info.crit)
+		if info.crit:
+			Vfx.I.sheet("crit-hit", info.point - Vector3(0, 0.7, 0), 3.3, Color(1, 1, 1), 2.2)
+		elif w >= 1:
+			Vfx.I.sheet("hit-spark", info.point - Vector3(0, 0.4, 0), 1.6, Color(1, 1, 1), 2.0, false, 0.0, 1.4)
 		var chip_col := Color(0.92, 0.9, 0.82) if tgt.team == 1 else Color(0.9, 0.15, 0.2)
 		Vfx.I.chips(info.point, info.dir + Vector3.UP * 0.3, chip_col, 5 + 4 * w, 5.0 + 2.0 * w)
 	if Game.show_damage:

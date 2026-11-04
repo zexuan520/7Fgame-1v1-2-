@@ -91,9 +91,12 @@ func _process(dt: float) -> void:
 		var e: Array = _live[i]
 		e[1] = float(e[1]) + dt
 		var k := clampf(float(e[1]) / float(e[2]), 0.0, 1.0)
-		var node: Node3D = e[0]
-		if is_instance_valid(node):
-			(e[3] as Callable).call(node, k)
+		# 节点可能已经跟着父节点（比如光门）一起被删了，先判断再用
+		var node: Variant = e[0]
+		if not is_instance_valid(node):
+			_live.remove_at(i)
+			continue
+		(e[3] as Callable).call(node, k)
 		if k >= 1.0:
 			_live.remove_at(i)
 			if is_instance_valid(node):
@@ -354,6 +357,68 @@ func explosion(pos: Vector3, size: float = 1.0) -> void:
 		pop(pos + off, "smoke_07", Color(0.06, 0.04, 0.05, 0.75), size * 0.8, size * 2.4, randf_range(0.5, 0.8), false)
 	chips(pos, Vector3.UP, Color(0.08, 0.05, 0.06), 16, 9.0, 0.14)
 	chips(pos, Vector3.UP, Color(0.9, 0.12, 0.1), 8, 7.0, 0.1)
+
+
+# ---------- pixelfx 像素精灵表（assets/fx/pfx/，MIT） ----------
+
+var _sheets := {}
+var _sh_sheet: Shader
+
+
+func _sheet_info(id: String) -> Dictionary:
+	if not _sheets.has(id):
+		var js: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://assets/fx/pfx/%s.json" % id))
+		var m: Dictionary = js["meta"]["pixelfx"]
+		var fs: Array = m["frameSize"]
+		var pv: Array = m["pivot"]
+		var cols := int(m["columns"])
+		var n := int(m["frames"])
+		_sheets[id] = {"tex": load("res://assets/fx/pfx/%s.png" % id), "fw": float(fs[0]), "fh": float(fs[1]),
+			"px": float(pv[0]), "py": float(pv[1]), "cols": cols, "rows": int(ceil(n / float(cols))), "n": n,
+			"fps": float(m["fps"]), "loop": bool(m["loop"])}
+	return _sheets[id]
+
+
+## 放一段像素特效：pos 是特效的落点（pivot），h 是一格画面多高（米）。
+## flat 时平铺在地上（法阵、地裂），否则朝镜头。dur > 0 时循环播放到时间（光门、状态），否则播一遍。
+## 返回节点，跟随角色时可以每帧改它的位置。
+func sheet(id: String, pos: Vector3, h: float, c: Color = Color.WHITE, energy: float = 1.6, flat: bool = false, dur: float = 0.0, speed: float = 1.0) -> MeshInstance3D:
+	if _sh_sheet == null:
+		_sh_sheet = load("res://shaders/arpg/pfx_sheet.gdshader")
+	var info := _sheet_info(id)
+	var mi := MeshInstance3D.new()
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var q := QuadMesh.new()
+	var k := h / float(info["fh"])
+	q.size = Vector2(float(info["fw"]), float(info["fh"])) * k
+	# 让 pivot 落在节点原点上
+	q.center_offset = Vector3((float(info["fw"]) * 0.5 - float(info["px"])) * k, (float(info["py"]) - float(info["fh"]) * 0.5) * k, 0)
+	mi.mesh = q
+	var m := ShaderMaterial.new()
+	m.shader = _sh_sheet
+	m.set_shader_parameter("tex", info["tex"])
+	m.set_shader_parameter("grid", Vector2(info["cols"], info["rows"]))
+	m.set_shader_parameter("color", c)
+	m.set_shader_parameter("energy", energy)
+	m.set_shader_parameter("billboard", not flat)
+	mi.material_override = m
+	add_child(mi)
+	mi.global_position = pos
+	if flat:
+		mi.rotation.x = -PI / 2
+		mi.position.y += 0.04
+	var n := int(info["n"])
+	var len := n / float(info["fps"]) / speed
+	var total := dur if dur > 0.0 else len
+	_run(mi, total, func(_nd: MeshInstance3D, kk: float) -> void:
+		var t := kk * total
+		var f := int(t / len * n)
+		if dur > 0.0:
+			f = f % n
+			# 循环的最后 0.3 秒淡出
+			m.set_shader_parameter("color", Color(c, c.a * clampf((total - t) / 0.3, 0.0, 1.0)))
+		m.set_shader_parameter("frame", float(mini(f, n - 1))))
+	return mi
 
 
 ## 出血滴：一小颗红方块往下掉

@@ -662,6 +662,7 @@ func _start_beam() -> void:
 	_set_state("beam")
 	_blend = 0.5
 	iframes = 1.0
+	Vfx.I.sheet("charge-up", chest() - Vector3(0, 0.6, 0) + facing * 0.4, 2.0, Color(0.8, 1.0, 1.0), 2.0, false, 0.0, 2.2)
 	CamRig.I.punch_zoom(0.6, 0.55)
 	Game.sfx("art", 0.0)
 
@@ -751,6 +752,7 @@ func _detonate() -> void:
 		info.attacker = null
 		info.hitstop = 0.12
 		Vfx.I.explosion(a.chest(), 0.7 + 0.15 * stacks)
+		Vfx.I.sheet("dark-explosion", a.global_position, 4.2 + 0.35 * stacks, Color(1, 1, 1), 1.8, false, 0.0, 1.6)
 		Feel.I.on_hit(info)
 		n += 1
 	CamRig.I.shake(2, 1.3)

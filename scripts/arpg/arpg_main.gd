@@ -72,6 +72,13 @@ func _ready() -> void:
 		cam_rig.pitch_deg = float(_args["cam_pitch"])
 	if _args.has("cam_yaw"):
 		cam_rig.yaw_deg = float(_args["cam_yaw"])
+	if _args.has("fxtest"):
+		# 测试：把所有 pixelfx 特效排一排循环播放（拍图检查大小、落点）
+		var ids := ["spawn-cast", "rune-cast", "crit-hit", "hit-spark", "ground-slam", "stunned", "soul-rise", "dark-explosion", "charge-up", "portal"]
+		for i in range(ids.size()):
+			var p := hero.global_position + Vector3(-9.0 + (i % 5) * 4.5, 0, -7.5 + (i / 5) * 6.0)
+			vfx.sheet(ids[i], p, 3.0, Color.WHITE, 1.6, false, 30.0, float(_args["fxtest"]) if _args["fxtest"] != "1" else 1.0)
+			vfx.shock_ring(p, Color.RED, 0.2, 0.3, 30.0)
 	if _args.has("interact"):
 		# 测试：过一会儿自动和第一个互动物说话（拍菜单截图用）
 		get_tree().create_timer(float(_args["interact"]) if _args["interact"] != "1" else 1.5).timeout.connect(func() -> void:
@@ -709,6 +716,9 @@ func _make_portal(p: Vector3, kind: String, col: Color) -> void:
 	beam.rotation.z = PI
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_portal.add_child(beam)
+	# pixelfx 旋涡光门（循环）
+	var swirl := vfx.sheet("portal", p, 4.6, Color(col.lightened(0.3), 1.0), 1.8, false, 100000.0)
+	swirl.reparent(_portal)
 	var l := OmniLight3D.new()
 	l.light_color = col
 	l.light_energy = 2.0
@@ -868,7 +878,7 @@ func _process(dt: float) -> void:
 		for f: Node in get_tree().get_nodes_in_group("foes"):
 			var a := f as Foe
 			out.append("%s hp%d %s %s alive%s" % [a.kind, int(a.hp), a.state, str(a.global_position.snapped(Vector3.ONE * 0.1)), a.alive])
-		print("t=%d %s done=%s wd=%.2f wi=%d alive=%s hero=%s %s foes=%s" % [int(_clock), mode, _room_done, _wave_delay, wave_i, hero.alive, str(hero.global_position.snapped(Vector3.ONE * 0.1)), hero.state, out])
+		print("wp=%.2f menu=%s cam=%s t=%d %s done=%s wd=%.2f wi=%d alive=%s hero=%s %s foes=%s" % [feel.world_pause, is_instance_valid(_menu), str(cam_rig.cam.global_position.snapped(Vector3.ONE*0.1)) if cam_rig.cam else "", int(_clock), mode, _room_done, _wave_delay, wave_i, hero.alive, str(hero.global_position.snapped(Vector3.ONE * 0.1)), hero.state, out])
 	if not _shots.is_empty() and _clock >= _shots[0]:
 		_shots.pop_front()
 		var img := get_viewport().get_texture().get_image()

@@ -92,6 +92,8 @@ func _ready() -> void:
 	rig.scale = Vector3(1, 0.01, 1)
 	Vfx.I.dust(global_position, 1.0 * k, Color(0.35, 0.55, 0.55, 0.5))
 	Vfx.I.ground(global_position, "magic_01", Color(0.4, 0.9, 1.0, 0.8) if not is_boss else Color(1.0, 0.4, 0.6, 0.9), 0.5, 2.5 * k, 0.6)
+	# pixelfx 法阵光柱：小怪青色、头目樱粉
+	Vfx.I.sheet("rune-cast" if is_boss else "spawn-cast", global_position, 3.4 * maxf(k, 0.8), Color(1, 1, 1, 0.9), 1.5, false, 0.0, 1.6 if is_boss else 2.6)
 
 
 func _physics_process(delta: float) -> void:
@@ -334,6 +336,8 @@ func _begin_attack(kind_: String) -> void:
 			Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * 3.2, 1.0, red, wt)
 		"rune":
 			Vfx.I.telegraph_circle(_atk_target, 1.7, Color(0.85, 0.25, 1.0, 0.6), wt + 0.55)
+			# 法阵在落点慢慢亮起，光柱刚好在出手那一下打下来
+			Vfx.I.sheet("rune-cast", _atk_target, 3.0, Color(0.9, 0.7, 1.0, 0.95), 1.6, false, 0.0, 2.0 / (wt + 0.55))
 		"leap", "boss_leap":
 			_atk_target = target.global_position + target.velocity * 0.25 if target != null else global_position
 			Vfx.I.telegraph_circle(_atk_target, 2.4 if _atk == "leap" else 3.2, red, wt + 0.65)
@@ -450,6 +454,7 @@ func _st_attack(dt: float) -> void:
 				Vfx.I.shock_ring(global_position, Color(1.0, 0.45, 0.25), 0.5, r * 2.0, 0.35)
 				Vfx.I.chips(global_position, Vector3.UP, Color(0.35, 0.33, 0.3), 18, 8.0, 0.13)
 				Vfx.I.ground(global_position, "scorch_01", Color(0.05, 0.04, 0.04, 0.7), r * 1.6, r * 1.8, 1.5, false)
+				Vfx.I.sheet("ground-slam", global_position, r * 1.5, Color(1.0, 0.9, 0.85), 1.4, false, 0.0, 1.5)
 				CamRig.I.shake(2)
 				Game.sfx("boom", -2.0)
 				_area_hit(global_position, r, float(data["dmg"]) * 1.2, HitInfo.Weight.HEAVY)
@@ -539,6 +544,9 @@ func take_hit(info: HitInfo) -> bool:
 		_release()
 		rig.position.y = 0
 		hit_stun = info.stun * (0.6 if is_boss else 1.0)
+		if max_poise > 0.0:
+			# 重甲被打断：头上冒星星
+			Vfx.I.sheet("stunned", head_top() - Vector3(0, 0.3, 0), 1.0, Color(1, 1, 1), 1.6, false, maxf(hit_stun, 0.9))
 		_set_state("stagger")
 		_blend = 1.0
 		if is_boss:
@@ -564,7 +572,11 @@ func die(impulse: Vector3) -> void:
 	Vfx.I.chips(chest(), impulse, Color(0.85, 0.85, 0.78), 10, 6.0)
 	CamRig.I.shake(1 if not is_boss else 2)
 	rig.shatter(get_parent(), impulse)
-	dropped.emit(global_position, int(data["coins"]), 3 if is_boss else (1 if randf() < 0.25 else 0))
+	var jade := 3 if is_boss else (1 if randf() < 0.25 else 0)
+	if jade > 0:
+		# 掉魂玉的敌人飘出一缕魂
+		Vfx.I.sheet("soul-rise", global_position, 3.0 if not is_boss else 5.0, Color(0.7, 1.0, 0.95, 0.9), 1.6, false, 0.0, 1.3)
+	dropped.emit(global_position, int(data["coins"]), jade)
 	collision_layer = 0
 	remove_from_group("foes")
 	queue_free_later()
