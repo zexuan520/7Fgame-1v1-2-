@@ -370,6 +370,55 @@ func sync(dt: float) -> void:
 	_sync_objects()
 	_sync_features()
 	_update_debris(dt)
+	_update_ghosts(dt)
+
+
+var _ghosts: Array = []   # [节点, 材质, 剩余时间, 总时间]
+
+## 闪身、瞬步的残影：把离 pos 最近的那个体素人偶当前的样子拷一份，半透明发光，很快淡掉
+func spawn_ghost(pos: Vector2, color: Color, life: float = 0.28) -> void:
+	var best: Node3D = null
+	var bd := 1e9
+	for f in rigs.keys():
+		if not is_instance_valid(f) or not (rigs[f] is VoxelRig):
+			continue
+		var d: float = (f.global_position as Vector2).distance_to(pos)
+		if d < bd:
+			bd = d
+			best = rigs[f]
+	if best == null or bd > 160.0:
+		return
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(color, 0.5)
+	mat.no_depth_test = false
+	var g := Node3D.new()
+	g.transform = best.transform
+	g.position = Vector3(pos.x, -pos.y, best.position.z - 3.0)
+	for c in best.get_children():
+		if c is MeshInstance3D and c.visible and (c as MeshInstance3D).material_override == null:
+			var m := MeshInstance3D.new()
+			m.mesh = c.mesh
+			m.transform = c.transform
+			m.material_override = mat
+			m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			g.add_child(m)
+	add_child(g)
+	_ghosts.append([g, mat, life, life])
+
+
+func _update_ghosts(dt: float) -> void:
+	for i in range(_ghosts.size() - 1, -1, -1):
+		var gh: Array = _ghosts[i]
+		gh[2] = float(gh[2]) - dt
+		var k := clampf(float(gh[2]) / float(gh[3]), 0.0, 1.0)
+		if k <= 0.0:
+			(gh[0] as Node).queue_free()
+			_ghosts.remove_at(i)
+			continue
+		var mat: StandardMaterial3D = gh[1]
+		mat.albedo_color.a = 0.5 * k
 
 
 ## 命中溅出的小方块：往刀的方向飞，落地弹两下，慢慢缩没

@@ -24,7 +24,7 @@ const SCRIPT := [
 	[11.6, 12.6, "p1_left"],
 	[12.7, 12.75, "p1_jump"], [12.9, 12.95, "p1_jump"],
 ]
-const SHOT_TIMES := [1.2, 2.3, 3.45, 4.3, 5.6, 8.0, 10.5, 12.9]
+const SHOT_TIMES := [1.2, 2.3, 3.45, 4.3, 5.6, 6.72, 6.8, 8.0, 10.5, 12.9]
 const END := 14.0
 
 
@@ -61,6 +61,9 @@ func _run() -> void:
 	if "gallery" in OS.get_cmdline_user_args():
 		_gallery()
 		return
+	if "boss" in OS.get_cmdline_user_args():
+		_boss()
+		return
 	if tour:
 		main.mode = "room"
 		main.waves = def.get("waves", [])
@@ -73,6 +76,42 @@ func _run() -> void:
 	ronin.hp = 9999.0
 	ronin.max_hp = 9999.0
 	set_process(true)
+
+
+## 头目演示：断水河畔，柳江远开场白、亮名号，然后强行切到二、三阶段看气和眼睛
+##   xvfb-run godot --path . res://tools/voxel_demo/voxel_demo.tscn -- boss
+func _boss() -> void:
+	var def: Dictionary = LevelData.room("river").duplicate(true)
+	main.mode = "room"
+	main._build_room(def)
+	main._place_players(330.0)
+	var boss: Enemy = main.enemies[0] if not main.enemies.is_empty() else main.spawn_enemy("liu", Vector2(600.0, 300.0))
+	boss.start_intro(0)
+	var plan := [[1.2, "shot"], [3.0, "shot"], [4.6, "shot"], [6.0, "guard"], [7.5, "shot"],
+		[8.0, "phase"], [9.4, "shot"], [10.6, "shot"], [11.5, "phase"], [12.8, "shot"], [14.0, "shot"], [15.0, "end"]]
+	var t0 := Time.get_ticks_msec()
+	var k := 0
+	var frames := 0
+	for step: Array in plan:
+		while frames / 30.0 < float(step[0]):
+			await get_tree().process_frame
+			frames += 1
+			boss.hp = maxf(boss.hp, 50.0)
+			for p in main.players:
+				p.hp = p.max_hp
+		match String(step[1]):
+			"shot":
+				get_viewport().get_texture().get_image().save_png("user://voxel_boss_%d.png" % k)
+				print("boss shot ", k, " phase ", boss.phase, " state ", boss.state)
+				k += 1
+			"guard":
+				Input.action_press("p1_guard")
+			"phase":
+				boss._next_phase()
+			"end":
+				Input.action_release("p1_guard")
+				print("boss demo ms ", Time.get_ticks_msec() - t0)
+				get_tree().quit()
 
 
 func _gallery() -> void:

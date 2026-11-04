@@ -19,6 +19,11 @@ var parts := {}                     # 部件名 → MeshInstance3D
 var _overlay: StandardMaterial3D
 var _sway := 0.0
 var _last_x := 0.0
+var _eyes: MeshInstance3D           # 后面阶段发光的眼睛（只有带气的头目才有）
+var _eye_light: OmniLight3D
+var _motes: Array[MeshInstance3D] = []   # 身上往上冒的气
+var _mote_mat: StandardMaterial3D
+var _clock := 0.0
 
 static var _mesh_cache := {}
 
@@ -49,6 +54,43 @@ func setup(f: Node2D) -> void:
 		match String(f.data.get("prop", "")):
 			"bow": _add_part("bow", key)
 			"shield": _add_part("shield", key)
+		var has_aura := false
+		for ph: Dictionary in f.data["phases"]:
+			if (ph.get("aura", Color(0, 0, 0, 0)) as Color).a > 0.0:
+				has_aura = true
+		if has_aura:
+			_setup_aura()
+
+
+func _setup_aura() -> void:
+	var g := VoxelGrid.new(1)
+	g.set_v(Vector3i(5, 3, 5), Color.WHITE)
+	g.set_v(Vector3i(5, 3, 2), Color.WHITE)
+	_eyes = MeshInstance3D.new()
+	_eyes.mesh = g.build(VS, Vector3(3, 3, 3), true)
+	_mote_mat = StandardMaterial3D.new()
+	_mote_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_mote_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	_eyes.material_override = _mote_mat
+	_eyes.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_eyes.visible = false
+	add_child(_eyes)
+	_eye_light = OmniLight3D.new()
+	_eye_light.omni_range = 46.0
+	_eye_light.light_energy = 0.0
+	_eye_light.shadow_enabled = false
+	add_child(_eye_light)
+	var box := BoxMesh.new()
+	box.size = Vector3(3, 3, 3)
+	for i in range(10):
+		var m := MeshInstance3D.new()
+		m.mesh = box
+		var mat := _mote_mat.duplicate() as StandardMaterial3D
+		m.material_override = mat
+		m.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		m.visible = false
+		add_child(m)
+		_motes.append(m)
 
 
 func _add_part(pname: String, key: String) -> void:
@@ -260,6 +302,9 @@ func sync(dt: float) -> void:
 	var hd: Vector2 = j["head"]
 	var mi: MeshInstance3D = parts["head"]
 	mi.transform = Transform3D(Basis(Vector3(0, 0, 1), -(float(pose["lean"]) + float(pose["head"])) * 0.6), _v3(hd, 0.0))
+	if _eyes != null:
+		_eyes.transform = Transform3D(mi.transform.basis, mi.transform.origin + mi.transform.basis.x * 0.35)
+		_eye_light.position = mi.transform.origin + Vector3(6, 2, 6)
 	if parts.has("hat"):
 		(parts["hat"] as MeshInstance3D).transform = Transform3D(mi.transform.basis, _v3(hd + Vector2(0, -5.5), 0.0))
 	_place("arm_u_b", j["shoulder_b"], j["elbow_b"], Z_BACK)
@@ -309,6 +354,35 @@ func sync(dt: float) -> void:
 		_place("tail", t0, t0 + Vector2(-0.3 - _sway * 1.4, 1.0 - _sway * 0.5 + flap), -1.5)
 
 	_update_state(dt)
+	if _eyes != null:
+		_update_aura(dt)
+
+
+## 后面阶段：眼睛亮起、身上冒气（跟 2D 版一样的颜色），倒地以后就灭
+func _update_aura(dt: float) -> void:
+	var e: Enemy = fighter
+	_clock += dt
+	var aura: Color = e._phase_data().get("aura", Color(0, 0, 0, 0))
+	var on := aura.a > 0.0 and e.state != Enemy.S.DYING and e.state != Enemy.S.DEAD
+	_eyes.visible = on
+	_eye_light.light_energy = 1.6 if on else 0.0
+	if not on:
+		for m in _motes:
+			m.visible = false
+		return
+	var hot := Color(minf(aura.r * 2.2, 1.0) + 0.25, minf(aura.g * 2.2, 1.0) + 0.25, minf(aura.b * 2.2, 1.0) + 0.25, 1.0)
+	_mote_mat.albedo_color = hot
+	_eye_light.light_color = aura
+	for i in _motes.size():
+		var m := _motes[i]
+		var k := fmod(_clock * 0.7 + i * 0.137, 1.0)     # 0 → 1 从脚往上飘
+		var y := k * 64.0
+		var x := sin(_clock * 5.0 + i * 1.7) * 10.0
+		var z := (6.0 if i % 2 == 0 else -6.0) + cos(_clock * 3.0 + i) * 2.0
+		m.visible = true
+		m.position = Vector3(x, y, z)
+		m.scale = Vector3.ONE * (1.0 - k * 0.6)
+		(m.material_override as StandardMaterial3D).albedo_color = Color(hot, 0.85 * (1.0 - k))
 
 
 ## 受击闪白、危招红光、倒地、闪身半透明

@@ -2182,6 +2182,7 @@ func spawn_streak(pos: Vector2, facing: int, length: float, color: Color = Color
 
 func spawn_ghost(pos: Vector2, pose: Dictionary, look: Puppet.Look, facing: int, color: Color) -> void:
 	if Game.voxel:
+		voxel.spawn_ghost(pos, color)
 		return
 	var g := Fx.Ghost.new()
 	g.position = pos
@@ -2194,6 +2195,7 @@ func spawn_ghost(pos: Vector2, pose: Dictionary, look: Puppet.Look, facing: int,
 
 func spawn_sprite_ghost(pos: Vector2, tex: Texture2D, region: Rect2, origin: Vector2, facing: int, color: Color) -> void:
 	if Game.voxel:
+		voxel.spawn_ghost(pos, color)
 		return
 	var g := Fx.SpriteGhost.new()
 	g.position = pos.round()

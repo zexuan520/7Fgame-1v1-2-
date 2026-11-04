@@ -1321,7 +1321,7 @@ func _update_sprite(delta: float) -> void:
 func _draw_sprite_extras(top: float, danger: bool, aura: Color, pulse: float) -> void:
 	if state == S.DYING or state == S.DEAD:
 		return
-	if aura.a > 0.0:
+	if aura.a > 0.0 and not Game.voxel:   # 体素画面里气和眼睛由体素角色自己画
 		for i in range(6):
 			var x := sin(_clock * 5.0 + i * 1.7) * 10.0
 			var y := -fmod(_clock * 40.0 + i * 13.0, 60.0)
