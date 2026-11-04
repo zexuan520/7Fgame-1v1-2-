@@ -238,7 +238,18 @@ func _clear_scene() -> void:
 func _build_arena(zone_id: String, seed_value: int, sz: Vector2) -> void:
 	arena = Arena.new()
 	add_child(arena)
+	var _bt := Time.get_ticks_msec()
 	arena.build(zone_id, seed_value, sz)
+	if _args.has("dbg"):
+		print("arena build ms ", Time.get_ticks_msec() - _bt)
+	if _args.has("bench"):
+		# 测缓存热了以后换房间要多久：再建一间同区域的房间，量完扔掉
+		var a2 := Arena.new()
+		add_child(a2)
+		var t2 := Time.get_ticks_msec()
+		a2.build(zone_id, seed_value + 1, sz)
+		print("arena rebuild ms ", Time.get_ticks_msec() - t2)
+		a2.queue_free()
 	_apply_zone_env(arena.zone_info())
 	cam_rig.bounds = Rect2(-sz.x * 0.5 + 6.0, -sz.y * 0.5 + 2.0, sz.x - 12.0, sz.y - 4.0)
 

@@ -9,7 +9,7 @@ extends Node3D
 ## 坐标：1 单位 = 1 米，房间中心在原点，-z 是画面上方（远处），+z 是靠镜头的一边。
 
 const PX := 0.036
-const FV := 0.2                    # 地面一格 0.2 米
+const FV := 0.1                    # 地面一格 0.1 米（和精细体素角色同一档）
 
 var zone := "forest"
 var size := Vector2(30, 22)        # 房间 x 宽、z 深（米）
@@ -108,32 +108,68 @@ func _floor_color(x: float, z: float) -> Color:
 
 
 func _build_floor() -> void:
+	# 地面格子多（0.1 米一格，一间房六七万格），平的部分直接拼顶面四边形，不走通用体素网格（快很多）；
+	# 只有边上的草丛 / 碎石凸起走 VoxelGrid
 	var nx := int(size.x / FV) + 20
 	var nz := int(size.y / FV) + 20
-	var chunk := 50
-	for cx in range(0, nx, chunk):
-		for cz in range(0, nz, chunk):
-			var g := VoxelGrid.new(rng.randi())
-			for ix in range(cx, mini(cx + chunk, nx)):
-				for iz in range(cz, mini(cz + chunk, nz)):
-					var x := (ix - nx * 0.5) * FV
-					var z := (iz - nz * 0.5) * FV
-					var c := _floor_color(x, z)
-					var h := 0
-					# 草丛 / 碎石凸起（只在边上，不挡路）
-					var edge := maxf(absf(x) - size.x * 0.5 + 3.0, absf(z) - size.y * 0.5 + 3.0)
-					if zone == "forest" and edge > 0.0 and noise.get_noise_2d(x * 9.0, z * 9.0) > 0.4:
-						h = 1 + int(rng.randf() * 2.0)
-						c = Color(0.1, 0.22, 0.16).lerp(Color(0.16, 0.3, 0.2), rng.randf())
-					g.cells[Vector3i(ix, -1, iz)] = c * 0.8
-					g.cells[Vector3i(ix, 0, iz)] = c
-					for y in range(1, h + 1):
-						g.cells[Vector3i(ix, y, iz)] = c * (1.0 + 0.1 * y)
-			var mi := MeshInstance3D.new()
-			mi.mesh = g.build(FV, Vector3(nx * 0.5, 1.0, nz * 0.5))
-			mi.material_override = env_mat
-			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			add_child(mi)
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	verts.resize(nx * nz * 4)
+	norms.resize(nx * nz * 4)
+	cols.resize(nx * nz * 4)
+	idx.resize(nx * nz * 6)
+	var bumps := VoxelGrid.new(rng.randi())
+	var q := 0
+	for ix in range(nx):
+		for iz in range(nz):
+			var x := (ix - nx * 0.5) * FV
+			var z := (iz - nz * 0.5) * FV
+			var c := _floor_color(x, z)
+			# 草丛 / 碎石凸起（只在边上，不挡路）
+			var edge := maxf(absf(x) - size.x * 0.5 + 3.0, absf(z) - size.y * 0.5 + 3.0)
+			if zone == "forest" and edge > 0.0 and noise.get_noise_2d(x * 9.0, z * 9.0) > 0.4:
+				var h := 2 + int(rng.randf() * 3.0)
+				c = Color(0.1, 0.22, 0.16).lerp(Color(0.16, 0.3, 0.2), rng.randf())
+				for y in range(1, h + 1):
+					bumps.cells[Vector3i(ix, y, iz)] = c * (1.0 + 0.1 * y)
+				c = c * 0.7
+			var v := q * 4
+			verts[v] = Vector3(x, 0.0, z)
+			verts[v + 1] = Vector3(x + FV, 0.0, z)
+			verts[v + 2] = Vector3(x + FV, 0.0, z + FV)
+			verts[v + 3] = Vector3(x, 0.0, z + FV)
+			for k in range(4):
+				norms[v + k] = Vector3.UP
+				cols[v + k] = c
+			var i := q * 6
+			idx[i] = v
+			idx[i + 1] = v + 1
+			idx[i + 2] = v + 2
+			idx[i + 3] = v
+			idx[i + 4] = v + 2
+			idx[i + 5] = v + 3
+			q += 1
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = norms
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_INDEX] = idx
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = env_mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	if bumps.size() > 0:
+		var bi := MeshInstance3D.new()
+		bi.mesh = bumps.build(FV, Vector3(nx * 0.5, 1.0, nz * 0.5))
+		bi.material_override = env_mat
+		bi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(bi)
 
 
 # ---------- 边界和碰撞 ----------
@@ -207,14 +243,14 @@ func voxel_piece(g: VoxelGrid, pos: Vector3, vs: float, glow: VoxelGrid = null, 
 	root.rotation.y = yaw
 	var mats: Array = []
 	var mi := MeshInstance3D.new()
-	mi.mesh = g.build(vs)
+	mi.mesh = _mesh_of(g, vs, false)
 	var m := env_mat.duplicate() if fg else env_mat
 	mi.material_override = m
 	mats.append(m)
 	root.add_child(mi)
 	if glow != null and glow.size() > 0:
 		var gi := MeshInstance3D.new()
-		gi.mesh = glow.build(vs, Vector3.ZERO, true)
+		gi.mesh = _mesh_of(glow, vs, true)
 		var gm := glow_mat.duplicate() if fg else glow_mat
 		gi.material_override = gm
 		gi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -282,19 +318,59 @@ func _fx_mat(tex: String, c: Color, additive: bool, energy: float = 2.0) -> Shad
 # ---------- 自己画的件 ----------
 
 ## 大树干（深色，带根和苔藓），h 高（格），vs 0.12 米
-func _trunk(h: int, r: float, bark: Color, moss: Color) -> VoxelGrid:
+## 同一个格子（缓存下来的树干、樱树、管子）只合一次网格
+func _mesh_of(g: VoxelGrid, vs: float, glow: bool) -> ArrayMesh:
+	var key := StringName("mesh_%d" % int(round(vs * 100000.0)))
+	if g.has_meta(key):
+		return g.get_meta(key)
+	var m := g.build(vs, Vector3.ZERO, glow)
+	g.set_meta(key, m)
+	return m
+
+
+## 精细体素的件生成很慢（几万格），按参数缓存下来跨房间复用。make 返回格子（或 [格子, 发光格子]）
+static var _grid_cache := {}
+
+
+func _cached(key: String, make: Callable) -> Variant:
+	if not _grid_cache.has(key):
+		_grid_cache[key] = make.call()
+	return _grid_cache[key]
+
+
+## 树干只留三种粗细高矮（按传进来的高度挑最近的一档），同色同档的跨房间复用
+func _trunk_c(h: int, r: float, bark: Color, moss: Color) -> VoxelGrid:
+	var v := clampi(int(round((h - 40) / 12.0)), 0, 2)
+	var hq: int = [44, 54, 66][v]
+	var rq: float = clampf(roundf(r), 4.0, 6.0)
+	return _cached("trunk|%d|%.1f|%s|%s" % [hq, rq, bark.to_html(), moss.to_html()], _trunk.bind(hq, rq, bark, moss))
+
+
+## 精细体素的倍数：手搓的弯曲件（树干、樱树、管子）按 FINE 倍格子数生成，调用处 vs 除以 FINE
+const FINE := 2
+
+
+func _trunk(h0: int, r0: float, bark: Color, moss: Color) -> VoxelGrid:
 	var g := VoxelGrid.new(rng.randi())
+	var k := float(FINE)
+	var h := h0 * FINE
+	var r := r0 * k
 	for y in range(h):
-		var rr := r * (1.0 + 0.5 * maxf(0.0, 1.0 - y / 4.0)) * (1.0 - 0.15 * y / h)
-		var wob := Vector2(sin(y * 0.3) * 0.6, cos(y * 0.25) * 0.5)
+		var yf := y / k
+		var rr := r * (1.0 + 0.5 * maxf(0.0, 1.0 - yf / 4.0)) * (1.0 - 0.15 * y / h)
+		var wob := Vector2(sin(yf * 0.3) * 0.6, cos(yf * 0.25) * 0.5) * k
 		for x in range(-int(rr) - 2, int(rr) + 3):
 			for z in range(-int(rr) - 2, int(rr) + 3):
 				var d := Vector2(x - wob.x, z - wob.y).length()
 				if d <= rr:
 					var c := bark
-					if noise.get_noise_3d(x * 7.0, y * 3.0, z * 7.0) > 0.25:
+					# 树皮竖纹 + 苔藓斑
+					var n := noise.get_noise_3d(x * 7.0 / k, yf * 3.0, z * 7.0 / k)
+					if n > 0.25:
 						c = moss
-					if d < rr - 1.2 and x != 0:
+					elif sin(atan2(z - wob.y, x - wob.x) * 9.0 + yf * 0.15) > 0.6:
+						c = bark * 0.7
+					if d < rr - 2.0 and x != 0:
 						continue
 					g.cells[Vector3i(x, y, z)] = c * (0.85 + rng.randf() * 0.25)
 	# 树根
@@ -303,23 +379,26 @@ func _trunk(h: int, r: float, bark: Color, moss: Color) -> VoxelGrid:
 		var dir := Vector2(cos(a), sin(a))
 		for s in range(int(r * 2.5)):
 			var p := dir * (r + s)
-			var yy := maxi(0, 2 - s / 3)
+			var yy := maxi(0, int((2 - s / (3.0 * k)) * k))
 			for y in range(yy + 1):
-				g.cells[Vector3i(int(p.x), y, int(p.y))] = bark * 0.9
+				for w in range(-1, 1):
+					g.cells[Vector3i(int(p.x) + w * int(dir.y), y, int(p.y) + w * int(-dir.x))] = bark * 0.9
 	return g
 
 
 ## 锈蚀巨管：沿 x 方向的圆管，带铆钉环
-func _pipe(length: int, r: float) -> VoxelGrid:
+func _pipe(length0: int, r0: float) -> VoxelGrid:
 	var g := VoxelGrid.new(rng.randi())
+	var length := length0 * FINE
+	var r := r0 * FINE
 	for x in range(length):
-		var ring := x % 10 == 0
-		var rr := r + (0.6 if ring else 0.0)
+		var ring := (x / FINE) % 10 == 0
+		var rr := r + (0.6 * FINE if ring else 0.0)
 		for y in range(-int(rr) - 1, int(rr) + 2):
 			for z in range(-int(rr) - 1, int(rr) + 2):
 				var d := Vector2(y, z).length()
-				if d <= rr and d > rr - 1.5:
-					var rust := noise.get_noise_3d(x * 5.0, y * 5.0, z * 5.0)
+				if d <= rr and d > rr - 2.0:
+					var rust := noise.get_noise_3d(x * 5.0 / FINE, y * 5.0 / FINE, z * 5.0 / FINE)
 					var c := Color(0.32, 0.22, 0.16).lerp(Color(0.5, 0.26, 0.12), rust * 0.5 + 0.5)
 					if rust > 0.4:
 						c = Color(0.2, 0.32, 0.26)
@@ -423,37 +502,56 @@ func _sakura_tree() -> Array:
 	var g := VoxelGrid.new(rng.randi())
 	var bloom := VoxelGrid.new(rng.randi())
 	var bark := Color(0.2, 0.13, 0.13)
+	var k := float(FINE)
 	# 树干弯一点往上分叉
-	for y in range(0, 34):
-		var r := 3.5 - y * 0.06
-		var cx := sin(y * 0.12) * 2.0
-		for x in range(-5, 6):
-			for z in range(-5, 6):
-				if Vector2(x - cx, z).length() <= r:
-					g.cells[Vector3i(x + int(cx * 0.0), y, z)] = bark * (0.8 + rng.randf() * 0.3)
+	for y in range(0, 34 * FINE):
+		var yf := y / k
+		var r := (3.5 - yf * 0.06) * k
+		var cx := sin(yf * 0.12) * 2.0 * k
+		for x in range(-6 * FINE, 6 * FINE + 1):
+			for z in range(-6 * FINE, 6 * FINE + 1):
+				var d := Vector2(x - cx, z).length()
+				if d <= r and d > r - 2.5:
+					var c := bark * (0.8 + rng.randf() * 0.3)
+					if sin(atan2(z, x - cx) * 7.0 + yf * 0.2) > 0.55:
+						c *= 0.75
+					g.cells[Vector3i(x, y, z)] = c
 	var tips := []
 	for i in range(6):
 		var a := TAU * i / 6.0 + rng.randf() * 0.4
 		var dir := Vector3(cos(a), 0.0, sin(a))
-		var p := Vector3(0, 30, 0)
-		for s in range(16):
-			p += dir * 0.9 + Vector3(0, 0.55, 0)
-			for dx in range(-1, 2):
-				for dz in range(-1, 2):
-					g.cells[Vector3i(int(p.x) + dx, int(p.y), int(p.z) + dz)] = bark
+		var p := Vector3(0, 30, 0) * k
+		for s in range(16 * FINE):
+			p += (dir * 0.9 + Vector3(0, 0.55, 0))
+			var bw := 2 if s < 8 * FINE else 1
+			for dx in range(-bw, bw + 1):
+				for dz in range(-bw, bw + 1):
+					for dy in range(0, 2):
+						g.cells[Vector3i(int(p.x) + dx, int(p.y) + dy, int(p.z) + dz)] = bark * (0.85 + rng.randf() * 0.2)
 		tips.append(p)
-	tips.append(Vector3(0, 46, 0))
+	tips.append(Vector3(0, 46, 0) * k)
 	for t: Vector3 in tips:
-		var rad := rng.randf_range(6.0, 9.0)
+		var rad := rng.randf_range(6.0, 9.0) * k
 		for x in range(int(-rad), int(rad) + 1):
 			for y in range(int(-rad * 0.7), int(rad * 0.7) + 1):
 				for z in range(int(-rad), int(rad) + 1):
 					var d := Vector3(x / rad, y / (rad * 0.7), z / rad).length()
-					if d <= 1.0 and noise.get_noise_3d((t.x + x) * 9.0, (t.y + y) * 9.0, (t.z + z) * 9.0) > -0.3 - (1.0 - d) * 0.6:
-						var c := Color(1.0, 0.55, 0.72).lerp(Color(1.0, 0.82, 0.9), rng.randf() * 0.6)
-						if d > 0.85:
-							c = Color(0.85, 0.35, 0.55)
-						bloom.cells[Vector3i(int(t.x) + x, int(t.y) + y, int(t.z) + z)] = c * 0.75
+					if d > 1.0:
+						continue
+					var key := Vector3i(int(t.x) + x, int(t.y) + y, int(t.z) + z)
+					if bloom.cells.has(key):
+						continue
+					# 只要外壳：里面看不见，省面数
+					if d < 0.72:
+						continue
+					if noise.get_noise_3d(key.x * 9.0 / k, key.y * 9.0 / k, key.z * 9.0 / k) > -0.3 - (1.0 - d) * 0.6:
+						# 花团：低频噪声分出一簇一簇，上面亮下面暗，零星深色花心
+						var clump := noise.get_noise_3d(key.x * 3.0 / k, key.y * 3.0 / k, key.z * 3.0 / k) * 0.5 + 0.5
+						var c := Color(0.95, 0.5, 0.68).lerp(Color(1.0, 0.86, 0.92), clump * 0.8 + rng.randf() * 0.2)
+						c = c * (0.62 + 0.4 * clampf(float(y) / (rad * 0.7) * 0.5 + 0.5, 0.0, 1.0))
+						if rng.randf() < 0.05:
+							c = Color(0.8, 0.3, 0.5)
+						bloom.cells[key] = c * 0.8
 	return [g, bloom]
 
 
@@ -462,16 +560,29 @@ func _mushrooms() -> Array:
 	var g := VoxelGrid.new(rng.randi())
 	var lit := VoxelGrid.new(rng.randi())
 	for i in range(rng.randi_range(3, 6)):
-		var p := Vector3i(rng.randi_range(-6, 6), 0, rng.randi_range(-6, 6))
-		var h := rng.randi_range(2, 6)
+		var base := Vector2(rng.randi_range(-12, 12), rng.randi_range(-12, 12))
+		var h := rng.randi_range(4, 12)
+		var lean := Vector2(rng.randf_range(-0.25, 0.25), rng.randf_range(-0.25, 0.25))
+		# 柄：微微歪着，两格粗
+		var top := Vector3i()
 		for y in range(h):
-			g.cells[p + Vector3i(0, y, 0)] = Color(0.75, 0.8, 0.75)
-		var r := rng.randi_range(1, 2)
+			var q := base + lean * y
+			for dx in range(0, 2):
+				for dz in range(0, 2):
+					g.cells[Vector3i(int(q.x) + dx, y, int(q.y) + dz)] = Color(0.72, 0.78, 0.74) * (0.9 + rng.randf() * 0.15)
+			top = Vector3i(int(q.x), y, int(q.y))
+		# 伞：半球壳，边缘一圈暗一点，顶上亮点
+		var r := rng.randf_range(2.5, 4.5)
 		var c := Color(0.3, 0.95, 0.9) if rng.randf() < 0.75 else Color(0.6, 0.5, 1.0)
-		for x in range(-r, r + 1):
-			for z in range(-r, r + 1):
-				lit.cells[p + Vector3i(x, h, z)] = c * (0.8 + rng.randf() * 0.3)
-		lit.cells[p + Vector3i(0, h + 1, 0)] = c
+		for x in range(-int(r) - 1, int(r) + 2):
+			for z in range(-int(r) - 1, int(r) + 2):
+				for y in range(0, int(r * 0.7) + 2):
+					var d := Vector3(x / r, y / (r * 0.7), z / r).length()
+					if d <= 1.0 and d > 0.6:
+						var cc := c * (0.75 + 0.35 * float(y) / (r * 0.7))
+						if y == 0:
+							cc = c * 0.55
+						lit.cells[top + Vector3i(x, y + 1, z)] = cc
 	return [g, lit]
 
 
@@ -513,8 +624,8 @@ func _dress_forest() -> void:
 			continue   # 出口留空
 		var id := "wall" if rng.randf() < 0.6 else ("wall_broken" if rng.randf() < 0.5 else "wall_arch")
 		kit(id, Vector3(x, 0, -hz - 0.3), 0.0, 1.0, false)
-	voxel_piece(_pipe(160, 6.0), Vector3(-hx, 3.4, -hz - 1.2), 0.12)
-	voxel_piece(_pipe(60, 4.0), Vector3(hx - 9.0, 0.0, -hz + 0.6), 0.12, null, Vector3(7.2, 1.2, 1.2))
+	voxel_piece(_cached("pipe160", _pipe.bind(160, 6.0)), Vector3(-hx, 3.4, -hz - 1.2), 0.12 / FINE)
+	voxel_piece(_cached("pipe60", _pipe.bind(60, 4.0)), Vector3(hx - 9.0, 0.0, -hz + 0.6), 0.12 / FINE, null, Vector3(7.2, 1.2, 1.2))
 	voxel_piece(_scaffold(40, 34), Vector3(-hx + 1.0, 0, -hz + 0.2), 0.12, null, Vector3(0.1, 0.1, 0.1))
 	voxel_piece(_scaffold(30, 28), Vector3(hx - 5.5, 0, -hz + 1.6), 0.12)
 	# 左右两侧：大树干和枯树
@@ -522,7 +633,7 @@ func _dress_forest() -> void:
 		for j in range(4):
 			var z := -hz + 3.0 + j * (size.y - 5.0) / 3.0 + rng.randf_range(-1, 1)
 			var x := side * (hx - 0.5 + rng.randf_range(-0.4, 0.4))
-			voxel_piece(_trunk(rng.randi_range(40, 60), rng.randf_range(4.0, 6.0), Color(0.16, 0.13, 0.12), Color(0.18, 0.34, 0.22)), Vector3(x, 0, z), 0.12, null, Vector3(1.4, 4, 1.4))
+			voxel_piece(_trunk_c(rng.randi_range(40, 60), rng.randf_range(4.0, 6.0), Color(0.16, 0.13, 0.12), Color(0.18, 0.34, 0.22)), Vector3(x, 0, z), 0.12 / FINE, null, Vector3(1.4, 4, 1.4))
 		kit("tree_dead", Vector3(side * (hx - 3.0), 0, -hz + 4.0), rng.randf() * TAU, 1.0, true)
 	# 房间里的障碍：柱子、碎石、墓碑、火把
 	var spots := [Vector3(-7, 0, -3), Vector3(7.5, 0, -2), Vector3(-5, 0, 5), Vector3(6, 0, 4.5)]
@@ -552,11 +663,11 @@ func _dress_forest() -> void:
 		var edge_p := Vector3(rng.randf_range(-hx + 1.5, hx - 1.5), 0, rng.randf_range(-hz + 1.5, hz - 1.5))
 		if rng.randf() < 0.6:
 			edge_p.x = (hx - rng.randf_range(1.0, 3.0)) * (1.0 if rng.randf() < 0.5 else -1.0)
-		voxel_piece_glow(_mushrooms(), edge_p, 0.06)
+		voxel_piece_glow(_mushrooms(), edge_p, 0.03)
 	# 前景剪影（靠镜头那边）：粗树干、垂藤，挡住主角时自动变透明
 	for side: float in [-1.0, 1.0]:
 		var x := side * (hx - 3.0 + rng.randf_range(-1.0, 1.0))
-		voxel_piece(_trunk(rng.randi_range(55, 65), rng.randf_range(5.0, 6.0), Color(0.04, 0.05, 0.05), Color(0.05, 0.09, 0.07)), Vector3(x, 0, hz + 1.5), 0.12, null, Vector3.ZERO, true)
+		voxel_piece(_trunk_c(rng.randi_range(55, 65), rng.randf_range(5.0, 6.0), Color(0.04, 0.05, 0.05), Color(0.05, 0.09, 0.07)), Vector3(x, 0, hz + 1.5), 0.12 / FINE, null, Vector3.ZERO, true)
 
 
 func _dress_temple() -> void:
@@ -636,8 +747,8 @@ func _dress_sakura() -> void:
 	var hx := size.x * 0.5
 	var hz := size.y * 0.5
 	# 中央偏后：发光大樱树（有碰撞，绕着打）
-	var st := _sakura_tree()
-	var tree := voxel_piece(st[0], Vector3(0, 0, -hz + 4.5), 0.14, st[1], Vector3(1.4, 4, 1.4))
+	var st: Array = _cached("sakura|%d" % (rng.randi() % 2), _sakura_tree)
+	var tree := voxel_piece(st[0], Vector3(0, 0, -hz + 4.5), 0.14 / FINE, st[1], Vector3(1.4, 4, 1.4))
 	var tl := OmniLight3D.new()
 	tl.light_color = Color(1.0, 0.55, 0.75)
 	tl.light_energy = 2.5
@@ -671,11 +782,11 @@ func _dress_sakura() -> void:
 	# 前景：樱花枝剪影
 	for i in range(3):
 		var x := -hx + 4.0 + i * (size.x - 8.0) / 2.0 + rng.randf_range(-2, 2)
-		voxel_piece(_trunk(70, 5.0, Color(0.06, 0.04, 0.05), Color(0.12, 0.05, 0.08)), Vector3(x, 0, hz + 1.5), 0.12, null, Vector3.ZERO, true)
+		voxel_piece(_trunk_c(70, 5.0, Color(0.06, 0.04, 0.05), Color(0.12, 0.05, 0.08)), Vector3(x, 0, hz + 1.5), 0.12 / FINE, null, Vector3.ZERO, true)
 	# 前面两侧再种两棵小樱树、摆长椅和灯笼，免得入口一片空地
 	for side: float in [-1.0, 1.0]:
-		var st2 := _sakura_tree()
-		var t2 := voxel_piece(st2[0], Vector3(side * 9.5, 0, 5.5), 0.1, st2[1], Vector3(1.0, 4, 1.0), false, rng.randf() * TAU)
+		var st2: Array = _cached("sakura|%d" % (rng.randi() % 2), _sakura_tree)
+		var t2 := voxel_piece(st2[0], Vector3(side * 9.5, 0, 5.5), 0.1 / FINE, st2[1], Vector3(1.0, 4, 1.0), false, rng.randf() * TAU)
 		var l2 := OmniLight3D.new()
 		l2.light_color = Color(1.0, 0.55, 0.75)
 		l2.light_energy = 1.6

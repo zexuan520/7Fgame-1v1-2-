@@ -242,6 +242,12 @@ func shatter(world: Node3D, impulse: Vector3) -> void:
 	var list: Array = parts.values()
 	if weapon != null:
 		list.append(weapon)
+	# 先按每个部件自己的颜色崩出一把细小方块（精细体素碎成颗粒，比只飞几块肢体更像“碎掉”）
+	if Vfx.I != null:
+		for mi: MeshInstance3D in list:
+			var cols := _sample_colors(mi.mesh, 3)
+			for c: Color in cols:
+				Vfx.I.chips(mi.global_position, impulse + Vector3.UP, c, 4, 5.5, 0.055)
 	for mi: MeshInstance3D in list:
 		var gt := mi.global_transform
 		body.remove_child(mi)
@@ -253,3 +259,28 @@ func shatter(world: Node3D, impulse: Vector3) -> void:
 		deb.spin = Vector3(randf_range(-9, 9), randf_range(-9, 9), randf_range(-9, 9))
 		world.add_child(deb)
 	visible = false
+
+
+static var _palette_cache := {}
+
+
+## 从网格的顶点色里随便挑几个颜色（碎块用）
+static func _sample_colors(mesh: Mesh, n: int) -> Array[Color]:
+	var out: Array[Color] = []
+	if mesh == null or mesh.get_surface_count() == 0:
+		return out
+	var key := mesh.get_instance_id()
+	if not _palette_cache.has(key):
+		# 只取一小把颜色存起来（同一种敌人的部件网格是共用的，取一次就够）
+		var arr := mesh.surface_get_arrays(0)
+		var all: PackedColorArray = arr[Mesh.ARRAY_COLOR] if arr[Mesh.ARRAY_COLOR] != null else PackedColorArray()
+		var pal := PackedColorArray()
+		for i in range(mini(24, all.size())):
+			pal.append(all[randi() % all.size()])
+		_palette_cache[key] = pal
+	var cols: PackedColorArray = _palette_cache[key]
+	if cols.is_empty():
+		return out
+	for i in range(n):
+		out.append(cols[randi() % cols.size()])
+	return out

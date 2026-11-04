@@ -68,6 +68,7 @@ static func weapon_mesh(id: String, length: float) -> ArrayMesh:
 	var v: Array = d["vox"]
 	for i in range(0, v.size(), 6):
 		g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3]), int(v[i + 4]), int(v[i + 5]))
-	var m := g.build(length / maxf(float(d.get("len", 40.0)), 1.0))
+	# len 是像素长，vs 是一格几像素（精细版 0.5），格数 = len / vs
+	var m := g.build(length * float(d.get("vs", 1.0)) / maxf(float(d.get("len", 40.0)), 1.0))
 	_weapons[key] = m
 	return m
