@@ -47,6 +47,7 @@ var hud: Hud
 var background: Background
 var features: RoomFeatures            # 跑酷和解谜机关（坑、竹签、烂木板、寨门、拉杆、灯笼、裂墙）
 var post: ShaderMaterial
+var voxel: VoxelView                  # 体素显示层（Game.voxel 打开时用，见 scripts/voxel/）
 var encounter := 0
 var _clear_timer := -1.0
 
@@ -115,6 +116,10 @@ func _ready() -> void:
 	container.add_child(viewport)
 	world = Node2D.new()
 	world.process_mode = Node.PROCESS_MODE_PAUSABLE
+	viewport.own_world_3d = true
+	voxel = VoxelView.new()
+	voxel.main = self
+	viewport.add_child(voxel)
 	viewport.add_child(world)
 
 	fx_root = Node2D.new()
@@ -240,6 +245,42 @@ func _build_room(def: Dictionary) -> void:
 	world.add_child(front_root)
 	for l in background.make_foreground():
 		front_root.add_child(l)
+	_room_def = def
+	if Game.voxel:
+		voxel.build_room(def)
+	apply_voxel()
+
+
+var _room_def: Dictionary = {}
+
+
+func _toggle_voxel() -> void:
+	Game.voxel = not Game.voxel
+	Game.write_settings()
+	apply_voxel()
+	hud.toast("画面：%s" % ("体素 3D" if Game.voxel else "2D 像素"))
+
+
+## 体素画面开关：开着时 3D 画地面、摆设、远近景和人物，2D 的背景、摆设图、前景和人物精灵藏起来
+func apply_voxel() -> void:
+	var on := Game.voxel
+	voxel.visible = on
+	if voxel.camera != null:
+		voxel.camera.current = on
+	if on and voxel.room == null and not _room_def.is_empty():
+		voxel.build_room(_room_def)
+	if room_root != null:
+		for c in room_root.get_children():
+			if c is Background or c is RoomProps:
+				c.visible = not on
+	if front_root != null:
+		front_root.visible = not on
+	if not on:
+		for p in players:
+			p.body.visible = true
+		for e in enemies:
+			if is_instance_valid(e) and e.body != null:
+				e.body.visible = e.state != Enemy.S.DEAD
 
 
 func _add_box(body: StaticBody2D, r: Rect2, one_way: bool = false) -> void:
@@ -1583,6 +1624,7 @@ func sys_rows() -> Array:
 				{"id": "easy", "label": "弹反窗口", "value": "%.2f 秒（%s）" % [Game.parry_window(), "低难度" if Game.easy_mode else "普通"]},
 				{"id": "hitbox", "label": "显示判定框", "value": "开" if Game.show_hitboxes else "关"},
 				{"id": "keys", "label": "改键"},
+				{"id": "voxel", "label": "画面", "value": "体素 3D" if Game.voxel else "2D 像素"},
 				{"id": "back", "label": "返回"},
 			]
 		"keys":
@@ -1660,6 +1702,8 @@ func sys_do(id: String) -> void:
 			Game.write_settings()
 		"hitbox":
 			Game.show_hitboxes = not Game.show_hitboxes
+		"voxel":
+			_toggle_voxel()
 		"reset_keys":
 			Game.reset_keys()
 		_:
@@ -2128,6 +2172,8 @@ func spawn_streak(pos: Vector2, facing: int, length: float, color: Color = Color
 
 
 func spawn_ghost(pos: Vector2, pose: Dictionary, look: Puppet.Look, facing: int, color: Color) -> void:
+	if Game.voxel:
+		return
 	var g := Fx.Ghost.new()
 	g.position = pos
 	g.pose = pose
@@ -2138,6 +2184,8 @@ func spawn_ghost(pos: Vector2, pose: Dictionary, look: Puppet.Look, facing: int,
 
 
 func spawn_sprite_ghost(pos: Vector2, tex: Texture2D, region: Rect2, origin: Vector2, facing: int, color: Color) -> void:
+	if Game.voxel:
+		return
 	var g := Fx.SpriteGhost.new()
 	g.position = pos.round()
 	g.texture = tex
@@ -2161,6 +2209,10 @@ func spawn_dust(pos: Vector2, dir: float = 0.0, count: int = 5) -> void:
 
 
 func spawn_blood(pos: Vector2, dir: float, count: int = 8) -> void:
+	if Game.voxel:
+		# 体素版不喷血：溅出一把小方块（灰、白、刀光的金色）
+		voxel.spawn_debris(pos, dir, count, [Color("e8e0d0"), Color("9a9088"), Color("5a5250"), Color("ffd27a")])
+		return
 	var s := Fx.Splat.new()
 	s.position = pos
 	s.dir = dir
@@ -2250,6 +2302,8 @@ func _process(delta: float) -> void:
 		Engine.time_scale = 1.0
 
 	_update_camera(real_dt)
+	if Game.voxel:
+		voxel.sync(real_dt)
 	if menu_player != null:
 		_update_menu()
 	elif codex_player != null:
@@ -2362,6 +2416,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		hud.toast("弹反窗口 %.2f 秒%s" % [Game.parry_window(), "（低难度）" if Game.easy_mode else ""])
 	elif event.is_action_pressed("toggle_hitbox"):
 		Game.show_hitboxes = not Game.show_hitboxes
+	elif event.is_action_pressed("toggle_voxel"):
+		_toggle_voxel()
 	elif event.is_action_pressed("toggle_help"):
 		hud.show_help = not hud.show_help
 	elif event.is_action_pressed("toggle_map") and is_instance_valid(tutorial) and not tutorial.done:

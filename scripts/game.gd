@@ -8,6 +8,7 @@ const PARRY_WINDOW_EASY := 0.25   # 低难度 0.25 秒
 
 var easy_mode := false
 var show_hitboxes := false
+var voxel := true                 # 体素画面（参赛版）；关掉回到原来的 2D 像素画面（F6 或设置里切换）
 var font: Font
 
 var practice := false             # 练武场：旧的单场地，数字键换对手（F4 切换）
@@ -26,7 +27,7 @@ const OLD_ALTAR_COSTS := {"vigor": [5, 10, 15], "gourd": [8, 16], "purse": [4, 8
 
 
 ## 设置（和存档分开放）：音量 0-1、低难度、改过的按键 {动作: [键码, ...]}
-var settings := {"master": 0.8, "music": 0.6, "sfx": 0.8, "easy": false, "keys": {}}
+var settings := {"master": 0.8, "music": 0.6, "sfx": 0.8, "easy": false, "voxel": true, "keys": {}}
 var settings_path := "user://settings.cfg"
 const SFX_VOICES := 16
 const SFX_GAP := 0.035              # 同一个音效太密时（一把铜钱）跳过
@@ -84,12 +85,14 @@ func load_settings() -> void:
 		for k: String in settings.keys():
 			settings[k] = cfg.get_value("settings", k, settings[k])
 	easy_mode = bool(settings["easy"])
+	voxel = bool(settings["voxel"])
 	for action: String in settings["keys"]:
 		rebind(action, settings["keys"][action], false)
 
 
 func write_settings() -> void:
 	settings["easy"] = easy_mode
+	settings["voxel"] = voxel
 	var cfg := ConfigFile.new()
 	for k: String in settings.keys():
 		cfg.set_value("settings", k, settings[k])
@@ -245,6 +248,7 @@ func _setup_inputs() -> void:
 	_add_keys("toggle_p2", [KEY_F2])
 	_add_keys("toggle_easy", [KEY_F1])
 	_add_keys("toggle_hitbox", [KEY_F3])
+	_add_keys("toggle_voxel", [KEY_F6])
 	_add_keys("toggle_help", [KEY_H])
 	_add_keys("toggle_map", [KEY_TAB])
 	_add_pad_button("toggle_map", 0, JOY_BUTTON_BACK)
