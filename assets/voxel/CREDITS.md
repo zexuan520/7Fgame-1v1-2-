@@ -15,3 +15,11 @@
 | skel_rogue.json | KayKit Skeletons 1.0 · Skeleton_Rogue | 弓手、忍者 |
 | skel_minion.json | KayKit Skeletons 1.0 · Skeleton_Minion | 盾兵、僧兵 |
 | skel_mage.json | KayKit Skeletons 1.0 · Skeleton_Mage | 破戒僧 |
+
+## 场景件（kit/）
+
+`kit/*.json` 由 `tools/voxelize/voxelize_prop.py` 体素化（2 像素一格），清单见 `tools/voxelize/kit_list.txt`。作者同样是 Kay Lousberg，CC0 1.0：
+
+- KayKit Dungeon Remastered 1.0：木桶、木箱、火把、蜡烛、碎石、旗、柱子、架子、桌子、墙
+- KayKit Halloween Bits 1.0：墓碑、坟、灯笼、灯柱、骷髅柱、栅栏、神龛、棺材、长椅、南瓜灯、骷髅蜡烛、肋骨、枯树、松树、地穴、拱门
+- KayKit Medieval Hexagon Pack 1.0：木材堆、麻袋、房屋、酒馆、教堂、塔楼、风车、废墟、树林、帐篷

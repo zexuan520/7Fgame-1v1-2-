@@ -125,6 +125,20 @@ func _mi(mesh: Mesh, pos: Vector3, shadow: bool = true) -> MeshInstance3D:
 	return mi
 
 
+## 摆一件开源摆设（带灯的顺便点灯）
+func _kit_piece(id: String, pos: Vector3, sc: float = 1.0, yaw: float = 0.0, flip: bool = false) -> MeshInstance3D:
+	var pc := VoxelKit.get_piece(id)
+	if pc.is_empty():
+		return null
+	var mi := _mi(pc["mesh"], pos)
+	mi.rotation.y = yaw
+	mi.scale = Vector3(-sc if flip else sc, sc, sc)
+	var l: Array = pc["light"]
+	if not l.is_empty():
+		_light(pos + mi.basis * (l[0] as Vector3), l[1], l[2])
+	return mi
+
+
 func _light(pos: Vector3, col: Color, rng_px: float) -> void:
 	var l := OmniLight3D.new()
 	l.position = pos
@@ -176,6 +190,11 @@ func _build_ground(def: Dictionary, w: float, cache: Dictionary) -> void:
 	_mi(cache["ground"], Vector3(0, -FLOOR_Y, 0), false)
 
 
+## 不能站的小摆设 → 开源模型里对应的件（能站的结构高度要和 2D 平台对齐，先不换）
+const KIT_SWAP := {"lantern": "lantern", "stone_lantern": "post_lantern", "woodpile": "lumber", "barrel_d": "barrel",
+	"grave": "gravestone", "rubble": "rubble", "scarecrow": "post_skull"}
+
+
 func _build_props(def: Dictionary, cache: Dictionary) -> void:
 	var i := 0
 	for pr: Array in def.get("props", []):
@@ -183,6 +202,11 @@ func _build_props(def: Dictionary, cache: Dictionary) -> void:
 		var x := float(pr[1])
 		var base := float(pr[2]) if pr.size() > 2 else 0.0
 		var key := "prop|" + kind
+		if KIT_SWAP.has(kind) and not VoxelKit.get_piece(KIT_SWAP[kind]).is_empty():
+			# 小摆设换成开源模型，放在人物身后一点
+			_kit_piece(KIT_SWAP[kind], Vector3(x, -(FLOOR_Y - base), -14.0), 1.0, 0.25 * sin(x))
+			i += 1
+			continue
 		if not cache.has(key):
 			var d := VoxelProps.build(kind, 7 + i)
 			if d.is_empty():
@@ -275,9 +299,21 @@ func _build_scenery(def: Dictionary, w: float, cache: Dictionary) -> void:
 		var night: bool = m["disc"] == "moon"
 		var add := func(g: VoxelGrid, size: float, pos: Vector3, glow: VoxelGrid = null) -> void:
 			items.append({"mesh": g.build(size), "pos": pos, "glow": glow.build(size, Vector3.ZERO, true) if glow != null and glow.size() > 0 else null})
+		# 开源摆设（KayKit）：有这个件就用它，返回 false 表示没有（退回自己画的）
+		var kit := func(id: String, pos: Vector3, sc: float = 1.0, yaw: float = 0.0) -> bool:
+			if VoxelKit.get_piece(id).is_empty():
+				return false
+			items.append({"kit": id, "pos": pos, "scale": sc, "yaw": yaw})
+			return true
 		if bg == "temple":
-			var t := VoxelProps.bg_temple(seed_value)
-			add.call(t[0], 6.0, Vector3(w * 0.5, -FLOOR_Y, -190.0), t[1])
+			# 破庙大殿 → 远处的教堂，两边塔楼
+			if kit.call("church", Vector3(w * 0.5, -FLOOR_Y, -230.0), 1.0, 0.15):
+				kit.call("tower", Vector3(w * 0.5 - 260.0, -FLOOR_Y, -300.0), 1.0, -0.2)
+				kit.call("tower", Vector3(w * 0.5 + 260.0, -FLOOR_Y, -300.0), 1.0, 0.3)
+				items.append({"light": [Vector3(w * 0.5, -FLOOR_Y + 60.0, -150.0), Color(1.0, 0.65, 0.35), 220.0]})
+			else:
+				var t := VoxelProps.bg_temple(seed_value)
+				add.call(t[0], 6.0, Vector3(w * 0.5, -FLOOR_Y, -190.0), t[1])
 		if bg == "river":
 			items.append({"mesh": VoxelProps.water(w + 1600.0, seed_value).build(8.0), "pos": Vector3(-800.0, -FLOOR_Y - 6.0, -70.0), "glow": null})
 		var x := -300.0
@@ -288,23 +324,48 @@ func _build_scenery(def: Dictionary, w: float, cache: Dictionary) -> void:
 			var sd := seed_value * 100 + k
 			match bg:
 				"village":
-					if r.randf() < 0.55:
-						var hd := VoxelProps.bg_house(sd, r.randf() < (0.8 if night else 0.5))
-						add.call(hd[0], 6.0, Vector3(x, -FLOOR_Y, z), hd[1])
+					var yaw := r.randf_range(-0.35, 0.35)
+					var pick := r.randf()
+					var done := false
+					if pick < 0.55:
+						var hid: String = ["home_a", "home_b", "tavern", "home_a", "house_ruin", "windmill"][r.randi() % 6]
+						done = kit.call(hid, Vector3(x, -FLOOR_Y, z - 30.0), 1.0, yaw)
+						if done and night and hid != "house_ruin" and r.randf() < 0.7:
+							items.append({"light": [Vector3(x + 10.0, -FLOOR_Y + 40.0, z + 50.0), Color(1.0, 0.62, 0.3), 120.0]})
 					else:
-						add.call(VoxelProps.bg_tree(sd), 6.0, Vector3(x, -FLOOR_Y, z))
+						done = kit.call("tree_dead_m" if r.randf() < 0.4 else "trees", Vector3(x, -FLOOR_Y, z), r.randf_range(0.65, 0.85), yaw)
+					if not done:
+						if pick < 0.55:
+							var hd := VoxelProps.bg_house(sd, r.randf() < (0.8 if night else 0.5))
+							add.call(hd[0], 6.0, Vector3(x, -FLOOR_Y, z), hd[1])
+						else:
+							add.call(VoxelProps.bg_tree(sd), 6.0, Vector3(x, -FLOOR_Y, z))
 				"graves":
-					add.call(VoxelProps.bg_graves(sd), 4.0, Vector3(x, -FLOOR_Y, z + 60.0))
+					# 墓碑一小片、地穴、拱门、枯树
+					if not kit.call("gravestone", Vector3(x, -FLOOR_Y, z + 40.0), 1.0, r.randf_range(-0.3, 0.3)):
+						add.call(VoxelProps.bg_graves(sd), 4.0, Vector3(x, -FLOOR_Y, z + 60.0))
+					else:
+						for gi in range(r.randi_range(1, 3)):
+							var gid: String = ["grave_a", "grave_b", "gravemarker", "gravestone"][r.randi() % 4]
+							kit.call(gid, Vector3(x + r.randf_range(-70.0, 70.0), -FLOOR_Y, z + r.randf_range(0.0, 60.0)), 1.0, r.randf_range(-0.4, 0.4))
+						if r.randf() < 0.18:
+							kit.call("crypt", Vector3(x, -FLOOR_Y, z - 60.0), 1.0, r.randf_range(-0.3, 0.3))
+						elif r.randf() < 0.15:
+							kit.call("arch_gate", Vector3(x, -FLOOR_Y, z - 20.0), 1.0, 0.0)
 					if r.randf() < 0.5:
-						add.call(VoxelProps.bg_tree(sd + 7, true), 6.0, Vector3(x + 60.0, -FLOOR_Y, z))
+						if not kit.call("tree_dead", Vector3(x + 60.0, -FLOOR_Y, z), r.randf_range(0.8, 1.1), r.randf_range(-0.6, 0.6)):
+							add.call(VoxelProps.bg_tree(sd + 7, true), 6.0, Vector3(x + 60.0, -FLOOR_Y, z))
 				"bamboo":
 					add.call(VoxelProps.bg_bamboo(sd), 4.0, Vector3(x, -FLOOR_Y, z + r.randf_range(-60.0, 80.0)))
 				"camp":
 					if r.randf() < 0.6:
-						var tn := VoxelProps.bg_tent(sd)
-						add.call(tn[0], 5.0, Vector3(x, -FLOOR_Y, z), tn[1])
+						if not kit.call("tent", Vector3(x, -FLOOR_Y, z), 1.0, r.randf_range(-0.5, 0.5)):
+							var tn := VoxelProps.bg_tent(sd)
+							add.call(tn[0], 5.0, Vector3(x, -FLOOR_Y, z), tn[1])
+						else:
+							kit.call("torch", Vector3(x + 40.0, -FLOOR_Y, z + 30.0), 1.6)
 						items.append({"light": [Vector3(x + 30.0, -FLOOR_Y + 20.0, z + 30.0), Color(1.0, 0.5, 0.2), 140.0]})
-					else:
+					elif not kit.call("tree_dead", Vector3(x, -FLOOR_Y, z), r.randf_range(0.8, 1.1), r.randf_range(-0.6, 0.6)):
 						add.call(VoxelProps.bg_tree(sd, true), 6.0, Vector3(x, -FLOOR_Y, z))
 				"river":
 					add.call(VoxelProps.bg_reeds(sd), 4.0, Vector3(x, -FLOOR_Y, -58.0))
@@ -312,10 +373,14 @@ func _build_scenery(def: Dictionary, w: float, cache: Dictionary) -> void:
 						add.call(VoxelProps.bg_tree(sd), 8.0, Vector3(x, -FLOOR_Y - 10.0, r.randf_range(-700.0, -520.0)))
 				"temple":
 					if absf(x - w * 0.5) > 180.0:
-						add.call(VoxelProps.bg_tree(sd), 6.0, Vector3(x, -FLOOR_Y, z))
-			if bg != "river" and r.randf() < 0.6:   # 再往后一排树
-				items.append({"mesh": VoxelProps.bg_tree(sd + 50, bg == "graves" or bg == "camp").build(8.0),
-					"pos": Vector3(x + r.randf_range(-60, 60), -FLOOR_Y, r.randf_range(-420.0, -320.0)), "glow": null})
+						if r.randf() < 0.5 and not kit.call("trees", Vector3(x, -FLOOR_Y, z), 0.75, r.randf_range(-0.6, 0.6)):
+							add.call(VoxelProps.bg_tree(sd), 6.0, Vector3(x, -FLOOR_Y, z))
+			if bg != "river" and r.randf() < (0.6 if bg == "bamboo" else 0.35):   # 再往后一排树
+				var dead: bool = bg == "graves" or bg == "camp"
+				var tp := Vector3(x + r.randf_range(-60, 60), -FLOOR_Y, r.randf_range(-420.0, -320.0))
+				var tid := "tree_dead" if dead else ("tree_pine" if r.randf() < 0.3 else "trees")
+				if bg == "bamboo" or not kit.call(tid, tp, r.randf_range(0.85, 1.1), r.randf_range(-0.8, 0.8)):
+					items.append({"mesh": VoxelProps.bg_tree(sd + 50, dead).build(8.0), "pos": tp, "glow": null})
 			k += 1
 		cache["scenery"] = items
 		var mc: Array = m["mtn"]
@@ -329,6 +394,9 @@ func _build_scenery(def: Dictionary, w: float, cache: Dictionary) -> void:
 		if it.has("light"):
 			var l: Array = it["light"]
 			_light(l[0], l[1], l[2])
+			continue
+		if it.has("kit"):
+			_kit_piece(String(it["kit"]), it["pos"], float(it["scale"]), float(it["yaw"]))
 			continue
 		_mi(it["mesh"], it["pos"])
 		if it["glow"] != null:
