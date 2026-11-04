@@ -16,6 +16,7 @@ var data: Dictionary = {}
 var highlight := false
 var time := 0.0
 var _open_t := 1.0          # 门打开的动画
+var hide_art := false       # 体素画面下由 3D 模型代替（只画头上的字）
 
 
 func set_enabled(v: bool) -> void:
@@ -56,7 +57,7 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	match kind:
+	match kind if not hide_art else "":
 		"door": _draw_door()
 		"item", "scroll": _draw_item()
 		"gear": _draw_gear()

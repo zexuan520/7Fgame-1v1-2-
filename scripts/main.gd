@@ -276,6 +276,15 @@ func apply_voxel() -> void:
 	if front_root != null:
 		front_root.visible = not on
 	if not on:
+		for b in breakables:
+			if is_instance_valid(b):
+				b.self_modulate.a = 1.0
+		for it in interactables:
+			if is_instance_valid(it):
+				it.hide_art = false
+				it.queue_redraw()
+		if features != null:
+			features.self_modulate.a = 1.0
 		for p in players:
 			p.body.visible = true
 		for e in enemies:

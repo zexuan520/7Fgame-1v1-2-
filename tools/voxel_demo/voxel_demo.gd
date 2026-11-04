@@ -33,7 +33,12 @@ func _ready() -> void:
 	_run.call_deferred()
 
 
+var tour := false
+const TOUR_X := [300.0, 640.0, 1050.0, 1300.0, 1520.0, 1760.0]
+
+
 func _run() -> void:
+	tour = "tour" in OS.get_cmdline_user_args() or "gallery" in OS.get_cmdline_user_args()
 	Game.save_path = "user://demo_save.cfg"
 	Game.settings_path = "user://demo_settings.cfg"
 	Game.title_done = true
@@ -42,20 +47,66 @@ func _run() -> void:
 	add_child(main)
 	await get_tree().process_frame
 	await get_tree().process_frame
-	var def: Dictionary = LevelData.ROOMS["lane"].duplicate(true)
-	def["waves"] = []
+	var room := "lane"
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("room="):
+			room = a.substr(5)
+	var def: Dictionary = LevelData.ROOMS[room].duplicate(true)
+	if not tour:
+		def["waves"] = []
 	main.mode = "practice"
 	main._build_room(def)
 	main._place_players(470.0)
 	print("voxel room build ms: ", main.voxel.last_build_ms)
+	if "gallery" in OS.get_cmdline_user_args():
+		_gallery()
+		return
+	if tour:
+		main.mode = "room"
+		main.waves = def.get("waves", [])
+		main._spawn_wave(0, true)
+		ronin = main.enemies[0] if not main.enemies.is_empty() else null
+		set_process(true)
+		_tour()
+		return
 	ronin = main.spawn_enemy("ronin", Vector2(760.0, 300.0))
 	ronin.hp = 9999.0
 	ronin.max_hp = 9999.0
 	set_process(true)
 
 
+func _gallery() -> void:
+	var k := 0
+	for room in ["village_gate", "merchant", "roadside_shrine", "graves", "bamboo_path", "bandit_camp", "river", "temple"]:
+		var def: Dictionary = LevelData.room(room).duplicate(true)
+		def["waves"] = []
+		main._build_room(def)
+		main._place_players(min(260.0, float(def.get("width", 800.0)) * 0.3))
+		for i in range(20):
+			await get_tree().process_frame
+		get_viewport().get_texture().get_image().save_png("user://voxel_gallery_%d.png" % k)
+		print("gallery ", room, " build ms ", main.voxel.last_build_ms)
+		k += 1
+	get_tree().quit()
+
+
+func _tour() -> void:
+	var k := 0
+	for x: float in TOUR_X:
+		for p in main.players:
+			p.global_position = Vector2(x, 300.0)
+		main.camera.position.x = clampf(x + 120.0, 320.0, main.arena_w - 320.0)
+		for i in range(25):
+			await get_tree().process_frame
+		var img := get_viewport().get_texture().get_image()
+		img.save_png("user://voxel_tour_%d.png" % k)
+		print("tour ", k)
+		k += 1
+	get_tree().quit()
+
+
 func _process(delta: float) -> void:
-	if main == null or ronin == null:
+	if tour or main == null or ronin == null:
 		return
 	t += delta
 	for s: Array in SCRIPT:

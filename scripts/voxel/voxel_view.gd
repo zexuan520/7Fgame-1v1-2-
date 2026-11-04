@@ -24,6 +24,8 @@ var _debris: Array = []               # [MeshInstance3D, 速度, 剩余时间, �
 var _debris_mesh: BoxMesh
 var _debris_mats := {}
 var last_build_ms := 0
+var _objs := {}                       # 2D 物件 → {"root": Node3D, "kind": 种类, "at": 最后的位置, ...}
+var _feats: Array = []                # 机关：[种类, 2D 里的状态字典, 3D 节点...]
 
 static var _room_cache := {}          # 房间名 → {摆设名: 网格}（同一间房再进来不用重算）
 
@@ -93,6 +95,10 @@ func build_room(def: Dictionary) -> void:
 	for d: Array in _debris:
 		(d[0] as Node).queue_free()
 	_debris.clear()
+	for n in _objs.keys():
+		(_objs[n]["root"] as Node).queue_free()
+	_objs.clear()
+	_feats.clear()
 	room = Node3D.new()
 	add_child(room)
 	var name_key := "%s|%s|%s" % [def.get("name", ""), def.get("seed", 0), def.get("width", 0)]
@@ -103,6 +109,7 @@ func build_room(def: Dictionary) -> void:
 	_build_ground(def, w, cache)
 	_build_props(def, cache)
 	_build_scenery(def, w, cache)
+	_build_features(def, cache)
 	if OS.is_debug_build():
 		print_verbose("体素房间 %s 搭好，用时 %d 毫秒" % [name_key, Time.get_ticks_msec() - t0])
 	last_build_ms = Time.get_ticks_msec() - t0
@@ -196,40 +203,140 @@ func _build_props(def: Dictionary, cache: Dictionary) -> void:
 			_light(at + (l[0] as Vector3), l[1], l[2])
 
 
-## 远近景：中景茅草屋和树，远处一排山，最前面零星的草
+## 天色：天空、环境光、雾、主光（太阳或月亮）、逆光，以及中景摆什么
+const MOODS := {
+	"dusk": {"top": "2a2248", "hor": "b8644a", "gnd": "7a4a42", "amb": "6a6a9e", "amb_e": 0.5, "fog": "5e4a7a", "fog_d": 0.0004,
+		"sun": [1.0, 0.76, 0.56], "sun_e": 1.05, "rim": [0.55, 0.62, 1.0], "rim_e": 0.7, "disc": "sun", "bg": "village", "mtn": ["3e3256", "5a4266"]},
+	"night": {"top": "080c1e", "hor": "26304e", "gnd": "141a2a", "amb": "3a4a7a", "amb_e": 0.55, "fog": "1c2440", "fog_d": 0.0005,
+		"sun": [0.6, 0.72, 1.0], "sun_e": 0.55, "rim": [1.0, 0.7, 0.45], "rim_e": 0.35, "disc": "moon", "bg": "village", "mtn": ["161c32", "222a44"]},
+	"graves": {"top": "0c1214", "hor": "2a3a36", "gnd": "141a1a", "amb": "3a5a5a", "amb_e": 0.5, "fog": "26383a", "fog_d": 0.0009,
+		"sun": [0.6, 0.85, 0.8], "sun_e": 0.5, "rim": [0.5, 1.0, 0.7], "rim_e": 0.3, "disc": "moon", "bg": "graves", "mtn": ["18221f", "22302c"]},
+	"fog": {"top": "3e4250", "hor": "6e7280", "gnd": "4a4c56", "amb": "7a7a8e", "amb_e": 0.5, "fog": "626674", "fog_d": 0.0016,
+		"sun": [0.95, 0.95, 1.0], "sun_e": 0.55, "rim": [0.8, 0.85, 1.0], "rim_e": 0.3, "disc": "", "bg": "village", "mtn": ["6a6c78", "80828c"]},
+	"bamboo": {"top": "28362e", "hor": "a89a62", "gnd": "4a5a3a", "amb": "6a8a6a", "amb_e": 0.5, "fog": "5a6a4a", "fog_d": 0.0008,
+		"sun": [1.0, 0.9, 0.65], "sun_e": 0.9, "rim": [0.7, 1.0, 0.7], "rim_e": 0.4, "disc": "sun", "bg": "bamboo", "mtn": ["2e3e30", "40503e"]},
+	"camp": {"top": "100a14", "hor": "4a2220", "gnd": "1a1214", "amb": "5a3a4a", "amb_e": 0.5, "fog": "3a1e22", "fog_d": 0.0006,
+		"sun": [0.7, 0.75, 1.0], "sun_e": 0.45, "rim": [1.0, 0.5, 0.3], "rim_e": 0.5, "disc": "moon", "bg": "camp", "mtn": ["1e1418", "2e1e24"]},
+	"river": {"top": "060a1a", "hor": "1e2a4a", "gnd": "101626", "amb": "3a4a80", "amb_e": 0.55, "fog": "18223e", "fog_d": 0.00045,
+		"sun": [0.65, 0.78, 1.0], "sun_e": 0.7, "rim": [0.7, 0.8, 1.0], "rim_e": 0.4, "disc": "moon", "bg": "river", "mtn": ["121a30", "1c2642"]},
+	"temple": {"top": "1e1a3a", "hor": "8a4a4a", "gnd": "3a2a30", "amb": "6a5a8a", "amb_e": 0.5, "fog": "4a3a5a", "fog_d": 0.0005,
+		"sun": [1.0, 0.72, 0.5], "sun_e": 0.8, "rim": [0.6, 0.65, 1.0], "rim_e": 0.6, "disc": "moon", "bg": "temple", "mtn": ["2e2646", "443658"]},
+	"mist": {"top": "3a4646", "hor": "7a8680", "gnd": "4a5650", "amb": "7a8a82", "amb_e": 0.5, "fog": "66746e", "fog_d": 0.0014,
+		"sun": [1.0, 0.97, 0.9], "sun_e": 0.6, "rim": [0.8, 1.0, 0.9], "rim_e": 0.3, "disc": "", "bg": "bamboo", "mtn": ["5a6a62", "707e76"]},
+}
+
+
+static func mood_of(def: Dictionary) -> String:
+	match String(def.get("theme", "temple")):
+		"village": return String(def.get("mood", "dusk")) if MOODS.has(String(def.get("mood", "dusk"))) else "dusk"
+		"river": return "river"
+		"bamboo_temple":
+			var m := String(def.get("mood", "mist"))
+			return {"mist": "mist", "dusk": "bamboo", "night": "night"}.get(m, "mist")
+	return "temple"
+
+
+var _rim: DirectionalLight3D
+
+
+func _apply_mood(m: Dictionary) -> void:
+	var sm: ProceduralSkyMaterial = env.sky.sky_material
+	sm.sky_top_color = Color(m["top"])
+	sm.sky_horizon_color = Color(m["hor"])
+	sm.ground_horizon_color = Color(m["gnd"])
+	env.ambient_light_color = Color(m["amb"])
+	env.ambient_light_energy = m["amb_e"]
+	env.fog_light_color = Color(m["fog"])
+	env.fog_density = m["fog_d"]
+	var sc: Array = m["sun"]
+	sun.light_color = Color(sc[0], sc[1], sc[2])
+	sun.light_energy = m["sun_e"]
+	if _rim == null:
+		for c in get_children():
+			if c is DirectionalLight3D and c != sun:
+				_rim = c
+	var rc: Array = m["rim"]
+	_rim.light_color = Color(rc[0], rc[1], rc[2])
+	_rim.light_energy = m["rim_e"]
+
+
+## 远近景：中景（茅草屋和树 / 坟地 / 竹林 / 山贼营 / 河 / 破庙），远处两层山，夕阳或月亮
 func _build_scenery(def: Dictionary, w: float, cache: Dictionary) -> void:
 	var seed_value := int(def.get("seed", 0))
+	var mood := mood_of(def)
+	var m: Dictionary = MOODS[mood]
+	_apply_mood(m)
+	var bg := String(m["bg"])
 	if not cache.has("scenery"):
 		var items := []
 		var r := RandomNumberGenerator.new()
 		r.seed = seed_value * 31 + 7
+		var night: bool = m["disc"] == "moon"
+		var add := func(g: VoxelGrid, size: float, pos: Vector3, glow: VoxelGrid = null) -> void:
+			items.append({"mesh": g.build(size), "pos": pos, "glow": glow.build(size, Vector3.ZERO, true) if glow != null and glow.size() > 0 else null})
+		if bg == "temple":
+			var t := VoxelProps.bg_temple(seed_value)
+			add.call(t[0], 6.0, Vector3(w * 0.5, -FLOOR_Y, -190.0), t[1])
+		if bg == "river":
+			items.append({"mesh": VoxelProps.water(w + 1600.0, seed_value).build(8.0), "pos": Vector3(-800.0, -FLOOR_Y - 6.0, -70.0), "glow": null})
 		var x := -300.0
 		var k := 0
 		while x < w + 300.0:
-			x += r.randf_range(110.0, 220.0)
+			x += r.randf_range(110.0, 220.0) if bg != "bamboo" else r.randf_range(50.0, 110.0)
 			var z := r.randf_range(-230.0, -150.0)
-			if r.randf() < 0.55:
-				var hd := VoxelProps.bg_house(seed_value * 100 + k, r.randf() < 0.5)
-				var glow: VoxelGrid = hd[1]
-				items.append({"mesh": (hd[0] as VoxelGrid).build(6.0), "pos": Vector3(x, -FLOOR_Y, z),
-					"glow": glow.build(6.0, Vector3.ZERO, true) if glow != null else null})
-			else:
-				items.append({"mesh": VoxelProps.bg_tree(seed_value * 100 + k).build(6.0), "pos": Vector3(x, -FLOOR_Y, z), "glow": null})
-			if r.randf() < 0.6:   # 再往后一排树
-				items.append({"mesh": VoxelProps.bg_tree(seed_value * 100 + k + 50).build(8.0),
+			var sd := seed_value * 100 + k
+			match bg:
+				"village":
+					if r.randf() < 0.55:
+						var hd := VoxelProps.bg_house(sd, r.randf() < (0.8 if night else 0.5))
+						add.call(hd[0], 6.0, Vector3(x, -FLOOR_Y, z), hd[1])
+					else:
+						add.call(VoxelProps.bg_tree(sd), 6.0, Vector3(x, -FLOOR_Y, z))
+				"graves":
+					add.call(VoxelProps.bg_graves(sd), 4.0, Vector3(x, -FLOOR_Y, z + 60.0))
+					if r.randf() < 0.5:
+						add.call(VoxelProps.bg_tree(sd + 7, true), 6.0, Vector3(x + 60.0, -FLOOR_Y, z))
+				"bamboo":
+					add.call(VoxelProps.bg_bamboo(sd), 4.0, Vector3(x, -FLOOR_Y, z + r.randf_range(-60.0, 80.0)))
+				"camp":
+					if r.randf() < 0.6:
+						var tn := VoxelProps.bg_tent(sd)
+						add.call(tn[0], 5.0, Vector3(x, -FLOOR_Y, z), tn[1])
+						items.append({"light": [Vector3(x + 30.0, -FLOOR_Y + 20.0, z + 30.0), Color(1.0, 0.5, 0.2), 140.0]})
+					else:
+						add.call(VoxelProps.bg_tree(sd, true), 6.0, Vector3(x, -FLOOR_Y, z))
+				"river":
+					add.call(VoxelProps.bg_reeds(sd), 4.0, Vector3(x, -FLOOR_Y, -58.0))
+					if r.randf() < 0.4:
+						add.call(VoxelProps.bg_tree(sd), 8.0, Vector3(x, -FLOOR_Y - 10.0, r.randf_range(-700.0, -520.0)))
+				"temple":
+					if absf(x - w * 0.5) > 180.0:
+						add.call(VoxelProps.bg_tree(sd), 6.0, Vector3(x, -FLOOR_Y, z))
+			if bg != "river" and r.randf() < 0.6:   # 再往后一排树
+				items.append({"mesh": VoxelProps.bg_tree(sd + 50, bg == "graves" or bg == "camp").build(8.0),
 					"pos": Vector3(x + r.randf_range(-60, 60), -FLOOR_Y, r.randf_range(-420.0, -320.0)), "glow": null})
 			k += 1
 		cache["scenery"] = items
-		cache["mountains"] = VoxelProps.mountains(w + 2400.0, seed_value, Color("3e3256"), 0.8).build(20.0)
-		cache["mountains2"] = VoxelProps.mountains(w + 3600.0, seed_value + 9, Color("5a4266"), 1.0).build(36.0)
-		cache["sun"] = VoxelProps.sun_disc().build(30.0, Vector3.ZERO, true)
+		var mc: Array = m["mtn"]
+		cache["mountains"] = VoxelProps.mountains(w + 2400.0, seed_value, Color(mc[0]), 0.8).build(20.0)
+		cache["mountains2"] = VoxelProps.mountains(w + 3600.0, seed_value + 9, Color(mc[1]), 1.0).build(36.0)
+		if m["disc"] == "sun":
+			cache["disc"] = VoxelProps.sun_disc().build(30.0, Vector3.ZERO, true)
+		elif m["disc"] == "moon":
+			cache["disc"] = VoxelProps.moon_disc().build(18.0, Vector3.ZERO, true)
 	for it: Dictionary in cache["scenery"]:
+		if it.has("light"):
+			var l: Array = it["light"]
+			_light(l[0], l[1], l[2])
+			continue
 		_mi(it["mesh"], it["pos"])
 		if it["glow"] != null:
 			_mi(it["glow"], it["pos"], false)
 	_mi(cache["mountains"], Vector3(-1200.0, -FLOOR_Y - 40.0, -900.0), false)
 	_mi(cache["mountains2"], Vector3(-1600.0, -FLOOR_Y - 60.0, -1700.0), false)
-	_mi(cache["sun"], Vector3(w * 0.25, -FLOOR_Y + 260.0, -2600.0), false)
+	if cache.has("disc"):
+		var high: bool = m["disc"] == "moon"
+		_mi(cache["disc"], Vector3(w * (0.7 if high else 0.25), -FLOOR_Y + (430.0 if high else 260.0), -2600.0), false)
 
 
 # ---------- 每帧 ----------
@@ -245,7 +352,7 @@ func sync(dt: float) -> void:
 	for p in main.players:
 		alive[p] = true
 	for e in main.enemies:
-		if is_instance_valid(e) and String(e.kind) != "dog":
+		if is_instance_valid(e):
 			alive[e] = true
 	for f in rigs.keys():
 		if not alive.has(f) or not is_instance_valid(f):
@@ -253,13 +360,15 @@ func sync(dt: float) -> void:
 			rigs.erase(f)
 	for f in alive.keys():
 		if not rigs.has(f):
-			var rig := VoxelRig.new()
+			var rig: Node3D = VoxelDog.new() if f is Dog else VoxelRig.new()
 			add_child(rig)
 			rig.setup(f)
 			rigs[f] = rig
-		(rigs[f] as VoxelRig).sync(dt)
+		rigs[f].sync(dt)
 		if f.get("body") != null:
 			(f.body as Sprite2D).visible = false
+	_sync_objects()
+	_sync_features()
 	_update_debris(dt)
 
 
@@ -312,3 +421,188 @@ func _update_debris(dt: float) -> void:
 		d[1] = vel
 		keep.append(d)
 	_debris = keep
+
+
+# ---------- 物件：罐子箱子、宝箱、遗骸、门、土地庙 ----------
+
+const OBJ_KINDS := ["chest", "note", "door", "rest"]
+
+
+func _sync_objects() -> void:
+	var seen := {}
+	for b in main.breakables:
+		if is_instance_valid(b) and not b.broken:
+			seen[b] = true
+			var o := _obj(b, String(b.kind))
+			var sh := sin(Time.get_ticks_msec() * 0.06) * 1.5 if b._shake > 0.0 else 0.0
+			(o["root"] as Node3D).position = Vector3(b.global_position.x + sh, -b.global_position.y, -2.0)
+			o["at"] = b.global_position
+			b.self_modulate.a = 0.0
+	for it in main.interactables:
+		if not is_instance_valid(it) or not OBJ_KINDS.has(it.kind) or not it.visible:
+			continue
+		seen[it] = true
+		var o := _obj(it, String(it.kind))
+		var root: Node3D = o["root"]
+		root.position = Vector3(it.global_position.x, -it.global_position.y, -6.0 if it.kind == "door" or it.kind == "rest" else -2.0)
+		it.hide_art = true
+		match it.kind:
+			"chest":
+				var lid: Node3D = o["lid"]
+				lid.rotation.x = lerpf(lid.rotation.x, -1.15 if it.used else 0.0, 0.2)
+				(o["gold"] as Node3D).visible = it.used
+			"door":
+				var mat: StandardMaterial3D = o["mat"]
+				var glow: Color = it.color if it.enabled else Color(0.08, 0.06, 0.08)
+				mat.albedo_color = Color(glow.darkened(0.35), 1.0)
+				(o["light"] as OmniLight3D).visible = it.enabled
+				(o["light"] as OmniLight3D).light_color = it.color
+	for n in _objs.keys():
+		if not seen.has(n):
+			var o: Dictionary = _objs[n]
+			if Breakable.KINDS.has(o["kind"]):
+				var at: Vector2 = o["at"]
+				spawn_debris(at + Vector2(0, -8), 0.0, 10, VoxelObjects.shard_colors(o["kind"]))
+			(o["root"] as Node).queue_free()
+			_objs.erase(n)
+
+
+func _obj(n: Node2D, kind: String) -> Dictionary:
+	if _objs.has(n):
+		return _objs[n]
+	var root := Node3D.new()
+	add_child(root)
+	var o := {"root": root, "kind": kind, "at": n.global_position}
+	var add := func(m: Mesh, pos: Vector3 = Vector3.ZERO) -> MeshInstance3D:
+		var mi := MeshInstance3D.new()
+		mi.mesh = m
+		mi.position = pos
+		root.add_child(mi)
+		return mi
+	match kind:
+		"chest":
+			add.call(VoxelObjects.mesh("chest_base"))
+			o["lid"] = add.call(VoxelObjects.mesh("chest_lid"), Vector3(-12.0, 10.0, -8.0))
+			o["gold"] = add.call(VoxelObjects.mesh("chest_gold"))
+			(o["gold"] as Node3D).visible = false
+		"door":
+			add.call(VoxelObjects.mesh("door_frame"))
+			var panel := MeshInstance3D.new()
+			var q := QuadMesh.new()
+			q.size = Vector2(38, 56)
+			panel.mesh = q
+			panel.position = Vector3(0, 28, -2)
+			var mat := StandardMaterial3D.new()
+			mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			panel.material_override = mat
+			root.add_child(panel)
+			o["mat"] = mat
+			var l := OmniLight3D.new()
+			l.position = Vector3(0, 24, 14)
+			l.omni_range = 70.0
+			l.light_energy = 1.2
+			root.add_child(l)
+			o["light"] = l
+		"rest":
+			add.call(VoxelObjects.mesh("shrine"))
+			add.call(VoxelObjects.mesh("shrine_glow"))
+			var l := OmniLight3D.new()
+			l.position = Vector3(0, 18, 12)
+			l.omni_range = 60.0
+			l.light_color = Color(1.0, 0.7, 0.35)
+			root.add_child(l)
+		_:
+			add.call(VoxelObjects.mesh(kind))
+	_objs[n] = o
+	return o
+
+
+# ---------- 机关 ----------
+
+func _build_features(def: Dictionary, cache: Dictionary) -> void:
+	var f: RoomFeatures = main.features
+	if f == null:
+		return
+	# 坑底竹签、地上的竹签排：合成一块静态网格
+	if not cache.has("spikes"):
+		var g := VoxelGrid.new(77)
+		var depth := -16                                  # 坑底在地面下 64 像素
+		for p: Array in f.pits:
+			for x in range(int(ceilf(float(p[0]) / 4.0)), int(floorf(float(p[1]) / 4.0))):
+				for z in range(-30, 12):
+					g.set_v(Vector3i(x, depth - 1, z), Color("2a2220").darkened(g.rng.randf() * 0.2))
+				for z in range(-6, 5, 2):
+					if (x + z) % 3 == 0:
+						g.box(Vector3i(x, depth, z), Vector3i(x, depth + 3, z), Color("8a8a50"))
+						g.set_v(Vector3i(x, depth + 4, z), Color("c8c890"))
+		for sp: Array in f.spikes:
+			for x in range(int(ceilf(float(sp[0]) / 4.0)), int(floorf(float(sp[1]) / 4.0))):
+				for z in range(-6, 5, 2):
+					if (x + z) % 2 == 0:
+						g.box(Vector3i(x, 0, z), Vector3i(x, 2, z), Color("8a8a50"))
+						g.set_v(Vector3i(x, 3, z), Color("c8c890"))
+		cache["spikes"] = g.build(4.0)
+	_mi(cache["spikes"], Vector3(0, -FLOOR_Y, 0), false)
+	for pl: Dictionary in f.planks:
+		var mi := _mi(VoxelObjects.mesh("plank" if pl["crumble"] else "ledge"), Vector3(pl["x"], -float(pl["top"]), 0.0))
+		mi.scale = Vector3(float(pl["w"]) / 24.0, 1, 1)
+		_feats.append(["plank", pl, mi])
+	for g: Dictionary in f.gates:
+		_mi(VoxelObjects.mesh("gate_wall"), Vector3(g["x"], -FLOOR_Y, 0.0))
+		var bars := _mi(VoxelObjects.mesh("gate_bars"), Vector3(g["x"], -FLOOR_Y, 0.0))
+		_feats.append(["gate", g, bars])
+	for lv: Dictionary in f.levers:
+		_mi(VoxelObjects.mesh("lever_base"), Vector3(lv["x"], -float(lv["y"]), -6.0))
+		var h := _mi(VoxelObjects.mesh("lever_handle"), Vector3(lv["x"], -float(lv["y"]) + 8.0, -6.0))
+		_feats.append(["lever", lv, h])
+	for ln: Dictionary in f.lanterns:
+		var at := Vector3(ln["x"], -float(ln["y"]), -8.0)
+		_mi(VoxelObjects.mesh("stone_lantern"), at)
+		var gl := _mi(VoxelObjects.mesh("stone_lantern_glow"), at, false)
+		var l := OmniLight3D.new()
+		l.position = at + Vector3(0, 32, 14)
+		l.omni_range = 90.0
+		l.light_color = Color(1.0, 0.65, 0.3)
+		room.add_child(l)
+		_feats.append(["lantern", ln, gl, l])
+	for c: Dictionary in f.cracks:
+		var wall := _mi(VoxelObjects.mesh("crack"), Vector3(c["x"], -FLOOR_Y, 0.0))
+		var rub := _mi(VoxelObjects.mesh("crack_rubble"), Vector3(c["x"], -FLOOR_Y, 0.0))
+		_feats.append(["crack", c, wall, rub, false])
+	f.self_modulate.a = 0.0
+
+
+func _sync_features() -> void:
+	for ft: Array in _feats:
+		var d: Dictionary = ft[1]
+		match String(ft[0]):
+			"plank":
+				var mi: MeshInstance3D = ft[2]
+				var base_y := -float(d["top"])
+				if float(d["down"]) > 0.0:
+					var fl: float = d["fall"]
+					mi.visible = fl < 0.6
+					mi.position.y = base_y - 260.0 * fl * fl
+					mi.rotation.z = fl * 2.0
+				else:
+					mi.visible = true
+					mi.position.y = base_y
+					mi.rotation.z = 0.0
+					mi.position.x = float(d["x"]) + (sin(Time.get_ticks_msec() * 0.06) if float(d["t"]) >= 0.0 else 0.0)
+			"gate":
+				var bars: MeshInstance3D = ft[2]
+				bars.position.y = -FLOOR_Y + float(d["open"]) * (RoomFeatures.DOOR_H - 8.0)
+			"lever":
+				(ft[2] as MeshInstance3D).rotation.z = -0.7 if d["on"] else 0.7
+			"lantern":
+				var lit: float = 1.0 if d["done"] else clampf(float(d["lit"]) / 1.5, 0.0, 1.0)
+				(ft[2] as MeshInstance3D).visible = lit > 0.0
+				(ft[3] as OmniLight3D).light_energy = 1.6 * lit
+			"crack":
+				var broken: bool = d["broken"]
+				(ft[2] as MeshInstance3D).visible = not broken
+				(ft[3] as MeshInstance3D).visible = broken
+				if broken and not ft[4]:
+					ft[4] = true
+					spawn_debris(Vector2(d["x"], FLOOR_Y - 60.0), 0.0, 24, VoxelObjects.shard_colors("crack"))
+				(ft[2] as MeshInstance3D).position.x = float(d["x"]) + (sin(Time.get_ticks_msec() * 0.07) * 1.5 if float(d["shake"]) > 0.0 else 0.0)

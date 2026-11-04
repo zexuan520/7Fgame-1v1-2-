@@ -323,13 +323,13 @@ static func bg_house(seed_value: int, lit: bool) -> Array:
 	return [g, glow if glow.size() > 0 else null, hw]
 
 
-## 背景的树（松树或枯树）
-static func bg_tree(seed_value: int) -> VoxelGrid:
+## 背景的树（松树或枯树；dead 只要枯树）
+static func bg_tree(seed_value: int, dead: bool = false) -> VoxelGrid:
 	var g := VoxelGrid.new(seed_value)
 	var r := g.rng
 	var h := r.randi_range(10, 16)
 	g.box(Vector3i(0, 0, 0), Vector3i(0, h, 0), Color("3a2a22"))
-	if r.randf() < 0.65:
+	if not dead and r.randf() < 0.65:
 		for i in range(4):
 			var y := h - 2 - i * 3
 			if y < 3:
@@ -375,3 +375,145 @@ static func sun_disc() -> VoxelGrid:
 			if d <= 6.2:
 				g.set_v(Vector3i(x, y, 0), Color("ffd27a").lerp(Color("ff8a4a"), clampf(d / 6.2, 0.0, 1.0) * 0.7))
 	return g
+
+
+## 月亮
+static func moon_disc() -> VoxelGrid:
+	var g := VoxelGrid.new(2)
+	for x in range(-5, 6):
+		for y in range(-5, 6):
+			var d := Vector2(x, y).length()
+			if d <= 5.2:
+				var c := Color("eef2ff")
+				if (x == 1 and y == 2) or (x == -2 and y == -1) or (x == 2 and y == -2):
+					c = Color("c8d0e8")   # 月面的坑
+				g.set_v(Vector3i(x, y, 0), c)
+	return g
+
+
+## 坟地：几座坟包、木牌、石碑（4 像素一格）
+static func bg_graves(seed_value: int) -> VoxelGrid:
+	var g := VoxelGrid.new(seed_value)
+	var r := g.rng
+	for i in range(r.randi_range(3, 5)):
+		var x := r.randi_range(-14, 14)
+		var z := r.randi_range(-10, 4)
+		g.ellipsoid(Vector3(x, 0, z), Vector3(3, 1.8, 2.4), Color("4a4236").darkened(r.randf() * 0.2), 0.1)
+		if r.randf() < 0.6:
+			g.box(Vector3i(x, 1, z - 2), Vector3i(x, 5, z - 2), Color("6b5a44"))
+			g.box(Vector3i(x - 1, 4, z - 2), Vector3i(x + 1, 4, z - 2), Color("6b5a44"))
+		else:
+			g.box(Vector3i(x - 1, 0, z - 3), Vector3i(x + 1, 5, z - 3), STONE.darkened(0.2), 0.1)
+	g.carve(Vector3i(-20, -4, -20), Vector3i(20, -1, 20))
+	return g
+
+
+## 竹丛（4 像素一格）
+static func bg_bamboo(seed_value: int) -> VoxelGrid:
+	var g := VoxelGrid.new(seed_value)
+	var r := g.rng
+	for i in range(r.randi_range(3, 6)):
+		var x := r.randi_range(-6, 6)
+		var z := r.randi_range(-6, 6)
+		var h := r.randi_range(28, 46)
+		var c := Color("5f7a34").darkened(r.randf() * 0.25)
+		for y in range(h):
+			g.set_v(Vector3i(x, y, z), c if y % 6 != 0 else c.darkened(0.3))
+		for k in range(4):
+			var y := h - 2 - k * 4
+			var dir := 1 if (k + i) % 2 == 0 else -1
+			for j in range(3):
+				g.set_v(Vector3i(x + dir * (j + 1), y - j / 2, z), Color("4f7030").darkened(r.randf() * 0.2))
+	return g
+
+
+## 山贼营的帐篷，返回 [格子, 发光格子]（5 像素一格）
+static func bg_tent(seed_value: int) -> Array:
+	var g := VoxelGrid.new(seed_value)
+	var glow := VoxelGrid.new(seed_value + 3)
+	var c := Color("6a5a48").darkened(g.rng.randf() * 0.2)
+	for y in range(0, 9):
+		var hw := 9 - y
+		for x in range(-hw, hw + 1):
+			for z in range(-5, 6):
+				if absi(x) == hw or y == 8:
+					g.set_v(Vector3i(x, y, z), c if (z + y) % 3 != 0 else c.darkened(0.15))
+	g.carve(Vector3i(-2, 0, 5), Vector3i(2, 4, 5))
+	glow.box(Vector3i(-2, 0, 4), Vector3i(2, 3, 4), Color("ff9040"))
+	g.box(Vector3i(0, 9, 0), Vector3i(0, 13, 0), WOOD_DARK)
+	g.box(Vector3i(1, 11, 0), Vector3i(4, 13, 0), Color("8a2a24"))   # 破旗
+	# 篝火
+	for i in range(6):
+		var a := i / 6.0 * TAU
+		g.set_v(Vector3i(6 + roundi(cos(a) * 2.0), 0, 8 + roundi(sin(a) * 2.0)), STONE_DARK)
+	glow.box(Vector3i(5, 1, 7), Vector3i(7, 2, 9), Color("ff7a28"))
+	return [g, glow]
+
+
+## 芦苇（河边，4 像素一格）
+static func bg_reeds(seed_value: int) -> VoxelGrid:
+	var g := VoxelGrid.new(seed_value)
+	var r := g.rng
+	for i in range(r.randi_range(5, 9)):
+		var x := r.randi_range(-10, 10)
+		var z := r.randi_range(-3, 3)
+		var h := r.randi_range(4, 9)
+		for y in range(h):
+			g.set_v(Vector3i(x + (1 if y > h - 3 and i % 2 == 0 else 0), y, z), Color("6a6a3a").darkened(r.randf() * 0.2))
+		g.set_v(Vector3i(x, h, z), Color("8a7a4a"))
+	return g
+
+
+## 河面：一大片深蓝，带几道月光反光（8 像素一格，原点在左前角）
+static func water(width_px: float, seed_value: int) -> VoxelGrid:
+	var g := VoxelGrid.new(seed_value)
+	var noise := FastNoiseLite.new()
+	noise.seed = seed_value
+	noise.frequency = 0.12
+	var n := int(width_px / 8.0)
+	for x in range(n):
+		for z in range(-70, 1):
+			var v := noise.get_noise_2d(x * 0.5, z * 2.0)
+			var c := Color("101a30").lerp(Color("1a2c48"), clampf(v + 0.5, 0.0, 1.0))
+			if v > 0.45:
+				c = Color("5a6e90")   # 波光
+			g.set_v(Vector3i(x, 0, z), c)
+	return g
+
+
+## 破庙：大殿、台阶、两根柱子、瓦顶，门里透出灯光。返回 [格子, 发光格子]（6 像素一格）
+static func bg_temple(seed_value: int) -> Array:
+	var g := VoxelGrid.new(seed_value)
+	var glow := VoxelGrid.new(seed_value + 1)
+	var wall := Color("6a4a3a")
+	g.box(Vector3i(-24, 0, -8), Vector3i(24, 2, 8), STONE, 0.08)          # 台基
+	for i in range(3):
+		g.box(Vector3i(-8, i, 9 + i), Vector3i(8, i, 9 + i), STONE_DARK, 0.06)
+	for x in range(-20, 21):                                              # 墙（外壳）
+		for y in range(3, 16):
+			for z in [-6, 6]:
+				g.set_v(Vector3i(x, y, z), wall.darkened(g.rng.randf() * 0.1))
+	for x in [-20, 20]:
+		g.box(Vector3i(x, 3, -6), Vector3i(x, 15, 6), wall)
+	for x in [-14, -7, 7, 14]:                                            # 红柱
+		g.box(Vector3i(x, 3, 7), Vector3i(x, 15, 7), Color("8a2e26"))
+	g.carve(Vector3i(-4, 3, 6), Vector3i(4, 12, 6))                        # 门
+	glow.box(Vector3i(-4, 3, 5), Vector3i(4, 12, 5), Color("ffa850"))
+	for wx in [-16, 11]:
+		g.carve(Vector3i(wx, 7, 6), Vector3i(wx + 4, 11, 6))
+		glow.box(Vector3i(wx, 7, 5), Vector3i(wx + 4, 11, 5), Color("ff9a48"))
+	for i in range(8):                                                    # 歇山顶，一层层往里收
+		var y := 16 + i
+		var zz := 10 - i
+		for x in range(-26 + i, 27 - i):
+			for z in [-zz, zz]:
+				g.set_v(Vector3i(x, y, z), Color("3a3a48").lightened(0.06 if i % 2 == 0 else 0.0))
+		if zz <= 3:
+			for x in range(-26 + i, 27 - i):
+				for z in range(-zz, zz + 1):
+					g.set_v(Vector3i(x, y, z), Color("2e2e3a"))
+	for x in [-26, 26]:                                                    # 翘角
+		g.set_v(Vector3i(x, 17, 10), Color("3a3a48"))
+		g.set_v(Vector3i(x + (1 if x > 0 else -1), 18, 10), Color("3a3a48"))
+	g.carve(Vector3i(8, 21, -10), Vector3i(14, 24, 10))                    # 塌了一块屋顶
+	return [g, glow]

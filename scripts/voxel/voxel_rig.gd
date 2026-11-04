@@ -45,6 +45,10 @@ func setup(f: Node2D) -> void:
 	if is_player:
 		_add_part("scarf", key)
 		_add_part("tail", key)
+	if f is Enemy:
+		match String(f.data.get("prop", "")):
+			"bow": _add_part("bow", key)
+			"shield": _add_part("shield", key)
 
 
 func _add_part(pname: String, key: String) -> void:
@@ -186,6 +190,24 @@ func _build_part(pname: String) -> ArrayMesh:
 			var g := _seg_grid(1, 9, 2, L.band, 0.06)
 			g.paint(Vector3i(0, 0, 0), Vector3i(0, 1, 1), L.band.darkened(0.2))
 			return _seg_build(g, 1, 9, 2)
+		"bow":
+			# 竖着的长弓：原点在握把，弓臂往前弯
+			var g := VoxelGrid.new(14)
+			for y in range(-10, 11):
+				var x := int(roundf(2.5 * (1.0 - pow(y / 10.0, 2.0))))
+				g.set_v(Vector3i(x, y, 0), Color("5a3a24"))
+			g.box(Vector3i(0, -10, 0), Vector3i(0, 10, 0), Color("d8d0c0"))   # 弦
+			g.box(Vector3i(2, -1, 0), Vector3i(3, 1, 0), Color("2a1a14"))
+			return g.build(VS, Vector3(2.5, 0, 0.5))
+		"shield":
+			# 木盾：原点在握把，挡在身前
+			var g := VoxelGrid.new(15)
+			g.box(Vector3i(0, -7, -3), Vector3i(1, 7, 3), Color("6b4a33"), 0.08)
+			g.paint(Vector3i(1, -7, -3), Vector3i(1, 7, 3), Color("8a6444"), 0.08)
+			g.box(Vector3i(2, -1, -1), Vector3i(2, 1, 1), Color("8a8a94"))
+			g.paint(Vector3i(0, -7, -3), Vector3i(1, -7, 3), Color("3a3a3e"))
+			g.paint(Vector3i(0, 7, -3), Vector3i(1, 7, 3), Color("3a3a3e"))
+			return g.build(VS, Vector3(0, 0, 0.5))
 	return ArrayMesh.new()
 
 
@@ -267,6 +289,12 @@ func sync(dt: float) -> void:
 	if fighter is Enemy and String(fighter.data.get("prop", "")) == "bow":
 		sw.visible = false
 	_place_dir("sword", j["grip_at"], float(pose["sword"]), Z_FRONT + 2.0)
+
+	if parts.has("bow"):
+		(parts["bow"] as MeshInstance3D).transform = Transform3D(Basis.IDENTITY, _v3(j["hand_f"], Z_FRONT + 1.0))
+	if parts.has("shield"):
+		(parts["shield"] as MeshInstance3D).transform = Transform3D(Basis(Vector3(0, 0, 1), -float(pose["lean"]) * 0.5),
+			_v3(j["hand_b"] + Vector2(2.0, 0.0), Z_FRONT + 3.0))
 
 	# 披风、围巾：跟着速度往后飘
 	var vx: float = fighter.velocity.x * facing if "velocity" in fighter else 0.0
