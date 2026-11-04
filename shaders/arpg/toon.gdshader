@@ -1,0 +1,50 @@
+// 卡通渲染：顶点色当底色（体素网格把颜色写在顶点上），三阶光照 + 边缘光 + 受击闪白。
+// 每个角色一份材质（闪白、染色互不影响）；场景件共用一份。
+shader_type spatial;
+render_mode cull_back;
+
+uniform vec3 tint : source_color = vec3(1.0);
+uniform vec3 rim_color : source_color = vec3(0.45, 0.95, 1.0);
+uniform float rim_strength = 0.35;
+uniform float rim_power = 3.0;
+uniform float flash = 0.0;            // 受击闪白 0~1
+uniform vec3 flash_color : source_color = vec3(1.0);
+uniform vec3 glow : source_color = vec3(0.0);   // 自发光（Bloom 只让超亮的东西发光）
+uniform float shadow_floor = 0.32;    // 最暗那一阶的亮度
+uniform float fade = 1.0;             // 前景遮挡时的半透明（用抖动镂空，不用排序）
+uniform bool swap_green = false;      // 把模型里偏绿的颜色（KayKit 游侠的兜帽）换成 swap_color，保留明暗
+uniform vec3 swap_color : source_color = vec3(0.2, 0.25, 0.4);
+
+void fragment() {
+	vec3 src = pow(COLOR.rgb, vec3(2.2));   // 顶点色按 sRGB 存，换成线性再算光照
+	if (swap_green) {
+		float g = src.g - max(src.r, src.b);
+		if (g > 0.05) {
+			float lum = dot(src, vec3(0.3, 0.59, 0.11));
+			src = swap_color * lum * 2.2;
+		}
+	}
+	vec3 base = src * tint;
+	ALBEDO = mix(base, flash_color, flash);
+	float ndv = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
+	float rim = pow(1.0 - ndv, rim_power);
+	EMISSION = glow + rim_color * rim * rim_strength + flash_color * flash * 1.6;
+	if (fade < 0.999) {
+		// 屏幕空间 4x4 抖动：不用透明排序也能“半透明”
+		int x = int(FRAGCOORD.x) % 4;
+		int y = int(FRAGCOORD.y) % 4;
+		float bayer[16] = float[](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+		if (fade < (bayer[y * 4 + x] + 0.5) / 16.0) {
+			discard;
+		}
+	}
+}
+
+void light() {
+	float ndl = dot(NORMAL, LIGHT);
+	// 三阶：暗 / 中 / 亮，过渡很窄
+	float band = mix(shadow_floor, 0.68, smoothstep(-0.02, 0.04, ndl));
+	band = mix(band, 1.0, smoothstep(0.45, 0.5, ndl));
+	float sh = smoothstep(0.3, 0.6, ATTENUATION);
+	DIFFUSE_LIGHT += LIGHT_COLOR * mix(shadow_floor, band, sh) / 3.14159;
+}

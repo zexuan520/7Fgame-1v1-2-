@@ -11,8 +11,8 @@ config_version=5
 [application]
 
 config/name="残刃归途"
-config/description="只狼式格挡弹反的 2D 横版肉鸽：第一层山脚荒村"
-run/main_scene="res://scenes/main.tscn"
+config/description="暗黑幻想斜俯视体素动作肉鸽：连招、突进斩、光束斩、出血终结"
+run/main_scene="res://scenes/arpg.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 
 [autoload]
@@ -22,11 +22,10 @@ Zaohua="*res://addons/zaohua_platform/runtime/zaohua.gd"
 
 [display]
 
-window/size/viewport_width=640
-window/size/viewport_height=360
-window/size/window_width_override=1280
-window/size/window_height_override=720
+window/size/viewport_width=1280
+window/size/viewport_height=720
 window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
 
 [editor_plugins]
 
