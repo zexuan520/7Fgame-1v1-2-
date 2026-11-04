@@ -672,6 +672,18 @@ func _dress_sakura() -> void:
 	for i in range(3):
 		var x := -hx + 4.0 + i * (size.x - 8.0) / 2.0 + rng.randf_range(-2, 2)
 		voxel_piece(_trunk(70, 5.0, Color(0.06, 0.04, 0.05), Color(0.12, 0.05, 0.08)), Vector3(x, 0, hz + 1.5), 0.12, null, Vector3.ZERO, true)
+	# 前面两侧再种两棵小樱树、摆长椅和灯笼，免得入口一片空地
+	for side: float in [-1.0, 1.0]:
+		var st2 := _sakura_tree()
+		var t2 := voxel_piece(st2[0], Vector3(side * 9.5, 0, 5.5), 0.1, st2[1], Vector3(1.0, 4, 1.0), false, rng.randf() * TAU)
+		var l2 := OmniLight3D.new()
+		l2.light_color = Color(1.0, 0.55, 0.75)
+		l2.light_energy = 1.6
+		l2.omni_range = 8.0
+		t2.add_child(l2)
+		l2.position = Vector3(0, 4.0, 0)
+		kit("bench", Vector3(side * 6.5, 0, 8.0), PI * 0.5, 1.0, true)
+		kit("lantern", Vector3(side * 12.5, 0, -1.0), 0.0, 1.2, false)
 	_petals()
 
 

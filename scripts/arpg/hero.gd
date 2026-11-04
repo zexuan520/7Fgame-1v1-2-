@@ -169,7 +169,7 @@ func _ready_body() -> void:
 	rig.set_rim(Color(0.45, 0.95, 1.0), 0.6)
 	# 兜帽和披风换成深青蓝（原模型是绿的），和青绿场景拉开
 	rig.mat.set_shader_parameter("swap_green", true)
-	rig.mat.set_shader_parameter("swap_color", Vector3(0.18, 0.3, 0.52))
+	rig.mat.set_shader_parameter("swap_color", Vector3(0.24, 0.42, 0.72))
 	_pose = Poses.idle(0.0)
 	add_to_group("heroes")
 	_make_foot_ring()
