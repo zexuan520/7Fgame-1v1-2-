@@ -2,3 +2,10 @@
 .godot/
 *.tmp
 export/
+dist/
+dist.next/
+dist.prev/
+.game-builder/state/
+.game-builder/covers/
+.game-builder/artifacts/
+.game-builder/reference/
