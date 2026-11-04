@@ -29,6 +29,7 @@ const END := 14.0
 
 
 func _ready() -> void:
+	process_priority = 1000
 	shots = "shots" in OS.get_cmdline_user_args()
 	_run.call_deferred()
 
@@ -43,6 +44,7 @@ func _run() -> void:
 	Game.settings_path = "user://demo_settings.cfg"
 	Game.title_done = true
 	Game.voxel = not ("flat" in OS.get_cmdline_user_args())
+	VoxelModel.off = "oldmodel" in OS.get_cmdline_user_args()
 	main = load("res://scenes/main.tscn").instantiate()
 	add_child(main)
 	await get_tree().process_frame
@@ -60,6 +62,9 @@ func _run() -> void:
 	print("voxel room build ms: ", main.voxel.last_build_ms)
 	if "gallery" in OS.get_cmdline_user_args():
 		_gallery()
+		return
+	if "lineup" in OS.get_cmdline_user_args():
+		_lineup()
 		return
 	if "boss" in OS.get_cmdline_user_args():
 		_boss()
@@ -169,6 +174,31 @@ func _feel() -> void:
 	get_tree().quit()
 
 
+## 所有人形角色排成一排拍照（看模型用）：先拍全景，再挨个拍特写
+func _lineup() -> void:
+	var ids := ["ronin", "archer", "shield", "sohei", "shinobi", "hakai", "liu", "jakko"]
+	var es: Array[Enemy] = []
+	for i in ids.size():
+		var e: Enemy = main.spawn_enemy(ids[i], Vector2(560.0 + i * 70.0, 300.0))
+		e.aggro = false
+		e.set_physics_process(false)
+		es.append(e)
+	main.players[0].global_position = Vector2(470.0, 300.0)
+	for i in range(30):
+		await get_tree().process_frame
+	main.voxel.cam_locked = true
+	var shots := [Vector3(810, -270, 360)]
+	for e in es:
+		shots.append(Vector3(e.global_position.x, -e.global_position.y + 32.0, 200.0))
+	shots.append(Vector3(470, -268, 200))
+	for k in shots.size():
+		for i in range(3):
+			main.voxel.camera.position = shots[k]
+			await get_tree().process_frame
+		get_viewport().get_texture().get_image().save_png("user://lineup_%d.png" % k)
+	get_tree().quit()
+
+
 func _gallery() -> void:
 	var k := 0
 	for room in ["village_gate", "merchant", "roadside_shrine", "graves", "bamboo_path", "bandit_camp", "river", "temple"]:
@@ -203,6 +233,11 @@ func _process(delta: float) -> void:
 	if tour or main == null or ronin == null:
 		return
 	t += delta
+	if "close" in OS.get_cmdline_user_args():
+		# 特写：3D 镜头直接贴到 1P 跟前（2D 层不跟，只看模型）
+		var pl: Node2D = main.players[0]
+		main.voxel.cam_locked = true
+		main.voxel.camera.position = Vector3(pl.global_position.x, -pl.global_position.y + 30.0, 150.0)
 	for s: Array in SCRIPT:
 		var on: bool = t >= float(s[0]) and t < float(s[1])
 		var a: String = s[2]

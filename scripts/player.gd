@@ -324,6 +324,7 @@ func _ready() -> void:
 	look.band = Color("f4f0f8") if index == 2 else Color("f2608f")
 	scarf_color = look.band
 	look.saya = true
+	look.model = "rogue"
 	_setup_sprite()
 	_pose = POSES["relaxed_sheathed"].duplicate()   # 开局刀在鞘里
 	_spring.reset(_pose)

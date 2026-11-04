@@ -30,6 +30,9 @@ var _last_flash := 0.0
 var _twist := 0.0                   # 挥刀时身子跟着拧（绕竖轴转），让 3D 有纵深
 var _last_sword := 0.0
 const YAW := 0.32                   # 平时侧身朝镜头转一点（3/4 侧面），不是纯侧面
+const YAW_MODEL := 0.7              # 开源模型是大头 Q 版，脸要多朝镜头才看得清
+var model: VoxelModel               # 用开源模型体素化出来的身子（有的话）
+var _p_scale := 1.0                 # Puppet 坐标 → 模型坐标的比例（按腿长算）
 
 static var _mesh_cache := {}
 
@@ -49,6 +52,26 @@ func setup(f: Node2D) -> void:
 	_overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	_overlay.albedo_color = Color(1, 1, 1, 0)
 	var key := _look_key()
+	if look.model != "":
+		model = VoxelModel.load_model(look.model)
+	if model != null:
+		_setup_model(key)
+	else:
+		_setup_puppet(key, is_player)
+	if f is Enemy:
+		match String(f.data.get("prop", "")):
+			"bow": _add_part("bow", key)
+			"shield": _add_part("shield", key)
+		var has_aura := false
+		for ph: Dictionary in f.data["phases"]:
+			if (ph.get("aura", Color(0, 0, 0, 0)) as Color).a > 0.0:
+				has_aura = true
+		if has_aura:
+			_setup_aura()
+
+
+## 自己拼的身子（没有开源模型时用）
+func _setup_puppet(key: String, is_player: bool) -> void:
 	for pname in ["torso", "skirt", "head", "arm_u_f", "arm_l_f", "arm_u_b", "arm_l_b",
 			"leg_u_f", "leg_l_f", "leg_u_b", "leg_l_b", "sword"]:
 		_add_part(pname, key)
@@ -62,16 +85,6 @@ func setup(f: Node2D) -> void:
 	if is_player:
 		_add_part("scarf", key)
 		_add_part("tail", key)
-	if f is Enemy:
-		match String(f.data.get("prop", "")):
-			"bow": _add_part("bow", key)
-			"shield": _add_part("shield", key)
-		var has_aura := false
-		for ph: Dictionary in f.data["phases"]:
-			if (ph.get("aura", Color(0, 0, 0, 0)) as Color).a > 0.0:
-				has_aura = true
-		if has_aura:
-			_setup_aura()
 
 
 func _setup_aura() -> void:
@@ -103,6 +116,25 @@ func _setup_aura() -> void:
 		m.visible = false
 		add_child(m)
 		_motes.append(m)
+
+
+## 开源模型的身子：头、躯干、胯、上臂前臂、大腿小腿用模型里切好的块，刀还用自己拼的
+func _setup_model(key: String) -> void:
+	for pname: String in ["torso", "hips", "head", "arm_u_f", "arm_l_f", "arm_u_b", "arm_l_b", "leg_u_f", "leg_l_f", "leg_u_b", "leg_l_b"]:
+		if not model.parts.has(pname):
+			continue
+		var mi := MeshInstance3D.new()
+		mi.mesh = model.parts[pname]["mesh"]
+		mi.material_overlay = _overlay
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		add_child(mi)
+		parts[pname] = mi
+	_add_part("sword", key)
+	# Puppet 的腿长对上模型的腿长（模型是大头小身子，腿短）
+	var rest := Puppet.solve(Puppet.pose({}), Puppet.grip_of(look))
+	var p_leg := (rest["hip"] as Vector2).distance_to(rest["knee_f"]) + (rest["knee_f"] as Vector2).distance_to(rest["foot_f"])
+	var k_leg := model.j("upperleg.r").y
+	_p_scale = k_leg / maxf(p_leg, 1.0)
 
 
 func _add_part(pname: String, key: String) -> void:
@@ -285,6 +317,106 @@ func _place(pname: String, a: Vector2, b: Vector2, z: float) -> void:
 	mi.transform = Transform3D(Basis(xv, yv, zv), _v3(a, z))
 
 
+## 3D 版的 _place：部件放到 a，-y 指向 b，z 轴尽量保持朝镜头
+func _place3(pname: String, a: Vector3, b: Vector3) -> void:
+	var mi: MeshInstance3D = parts.get(pname)
+	if mi == null:
+		return
+	var d := b - a
+	if d.length_squared() < 0.0001:
+		d = Vector3(0, -1, 0)
+	var yv := -d.normalized()
+	var zv := Vector3(0, 0, 1)
+	var xv := yv.cross(zv)
+	if xv.length_squared() < 0.0001:
+		xv = Vector3(1, 0, 0)
+	xv = xv.normalized()
+	zv = xv.cross(yv).normalized()
+	mi.transform = Transform3D(Basis(xv, yv, zv), a)
+
+
+## 两节骨头的 IK：起点 a、终点想到 t，两段长 l1 l2，膝盖/手肘往 bend 那边弯，返回中间关节
+static func _ik2(a: Vector3, t: Vector3, l1: float, l2: float, bend: Vector3) -> Vector3:
+	var d := t - a
+	var dist := clampf(d.length(), 0.001, l1 + l2 - 0.001)
+	var dir := d.normalized()
+	var cos_a := clampf((l1 * l1 + dist * dist - l2 * l2) / (2.0 * l1 * dist), -1.0, 1.0)
+	var side := (bend - dir * bend.dot(dir))
+	if side.length_squared() < 0.0001:
+		side = Vector3(1, 0, 0)
+	side = side.normalized()
+	return a + dir * (l1 * cos_a) + side * (l1 * sqrt(1.0 - cos_a * cos_a))
+
+
+## 用模型的身子摆 Puppet 的姿势：躯干、头、手臂按 Puppet 的方向，腿用 IK 让脚踩在 Puppet 的脚位上；
+## 骨头长度都用模型自己的（大头短腿的比例不变）。返回刀的部件（给刀光用）
+func _sync_model(jt: Dictionary, pose: Dictionary) -> MeshInstance3D:
+	var M := model
+	var k := _p_scale
+	var to3 := func(p: Vector2, z: float = 0.0) -> Vector3:
+		return Vector3(p.x * k, -p.y * k, z)
+	var hip_p: Vector2 = jt["hip"]
+	var neck_p: Vector2 = jt["neck"]
+	var hipmid_rest := (M.j("upperleg.r") + M.j("upperleg.l")) * 0.5
+	var hip3: Vector3 = to3.call(hip_p)
+	# 躯干：从胯往脖子的方向跟 Puppet 一样，长度用模型的
+	var tdir := Vector3(neck_p.x - hip_p.x, -(neck_p.y - hip_p.y), 0.0).normalized()
+	var tilt := atan2(tdir.x, tdir.y)        # 往前倾的角度
+	var tb := Basis(Vector3(0, 0, 1), -tilt)
+	var neck3 := hip3 + tb * (M.j("head") - hipmid_rest)
+	_place3("torso", neck3, neck3 + tb * (M.j("hips") - M.j("head")))
+	if parts.has("hips"):
+		(parts["hips"] as MeshInstance3D).transform = Transform3D(tb, hip3 + tb * (M.j("hips") - hipmid_rest))
+	var hb := tb * Basis(Vector3(0, 0, 1), -float(pose["head"]) * 0.6)
+	(parts["head"] as MeshInstance3D).transform = Transform3D(hb, neck3)
+	if _eyes != null:
+		# 眼睛在脸前面（模型的头大约 10 格高，眼睛在中间偏下、朝 +x）
+		_eyes.transform = Transform3D(hb.scaled(Vector3.ONE * 0.6), neck3 + hb * Vector3(8.0, 7.0, -1.0))
+		_eye_light.position = neck3 + hb * Vector3(12.0, 8.0, 4.0)
+	# 手臂：方向照 Puppet（挥刀的轨迹不变），长度用模型的
+	var arm := func(side: String, sh_key: String, el_key: String, hd_key: String, kj: String) -> Vector3:
+		var sh3 := neck3 + tb * (M.j("upperarm." + kj) - M.j("head"))
+		var d1 := (jt[el_key] as Vector2) - (jt[sh_key] as Vector2)
+		var d2 := (jt[hd_key] as Vector2) - (jt[el_key] as Vector2)
+		var el3 := sh3 + Vector3(d1.x, -d1.y, 0.0).normalized() * M.length("arm_u_" + side)
+		var hd3 := el3 + Vector3(d2.x, -d2.y, 0.0).normalized() * M.length("arm_l_" + side)
+		_place3("arm_u_" + side, sh3, el3)
+		_place3("arm_l_" + side, el3, hd3)
+		return hd3
+	var hand_f: Vector3 = arm.call("f", "shoulder", "elbow_f", "hand_f", "r")
+	var hand_b: Vector3 = arm.call("b", "shoulder_b", "elbow_b", "hand_b", "l")
+	if parts.has("bow"):
+		(parts["bow"] as MeshInstance3D).transform = Transform3D(Basis.IDENTITY, hand_f + Vector3(0, 0, 2.0))
+	if parts.has("shield"):
+		# 盾挡在身前（+x），不挡脸：放在后手前面一点，略缩小配 Q 版身子
+		(parts["shield"] as MeshInstance3D).transform = Transform3D(tb.scaled(Vector3.ONE * 0.8), hand_b + Vector3(6.0, -2.0, 3.0))
+	# 腿：胯到脚踝两节 IK，脚踝对准 Puppet 的脚（按比例），膝盖往前弯
+	var ankle_h := M.j("foot.r").y
+	for side: String in ["f", "b"]:
+		var kj := "r" if side == "f" else "l"
+		var hipj := hip3 + tb * (M.j("upperleg." + kj) - hipmid_rest)
+		hipj.z = M.j("upperleg." + kj).z
+		var foot_p: Vector2 = jt["foot_" + side]
+		var target: Vector3 = to3.call(foot_p, hipj.z) + Vector3(0, ankle_h, 0)
+		var knee_p: Vector2 = jt["knee_" + side]
+		var bend := Vector3(knee_p.x - foot_p.x, 0.0, 0.0) + Vector3(1, 0, 0) * 0.3
+		var kn := _ik2(hipj, target, M.length("leg_u_" + side), M.length("leg_l_" + side), bend)
+		var dl := (target - kn).normalized() * M.length("leg_l_" + side)
+		_place3("leg_u_" + side, hipj, kn)
+		_place3("leg_l_" + side, kn, kn + dl)
+	# 刀：握在前手，角度照 Puppet
+	var sw: MeshInstance3D = parts["sword"]
+	var sheathed := float(pose.get("sheathed", 0.0)) > 0.5
+	sw.visible = not sheathed and float(pose.get("sword_free", 0.0)) < 0.5
+	if fighter is Enemy and String(fighter.data.get("prop", "")) == "bow":
+		sw.visible = false
+	var sa := float(pose["sword"])
+	var sd := Vector3(sin(sa), -cos(sa), 0.0)
+	_place3("sword", hand_f + Vector3(0, 0, 2.0), hand_f + Vector3(0, 0, 2.0) + sd)
+	sw.transform.basis = sw.transform.basis.scaled(Vector3.ONE * 0.85)   # Q 版手短，刀也短一点
+	return sw
+
+
 ## 按角度放（Puppet 的角度：0 朝下，PI/2 朝前）
 func _place_dir(pname: String, a: Vector2, angle: float, z: float) -> void:
 	_place(pname, a, a + Vector2(sin(angle), cos(angle)), z)
@@ -304,9 +436,18 @@ func sync(dt: float) -> void:
 		squash = fighter._squash
 	var gp: Vector2 = fighter.global_position
 	position = Vector3(gp.x, -gp.y, 0.0)
-	scale = Vector3(facing * s * squash.x * look.width, s * squash.y, s)
+	scale = Vector3(facing * s * squash.x * (look.width if model == null else 1.0), s * squash.y, s)
 	rotation = Vector3.ZERO
 
+	if model != null:
+		var swm := _sync_model(j, pose)
+		_update_twist(dt, float(pose["sword"]))
+		_update_recoil(dt)
+		_update_state(dt)
+		_update_trail(dt, swm)
+		if _eyes != null:
+			_update_aura(dt)
+		return
 	var hip: Vector2 = j["hip"]
 	var neck: Vector2 = j["neck"]
 	_place("torso", neck, hip, 0.0)
@@ -383,7 +524,7 @@ func _update_twist(dt: float, sword: float) -> void:
 		_twist = lerpf(_twist, goal, k)
 	_last_sword = sword
 	var f: int = fighter.facing
-	rotation.y = (-YAW + _twist) * f
+	rotation.y = (-(YAW_MODEL if model != null else YAW) + _twist) * f
 
 
 ## 挨刀：身子往后一仰、压扁一下再弹回来（敌人每次闪白、主角进硬直时触发）

@@ -46,6 +46,7 @@ class Look:
 	var sword_len := 24.0
 	var width := 1.0
 	var weapon := "katana"             # katana 太刀 / dual 双短刃 / nodachi 野太刀 / spear 长枪 / fist 铁拳 / staff 长棍（僧兵）
+	var model := ""                    # 体素模型（assets/voxel/<model>.json，开源模型体素化来的）；空的就用代码拼的方块人
 	var helm := ""                     # 头甲：hood 头巾 / kasa 斗笠 / kabuto 铁盔
 	var armor := ""                    # 身甲：vest 短打 / leather 皮甲 / plate 铁甲
 

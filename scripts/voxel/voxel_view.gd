@@ -16,6 +16,7 @@ const DEBRIS_MAX := 160
 
 var main: Node                        # Main
 var camera: Camera3D
+var cam_locked := false             # 演示/截图工具自己摆镜头时设 true
 var env: Environment
 var sun: DirectionalLight3D
 var room: Node3D                      # 当前房间的地面、摆设、远近景（换房间整个删掉）
@@ -346,7 +347,8 @@ func sync(dt: float) -> void:
 	var c2: Camera2D = main.camera
 	var center := c2.get_screen_center_position()
 	var zoom := c2.zoom.x
-	camera.position = Vector3(center.x, -center.y, CAM_D / zoom)
+	if not cam_locked:
+		camera.position = Vector3(center.x, -center.y, CAM_D / zoom)
 	# 角色：新出现的建体素人偶，没了的删掉
 	var alive := {}
 	for p in main.players:

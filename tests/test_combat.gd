@@ -1158,7 +1158,7 @@ func test_air_bounce() -> void:
 	await _frames(3)
 	await _tap("p1_jump")
 	await _frames(3)
-	p.global_position = Vector2(410, 284)   # 贴着野狗的高度（空中斩的判定框够得着）
+	p.global_position = Vector2(400, 294)   # 贴着野狗的高度（空中斩的判定框够得着），又不压在狗身上（压上去会变成踩头）
 	p.velocity = Vector2.ZERO
 	p.facing = 1
 	p.air_dashes = 0
@@ -1171,6 +1171,10 @@ func test_air_bounce() -> void:
 		if i < 12:
 			e.global_position = Vector2(440.0, 300.0)
 			e.velocity = Vector2.ZERO
+			if e.hp >= e.max_hp and p.velocity.y >= 0.0:
+				# 砍中之前别让主角落地（不然空中斩会变成落地收招，结果时好时坏）
+				p.global_position.y = 294.0
+				p.velocity.y = 0.0
 		if p.velocity.y < -150.0 and not p.is_on_floor() and p._air_attacks == 0:
 			bounced = true
 			dash_reset = dash_reset or p.air_dashes == Player.AIR_DASHES

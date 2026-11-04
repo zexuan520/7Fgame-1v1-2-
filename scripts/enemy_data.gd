@@ -40,7 +40,7 @@ const TYPES := {
 	"ronin": {
 		"name": "堕落浪人", "rank": "elite", "hp": 300.0, "posture": 200.0, "speed": 105.0, "guard": 0.4,
 		"body": Vector2(30, 56), "prop": "", "flourish": true, "idle": ["shoulder", "stalk"],
-		"look": {"scale": 1.12, "hat": true, "cape": true, "width": 1.15, "sword_len": 28.0,
+		"look": {"model": "skel_warrior", "scale": 1.12, "hat": true, "cape": true, "width": 1.15, "sword_len": 28.0,
 			"cloth": Color("6e2a2a"), "cloth_dark": Color("461a1d"), "cloth_light": Color("9a4438"),
 			"collar": Color("b8ab96"), "pants": Color("2f2c36"), "pants_dark": Color("1d1b22"),
 			"pants_light": Color("4a4656"), "hair": Color("2a1a14"), "belt": Color("6d6247"),
@@ -109,7 +109,7 @@ const TYPES := {
 	"archer": {
 		"name": "弓手", "rank": "grunt", "hp": 50.0, "posture": 40.0, "speed": 90.0, "guard": 0.0,
 		"body": Vector2(26, 52), "prop": "bow", "idle": ["bow_idle", "bow_ready"],
-		"look": {"scale": 1.0, "hat": true, "width": 0.95, "sword_len": 0.0,
+		"look": {"model": "skel_rogue", "scale": 1.0, "hat": true, "width": 0.95, "sword_len": 0.0,
 			"cloth": Color("4d5a3a"), "cloth_dark": Color("323b25"), "cloth_light": Color("6f7e52"),
 			"collar": Color("a89f86"), "pants": Color("3a3229"), "pants_dark": Color("241f19"),
 			"pants_light": Color("54493c"), "belt": Color("7a5a32"),
@@ -138,7 +138,7 @@ const TYPES := {
 	"shield": {
 		"name": "盾兵", "rank": "grunt", "hp": 70.0, "posture": 60.0, "speed": 62.0, "guard": 0.0,
 		"body": Vector2(30, 54), "prop": "shield", "shield": true, "idle": ["shield_stance", "shield_stance"],
-		"look": {"scale": 1.08, "hat": true, "width": 1.2, "sword_len": 38.0,
+		"look": {"model": "skel_minion", "scale": 1.08, "hat": true, "width": 1.2, "sword_len": 38.0,
 			"cloth": Color("4a4f5c"), "cloth_dark": Color("2e323b"), "cloth_light": Color("6b7282"),
 			"collar": Color("9a9184"), "pants": Color("2b2a30"), "pants_dark": Color("1a191e"),
 			"pants_light": Color("434149"), "belt": Color("5a4a33"),
@@ -163,7 +163,7 @@ const TYPES := {
 	"liu": {
 		"name": "断水 · 柳江远", "rank": "boss", "hp": 260.0, "posture": 230.0, "speed": 115.0, "guard": 0.45,
 		"body": Vector2(30, 58), "prop": "", "idle": ["liu_calm", "st_gedan"],
-		"look": {"scale": 1.16, "hat": false, "cape": true, "width": 1.05, "sword_len": 33.0,
+		"look": {"model": "knight", "scale": 1.16, "hat": false, "cape": true, "width": 1.05, "sword_len": 33.0,
 			"cloth": Color("c8cdd4"), "cloth_dark": Color("858fa0"), "cloth_light": Color("eef1f4"),
 			"collar": Color("2b3a52"), "pants": Color("2b3a52"), "pants_dark": Color("1a2436"),
 			"pants_light": Color("40567a"), "hair": Color("26262e"), "belt": Color("33476b"),
@@ -276,7 +276,7 @@ const TYPES := {
 	"sohei": {
 		"name": "僧兵", "rank": "grunt", "hp": 80.0, "posture": 60.0, "speed": 85.0, "guard": 0.25,
 		"body": Vector2(30, 54), "prop": "", "idle": ["shoulder", "stalk"],
-		"look": {"scale": 1.1, "hat": false, "width": 1.2, "sword_len": 46.0,
+		"look": {"model": "skel_minion", "scale": 1.1, "hat": false, "width": 1.2, "sword_len": 46.0,
 			"cloth": Color("b8742e"), "cloth_dark": Color("7a4a1c"), "cloth_light": Color("d8964a"),
 			"collar": Color("e0d0b0"), "pants": Color("4a3a2a"), "pants_dark": Color("2e241a"),
 			"pants_light": Color("6a5440"), "hair": Color("c89070"), "band": Color("c89070"), "belt": Color("6a3a1a"),
@@ -303,7 +303,7 @@ const TYPES := {
 	"shinobi": {
 		"name": "忍者", "rank": "grunt", "hp": 40.0, "posture": 30.0, "speed": 190.0, "guard": 0.0,
 		"body": Vector2(24, 48), "prop": "", "stomp_stagger": true, "idle": ["stalk", "stalk"],
-		"look": {"scale": 0.95, "hat": false, "width": 0.9, "sword_len": 16.0,
+		"look": {"model": "skel_rogue", "scale": 0.95, "hat": false, "width": 0.9, "sword_len": 16.0,
 			"cloth": Color("2a2a34"), "cloth_dark": Color("1a1a22"), "cloth_light": Color("3e3e4c"),
 			"collar": Color("2a2a34"), "pants": Color("22222c"), "pants_dark": Color("15151c"),
 			"pants_light": Color("34343e"), "hair": Color("1a1a22"), "band": Color("a02a2a"), "belt": Color("3a2a2a")},
@@ -330,7 +330,7 @@ const TYPES := {
 	"hakai": {
 		"name": "破戒僧", "rank": "elite", "hp": 320.0, "posture": 210.0, "speed": 95.0, "guard": 0.45,
 		"body": Vector2(34, 60), "prop": "", "idle": ["shoulder", "stalk"],
-		"look": {"scale": 1.25, "hat": false, "width": 1.35, "sword_len": 50.0,
+		"look": {"model": "skel_mage", "scale": 1.25, "hat": false, "width": 1.35, "sword_len": 50.0,
 			"cloth": Color("4a2a3a"), "cloth_dark": Color("2e1a24"), "cloth_light": Color("6a3e54"),
 			"collar": Color("c8b090"), "pants": Color("2a2026"), "pants_dark": Color("1a1418"),
 			"pants_light": Color("40323a"), "hair": Color("b88468"), "band": Color("b88468"), "belt": Color("8a2a2a"),
@@ -365,7 +365,7 @@ const TYPES := {
 	"jakko": {
 		"name": "禅刃 · 寂光", "rank": "boss", "hp": 280.0, "posture": 240.0, "speed": 120.0, "guard": 0.5,
 		"body": Vector2(30, 58), "prop": "", "idle": ["liu_calm", "st_hasso"], "title_sub": "第二层 · 竹林古寺",
-		"look": {"scale": 1.14, "hat": false, "cape": true, "width": 1.05, "sword_len": 30.0,
+		"look": {"model": "barbarian", "scale": 1.14, "hat": false, "cape": true, "width": 1.05, "sword_len": 30.0,
 			"cloth": Color("d8d0c0"), "cloth_dark": Color("9a9080"), "cloth_light": Color("f0ece4"),
 			"collar": Color("5a2a2a"), "pants": Color("3a2a2a"), "pants_dark": Color("241a1a"),
 			"pants_light": Color("54403c"), "hair": Color("d8a888"), "band": Color("8a2a2a"), "belt": Color("8a2a2a"),
