@@ -229,7 +229,8 @@ def main():
         print(part, "voxels", len(seen), "len", round(L, 1))
     keep = ["hips", "spine", "chest", "head", "upperarm.r", "lowerarm.r", "wrist.r", "upperarm.l", "lowerarm.l", "wrist.l",
             "upperleg.r", "lowerleg.r", "foot.r", "upperleg.l", "lowerleg.l", "foot.l"]
-    out = {"source": ARGS.source, "license": ARGS.license, "height": ARGS.height,
+    # res：游戏里角色身高固定按 50 格算，身高给得越高体素切得越细（100 → 一格切成 2×2×2）
+    out = {"source": ARGS.source, "license": ARGS.license, "height": ARGS.height, "res": round(ARGS.height / 50.0, 3),
            "joints": {k: [round(float(x), 2) for x in joints[k]] for k in keep if k in joints}, "parts": parts}
     with open(ARGS.out, "w") as f:
         json.dump(out, f, separators=(",", ":"))
