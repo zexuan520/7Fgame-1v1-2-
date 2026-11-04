@@ -73,6 +73,7 @@ func number(world_pos: Vector3, text: String, col: Color, scale: float = 1.0, cr
 	l.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.04))
 	l.add_theme_constant_override("outline_size", 7)
 	l.pivot_offset = Vector2(20, 16)
+	l.visible = false
 	add_child(l)
 	var vel := Vector2(randf_range(-60, 60), randf_range(-150, -110))
 	_nums.append([l, world_pos + Vector3(randf_range(-0.25, 0.25), 0.2, 0), vel, 0.0, crit, 1.0])
@@ -87,6 +88,7 @@ func callout(world_pos: Vector3, text: String, col: Color, scale: float = 1.0) -
 	l.add_theme_color_override("font_color", col)
 	l.add_theme_color_override("font_outline_color", Color(0.02, 0.06, 0.07))
 	l.add_theme_constant_override("outline_size", 8)
+	l.visible = false  # 第一帧算出屏幕位置前先藏着，不然会在左上角闪一下
 	add_child(l)
 	_nums.append([l, world_pos, Vector2(0, -50), 0.0, true, 1.0])
 
@@ -129,6 +131,7 @@ func _process(dt: float) -> void:
 			var off := v * t + Vector2(0, 160.0) * t * t
 			l.position = sp + off - l.size * 0.5
 			l.pivot_offset = l.size * 0.5
+			l.visible = true
 		# 暴击：先放大弹一下再回落
 		var s := 1.0
 		if bool(e[4]):
