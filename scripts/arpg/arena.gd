@@ -24,12 +24,12 @@ var entry_pos := Vector3.ZERO
 var _solid := []                   # 不能走的格子（地面坐标矩形），刷怪时避开
 
 const ZONES := {
-	"forest": {"bg": Color(0.03, 0.07, 0.08), "fog": Color(0.07, 0.2, 0.21), "fog_d": 0.75, "amb": Color(0.3, 0.55, 0.58), "amb_e": 1.05,
-		"sun": Color(0.55, 0.85, 0.95), "sun_e": 1.15, "spore": Color(0.55, 1.0, 0.85)},
-	"temple": {"bg": Color(0.03, 0.04, 0.06), "fog": Color(0.06, 0.14, 0.18), "fog_d": 0.7, "amb": Color(0.3, 0.38, 0.55), "amb_e": 0.85,
-		"sun": Color(0.55, 0.7, 1.0), "sun_e": 0.9, "spore": Color(0.7, 0.9, 1.0)},
-	"sakura": {"bg": Color(0.05, 0.04, 0.09), "fog": Color(0.12, 0.1, 0.2), "fog_d": 0.65, "amb": Color(0.38, 0.32, 0.55), "amb_e": 0.95,
-		"sun": Color(0.7, 0.75, 1.0), "sun_e": 1.05, "spore": Color(1.0, 0.6, 0.8)},
+	"forest": {"bg": Color(0.03, 0.07, 0.08), "fog": Color(0.07, 0.2, 0.21), "fog_d": 0.75, "amb": Color(0.3, 0.55, 0.58), "amb_e": 1.15,
+		"sun": Color(0.55, 0.85, 0.95), "sun_e": 1.25, "spore": Color(0.55, 1.0, 0.85)},
+	"temple": {"bg": Color(0.03, 0.04, 0.06), "fog": Color(0.06, 0.14, 0.18), "fog_d": 0.7, "amb": Color(0.4, 0.42, 0.55), "amb_e": 1.35,
+		"sun": Color(0.6, 0.72, 1.0), "sun_e": 1.1, "spore": Color(0.7, 0.9, 1.0)},
+	"sakura": {"bg": Color(0.05, 0.04, 0.09), "fog": Color(0.12, 0.1, 0.2), "fog_d": 0.65, "amb": Color(0.45, 0.38, 0.6), "amb_e": 1.25,
+		"sun": Color(0.72, 0.76, 1.0), "sun_e": 1.2, "spore": Color(1.0, 0.6, 0.8)},
 }
 
 
@@ -94,12 +94,12 @@ func _floor_color(x: float, z: float) -> Color:
 				c = Color(0.36, 0.1, 0.1) * (0.9 + n2 * 0.1)
 				if absf(absf(x) - 2.0) < FV:
 					c = Color(0.45, 0.34, 0.15)
-			return c * (0.92 + n * 0.1)
+			return c * (1.15 + n * 0.12)
 		_:
 			var tile := fposmod(x, 1.4) < FV * 0.7 or fposmod(z, 1.4) < FV * 0.7
-			var c := Color(0.2, 0.19, 0.24).lerp(Color(0.25, 0.24, 0.29), n * 0.5 + 0.5)
+			var c := Color(0.3, 0.28, 0.34).lerp(Color(0.37, 0.35, 0.41), n * 0.5 + 0.5)
 			if tile and n2 > -0.4:
-				c = Color(0.14, 0.13, 0.17)
+				c = Color(0.2, 0.18, 0.24)
 			# 花瓣：靠近樱树多，远处少
 			var near_tree := clampf(1.0 - Vector2(x, z + size.y * 0.5 - 4.5).length() / 9.0, 0.0, 1.0)
 			if rng.randf() < 0.004 + 0.08 * near_tree * near_tree:
@@ -226,6 +226,19 @@ func voxel_piece(g: VoxelGrid, pos: Vector3, vs: float, glow: VoxelGrid = null, 
 		var aabb := mi.get_aabb()
 		occluders.append([root, mats, AABB(pos + aabb.position, aabb.size)])
 	return root
+
+
+## 鬼火：pixelfx 的像素火苗（循环）+ 一盏同色点光
+func spirit_fire(p: Vector3, c: Color, h: float = 1.0, energy: float = 1.8, rng_: float = 6.0) -> void:
+	if Vfx.I != null:
+		var f := Vfx.I.sheet("spirit-flame", p, h, c, 2.0, false, 1.0e6)
+		f.reparent(self)
+	var l := OmniLight3D.new()
+	l.light_color = c
+	l.light_energy = energy
+	l.omni_range = rng_
+	add_child(l)
+	l.position = p + Vector3(0, h * 0.4, 0)
 
 
 func _flame(p: Vector3) -> void:
@@ -529,6 +542,11 @@ func _dress_forest() -> void:
 		var p := Vector3(rng.randf_range(-hx + 3, hx - 3), 0, rng.randf_range(-hz + 3, hz - 3))
 		if p.length() > 4.0:
 			kit(["gravestone", "grave_a", "gravemarker", "ribcage", "sword_shield"][rng.randi() % 5], p, rng.randf() * TAU, 1.0, false)
+	# 鬼火：几团飘在墙根的青色火，给暗处一点光
+	for i in range(4):
+		var side := -1.0 if i % 2 == 0 else 1.0
+		var p := Vector3(side * rng.randf_range(hx - 5.0, hx - 3.0), 0.5, rng.randf_range(-hz + 3, hz - 4))
+		spirit_fire(p, Color(0.55, 1.0, 0.85), 0.9, 1.4, 5.5)
 	# 发光蘑菇丛：青色小光点，沿墙根和树根长
 	for i in range(16):
 		var edge_p := Vector3(rng.randf_range(-hx + 1.5, hx - 1.5), 0, rng.randf_range(-hz + 1.5, hz - 1.5))
@@ -593,6 +611,18 @@ func _dress_temple() -> void:
 		voxel_piece(w, Vector3(side * (hx + 0.2), 0, -hz), 0.12)
 	# 香烟
 	_smoke_column(Vector3(0, 1.3, -hz + 1.2))
+	# 殿中四盏石灯，点着青色鬼火；头顶几盏暖色吊灯把地板照亮
+	for p: Vector3 in [Vector3(-3.6, 0, -3.0), Vector3(3.6, 0, -3.0), Vector3(-3.6, 0, 3.0), Vector3(3.6, 0, 3.0)]:
+		var sl := _stone_lantern()
+		voxel_piece(sl[0], p, 0.12, sl[1], Vector3(0.8, 2, 0.8))
+		spirit_fire(p + Vector3(0, 1.7, 0), Color(0.6, 1.0, 1.0), 1.9, 2.2, 7.0)
+	for p: Vector3 in [Vector3(0, 4.0, -1.0), Vector3(-9, 4.0, 3.0), Vector3(9, 4.0, 3.0)]:
+		var wl := OmniLight3D.new()
+		wl.light_color = Color(1.0, 0.72, 0.45)
+		wl.light_energy = 2.0
+		wl.omni_range = 12.0
+		add_child(wl)
+		wl.position = p
 	# 前景：靠镜头的粗梁和柱子剪影
 	for i in range(3):
 		var x := -hx + 5.0 + i * (size.x - 10.0) / 2.0
@@ -618,15 +648,16 @@ func _dress_sakura() -> void:
 	voxel_piece(_torii(46, 40), Vector3(-hx + 1.0, 0, -hz + 0.5), 0.14, null, Vector3.ZERO)
 	voxel_piece(_torii(46, 40), Vector3(hx - 7.5, 0, -hz + 0.5), 0.14, null, Vector3.ZERO)
 	# 石灯笼一圈
-	for p: Vector3 in [Vector3(-9, 0, -4), Vector3(9, 0, -4), Vector3(-11, 0, 4), Vector3(11, 0, 4), Vector3(-5, 0, -hz + 2), Vector3(5, 0, -hz + 2)]:
+	for p: Vector3 in [Vector3(-9, 0, -4), Vector3(9, 0, -4), Vector3(-11, 0, 4), Vector3(11, 0, 4), Vector3(-5, 0, -hz + 2), Vector3(5, 0, -hz + 2), Vector3(-3.8, 0, 5.5), Vector3(3.8, 0, 5.5)]:
 		var sl := _stone_lantern()
 		var n := voxel_piece(sl[0], p, 0.12, sl[1], Vector3(0.8, 2, 0.8))
 		var l := OmniLight3D.new()
 		l.light_color = Color(1.0, 0.7, 0.4)
-		l.light_energy = 1.6
-		l.omni_range = 5.0
+		l.light_energy = 2.4
+		l.omni_range = 7.0
 		n.add_child(l)
 		l.position = Vector3(0, 1.4, 0)
+		spirit_fire(p + Vector3(0, 1.7, 0), Color(1.0, 0.6, 0.85), 1.6, 1.6, 6.0)
 	# 围墙：低矮石墙 + 后面竹林剪影
 	for side: float in [-1.0, 1.0]:
 		var w := VoxelGrid.new(5)
@@ -774,7 +805,7 @@ func update_occluders(cam: Camera3D, targets: Array) -> void:
 			if aabb.grow(0.4).intersects_segment(from, to):
 				blocking = true
 				break
-		var want := 0.3 if blocking else 1.0
+		var want := 0.06 if blocking else 1.0
 		var cur: float = node.get_meta("fade", 1.0)
 		cur = move_toward(cur, want, 0.08)
 		node.set_meta("fade", cur)
