@@ -14,6 +14,7 @@ func _ready() -> void:
 
 
 func _run() -> void:
+	Game.swarm = false   # 成群另外测，流程测试里敌人数量要固定
 	Game.save_path = "user://test_save.cfg"
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(Game.save_path))
 	_reset_save()
@@ -1281,7 +1282,7 @@ func test_climb() -> void:
 	main._go_next(col)
 	await _wait_fade()
 	var e: Enemy = main.enemies[0]
-	_check(is_equal_approx(e.max_hp, float(e.data["hp"]) * 1.4) and is_equal_approx(e.dmg_mult, 1.2),
+	_check(is_equal_approx(e.max_hp, float(e.data["hp"]) * 1.4 * (Enemy.GRUNT_HP if e.is_grunt() else 1.0)) and is_equal_approx(e.dmg_mult, 1.2),
 		"敌人生命 ×1.4、伤害 ×1.2（%s %.0f）" % [e.kind, e.max_hp])
 	_check(main.background is BgBamboo, "换成竹林古寺的景")
 	await _beat_boss()

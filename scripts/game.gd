@@ -9,6 +9,7 @@ const PARRY_WINDOW_EASY := 0.25   # 低难度 0.25 秒
 var easy_mode := false
 var show_hitboxes := false
 var show_damage := true                # 伤害数字
+var swarm := true                   # 闯关时敌人成群（main._swarm）；流程测试里关掉，免得多出来的鸦打乱时序
 var voxel := true                 # 体素画面（参赛版）；关掉回到原来的 2D 像素画面（F6 或设置里切换）
 var font: Font
 

@@ -40,6 +40,7 @@ var _feinted := false
 var _retreat_t := 0.0
 var _intro_said := 0
 var intro_lines: Array = []  # 这次登场说的话
+const GRUNT_HP := 0.7        # 快节奏改造：杂兵成群出现、血少，两三刀一个
 var hp_mult := 1.0          # 层级系数（设计文档第 13 节）：第二层生命 ×1.4、伤害 ×1.2
 var dmg_mult := 1.0
 var _keep_jitter := 0.0     # 每个敌人想站的距离稍微错开，不会挤在一个点上
@@ -171,7 +172,7 @@ func display_name() -> String:
 func _apply_stats(full: bool) -> void:
 	var hp_ratio := 1.0 if full else hp / max_hp
 	var posture_ratio := 0.0 if full else posture / max_posture
-	max_hp = float(data["hp"]) * hp_mult * (COOP_HP_MULT if coop else 1.0)
+	max_hp = float(data["hp"]) * hp_mult * (COOP_HP_MULT if coop else 1.0) * (GRUNT_HP if data["rank"] == "grunt" else 1.0)
 	max_posture = float(data["posture"]) * (COOP_POSTURE_MULT if coop else 1.0)
 	hp = max_hp * hp_ratio
 	posture = max_posture * posture_ratio

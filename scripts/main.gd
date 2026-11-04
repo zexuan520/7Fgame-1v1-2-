@@ -560,9 +560,37 @@ func _spawn_wave(i: int, intro: bool = false) -> void:
 			e.attack_cooldown = 1.0
 			spawn_dust(pos, 0.0, 10)
 			spawn_ring(pos + Vector2(0, -24), Color(1.0, 0.4, 0.3), 30.0)
+	if mode == "room" and not intro and Game.swarm:
+		_swarm(i, n)
 	if i > 0:
 		hud.toast("又来了一批！")
 		shake(2.0)
+
+
+## 快节奏改造：闯关时敌人成群。野狗两只一伙；后面的波次再从天上扑下来几只鸦
+func _swarm(i: int, n: int) -> void:
+	var extra := []
+	for s: Array in waves[i]:
+		if String(s[0]) == "dog" and s.size() <= 2:
+			extra.append(["dog", float(s[1]) + (36.0 if float(s[1]) < arena_w * 0.5 else -36.0)])
+	if i > 0:
+		for k in range(1 + int(Game.run != null and Game.run.floor_index > 0)):
+			extra.append(["crow", 0.0])
+	for s: Array in extra:
+		var pos := Vector2(float(s[1]), FLOOR_Y)
+		if s[0] == "crow":
+			var near := players[0] as Node2D if not players.is_empty() else null
+			var px: float = near.global_position.x if near != null else arena_w * 0.5
+			pos = Vector2(clampf(px + (160.0 if n % 2 == 0 else -160.0), 40.0, arena_w - 40.0), FLOOR_Y - 150.0)
+			n += 1
+		elif i > 0 and arena_w > VIEW_W * 1.5:
+			pos.x = _wave_x(pos.x < arena_w * 0.5, n)
+			n += 1
+		var e := spawn_enemy(s[0], pos)
+		if i == 0:
+			e.aggro = false
+		else:
+			e.attack_cooldown = 1.2
 
 
 func _update_room(dt: float) -> void:

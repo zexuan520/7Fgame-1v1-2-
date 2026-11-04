@@ -120,6 +120,8 @@ func _run() -> void:
 	await _setup_kind("dog")
 	await test_air_bounce()
 	await _setup()
+	await test_swarm()
+	await _setup()
 	await test_sprite()
 	await _setup()
 	await test_enemy_sprites()
@@ -1148,6 +1150,25 @@ func test_crow_and_hook() -> void:
 		_check(dove, "鸦会俯冲过来")
 	await _frames(30)
 	_check(p.hook_cd <= 0.0, "钩锁冷却会好")
+
+
+func test_swarm() -> void:
+	print("成群：野狗两只一伙，后面的波次加鸦；杂兵血 ×0.7")
+	for x in main.enemies:
+		x.queue_free()
+	main.enemies.clear()
+	main.mode = "room"
+	main.waves = [[["dog", 500.0]], [["dog", 600.0], ["archer", 700.0]]]
+	main._spawn_wave(1)
+	var kinds := {}
+	for x: Enemy in main.enemies:
+		kinds[x.kind] = int(kinds.get(x.kind, 0)) + 1
+	_check(int(kinds.get("dog", 0)) == 2 and int(kinds.get("crow", 0)) >= 1 and int(kinds.get("archer", 0)) == 1,
+		"第二波：狗 2、弓手 1、鸦 ≥1（%s）" % str(kinds))
+	var d: Enemy = main.enemies[0]
+	_check(is_equal_approx(d.max_hp, float(d.data["hp"]) * Enemy.GRUNT_HP), "杂兵血 ×0.7（%.0f）" % d.max_hp)
+	main.mode = "practice"
+	await _frames(2)
 
 
 func test_air_bounce() -> void:
