@@ -1,0 +1,10 @@
+# 武器清单：python voxelize_prop.py --batch weapon_list.txt assets/voxel/weapon --ppu 22 --vs 1 --grip（ADVENTURERS/SKELETONS 换成 KayKit 两个角色包的 Assets/gltf 路径）
+sword ADVENTURERS/sword_1handed.gltf
+sword2 ADVENTURERS/sword_2handed.gltf
+dagger ADVENTURERS/dagger.gltf
+axe2 ADVENTURERS/axe_2handed.gltf
+staff ADVENTURERS/staff.gltf
+skel_blade SKELETONS/Skeleton_Blade.gltf
+skel_axe SKELETONS/Skeleton_Axe.gltf
+skel_staff SKELETONS/Skeleton_Staff.gltf
+skel_shield SKELETONS/Skeleton_Shield_Large_A.gltf

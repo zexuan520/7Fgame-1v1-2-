@@ -46,3 +46,25 @@ func j(name: String) -> Vector3:
 
 func length(pname: String) -> float:
 	return float(parts[pname]["len"]) if parts.has(pname) else 0.0
+
+
+static var _weapons := {}
+
+
+## 开源武器（assets/voxel/weapon/*.json，原点在握把、刃朝 -y），按给定的总长缩放成网格；没有返回 null
+static func weapon_mesh(id: String, length: float) -> ArrayMesh:
+	var key := "%s|%.1f" % [id, length]
+	if _weapons.has(key):
+		return _weapons[key]
+	var path := "res://assets/voxel/weapon/%s.json" % id
+	if id == "" or not FileAccess.file_exists(path):
+		_weapons[key] = null
+		return null
+	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var g := VoxelGrid.new(1)
+	var v: Array = d["vox"]
+	for i in range(0, v.size(), 6):
+		g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3]), int(v[i + 4]), int(v[i + 5]))
+	var m := g.build(length / maxf(float(d.get("len", 40.0)), 1.0))
+	_weapons[key] = m
+	return m

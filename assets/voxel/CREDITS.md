@@ -23,3 +23,7 @@
 - KayKit Dungeon Remastered 1.0：木桶、木箱、火把、蜡烛、碎石、旗、柱子、架子、桌子、墙
 - KayKit Halloween Bits 1.0：墓碑、坟、灯笼、灯柱、骷髅柱、栅栏、神龛、棺材、长椅、南瓜灯、骷髅蜡烛、肋骨、枯树、松树、地穴、拱门
 - KayKit Medieval Hexagon Pack 1.0：木材堆、麻袋、房屋、酒馆、教堂、塔楼、风车、废墟、树林、帐篷
+
+## 武器（weapon/）
+
+`weapon/*.json` 由 `voxelize_prop.py --grip` 体素化（原点在握把），清单见 `tools/voxelize/weapon_list.txt`。KayKit Adventurers 1.0 的单手剑、双手剑、匕首、双手斧、法杖，KayKit Skeletons 1.0 的骷髅刀、骷髅斧、骷髅法杖、骷髅大盾。Kay Lousberg，CC0 1.0。

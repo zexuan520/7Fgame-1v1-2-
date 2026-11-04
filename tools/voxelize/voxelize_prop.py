@@ -48,7 +48,7 @@ def mesh_colors(m, pts, tri):
     return np.tile(base.astype(int), (len(pts), 1))
 
 
-def voxelize(path, ppu, vs, fit_h=None):
+def voxelize(path, ppu, vs, fit_h=None, grip=False):
     scene = trimesh.load(path, force="scene")
     meshes = []
     for node in scene.graph.nodes_geometry:
@@ -62,6 +62,11 @@ def voxelize(path, ppu, vs, fit_h=None):
         ppu = fit_h / max(hi[1] - lo[1], 1e-6)
     pitch = vs / ppu                                  # 一格是模型里多长
     center = np.array([(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2])
+    if grip:
+        # 武器：原点留在握把（模型原点），刃朝 +y 的转成朝 -y（和 VoxelRig 的部件一样）
+        center = np.zeros(3)
+        for m in meshes:
+            m.vertices = m.vertices * np.array([-1.0, -1.0, 1.0])
     occ = {}
     for m in meshes:
         m.vertices = (m.vertices - center) / pitch    # 换成格子单位
@@ -88,7 +93,8 @@ def voxelize(path, ppu, vs, fit_h=None):
         flat += [x, y, z, int(c[0]), int(c[1]), int(c[2])]
         xs.append(x); ys.append(y); zs.append(z)
     size = [max(xs) - min(xs) + 1, max(ys) - min(ys) + 1, max(zs) - min(zs) + 1] if xs else [0, 0, 0]
-    return {"vs": vs, "size": size, "min": [min(xs), min(ys), min(zs)] if xs else [0, 0, 0], "vox": flat}
+    length = float((hi[1] - lo[1]) / pitch * vs)
+    return {"vs": vs, "len": length, "size": size, "min": [min(xs), min(ys), min(zs)] if xs else [0, 0, 0], "vox": flat}
 
 
 def main():
@@ -100,6 +106,7 @@ def main():
     ap.add_argument("--vs", type=float, default=2.0)
     ap.add_argument("--fit-h", type=float, default=0.0)
     ap.add_argument("--source", default="")
+    ap.add_argument("--grip", action="store_true", help="武器：原点在握把，刃朝 -y")
     a = ap.parse_args()
     jobs = []
     if a.batch:
@@ -119,7 +126,7 @@ def main():
     else:
         jobs.append((a.model, a.out, a.ppu, a.fit_h, a.source))
     for src, out, ppu, fit, source in jobs:
-        d = voxelize(src, ppu, a.vs, fit or None)
+        d = voxelize(src, ppu, a.vs, fit or None, a.grip)
         d["source"] = source
         with open(out, "w") as f:
             json.dump(d, f, separators=(",", ":"))

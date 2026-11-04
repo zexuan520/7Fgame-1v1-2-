@@ -130,6 +130,13 @@ func _setup_model(key: String) -> void:
 		add_child(mi)
 		parts[pname] = mi
 	_add_part("sword", key)
+	# 武器换成开源模型（握把在手里，长度照原来的刀长，刀光也对得上）
+	var wid := look.weapon_model
+	if wid == "" and is_player:
+		wid = {"katana": "sword", "nodachi": "sword2", "dual": "dagger", "spear": "staff"}.get(look.weapon, "sword")
+	var wm := VoxelModel.weapon_mesh(wid, look.sword_len)
+	if wm != null:
+		(parts["sword"] as MeshInstance3D).mesh = wm
 	# Puppet 的腿长对上模型的腿长（模型是大头小身子，腿短）
 	var rest := Puppet.solve(Puppet.pose({}), Puppet.grip_of(look))
 	var p_leg := (rest["hip"] as Vector2).distance_to(rest["knee_f"]) + (rest["knee_f"] as Vector2).distance_to(rest["foot_f"])
@@ -413,7 +420,6 @@ func _sync_model(jt: Dictionary, pose: Dictionary) -> MeshInstance3D:
 	var sa := float(pose["sword"])
 	var sd := Vector3(sin(sa), -cos(sa), 0.0)
 	_place3("sword", hand_f + Vector3(0, 0, 2.0), hand_f + Vector3(0, 0, 2.0) + sd)
-	sw.transform.basis = sw.transform.basis.scaled(Vector3.ONE * 0.85)   # Q 版手短，刀也短一点
 	return sw
 
 
