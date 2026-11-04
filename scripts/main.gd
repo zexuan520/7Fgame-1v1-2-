@@ -139,6 +139,9 @@ func _ready() -> void:
 		_load_hub()
 		if not Game.title_done:
 			open_sys("title")
+	if not Game.loaded_reported:   # 第一帧画出来后才算能玩
+		Game.loaded_reported = true
+		get_tree().process_frame.connect(Zaohua.game_loaded, CONNECT_ONE_SHOT)
 
 
 # ---------- 房间搭建 ----------

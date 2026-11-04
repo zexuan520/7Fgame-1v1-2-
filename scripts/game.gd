@@ -12,6 +12,7 @@ var font: Font
 
 var practice := false             # 练武场：旧的单场地，数字键换对手（F4 切换）
 var title_done := false           # 这次启动已经过了标题画面
+var loaded_reported := false      # 已经告诉造化平台“加载完成、可以玩了”（每次启动只报一次）
 var run: Run = null               # 正在进行的一局；null 时在破庙
 var last_result := {}             # 上一局的结算，回到破庙时显示
 var save_path := "user://save.cfg"
