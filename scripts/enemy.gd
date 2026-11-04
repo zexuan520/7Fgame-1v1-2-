@@ -68,7 +68,11 @@ static var POSES := {}
 
 ## 按类型建敌人：特殊画法的类型用子类
 static func create(type_key: String) -> Enemy:
-	var e: Enemy = Dog.new() if type_key == "dog" else Enemy.new()
+	var e: Enemy
+	match type_key:
+		"dog": e = Dog.new()
+		"crow": e = Crow.new()
+		_: e = Enemy.new()
 	e.kind = type_key
 	return e
 

@@ -89,6 +89,21 @@ const TYPES := {
 		},
 	},
 
+	# ---------- 杂兵：鸦（会飞） ----------
+	# 在玩家斜上方盘旋，蓄一下就俯冲啄过来，啄完飞回去。血很少，空中一刀就打翻，适合空中连段和钩锁突进。
+	"crow": {
+		"name": "鸦", "rank": "grunt", "hp": 24.0, "posture": 20.0, "speed": 190.0, "guard": 0.0,
+		"body": Vector2(24, 20), "prop": "", "fly": true, "beast": true,
+		"look": {"feather": Color("2a2733"), "feather_dark": Color("17151d"), "beak": Color("c9a54a")},
+		"ai": {"attack_range": 230.0, "keep": [80.0, 140.0], "picks": [["dive", 100]]},
+		"phases": [{"speed": 1.0}],
+		"moves": {
+			"dive": {"name": "俯冲", "kind": "slash", "unblockable": false,
+				"dmg": 12.0, "posture": 14.0, "reach": 0.0, "size": Vector2(28, 24), "height": 12.0, "lunge": 0.0,
+				"hits": [[0.42, 0.5, 0.45]], "fx": "none"},
+		},
+	},
+
 	# ---------- 杂兵：弓手 ----------
 	# 站远处放箭；箭能格挡，弹反会把箭打回去。贴身会踢一脚然后后跳拉开。
 	"archer": {

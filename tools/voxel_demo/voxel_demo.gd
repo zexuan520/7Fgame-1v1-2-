@@ -122,7 +122,7 @@ func _boss() -> void:
 func _feel() -> void:
 	var p: Player = main.players[0]
 	p.global_position = Vector2(300.0, 300.0)
-	for sp in [["dog", 560.0, 0.0], ["dog", 640.0, 0.0], ["shinobi", 760.0, 0.0], ["shinobi", 880.0, 0.0], ["dog", 980.0, 0.0]]:
+	for sp in [["dog", 560.0, 0.0], ["crow", 640.0, 120.0], ["shinobi", 760.0, 0.0], ["crow", 820.0, 140.0], ["shinobi", 880.0, 0.0], ["dog", 980.0, 0.0]]:
 		var e: Enemy = main.spawn_enemy(sp[0], Vector2(sp[1], 300.0 - sp[2]))
 		e.attack_cooldown = 1.5
 	var frames := 0
@@ -143,8 +143,8 @@ func _feel() -> void:
 		var alive: Array = main.get_enemies().filter(func(e): return e.is_hittable())
 		if alive.is_empty():
 			if frames % 60 == 0:
-				for sp in [["dog", p.global_position.x + 260.0], ["shinobi", p.global_position.x + 340.0], ["dog", p.global_position.x + 420.0]]:
-					main.spawn_enemy(sp[0], Vector2(minf(sp[1], main.arena_w - 40.0), 300.0)).attack_cooldown = 1.0
+				for sp in [["crow", p.global_position.x + 260.0, 130.0], ["shinobi", p.global_position.x + 340.0, 0.0], ["crow", p.global_position.x + 420.0, 110.0]]:
+					main.spawn_enemy(sp[0], Vector2(minf(sp[1], main.arena_w - 40.0), 300.0 - sp[2])).attack_cooldown = 1.0
 			press.call("p1_right", 4)
 			continue
 		var near: Enemy = alive[0]

@@ -360,7 +360,13 @@ func sync(dt: float) -> void:
 			rigs.erase(f)
 	for f in alive.keys():
 		if not rigs.has(f):
-			var rig: Node3D = VoxelDog.new() if f is Dog else VoxelRig.new()
+			var rig: Node3D
+			if f is Dog:
+				rig = VoxelDog.new()
+			elif f is Crow:
+				rig = VoxelCrow.new()
+			else:
+				rig = VoxelRig.new()
 			add_child(rig)
 			rig.setup(f)
 			rigs[f] = rig

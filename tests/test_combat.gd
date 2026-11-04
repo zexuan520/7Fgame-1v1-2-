@@ -115,6 +115,10 @@ func _run() -> void:
 	await test_tool_hook_smoke_flame()
 	await _setup()
 	await test_items()
+	await _setup_kind("crow")
+	await test_crow_and_hook()
+	await _setup_kind("dog")
+	await test_air_bounce()
 	await _setup()
 	await test_sprite()
 	await _setup()
@@ -1103,6 +1107,96 @@ func test_enemy_data() -> void:
 			if not Enemy.POSES.has(pose):
 				bad.append("%s 的待机姿势 %s" % [key, pose])
 	_check(bad.is_empty(), "招式和姿势都对得上 %s" % str(bad))
+
+
+func test_crow_and_hook() -> void:
+	print("鸦：会飞、俯冲；钩锁突进飞过去砍，空中砍中弹起")
+	e.global_position = Vector2(560, 190)
+	e.attack_cooldown = 9999.0
+	await _frames(30)
+	_check(e.global_position.y < 260.0, "鸦飞在空中不掉下来（y %.0f）" % e.global_position.y)
+	var y0 := p.global_position.y
+	await _tap("p1_hook")
+	var hooked := false
+	var cut := false
+	var min_y := y0
+	for i in range(40):
+		await _frames(1)
+		hooked = hooked or p.state == Player.S.HOOK
+		min_y = minf(min_y, p.global_position.y)
+		if p.state == Player.S.ATTACK and p.attack.get("id", "") == "hook_cut":
+			cut = true
+	_check(hooked, "按钩锁键进入钩锁突进")
+	_check(min_y < y0 - 40.0, "被链子拉到空中（最高离地 %.0f）" % (y0 - min_y))
+	_check(cut, "飞到了接钩锁斩")
+	_check(e.hp < e.max_hp or e.state == Enemy.S.DYING, "鸦挨了一刀（hp %.0f）" % e.hp)
+	await _frames(60)
+	# 鸦俯冲
+	if e.is_hittable():
+		e.hp = e.max_hp
+		p.global_position = Vector2(400, 300)
+		p.velocity = Vector2.ZERO
+		e.global_position = Vector2(480, 200)
+		await _frames(5)
+		e.attack_cooldown = 0.0
+		var dove := false
+		for i in range(90):
+			await _frames(1)
+			if e.state == Enemy.S.ACTIVE:
+				dove = true
+				break
+		_check(dove, "鸦会俯冲过来")
+	await _frames(30)
+	_check(p.hook_cd <= 0.0, "钩锁冷却会好")
+
+
+func test_air_bounce() -> void:
+	print("空中连段：空中砍中弹起、空中斩和空中冲刺重置")
+	e.aggro = false
+	e.global_position = Vector2(440, 300)
+	p.global_position = Vector2(400, 300)
+	await _frames(3)
+	await _tap("p1_jump")
+	await _frames(3)
+	p.global_position = Vector2(410, 284)   # 贴着野狗的高度（空中斩的判定框够得着）
+	p.velocity = Vector2.ZERO
+	p.facing = 1
+	p.air_dashes = 0
+	p._air_attacks = 1
+	await _tap("p1_attack")
+	var bounced := false
+	var dash_reset := false
+	for i in range(40):
+		await _frames(1)
+		if i < 12:
+			e.global_position = Vector2(440.0, 300.0)
+			e.velocity = Vector2.ZERO
+		if p.velocity.y < -150.0 and not p.is_on_floor() and p._air_attacks == 0:
+			bounced = true
+			dash_reset = dash_reset or p.air_dashes == Player.AIR_DASHES
+	_check(bounced, "砍中弹起、空中斩重置（狗血 %.0f）" % e.hp)
+	_check(dash_reset, "空中冲刺重置")
+	e.global_position = Vector2(800, 300)
+	await _frames(60)
+	# 空中冲刺每次离地只有一次
+	await _tap("p1_jump")
+	await _frames(6)
+	await _tap("p1_dodge")
+	var first := false
+	for i in range(4):
+		await _frames(1)
+		first = first or p.state == Player.S.DODGE
+	_check(first and p.air_dashes == 0, "空中能冲刺一次（剩 %d）" % p.air_dashes)
+	p.dodge_cooldown = 0.0
+	await _frames(14)
+	p.dodge_cooldown = 0.0
+	await _tap("p1_dodge")
+	var second := false
+	for i in range(4):
+		await _frames(1)
+		second = second or p.state == Player.S.DODGE
+	_check(not second or p.is_on_floor(), "空中冲刺用完了不能再冲")
+	await _frames(60)
 
 
 func test_shinobi() -> void:
