@@ -42,6 +42,7 @@ var _secret: Node3D            # 这间房里的裂墙（打三下开出密室�
 var _secret_hits := 0
 var _trial: ArpgTrial           # 试炼房：同一间房里四道试（疾 / 守 / 狂 / 乱）
 var _extra_portals: Array[Node3D] = []   # 密室光门（和“前路”光门同时存在）
+var side_rooms: Array[SideRoom] = []     # 这间房两侧墙外的侧室
 var _sw_step := -1
 var _sw_t := 0.0
 var _title: TitleCard
@@ -345,6 +346,7 @@ func _clear_scene() -> void:
 		if is_instance_valid(p):
 			p.queue_free()
 	_extra_portals.clear()
+	side_rooms.clear()
 	for n: ArpgNpc in _npcs:
 		if is_instance_valid(n):
 			n.queue_free()
@@ -353,8 +355,9 @@ func _clear_scene() -> void:
 	_going = false
 
 
-func _build_arena(zone_id: String, seed_value: int, sz: Vector2) -> void:
+func _build_arena(zone_id: String, seed_value: int, sz: Vector2, side_plans: Array = []) -> void:
 	arena = Arena.new()
+	arena.doors = side_plans
 	add_child(arena)
 	var _bt := Time.get_ticks_msec()
 	arena.build(zone_id, seed_value, sz)
@@ -370,6 +373,18 @@ func _build_arena(zone_id: String, seed_value: int, sz: Vector2) -> void:
 		a2.queue_free()
 	_apply_zone_env(arena.zone_info())
 	cam_rig.bounds = Rect2(-sz.x * 0.5 + 6.0, -sz.y * 0.5 + 2.0, sz.x - 12.0, sz.y - 6.5)   # 靠镜头那边多收一点，别拍到墙外
+	side_rooms.clear()
+	for pl: Dictionary in side_plans:
+		var sr := SideRoom.new()
+		sr.main = self
+		sr.arena = arena
+		arena.add_child(sr)
+		sr.build(pl)
+		side_rooms.append(sr)
+		# 镜头能跟进侧室
+		var r := sr.rect
+		var cr := Rect2(r.position.x + 4.0, r.position.y + 2.0, maxf(r.size.x - 8.0, 0.1), maxf(r.size.y - 6.0, 0.1))
+		cam_rig.bounds = cam_rig.bounds.merge(cr)
 
 
 ## 主角：死过一次（人偶碎了）或者还没有，就新做一个
@@ -591,7 +606,8 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 		sz = SMALL_ROOM
 	elif room_kind == "boss":
 		sz = BOSS_ROOM
-	_build_arena(zone_id, state.seed_value + fl * 1000 + state.run.row * 37 + state.run.col * 7 + (500 if room_kind == "secret" else 0), sz)
+	var plans := [] if _args.has("noside") else SideRoom.plan(room_kind, sz, _rng, String(_args.get("side", "")) if _args.get("side", "1") != "1" else "")
+	_build_arena(zone_id, state.seed_value + fl * 1000 + state.run.row * 37 + state.run.col * 7 + (500 if room_kind == "secret" else 0), sz, plans)
 	_place_hero(arena.entry_pos)
 	state.rooms += 1
 	wave_i = -1
@@ -680,6 +696,16 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 			var kits := {"blood_altar": "skull_candle", "wounded_ronin": "tent", "gambler": "table", "hermit": "well"}
 			_npc(String(ev["name"]), mid, {"kit": kits.get(ev["id"], "grave_a"), "scale": 1.1}, _open_event)
 			_open_portal()
+	# 没有战斗的房间：侧门一进来就开着
+	if _room_done:
+		for sr: SideRoom in side_rooms:
+			sr.unlock(false)
+	if _args.has("inside") and not side_rooms.is_empty():
+		# 测试：直接站进第一间侧室门口
+		_args.erase("inside")
+		var sr0 := side_rooms[0]
+		sr0.unlock(false)
+		_place_hero(sr0.at(0.25, 0.5), Vector3(sr0.side, 0, 0))
 
 
 # ---------- 试刀场（新手教学） ----------
@@ -977,6 +1003,9 @@ func _room_cleared() -> void:
 	var clean := is_instance_valid(hero) and hero.hits_taken == _room_hits0
 	if clean and room_kind in ["fight", "elite"]:
 		ArpgAch.unlock("room_clean")
+	for sr: SideRoom in side_rooms:
+		if is_instance_valid(sr):
+			sr.unlock(true)
 	if room_kind == "boss":
 		var fl := state.floor_i()
 		if fl == 0:
@@ -1199,6 +1228,16 @@ func _take_page(n: ArpgNpc, pg: int) -> void:
 func _make_secret_wall(sz: Vector2) -> void:
 	var side := -1.0 if _rng.randf() < 0.5 else 1.0
 	var p := Vector3(side * (sz.x * 0.5 - 1.6), 0, _rng.randf_range(-sz.y * 0.5 + 4.0, sz.y * 0.5 - 6.0))
+	for _try in range(12):
+		# 别和侧室的门挤在一起
+		var clash := false
+		for sr: SideRoom in side_rooms:
+			if signf(sr.side) == side and absf(sr.door_z - p.z) < 6.0:
+				clash = true
+		if not clash:
+			break
+		side = -side if _try % 2 == 0 else side
+		p = Vector3(side * (sz.x * 0.5 - 1.6), 0, _rng.randf_range(-sz.y * 0.5 + 4.0, sz.y * 0.5 - 6.0))
 	_secret = Node3D.new()
 	arena.add_child(_secret)
 	_secret.global_position = p

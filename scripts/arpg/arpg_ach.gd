@@ -26,6 +26,10 @@ const LIST := [
 	["kills_1000", "斩千", "累计斩敌 1000", false],
 	["seal_1", "得印", "在试炼房拿到第一枚印", false],
 	["seal_4", "四印俱全", "一间试炼房里拿齐疾、守、狂、乱四印", false],
+	["side_1", "推门而入", "第一次拿完一间侧室", false],
+	["side_20", "门门都推", "累计拿完 20 间侧室", false],
+	["side_ambush", "反客为主", "在侧室里打退一次伏兵", false],
+	["side_trial", "限时斩尽", "在时限内过一次侧室小试炼", false],
 	["secret", "墙后有风", "打塌裂墙，走进密室", true],
 	["gear_legend", "传世之物", "得到一件「传」品装备", false],
 	["rich", "腰缠万贯", "一局里身上同时揣着 300 铜钱", false],
@@ -38,6 +42,7 @@ const LIST := [
 ## 累计数到了就解锁：统计键 → [[数量, 成就id], ...]
 const STAT_GOALS := {
 	"kills": [[100, "kills_100"], [1000, "kills_1000"]],
+	"side_rooms": [[20, "side_20"]],
 }
 
 static var on_unlock: Callable      # func(id: String, name: String, desc: String)
