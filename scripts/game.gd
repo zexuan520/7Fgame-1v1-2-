@@ -29,7 +29,7 @@ const OLD_ALTAR_COSTS := {"vigor": [5, 10, 15], "gourd": [8, 16], "purse": [4, 8
 
 
 ## 设置（和存档分开放）：音量 0-1、低难度、改过的按键 {动作: [键码, ...]}
-var settings := {"master": 0.8, "music": 0.6, "sfx": 0.8, "easy": false, "voxel": true, "keys": {}}
+var settings := {"master": 0.8, "music": 0.6, "sfx": 0.8, "easy": false, "voxel": true, "keys": {}, "quality": -1}   # quality -1 = 还没选，按平台定
 var settings_path := "user://settings.cfg"
 const SFX_VOICES := 16
 const SFX_GAP := 0.035              # 同一个音效太密时（一把铜钱）跳过

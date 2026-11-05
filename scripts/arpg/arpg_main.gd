@@ -55,6 +55,7 @@ func _ready() -> void:
 	_rng.randomize()
 	_parse_args()
 	_setup_world()
+	apply_quality(_initial_quality())
 	if _args.has("shot"):
 		for t: String in String(_args.get("shot_t", "3.0")).split(","):
 			_shots.append(float(t))
@@ -132,6 +133,56 @@ func _parse_args() -> void:
 		if a.begins_with("--"):
 			var kv := a.substr(2).split("=", true, 1)
 			_args[kv[0]] = kv[1] if kv.size() > 1 else "1"
+
+
+# ---------- 画质 ----------
+## 0 低：关阴影、辉光、后期，3D 画面按 70% 分辨率渲染；1 中：开辉光和后期，关阴影，85%；2 高：全开。
+## 网页版第一次默认中，电脑版默认高；开打头 20 秒平均帧数太低会自动降一档（只降一次，记进设置）。
+const QUALITY_NAMES := ["低", "中", "高"]
+var quality := 2
+var _fps_t := 0.0
+var _fps_frames := 0
+var _fps_checked := false
+
+
+func _initial_quality() -> int:
+	if _args.has("quality"):
+		return clampi(int(_args["quality"]), 0, 2)
+	var q := int(Game.settings.get("quality", -1))
+	if q < 0:
+		q = 1 if OS.has_feature("web") else 2
+	return q
+
+
+func apply_quality(q: int) -> void:
+	quality = clampi(q, 0, 2)
+	sun.shadow_enabled = quality >= 2
+	world_env.environment.glow_enabled = quality >= 1
+	post_rect.visible = quality >= 1
+	var vp := get_viewport()
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = [0.7, 0.85, 1.0][quality]
+	vp.msaa_3d = Viewport.MSAA_DISABLED if quality < 2 else Viewport.MSAA_2X
+
+
+## 头 20 秒战斗里的平均帧数低于 40 就降一档
+func _watch_fps(_dt: float) -> void:
+	if _fps_checked or mode != "room" or quality == 0 or _args.has("quality") or _args.has("demo") or _args.has("shot"):
+		return
+	# 按真实时间算（录像时 --fixed-fps 下 dt 是固定的）
+	if _fps_frames == 0:
+		_fps_t = Time.get_ticks_msec() / 1000.0
+	_fps_frames += 1
+	var secs := Time.get_ticks_msec() / 1000.0 - _fps_t
+	if secs < 20.0:
+		return
+	_fps_checked = true
+	var fps := _fps_frames / secs
+	if fps < 40.0:
+		apply_quality(quality - 1)
+		Game.settings["quality"] = quality
+		Game.write_settings()
+		hud.banner("画质 · %s" % QUALITY_NAMES[quality], "帧数偏低（%d），已自动调低；Esc 菜单里可以改" % int(fps), 3.0)
 
 
 # ---------- 世界、镜头、后期、HUD ----------
@@ -1471,7 +1522,8 @@ func _open_pause(sel: int = 0) -> void:
 	var pct := func(k: String) -> String: return "%d%%" % int(round(float(Game.settings[k]) * 100.0))
 	var items := [{"title": "继续"},
 		{"title": "音乐音量", "right": pct.call("music"), "desc": "按确认键切换"},
-		{"title": "音效音量", "right": pct.call("sfx"), "desc": "按确认键切换"}]
+		{"title": "音效音量", "right": pct.call("sfx"), "desc": "按确认键切换"},
+		{"title": "画质", "right": QUALITY_NAMES[quality], "desc": "低：关阴影和辉光，降低渲染分辨率，适合网页和轻薄本"}]
 	if mode == "room":
 		items.append({"title": "放弃这一局", "desc": "回到山门，魂玉带回六成"})
 	var m := _open_menu("暂停", "", items, "list", true)
@@ -1496,6 +1548,13 @@ func _on_pause_chosen(i: int) -> void:
 			Game.sfx("coin")
 			_open_pause(i)
 		3:
+			apply_quality((quality + 2) % 3)   # 高 → 中 → 低 → 高
+			Game.settings["quality"] = quality
+			Game.write_settings()
+			_fps_checked = true
+			Game.sfx("coin")
+			_open_pause(i)
+		4:
 			_close_menu()
 			_game_over(false)
 		_:
@@ -1550,6 +1609,7 @@ func _process(dt: float) -> void:
 		hud.coins = state.coins
 		hud.jade = state.jade
 	_clock += dt
+	_watch_fps(dt)
 	if _args.has("nohud"):
 		hud.visible = false   # 拍宣传图用
 	if _args.has("dbg") and int(_clock * 2.0) != int((_clock - dt) * 2.0):
