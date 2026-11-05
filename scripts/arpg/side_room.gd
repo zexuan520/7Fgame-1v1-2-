@@ -387,20 +387,24 @@ func _start_trial(n: ArpgNpc) -> void:
 	Game.sfx("danger", -2.0)
 	main.hud.banner(display_name(), "22 秒内斩尽来敌", 1.8)
 	var fl := main.state.floor_i()
-	_spawn([["crawler", 8], ["crawler", 4, "rogue", 3], ["skeleton", 3, "rogue", 3]][mini(fl, 2)])
+	_spawn([["crawler", 8, "skeleton", 2], ["crawler", 5, "rogue", 3, "mage", 1], ["skeleton", 3, "rogue", 3, "mage", 1]][mini(fl, 2)])
 
 
 func _end_fight(won: bool) -> void:
 	stage = "done"
+	if OS.get_cmdline_user_args().has("--tel"):
+		print("SIDE %s won=%s t=%.1f" % [kind, won, _fight_t])
 	_seal_off()
 	main.hud.wave_text = "清场"
-	main.state.side_rooms += 1
+	_count()
 	if kind == "ambush":
+		ArpgAch.unlock("side_ambush")
 		main.hud.banner("伏兵尽灭", "箱子里的东西归你了", 1.8)
 		Game.sfx("door")
 		var n := main._npc("宝箱", at(0.6, 0.45), {"kit": "box", "scale": 1.4}, func(x: ArpgNpc) -> void: _finish_chest(x, 2, false))
 		main.vfx.sheet("crit-hit", n.global_position, 3.0, Color(1.0, 0.9, 0.6), 2.0)
 	elif won:
+		ArpgAch.unlock("side_trial")
 		main.hud.banner("试炼成了", "选一个心法", 1.6)
 		for i in range(2 + mini(main.state.floor_i(), 1)):
 			main._loot(main.hero.global_position, "jade", 1)
@@ -412,13 +416,20 @@ func _end_fight(won: bool) -> void:
 	_update_label()
 
 
+## 拿完一间侧室：这一局计数 + 成就
+func _count() -> void:
+	main.state.side_rooms += 1
+	ArpgAch.unlock("side_1")
+	ArpgAch.add("side_rooms")
+
+
 func _finish_chest(n: ArpgNpc, min_rarity: int, count: bool = true) -> void:
 	if n.used:
 		return
 	main._open_chest(n, min_rarity)
 	if count:
 		stage = "done"
-		main.state.side_rooms += 1
+		_count()
 		_update_label()
 
 
@@ -427,7 +438,7 @@ func _use_spring(n: ArpgNpc) -> void:
 		return
 	n.used = true
 	stage = "done"
-	main.state.side_rooms += 1
+	_count()
 	main._heal(0.4)
 	var h := main.hero
 	if h.gourds < h.max_gourds:
@@ -442,7 +453,7 @@ func _read_lore(n: ArpgNpc) -> void:
 		return
 	n.used = true
 	stage = "done"
-	main.state.side_rooms += 1
+	_count()
 	Game.sfx("memory")
 	var pool: Array = LORE[zone]
 	var lines: Array = (pool[_rng.randi() % pool.size()] as Array).duplicate()
