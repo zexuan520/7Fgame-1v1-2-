@@ -2,7 +2,11 @@ class_name Foe
 extends Actor
 ## 敌人：状态机 巡逻 → 发现 → 追击 → 攻击前摇（红色预警）→ 攻击 → 硬直，挨打会僵直（重甲要先打掉韧性）。
 ## 攻击令牌：同时最多 MAX_TOKENS 个敌人在出招，其余的绕着主角游走，不会一拥而上。
-## 种类在 TYPES 里：腐骨虫（小型快攻）、骷髅兵（近战）、赤甲武士（重攻击、跳劈落地扬尘）、幽魂术士（远程法阵）、头目。
+## 种类在 TYPES 里：腐骨虫（小型快攻）、骷髅兵（近战）、骨刺客（快速突刺，打完就退开）、赤甲武士（重攻击、跳劈落地扬尘）、
+## 幽魂术士（远程法阵）、头目（夜樱剑鬼、百骨将会召唤小怪和地刺、寂光）。
+
+## 头目进二阶段时头上冒的字
+const RAGE_NAMES := {"boss": "剑鬼·狂", "boss3": "万骨·醒", "boss2": "残灯·燃"}
 
 signal dropped(pos: Vector3, coins: int, jade: int)
 
@@ -18,10 +22,14 @@ const TYPES := {
 		"hp": 190.0, "speed": 3.2, "detect": 14.0, "range": 2.8, "dmg": 22.0, "windup": 0.75, "attack": "heavy", "poise": 45.0, "coins": 9},
 	"mage": {"name": "幽魂术士", "model": "skel_mage", "weapon": "skel_staff", "wlen": 34.0, "tint": Color(0.85, 0.7, 1.15), "k": 1.0,
 		"hp": 42.0, "speed": 3.4, "detect": 16.0, "range": 11.0, "dmg": 14.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 4, "keep": 7.5},
+	"rogue": {"name": "骨刺客", "model": "skel_rogue", "weapon": "dagger", "wlen": 22.0, "tint": Color(0.8, 0.95, 0.85), "k": 0.95,
+		"hp": 38.0, "speed": 5.0, "detect": 15.0, "range": 2.6, "dmg": 10.0, "windup": 0.32, "attack": "lunge", "poise": 0.0, "coins": 3},
+	"boss3": {"name": "百骨将", "model": "skel_warrior", "weapon": "skel_axe", "wlen": 50.0, "tint": Color(0.9, 1.0, 0.85), "k": 2.0,
+		"hp": 1100.0, "speed": 3.3, "detect": 40.0, "range": 3.4, "dmg": 22.0, "windup": 0.65, "attack": "boss", "poise": 140.0, "coins": 75, "boss": true},
 	"boss": {"name": "夜樱剑鬼", "model": "barbarian", "weapon": "sword2", "wlen": 52.0, "tint": Color(0.78, 0.72, 0.9), "k": 1.55,
 		"hp": 900.0, "speed": 3.6, "detect": 40.0, "range": 3.2, "dmg": 20.0, "windup": 0.6, "attack": "boss", "poise": 120.0, "coins": 60, "boss": true},
 	"boss2": {"name": "寂光", "model": "knight", "weapon": "sword2", "wlen": 56.0, "tint": Color(0.85, 0.9, 1.05), "k": 1.6,
-		"hp": 1300.0, "speed": 3.9, "detect": 40.0, "range": 3.4, "dmg": 24.0, "windup": 0.55, "attack": "boss", "poise": 160.0, "coins": 90, "boss": true},
+		"hp": 1150.0, "speed": 3.9, "detect": 40.0, "range": 3.4, "dmg": 24.0, "windup": 0.55, "attack": "boss", "poise": 160.0, "coins": 90, "boss": true},
 }
 
 var kind := "skeleton"
@@ -48,6 +56,9 @@ var _did_hit := false
 var _strafe := 1.0
 var _boss_phase := 0
 var _combo_n := 0
+var _summon_t := 6.0                 # 百骨将：多久召一次小怪
+var _spikes: Array[Vector3] = []     # 百骨将：地刺落点
+var _retreat_t := 0.0                # 骨刺客：刺完往后退
 var target: Hero
 var is_boss := false
 var dmg_scale := 1.0
@@ -242,6 +253,19 @@ func _st_chase(dt: float) -> void:
 	var speed := float(data["speed"])
 	var rng := float(data["range"])
 	var v := Vector3.ZERO
+	if kind == "boss3":
+		_summon_t -= dt
+		if _summon_t <= 0.0 and _cool <= 0.0 and get_tree().get_nodes_in_group("foes").size() < 7:
+			_summon_t = 11.0 if _boss_phase == 0 else 7.5
+			_get_token()
+			_begin_attack("boss_summon")
+			return
+	if _retreat_t > 0.0:
+		# 骨刺客刺完一下就斜着退开，再找机会
+		_retreat_t -= dt
+		_walk((-dir + dir.cross(Vector3.UP) * _strafe * 0.7).normalized() * speed * 0.9, dt)
+		face_to(facing.slerp(dir, 1.0 - exp(-8.0 * dt)))
+		return
 	if kind == "mage":
 		var keep := float(data.get("keep", 7.0))
 		if dist < keep - 1.5:
@@ -270,7 +294,10 @@ func _st_chase(dt: float) -> void:
 			_begin_attack("leap")
 			return
 		if is_boss and _cool <= 0.0 and dist > 5.0 and randf() < dt * 1.2 and _get_token():
-			_begin_attack("boss_leap" if randf() < 0.5 else "boss_wave")
+			if kind == "boss3":
+				_begin_attack("boss_spikes" if randf() < 0.6 else "boss_leap")
+			else:
+				_begin_attack("boss_leap" if randf() < 0.5 else "boss_wave")
 			return
 	_walk(v, dt)
 	face_to(facing.slerp(dir, 1.0 - exp(-8.0 * dt)))
@@ -296,8 +323,12 @@ func _choose_attack(_dist: float) -> String:
 			return "lunge"
 		"samurai":
 			return "heavy"
+		"rogue":
+			return "lunge"
 		"boss", "boss2":
 			return "boss_combo"
+		"boss3":
+			return "boss_spikes" if randf() < 0.25 else "boss_combo"
 	return "slash"
 
 
@@ -310,6 +341,10 @@ func _windup_time() -> float:
 			return 0.55 if _boss_phase == 0 else 0.4
 		"boss_wave":
 			return 0.7
+		"boss_summon":
+			return 0.9
+		"boss_spikes":
+			return 0.75 if _boss_phase == 0 else 0.6
 	return w
 
 
@@ -346,6 +381,21 @@ func _begin_attack(kind_: String) -> void:
 				var a := -0.6 + 0.3 * i
 				var d := _atk_dir.rotated(Vector3.UP, a)
 				Vfx.I.telegraph_rect(global_position, global_position + d * 12.0, 1.1, red, wt)
+		"boss_spikes":
+			# 骨刺从地下顶出来：一排朝主角，加几根落在主角身边
+			_spikes.clear()
+			var n := 5 if _boss_phase == 0 else 7
+			for i in range(n):
+				_spikes.append(global_position + _atk_dir * (2.5 + i * 1.8))
+			if target != null:
+				for i in range(2 + _boss_phase * 2):
+					var a := randf() * TAU
+					_spikes.append(target.global_position + Vector3(cos(a), 0, sin(a)) * randf_range(1.5, 3.5))
+			for s in _spikes:
+				Vfx.I.telegraph_circle(s, 1.2, Color(0.75, 1.0, 0.6, 0.6), wt)
+		"boss_summon":
+			Vfx.I.ground(global_position, "magic_01", Color(0.5, 1.0, 0.6, 0.8), 0.5, 5.0, wt + 0.3)
+			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "起来！", Color(0.7, 1.0, 0.7), 1.0)
 	Game.sfx("danger", -8.0)
 
 
@@ -357,8 +407,10 @@ func _st_windup(dt: float) -> void:
 	var pulse := 0.5 + 0.5 * sin(st_t * 28.0)
 	rig.set_glow(Color(1.0, 0.1, 0.05) * (0.25 + 0.6 * k) * pulse)
 	match _atk:
-		"rune":
+		"rune", "boss_summon":
 			_pose = Poses.cast(k, _anim_t)
+		"boss_spikes":
+			_pose = Poses.windup("enemy_v", k, st_t)
 		"leap", "boss_leap":
 			_pose = Poses.dash_ready(k)
 		"lunge":
@@ -460,6 +512,36 @@ func _st_attack(dt: float) -> void:
 				_area_hit(global_position, r, float(data["dmg"]) * 1.2, HitInfo.Weight.HEAVY)
 			if st_t >= dur + 0.15:
 				_end_attack()
+		"boss_spikes":
+			var k := st_t / 0.45
+			_pose = Poses.swing("enemy_v", 1.0, clampf(k / 0.3, 0, 1), clampf((k - 0.3) / 0.7, 0, 1))
+			move_with_knock(Vector3.ZERO, dt)
+			if not _did_hit and k >= 0.25:
+				_did_hit = true
+				for s in _spikes:
+					Vfx.I.chips(s, Vector3.UP, Color(0.9, 0.9, 0.8), 8, 9.0, 0.12)
+					Vfx.I.shock_ring(s, Color(0.7, 1.0, 0.6), 0.2, 2.4, 0.25)
+					_area_hit(s, 1.2, float(data["dmg"]) * 0.9, HitInfo.Weight.LIGHT)
+				CamRig.I.shake(1)
+				Game.sfx("death", -6.0)
+			if k >= 1.0:
+				_end_attack()
+		"boss_summon":
+			var k := st_t / 0.5
+			_pose = Poses.cast(1.0, _anim_t)
+			move_with_knock(Vector3.ZERO, dt)
+			if not _did_hit:
+				_did_hit = true
+				var main := get_parent()
+				var n := 3 if _boss_phase == 0 else 4
+				for i in range(n):
+					var a := TAU * i / n + randf() * 0.5
+					var p := global_position + Vector3(cos(a), 0, sin(a)) * 3.0
+					if main.has_method("_spawn_foe"):
+						main._spawn_foe("crawler" if i % 2 == 0 or _boss_phase == 0 else "rogue", p, i * 0.15)
+				Game.sfx("boom", -6.0)
+			if k >= 1.0:
+				_end_attack()
 		"boss_wave":
 			var k := st_t / 0.4
 			_pose = Poses.swing("enemy_v", 1.0, clampf(k / 0.4, 0, 1), clampf((k - 0.4) / 0.6, 0, 1))
@@ -487,6 +569,8 @@ func _spawn_wave(d: Vector3) -> void:
 
 func _end_attack() -> void:
 	_cool = randf_range(0.9, 1.8) if not is_boss else randf_range(0.6, 1.2) * (1.0 if _boss_phase == 0 else 0.6)
+	if kind == "rogue":
+		_retreat_t = 0.7
 	rig.position.y = 0
 	_set_state("recover")
 	_blend = 0.3
@@ -556,7 +640,7 @@ func take_hit(info: HitInfo) -> bool:
 	if is_boss and _boss_phase == 0 and hp < max_hp * 0.5:
 		_boss_phase = 1
 		rig.set_rim(Color(1.0, 0.3, 0.5), 0.9)
-		Feel.I.callout(head_top() + Vector3(0, 0.6, 0), "剑鬼·狂", Color(1.0, 0.4, 0.55), 1.5)
+		Feel.I.callout(head_top() + Vector3(0, 0.6, 0), String(RAGE_NAMES.get(kind, "狂")), Color(1.0, 0.4, 0.55), 1.5)
 		Feel.I.screen_flash(Color(1.0, 0.3, 0.5, 0.35), 2.0)
 		data = data.duplicate()
 		data["speed"] = float(data["speed"]) * 1.25
@@ -568,6 +652,11 @@ func die(impulse: Vector3) -> void:
 	_release()
 	remove_from_group("foes")
 	Game.sfx("death", -4.0)
+	if is_boss:
+		# 头目倒下，召出来的小怪跟着散架
+		for f: Node in get_tree().get_nodes_in_group("foes"):
+			if f != self and f is Foe and (f as Foe).alive:
+				(f as Foe).die(Vector3.UP * 2.0)
 	Vfx.I.impact_flash(chest(), 2.5 if not is_boss else 6.0)
 	Vfx.I.chips(chest(), impulse, Color(0.85, 0.85, 0.78), 10, 6.0)
 	CamRig.I.shake(1 if not is_boss else 2)

@@ -2,7 +2,7 @@ class_name ArpgMain
 extends Node3D
 ## 《残刃归途》斜俯视动作版的主场景。搭环境（卡通渲染、青绿雾、Bloom、后期）、镜头、特效、HUD，再跑一局的流程：
 ##   标题 → 山门（拾骨婆点天赋、兵器架换兵器、光门出发）→ 一层一层的分岔房间（战 / 精英 / 商人 / 歇脚 / 奇遇 / 头目）
-##   → 清房三选一心法 → 光门选下一间 → 第一层头目「夜樱剑鬼」→ 第二层古寺 → 头目「寂光」→ 结算（死了魂玉带回 60%）→ 山门。
+##   → 清房三选一心法 → 光门选下一间 → 第一层头目「夜樱剑鬼」→ 第二层无名冢 → 头目「百骨将」→ 第三层古寺 → 头目「寂光」→ 结算（死了魂玉带回 60%）→ 山门。
 ##
 ## 命令行（-- 后面）：
 ##   --demo=fight 自动打（录视频用，主角不掉血）  --zone=temple 指定区域  --room=shop 直接进某种房间  --hub 直接进山门
@@ -444,7 +444,7 @@ var _tel := {}
 func _tel_print(what: String) -> void:
 	if not _args.has("tel") or state == null or not is_instance_valid(hero) or _tel.is_empty():
 		return
-	print("TEL %s %s fl=%d row=%d secs=%.1f dmg=%.0f hp=%.0f/%.0f gourd=%d coins=%d kills=%d" % [what, room_kind, state.floor_i(), state.run.row,
+	print("TEL %s %s clk=%.0f fl=%d row=%d secs=%.1f dmg=%.0f hp=%.0f/%.0f gourd=%d coins=%d kills=%d" % [what, room_kind, _clock, state.floor_i(), state.run.row,
 		float(_tel["t"]), hero.dmg_total - float(_tel["dmg0"]), hero.hp, hero.max_hp, hero.gourds, state.coins, state.kills])
 
 
@@ -458,7 +458,7 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	var fl := state.floor_i()
 	var zone_id := state.zone()
 	if room_kind == "boss":
-		zone_id = "sakura" if fl == 0 else "temple"
+		zone_id = ArpgState.BOSS_ZONES[mini(fl, ArpgState.LAST_FLOOR)]
 	if zone_override != "":
 		zone_id = zone_override
 	var sz := Vector2(30, 22)
@@ -478,9 +478,9 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	_secret_hits = 0
 	_trial_t = 50.0
 	_trial_ok = true
-	var title := "%s · %s" % [ArpgState.FLOOR_NAMES[mini(fl, 1)], ArpgState.TYPE_NAMES.get(room_kind, "")]
+	var title := "%s · %s" % [ArpgState.FLOOR_NAMES[mini(fl, ArpgState.LAST_FLOOR)], ArpgState.TYPE_NAMES.get(room_kind, "")]
 	if room_kind == "boss":
-		title = "夜樱广场" if fl == 0 else "古寺 · 寂光殿"
+		title = ArpgState.BOSS_TITLES[mini(fl, ArpgState.LAST_FLOOR)]
 	if room_kind == "tutorial":
 		title = "山门 · 试刀场"
 	hud.zone_name = title
@@ -492,13 +492,13 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	feel.screen_flash(Color(0, 0, 0, 1), 1.6)
 	match room_kind:
 		"boss":
-			Game.music("boss" if fl == 0 else "boss2")
+			Game.music(ArpgState.BOSS_MUSIC[mini(fl, ArpgState.LAST_FLOOR)])
 		"secret":
 			Game.music("secret")
 		"shop", "rest", "event", "start", "story", "treasure", "tutorial":
 			Game.music("hub")
 		_:
-			Game.music("bamboo" if zone_id == "temple" else "village")
+			Game.music({"temple": "bamboo", "grave": "secret"}.get(zone_id, "village"))
 	var mid := Vector3(-3.5, 0, -1.5)   # 摆在一边，别挡住去光门的路
 	if room_kind in ["fight", "elite", "trial"] and not state.secrets_done.has(state.run.room_id()):
 		var hint := state.flags.has("secret_hint")
@@ -685,14 +685,20 @@ func _make_waves(kind: String, fl: int) -> Array:
 		return []
 	match kind:
 		"fight":
-			var w := [["crawler", 5 + fl * 2], ["skeleton", 3 + fl, "crawler", 3], ["skeleton", 2, "mage", 1 + fl, "crawler", 3]]
+			var w := [["crawler", 5 + fl * 2], ["skeleton", 3 + fl, "crawler", 3], ["skeleton", 2, "mage", 1 + mini(fl, 1), "crawler", 3]]
+			if fl >= 1:
+				# 无名冢起有骨刺客：快、血少，刺一下就退
+				w[1] = ["skeleton", 2 + fl, "rogue", 2]
+				w[2] = ["rogue", 2, "mage", 1 + mini(fl, 1), "crawler", 3]
 			if state.run.row >= 3:
-				w.append(["samurai", 1, "skeleton", 2 + fl])
+				w.append(["samurai", 1, "skeleton", 2 + mini(fl, 1)] if fl == 0 else ["samurai", 1, "rogue", 2, "skeleton", 1])
 			return w
 		"elite":
+			if fl >= 1:
+				return [["skeleton", 3, "rogue", 2, "mage", 1], ["samurai", 1 + mini(fl, 1), "crawler", 4], ["samurai", 2, "mage", 2, "rogue", 2]]
 			return [["skeleton", 4, "mage", 2], ["samurai", 1 + fl, "crawler", 4], ["samurai", 2, "mage", 2, "skeleton", 2]]
 		"boss":
-			return [["boss" if fl == 0 else "boss2", 1]]
+			return [[ArpgState.BOSS_KINDS[mini(fl, ArpgState.LAST_FLOOR)], 1]]
 		"trial":
 			return [["crawler", 8, "skeleton", 3], ["crawler", 8, "mage", 2, "skeleton", 3], ["samurai", 1 + fl, "crawler", 10]]
 	return []
@@ -730,14 +736,14 @@ func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
 	var fl := state.floor_i() if state != null else 0
 	var row := state.run.row if state != null else 0
 	var f := Foe.new()
-	f.setup_kind(kind, 1.0 + fl * 0.45 + row * 0.04, 1.0 + fl * 0.25 + row * 0.03)
+	f.setup_kind(kind, 1.0 + fl * 0.35 + row * 0.04, 1.0 + fl * 0.18 + row * 0.03)
 	add_child(f)
 	f.global_position = p
 	f.face_to(hero.global_position - p)
 	f.dropped.connect(_on_drop.bind(kind))
 	if f.is_boss:
 		hud.boss = f
-		var sub := "守在樱树下的无名剑客" if kind == "boss" else "古寺深处，一盏不灭的灯"
+		var sub: String = {"boss": "守在樱树下的无名剑客", "boss3": "无名冢下，万骨之主", "boss2": "古寺深处，一盏不灭的灯"}.get(kind, "")
 		hud.banner(f.display_name, sub, 2.6)
 		cam_rig.punch_zoom(0.4, 0.8)
 
@@ -746,7 +752,7 @@ func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
 	if state != null and kind != "":
 		state.kills += 1
 		# 装备掉落：赤甲武士常掉，小怪偶尔掉
-		var chance := {"samurai": 0.35, "mage": 0.06, "skeleton": 0.04, "crawler": 0.015}
+		var chance := {"samurai": 0.35, "mage": 0.06, "skeleton": 0.04, "rogue": 0.04, "crawler": 0.015}
 		if _rng.randf() < float(chance.get(kind, 0.0)):
 			_drop_gear(pos, -1, 0.1 if kind == "samurai" else 0.0)
 	for i in range(mini(c, 12)):
@@ -792,7 +798,7 @@ func _room_cleared() -> void:
 func _boss_intro(fl: int) -> void:
 	if mode != "room":
 		return
-	var key := "boss" if fl == 0 else "boss2"
+	var key: String = ArpgState.BOSS_KINDS[mini(fl, ArpgState.LAST_FLOOR)]
 	var lines: Array = ArpgStory.BOSS_PRE[key].duplicate()
 	var extra: Dictionary = ArpgStory.BOSS_PRE_FLAGS.get(key, {})
 	for f: String in extra:
@@ -809,11 +815,13 @@ func _boss_intro(fl: int) -> void:
 func _boss_outro(fl: int) -> void:
 	if mode != "room":
 		return
-	var key := "boss" if fl == 0 else "boss2"
+	var key: String = ArpgState.BOSS_KINDS[mini(fl, ArpgState.LAST_FLOOR)]
 	_drop_gear(hero.global_position + hero.facing * 1.5, 3, 0.0)
 	var d := _say(ArpgStory.BOSS_POST[key])
 	if fl == 0:
 		d.finished.connect(_sakura_choice)
+	elif fl < ArpgState.LAST_FLOOR:
+		d.finished.connect(_grave_choice)
 	else:
 		d.finished.connect(_ending_choice)
 
@@ -830,8 +838,30 @@ func _sakura_choice() -> void:
 		if fx.has("jade"):
 			state.add_jade(int(fx["jade"]))
 			feel.callout(hero.head_top(), "魂玉 +%d" % int(fx["jade"]), Color(0.55, 1.0, 0.85), 1.2)
-		hud.banner("第一层 · 完", "光门那头是寂光寺，第二层", 3.0)
+		hud.banner("第一层 · 完", "光门那头是无名冢，第二层", 3.0)
 		state.add_jade(5)
+		_offer_boons(3, "floor"))
+
+
+## 打倒百骨将后的选择
+func _grave_choice() -> void:
+	var items := []
+	for c: Array in ArpgStory.GRAVE_CHOICE:
+		items.append({"title": c[0], "desc": c[1], "color": ArpgStory.C_BONE})
+	var m := _open_menu("万骨归土", "百骨将的头盔滚到你脚边。", items, "list", false)
+	m.chosen.connect(func(i: int) -> void:
+		var fx: Dictionary = ArpgStory.GRAVE_CHOICE[i][2]
+		state.flags[fx["flag"]] = true
+		_close_menu()
+		if fx.has("jade"):
+			state.add_jade(int(fx["jade"]))
+			feel.callout(hero.head_top(), "魂玉 +%d" % int(fx["jade"]), Color(0.55, 1.0, 0.85), 1.2)
+		if fx.has("heal"):
+			hero.hp = hero.max_hp
+			hero.gourds = hero.max_gourds
+			feel.callout(hero.head_top(), "生命、药葫芦补满", Color(0.6, 1.0, 0.6), 1.2)
+		hud.banner("第二层 · 完", "山顶就是寂光寺，最后一层", 3.0)
+		state.add_jade(6)
 		_offer_boons(3, "floor"))
 
 
@@ -894,11 +924,15 @@ func _story_effect(fx: Dictionary, n: ArpgNpc) -> void:
 		feel.screen_flash(Color(0.4, 0.0, 0.2, 0.5), 1.5)
 	if fx.has("boon_id"):
 		_take_boon(String(fx["boon_id"]))
+	if fx.has("heal"):
+		hero.hp = hero.max_hp
+		hero.gourds = hero.max_gourds
+		feel.callout(hero.head_top(), "生命、药葫芦补满", Color(0.6, 1.0, 0.6), 1.2)
 	hero.apply_stats(state.stats(), state.weapon)
 	if fx.has("gear"):
 		_drop_gear(n.global_position + Vector3(0, 0, 1.5), maxi(int(fx["gear"]), 1) if int(fx["gear"]) > 1 else -1, 0.2)
 	if fx.has("fight"):
-		hud.banner("守灯僧", "他拔出了刀", 1.6)
+		hud.banner(n.display, "动手了", 1.6)
 		_room_done = false
 		waves = [[String(fx["fight"]), 1, "skeleton", 2]]
 		wave_i = -1
@@ -1207,7 +1241,7 @@ func _make_portal(p: Vector3, kind: String, col: Color) -> void:
 	lab.pixel_size = 0.008
 	lab.modulate = Color(col.lightened(0.4), 0.9)
 	lab.position.y = 3.2
-	lab.text = {"run": "出发", "floor": "前往第二层", "next": "前路", "secret": "密室"}.get(kind, "")
+	lab.text = {"run": "出发", "floor": "前往第%s层" % ["一", "二", "三"][mini(state.floor_i() + 1, 2)] if state != null else "", "next": "前路", "secret": "密室"}.get(kind, "")
 	_portal.add_child(lab)
 
 

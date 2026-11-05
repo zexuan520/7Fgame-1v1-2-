@@ -5,8 +5,14 @@ extends RefCounted
 
 static var cur: ArpgState
 
-const FLOOR_ZONES := ["forest", "temple"]
-const FLOOR_NAMES := ["幽林遗迹", "古寺"]
+## 一局三层：幽林遗迹（头目夜樱）→ 无名冢（头目百骨将）→ 古寺（最终头目寂光）
+const FLOOR_ZONES := ["forest", "grave", "temple"]
+const FLOOR_NAMES := ["幽林遗迹", "无名冢", "古寺"]
+const BOSS_KINDS := ["boss", "boss3", "boss2"]
+const BOSS_ZONES := ["sakura", "grave", "temple"]
+const BOSS_TITLES := ["夜樱广场", "无名冢 · 万骨坑", "古寺 · 寂光殿"]
+const BOSS_MUSIC := ["boss", "boss2", "boss"]
+const LAST_FLOOR := 2
 const TYPE_NAMES := {"start": "林口", "fight": "战", "elite": "精英", "shop": "商人", "rest": "歇脚", "event": "奇遇", "boss": "头目",
 	"treasure": "宝箱", "trial": "试炼", "story": "故人", "secret": "密室"}
 const TYPE_DESC := {"start": "", "fight": "成群的敌人，清完选一个心法", "elite": "赤甲武士带队，心法更好，必掉装备",

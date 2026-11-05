@@ -80,6 +80,30 @@ const FLOORS := [
 		"events": ["herbalist", "blood_altar", "wounded_ronin", "gambler", "grave_mound", "hermit", "mirror"],
 		"scale": {"hp": 1.4, "dmg": 1.2, "jade": 1.3},
 	},
+	{
+		"name": "竹林古寺深处", "sub": "第三层",
+		"rows": [
+			{"count": 1, "types": [["start", 1]]},
+			{"count": 2, "types": [["fight", 1]]},
+			{"count": 3, "types": [["fight", 3], ["shop", 1], ["rest", 1], ["event", 2]]},
+			{"count": 3, "types": [["fight", 3], ["elite", 2]]},
+			{"count": 3, "types": [["fight", 2], ["shop", 2], ["rest", 2], ["event", 2]]},
+			{"count": 2, "types": [["fight", 2], ["elite", 1]]},
+			{"count": 1, "types": [["rest", 1]]},
+			{"count": 1, "types": [["boss", 1]]},
+		],
+		"pools": {
+			"start": ["temple_steps"],
+			"fight": ["bamboo_sea", "bell_court", "monk_dorm", "stone_garden", "hanging_bridge"],
+			"elite": ["hakai_hall", "shadow_court"],
+			"shop": ["temple_market"],
+			"rest": ["bamboo_shrine"],
+			"event": ["zen_garden", "ruined_gate"],
+			"boss": ["zen_hall"],
+		},
+		"events": ["herbalist", "blood_altar", "wounded_ronin", "gambler", "grave_mound", "hermit", "mirror"],
+		"scale": {"hp": 1.7, "dmg": 1.35, "jade": 1.6},
+	},
 ]
 
 const ROOMS := {

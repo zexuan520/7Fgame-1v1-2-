@@ -28,6 +28,8 @@ const ZONES := {
 		"sun": Color(0.55, 0.85, 0.95), "sun_e": 1.25, "spore": Color(0.55, 1.0, 0.85)},
 	"temple": {"bg": Color(0.03, 0.04, 0.06), "fog": Color(0.06, 0.14, 0.18), "fog_d": 0.7, "amb": Color(0.4, 0.42, 0.55), "amb_e": 1.35,
 		"sun": Color(0.6, 0.72, 1.0), "sun_e": 1.1, "spore": Color(0.7, 0.9, 1.0)},
+	"grave": {"bg": Color(0.03, 0.05, 0.05), "fog": Color(0.1, 0.16, 0.14), "fog_d": 0.85, "amb": Color(0.38, 0.5, 0.45), "amb_e": 1.2,
+		"sun": Color(0.62, 0.8, 0.75), "sun_e": 1.15, "spore": Color(0.6, 1.0, 0.6)},
 	"sakura": {"bg": Color(0.05, 0.04, 0.09), "fog": Color(0.12, 0.1, 0.2), "fog_d": 0.65, "amb": Color(0.45, 0.38, 0.6), "amb_e": 1.25,
 		"sun": Color(0.72, 0.76, 1.0), "sun_e": 1.2, "spore": Color(1.0, 0.6, 0.8)},
 }
@@ -53,6 +55,8 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 			_dress_forest()
 		"temple":
 			_dress_temple()
+		"grave":
+			_dress_grave()
 		"sakura":
 			_dress_sakura()
 	_atmosphere()
@@ -82,6 +86,18 @@ func _floor_color(x: float, z: float) -> Color:
 			if n2 > 0.35:
 				base = base.lerp(Color(0.12, 0.26, 0.18), 0.6)
 			return base * (0.9 + n2 * 0.15)
+		"grave":
+			# 墓园：黑土 + 枯草 + 一条碎石板路（从入口通到出口）
+			var soil := Color(0.16, 0.15, 0.13).lerp(Color(0.2, 0.22, 0.16), n * 0.5 + 0.5)
+			if n2 > 0.2:
+				soil = soil.lerp(Color(0.2, 0.27, 0.17), 0.6)
+			var path_w := 1.6 + sin(z * 0.4) * 0.3
+			if absf(x - sin(z * 0.25) * 1.2) < path_w:
+				var slab := (int(floor(z / 0.9)) + int(floor((x + 5.0) / 1.1))) % 3
+				soil = [Color(0.3, 0.3, 0.29), Color(0.27, 0.27, 0.27), Color(0.33, 0.32, 0.3)][slab]
+				if fposmod(z, 0.9) < FV * 0.8 or fposmod(x + 5.0, 1.1) < FV * 0.8:
+					soil = Color(0.14, 0.15, 0.13)
+			return soil * (0.9 + n2 * 0.12)
 		"temple":
 			var plank := int(floor(x / 0.6))
 			var seam := fposmod(x, 0.6) < FV * 0.6
@@ -668,6 +684,55 @@ func _dress_forest() -> void:
 	for side: float in [-1.0, 1.0]:
 		var x := side * (hx - 3.0 + rng.randf_range(-1.0, 1.0))
 		voxel_piece(_trunk_c(rng.randi_range(55, 65), rng.randf_range(5.0, 6.0), Color(0.04, 0.05, 0.05), Color(0.05, 0.09, 0.07)), Vector3(x, 0, hz + 1.5), 0.12 / FINE, null, Vector3.ZERO, true)
+
+
+## 无名冢：后面一排地穴和铁栅，两边枯树，场地里散着墓碑、棺材、骨堆，鬼火和挂灯
+func _dress_grave() -> void:
+	var hx := size.x * 0.5
+	var hz := size.y * 0.5
+	# 后排：地穴、石门、栅栏
+	kit("crypt", Vector3(-hx + 5.0, 0, -hz - 1.2), 0.0, 1.0, false)
+	kit("crypt", Vector3(hx - 5.0, 0, -hz - 1.2), 0.0, 1.0, false)
+	kit("arch_gate", Vector3(0, 0, -hz - 0.4), 0.0, 1.0, false)
+	for i in range(-6, 7):
+		var x := i * 1.9
+		if absf(x) < 2.6 or absf(absf(x) - (hx - 5.0)) < 2.6:
+			continue
+		kit("fence" if rng.randf() < 0.7 else "fence_broken", Vector3(x, 0, -hz + 0.2), 0.0, 1.0, false)
+	# 两侧：枯树、松树、挂骷髅的杆子
+	for side: float in [-1.0, 1.0]:
+		for j in range(3):
+			var z := -hz + 3.0 + j * (size.y - 6.0) / 2.0 + rng.randf_range(-1, 1)
+			kit(["tree_dead", "tree_dead_m", "tree_pine"][rng.randi() % 3], Vector3(side * (hx - 1.0), 0, z), rng.randf() * TAU, 1.0, true)
+		kit("post_skull", Vector3(side * (hx - 3.2), 0, -hz + 2.0), 0.0, 1.0, true)
+	# 场地里：几排墓碑（成排更像墓园），中间留出路
+	for row in range(3):
+		var z := -hz + 4.0 + row * 4.2
+		for i in range(5):
+			var x := (-hx + 3.0) + i * 1.6 if i < 3 else (hx - 3.0) - (i - 3) * 1.6
+			if rng.randf() < 0.3:
+				continue
+			kit(["gravestone", "grave_a", "grave_b", "gravemarker"][rng.randi() % 4], Vector3(x + rng.randf_range(-0.3, 0.3), 0, z + rng.randf_range(-0.3, 0.3)), rng.randf_range(-0.2, 0.2), 1.0, true)
+	for s: Vector3 in [Vector3(-6.5, 0, 1.5), Vector3(6.0, 0, -2.5), Vector3(-2.5, 0, 6.0)]:
+		var r := rng.randf()
+		if r < 0.4:
+			kit("coffin", s, rng.randf() * TAU, 1.0, true)
+		elif r < 0.7:
+			kit("ribcage", s, rng.randf() * TAU, 1.3, false)
+		else:
+			kit("rubble", s, rng.randf() * TAU, 1.0, true)
+	# 灯：挂灯和骷髅烛，冷绿色的鬼火
+	for s: Vector3 in [Vector3(-3.2, 0, -hz + 1.6), Vector3(3.2, 0, -hz + 1.6), Vector3(-hx + 2.2, 0, 2.0), Vector3(hx - 2.2, 0, 0.0)]:
+		kit("post_lantern", s, 0.0, 1.0, true)
+	for i in range(3):
+		kit("skull_candle", Vector3(rng.randf_range(-hx + 3, hx - 3), 0, rng.randf_range(-hz + 3, hz - 3)), rng.randf() * TAU, 1.0, false)
+	for i in range(5):
+		var side := -1.0 if i % 2 == 0 else 1.0
+		spirit_fire(Vector3(side * rng.randf_range(2.0, hx - 3.0), 0.6, rng.randf_range(-hz + 2, hz - 4)), Color(0.5, 1.0, 0.55), 0.9, 1.3, 5.0)
+	# 前景：两棵黑树干剪影
+	for side: float in [-1.0, 1.0]:
+		var x := side * (hx - 3.0 + rng.randf_range(-1.0, 1.0))
+		voxel_piece(_trunk_c(60, 5.0, Color(0.04, 0.05, 0.05), Color(0.06, 0.08, 0.06)), Vector3(x, 0, hz + 1.5), 0.12 / FINE, null, Vector3.ZERO, true)
 
 
 func _dress_temple() -> void:
