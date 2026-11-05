@@ -39,6 +39,8 @@ func _act(n: String) -> bool:
 
 
 func _process(dt: float) -> void:
+	if Zaohua.is_platform_paused():
+		return   # 平台把游戏暂停了（切后台等），菜单也不能动
 	_t += dt
 	if Feel.I != null:
 		Feel.I.world_pause = maxf(Feel.I.world_pause, 0.05)

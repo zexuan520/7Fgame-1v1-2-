@@ -20,6 +20,7 @@ func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	add_to_group("dialog_box")
 	font = Feel.I.font if Feel.I != null else Game.font
 
 
@@ -28,6 +29,8 @@ func _act(n: String) -> bool:
 
 
 func _process(dt: float) -> void:
+	if Zaohua.is_platform_paused():
+		return   # 平台把游戏暂停了（切后台等），菜单也不能动
 	_t += dt
 	if Feel.I != null:
 		Feel.I.world_pause = maxf(Feel.I.world_pause, 0.05)

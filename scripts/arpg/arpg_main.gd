@@ -113,6 +113,8 @@ func _ready() -> void:
 		for i in range(int(_args["givegear"])):
 			state.bag.append(ArpgGear.roll(_rng, i % 3))
 		get_tree().create_timer(1.5).timeout.connect(func() -> void: _open_bag())
+	if _args.has("pause"):
+		get_tree().create_timer(1.5).timeout.connect(func() -> void: _open_pause())
 	if _args.has("interact"):
 		# 测试：过一会儿自动和第一个互动物说话（拍菜单截图用）
 		get_tree().create_timer(float(_args["interact"]) if _args["interact"] != "1" else 1.5).timeout.connect(func() -> void:
@@ -1460,6 +1462,46 @@ func _open_menu(title: String, sub: String, items: Array, layout: String, cancel
 	return m
 
 
+func _no_dialog() -> bool:
+	return get_tree().get_nodes_in_group("dialog_box").is_empty()
+
+
+## Esc / 手柄 Start：暂停菜单（音量、放弃这一局）。网页版里没有“退出游戏”
+func _open_pause(sel: int = 0) -> void:
+	var pct := func(k: String) -> String: return "%d%%" % int(round(float(Game.settings[k]) * 100.0))
+	var items := [{"title": "继续"},
+		{"title": "音乐音量", "right": pct.call("music"), "desc": "按确认键切换"},
+		{"title": "音效音量", "right": pct.call("sfx"), "desc": "按确认键切换"}]
+	if mode == "room":
+		items.append({"title": "放弃这一局", "desc": "回到山门，魂玉带回六成"})
+	var m := _open_menu("暂停", "", items, "list", true)
+	m.index = sel
+	m.chosen.connect(_on_pause_chosen)
+
+
+func _on_pause_chosen(i: int) -> void:
+	match i:
+		1, 2:
+			var k := "music" if i == 1 else "sfx"
+			var steps := [1.0, 0.75, 0.5, 0.25, 0.0]
+			var cur := float(Game.settings[k])
+			var nxt := 1.0   # 往下调一档，到 0 之后回到 100%
+			for s: float in steps:
+				if s < cur - 0.05:
+					nxt = s
+					break
+			Game.settings[k] = nxt
+			Game.apply_volume()
+			Game.write_settings()
+			Game.sfx("coin")
+			_open_pause(i)
+		3:
+			_close_menu()
+			_game_over(false)
+		_:
+			_close_menu()
+
+
 func _close_menu() -> void:
 	if is_instance_valid(_menu):
 		_menu.queue_free()
@@ -1526,6 +1568,9 @@ func _process(dt: float) -> void:
 	if (mode == "room" or mode == "hub") and _menu == null and state != null and is_instance_valid(hero) and hero.alive \
 			and Input.is_action_just_pressed(ArpgInput.act(0, "bag")):
 		_open_bag()
+	if (mode == "room" or mode == "hub") and _menu == null and _no_dialog() and is_instance_valid(hero) and hero.alive \
+			and Input.is_action_just_pressed("quit"):
+		_open_pause()
 	if mode == "room" and room_kind == "trial" and not _room_done and wave_i >= 0:
 		_trial_t -= dt if feel.world_pause <= 0.0 else 0.0
 		if _trial_t <= 0.0 and _trial_ok:
