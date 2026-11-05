@@ -107,8 +107,11 @@ func _physics_process(dt: float) -> void:
 	_skill_t -= dt
 	if near == null:
 		return
-	if hero.hp < hero.max_hp * 0.4 and hero.gourds > 0 and (nd > 3.0 or near.state == "recover") and _skill_t <= 0.0:
+	# 喝药：离得远或敌人收招时喝；血太低（< 25%）且没在挨刀的前摇里也喝（不然打头目时药一直不喝就死了）
+	if hero.hp < hero.max_hp * 0.4 and hero.gourds > 0 and _skill_t <= 0.0 \
+			and (nd > 3.0 or near.state == "recover" or (hero.hp < hero.max_hp * 0.25 and not danger)):
 		_skill_t = 1.0
+		_atk_t = 0.7   # 别马上又按攻击把喝药的输入盖掉
 		_tap("heal")
 		return
 	if danger and _roll_t <= 0.0:

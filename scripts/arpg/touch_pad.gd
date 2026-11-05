@@ -287,7 +287,7 @@ func _draw_button(b: Array, k: float, down: bool) -> void:
 	var col: Color = b[4]
 	var ready := k >= 0.999
 	draw_circle(c, r, Color(col.r * 0.25, col.g * 0.25, col.b * 0.25, 0.7) if down else PANEL)
-	if not ready:
+	if not ready and k < 0.98:   # 剩一丝时扇形太窄，三角化会失败
 		var pts := PackedVector2Array([c])
 		var a0 := -PI / 2 + TAU * clampf(k, 0.0, 1.0)
 		for s in range(25):

@@ -34,6 +34,7 @@ var curse := 0                           # 拿了地藏的钱：受伤 +10% 每�
 var secrets_done := {}                   # 已经打开过的隐藏房间（房间坐标）
 var side_rooms := 0                      # 这一局拿完的侧室（藏宝 / 伏兵 / 灵泉 / 遗骸 / 小试炼）
 var boons: Array[String] = []
+var whet := 0               # 这一局在游商那里磨过几次刀（每次伤害 +6%，铜钱的长期去处）
 var revives := 0
 var seed_value := 0
 var bought := {}            # 商人房间里已经买过的货：房间坐标 → [下标...]
@@ -43,7 +44,7 @@ var event_cache := {}       # 奇遇房间抽到的奇遇
 
 static func start_new() -> ArpgState:
 	var s := ArpgState.new()
-	s.seed_value = randi()
+	s.seed_value = randi() if not OS.get_cmdline_user_args().has("--seed0") else 12345   # --seed0：测试时固定房间
 	s.run = Run.create(0, s.seed_value)
 	s.weapon = String(Game.save.get("arpg_weapon", "sword"))
 	var st := ArpgData.talent_stats()
@@ -106,7 +107,17 @@ func stats() -> Dictionary:
 		ArpgData.add_stats(st, {"dmg_taken": 0.1 * curse})
 	for b: String in boons:
 		ArpgData.add_stats(st, ArpgData.boon(b).get("stats", {}))
+	if whet > 0:
+		ArpgData.add_stats(st, {"atk": WHET_ATK * whet})
 	return st
+
+
+const WHET_ATK := 0.06
+
+
+## 磨刀一次的价钱：越磨越贵（第三层铜钱多了也有地方花）
+func whet_price() -> int:
+	return 60 + 35 * whet
 
 
 func add_coins(n: int) -> int:
@@ -138,7 +149,7 @@ func roll_boons(n: int, rng: RandomNumberGenerator) -> Array:
 	return out
 
 
-## 这间商人房的货：2 个心法、1 件护甲、1 个护符、补满药葫芦、（没解锁的话）一把兵器
+## 这间商人房的货：2 个心法、1 件护甲、1 个护符、补满药葫芦、磨刀（不限次数）
 func shop_stock() -> Array:
 	var key := run.room_id()
 	if shop_cache.has(key):
@@ -149,11 +160,14 @@ func shop_stock() -> Array:
 	for b: Dictionary in roll_boons(2, rng):
 		items.append({"kind": "boon", "id": b["id"], "name": b["name"], "desc": b["desc"], "price": 45 + run.row * 3})
 	for slot: String in ["armor", "charm"]:
-		var it := ArpgGear.roll(rng, rng.randi_range(1, 2), 0.0, slot)
+		# 越往后货越好（也越贵）：第一层 良~精，第二层 精~珍，第三层 精~传
+		var fl := floor_i()
+		var it := ArpgGear.roll(rng, rng.randi_range(1 + mini(fl, 1), mini(2 + fl, 4)), 0.0, slot)
 		var base := ArpgData.gear(String(it["base"]))
 		items.append({"kind": "gear", "item": it, "name": it["name"], "desc": ("护甲：" if slot == "armor" else "护符：") + ArpgGear.describe(it),
 			"price": int(base["price"]) + 25 * int(it["rarity"])})
 	items.append({"kind": "refill", "id": "refill", "name": "补药", "desc": "补满药葫芦", "price": 20})
+	items.append({"kind": "whet", "id": "whet", "name": "磨刀", "desc": "这一局伤害 +6%（可以一直磨，越磨越贵）", "price": 0})
 	shop_cache[key] = items
 	return items
 

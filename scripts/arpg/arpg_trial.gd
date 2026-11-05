@@ -2,7 +2,7 @@ class_name ArpgTrial
 extends Node
 ## 试炼房：同一个房间里连着过四道试，每道换一个维度，房间的光色也跟着变。
 ##   疾：一大群小怪，限时清完
-##   守：地面不断冒出骨刺机关（红圈预警后顶出来，敌人也会被扎），这一试不挨打
+##   守：地面不断冒出骨刺机关（红圈预警后顶出来，敌人也会被扎），这一试最多挨 GUARD_HITS 下
 ##   狂：混进带金边的精英（更硬、带霸体），这一试打出一定连击
 ##   乱：所有敌人变快、成群涌来，清完时生命不低于一半
 ## 每过一试得一枚“印”；印越多，最后的装备品质越高，铜钱、魂玉越多；四印全得多给一个心法选项。
@@ -10,12 +10,14 @@ extends Node
 
 const STAGES := [
 	{"id": "swift", "name": "疾", "goal": "限时 %d 秒清完", "sun": Color(1.0, 0.95, 0.85), "fog": Color(0.35, 0.55, 0.55)},
-	{"id": "guard", "name": "守", "goal": "躲开机关，不挨打", "sun": Color(0.75, 1.0, 0.75), "fog": Color(0.3, 0.5, 0.35)},
+	{"id": "guard", "name": "守", "goal": "躲开机关，最多挨 %d 下", "sun": Color(0.75, 1.0, 0.75), "fog": Color(0.3, 0.5, 0.35)},
 	{"id": "fury", "name": "狂", "goal": "打出 %d 连击", "sun": Color(1.0, 0.6, 0.45), "fog": Color(0.55, 0.25, 0.2)},
 	{"id": "chaos", "name": "乱", "goal": "清完时生命不低于一半", "sun": Color(0.8, 0.65, 1.0), "fog": Color(0.35, 0.25, 0.5)},
 ]
 const SWIFT_TIME := 28.0
 const FURY_COMBO := 20
+## 守试允许挨几下（原来一下都不许，一整波法师+骷髅里太苛刻，机器人和试玩都几乎拿不到）
+const GUARD_HITS := 2
 const SEAL_COLOR := Color(1.0, 0.82, 0.35)
 
 var main: ArpgMain
@@ -76,6 +78,8 @@ func goal_text(i: int) -> String:
 			return g % int(SWIFT_TIME)
 		"fury":
 			return g % FURY_COMBO
+		"guard":
+			return g % GUARD_HITS
 	return g
 
 
@@ -88,7 +92,7 @@ func finish() -> void:
 		"swift":
 			ok = _t <= SWIFT_TIME
 		"guard":
-			ok = main.hero.hits_taken == _hits0
+			ok = main.hero.hits_taken - _hits0 <= GUARD_HITS
 		"fury":
 			ok = _max_combo >= FURY_COMBO
 		"chaos":

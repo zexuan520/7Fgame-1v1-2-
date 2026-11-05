@@ -341,7 +341,12 @@ func _st_chase(dt: float) -> void:
 		return
 	if kind == "summoner":
 		_summon_cd -= dt
-		_minions = _minions.filter(func(m: Foe) -> bool: return is_instance_valid(m) and m.alive)
+		# 不能用 filter + 带类型的 lambda：小鬼被释放后传进去会报 “Cannot convert argument”，结果也不是 Array[Foe]
+		var live: Array[Foe] = []
+		for m in _minions:
+			if is_instance_valid(m) and m.alive:
+				live.append(m)
+		_minions = live
 		if _summon_cd <= 0.0 and _cool <= 0.0 and _minions.size() < 3 and get_tree().get_nodes_in_group("foes").size() < 10:
 			_summon_cd = randf_range(7.0, 9.0)
 			_begin_attack("summon_s")

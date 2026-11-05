@@ -171,9 +171,9 @@ func _draw_skills(vs: Vector2) -> void:
 		elif it[1] == "heal":
 			col = Color(0.4, 1.0, 0.6)
 		# 冷却：暗色扇形 + 亮色进度环
-		if not ready:
+		if not ready and float(it[2]) < 0.98:   # 剩一丝时扇形太窄，三角化会失败
 			var pts := PackedVector2Array([c])
-			var a0 := -PI / 2 + TAU * float(it[2])
+			var a0 := -PI / 2 + TAU * clampf(float(it[2]), 0.0, 1.0)
 			for s in range(25):
 				var a := lerpf(a0, -PI / 2 + TAU, s / 24.0)
 				pts.append(c + Vector2(cos(a), sin(a)) * 24)
@@ -191,6 +191,7 @@ func _draw_enemy_marks() -> void:
 	var cam := get_viewport().get_camera_3d()
 	if cam == null:
 		return
+	var vs := get_viewport_rect().size
 	for f: Node in get_tree().get_nodes_in_group("foes"):
 		var a := f as Foe
 		if a == null or not a.alive or a.is_boss:
@@ -199,6 +200,18 @@ func _draw_enemy_marks() -> void:
 		if cam.is_position_behind(wp):
 			continue
 		var sp := cam.unproject_position(wp)
+		# 房间大了，画面外的敌人在屏幕边上画个红箭头指过去（不然最后几只要满屋子找）
+		var inner := Rect2(Vector2(28, 28), vs - Vector2(56, 56))
+		if not inner.has_point(sp):
+			var ctr := vs * 0.5
+			var dv := sp - ctr
+			var sc := minf(absf((inner.size.x * 0.5) / maxf(absf(dv.x), 0.001)), absf((inner.size.y * 0.5) / maxf(absf(dv.y), 0.001)))
+			var ep := ctr + dv * minf(sc, 1.0)
+			var dn := dv.normalized()
+			var pn := Vector2(-dn.y, dn.x)
+			var col := Color(1.0, 0.3, 0.25, 0.85) if a.kind != "samurai" else Color(1.0, 0.75, 0.3, 0.9)
+			draw_colored_polygon(PackedVector2Array([ep + dn * 11, ep - dn * 6 + pn * 8, ep - dn * 6 - pn * 8]), col)
+			continue
 		var w := 46.0 * (1.25 if a.kind == "samurai" else 1.0)
 		var k := a.hp / a.max_hp
 		var shown: float = _shown_hp.get(a, 1.0)

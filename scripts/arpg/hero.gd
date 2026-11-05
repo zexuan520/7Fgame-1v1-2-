@@ -342,7 +342,13 @@ func _st_move(dt: float) -> void:
 	var want := d * move_speed
 	_move = _move.move_toward(want, accel * dt)
 	if d != Vector3.ZERO:
-		face_to(facing.slerp(d, 1.0 - exp(-18.0 * dt)) if facing.dot(d) > -0.9 else d)
+		# 按角度插值转身（Vector3.slerp 在两向量几乎平行时会报“轴未归一化”）
+		var dn := d.normalized()
+		if facing.dot(dn) > -0.9:
+			var a := lerp_angle(atan2(facing.x, facing.z), atan2(dn.x, dn.z), 1.0 - exp(-18.0 * dt))
+			face_to(Vector3(sin(a), 0, cos(a)))
+		else:
+			face_to(dn)
 	move_with_knock(_move, dt)
 	var sp := _move.length() / move_speed
 	_phase += dt * (6.0 + 6.0 * sp) * (1.0 if sp > 0.05 else 0.0)
