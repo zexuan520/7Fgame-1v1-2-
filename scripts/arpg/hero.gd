@@ -47,6 +47,7 @@ var _dash_from := Vector3.ZERO
 var _dash_to := Vector3.ZERO
 var _combo_reset := 0.0
 var hits_taken := 0           # 挨打次数（试炼“守”用）
+var drinks := 0               # 这一局喝了几口药葫芦（成就“滴药未沾”）
 var foot_ring: MeshInstance3D
 var invincible := false          # 调试：不掉血
 var dmg_total := 0.0             # 统计用：这一局一共挨了多少伤害
@@ -143,6 +144,7 @@ func _ready() -> void:
 ## 复活/重开时重置状态
 func reset_for_run() -> void:
 	alive = true
+	drinks = 0
 	state = "move"
 	step_i = -1
 	energy = 0.0
@@ -800,6 +802,8 @@ func _detonate() -> void:
 	Feel.I.screen_flash(Color(0.9, 0.1, 0.1, 0.35), 3.0)
 	if n > 0:
 		Feel.I.slowmo(0.3, 0.35)
+	if n >= 5:
+		ArpgAch.unlock("burst_5")
 	Game.sfx("execute", 0.0)
 	Feel.I.callout(head_top() + Vector3(0.6, 0.5, 0), "血爆 ×%d" % n, Color(1.0, 0.35, 0.35), 1.3)
 
@@ -811,6 +815,7 @@ func _st_heal(dt: float) -> void:
 	_target_pose(Poses.cast(clampf(st_t / 0.3, 0, 1), st_t))
 	if st_t >= 0.5 and st_t - dt < 0.5:
 		gourds -= 1
+		drinks += 1
 		hp = minf(hp + max_hp * gourd_heal, max_hp)
 		Game.sfx("drink", -2.0)
 		Vfx.I.pop(chest(), "magic_03", Color(0.4, 1.0, 0.6), 0.5, 2.5, 0.5)

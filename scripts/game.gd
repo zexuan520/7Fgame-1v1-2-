@@ -23,7 +23,8 @@ var save_path := "user://save.cfg"
 ## memories 拿到的记忆碎片，meets 每个头目见过几次，hub 破庙设施（见 Facilities）
 var save := {"jade": 0, "talents": {}, "weapons": ["katana"], "start_weapon": "katana", "arts": [],
 	"memories": [], "meets": {}, "boss_kills": {}, "best_floor": 0, "hub": {}, "tutorial_done": false,
-	"runs": 0, "clears": 0, "deaths": 0, "best_row": 0, "arpg_weapons": ["sword"], "arpg_weapon": "sword"}
+	"runs": 0, "clears": 0, "deaths": 0, "best_row": 0, "arpg_weapons": ["sword"], "arpg_weapon": "sword",
+	"ach": {}, "ach_stat": {}}   # 成就：ach 已解锁 {id: 解锁时间}，ach_stat 累计数（见 ArpgAch）
 ## 旧版破庙供台的价格：读到旧存档时把供奉过的魂玉退回来（供台换成了天赋树）
 const OLD_ALTAR_COSTS := {"vigor": [5, 10, 15], "gourd": [8, 16], "purse": [4, 8, 12]}
 
@@ -61,8 +62,10 @@ func load_save() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(save_path) != OK:
 		return
-	for k: String in save.keys():
-		save[k] = cfg.get_value("save", k, save[k])
+	# 读出文件里所有键（不只默认表里的）：残页、结局、成就等后加的键也要读回来
+	if cfg.has_section("save"):
+		for k: String in cfg.get_section_keys("save"):
+			save[k] = cfg.get_value("save", k, save.get(k))
 	var old: Dictionary = cfg.get_value("save", "altar", {})
 	if not old.is_empty():
 		for id: String in old:

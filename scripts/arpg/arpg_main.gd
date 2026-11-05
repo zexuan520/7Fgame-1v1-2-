@@ -51,6 +51,9 @@ var _shots: Array[float] = []
 var _clock := 0.0
 var _shot_n := 0
 var _rng := RandomNumberGenerator.new()
+var ach_toast: AchToast
+var _run_t0 := 0.0             # 这一局出发时的 _clock（成就“一气呵成”）
+var _room_hits0 := 0           # 进这间房时挨过几下（成就“片叶不沾身”“毫发无伤”）
 
 
 func _ready() -> void:
@@ -139,6 +142,11 @@ func _ready() -> void:
 			send.call(t2))
 	if _args.has("pause"):
 		get_tree().create_timer(1.5).timeout.connect(func() -> void: _open_pause())
+	if _args.has("achtest"):
+		# 测试：弹一个成就窗，再打开成就列表（拍图用）
+		get_tree().create_timer(0.8).timeout.connect(func() -> void: ach_toast.push("四印俱全", "一间试炼房里拿齐疾、守、狂、乱四印"))
+		if _args["achtest"] == "menu":
+			get_tree().create_timer(1.2).timeout.connect(func() -> void: _open_achievements())
 	if _args.has("interact"):
 		# 测试：过一会儿自动和第一个互动物说话（拍菜单截图用）
 		get_tree().create_timer(float(_args["interact"]) if _args["interact"] != "1" else 1.5).timeout.connect(func() -> void:
@@ -278,6 +286,15 @@ func _setup_world() -> void:
 	add_child(touch_layer)
 	touch = TouchPad.new()
 	touch_layer.add_child(touch)
+	# 成就弹窗：盖在菜单和对话框上面
+	var ach_layer := CanvasLayer.new()
+	ach_layer.layer = 10
+	add_child(ach_layer)
+	ach_toast = AchToast.new()
+	ach_layer.add_child(ach_toast)
+	ArpgAch.enabled = not _args.has("noach")
+	ArpgAch.on_unlock = func(_id: String, n: String, d: String) -> void: ach_toast.push(n, d)
+	ArpgAch.check_save(true)   # 旧存档里已经做到的，悄悄补上
 
 
 func _apply_zone_env(info: Dictionary) -> void:
@@ -412,6 +429,7 @@ func _enter_hub() -> void:
 	_npc("兵器架", Vector3(4.0, 0, 1.0), {"kit": "sword_shield", "scale": 1.3}, _open_weapons)
 	_make_portal(Vector3(0, 0, -hz + 2.5), "run", Color(1.0, 0.8, 0.45))
 	_npc("试刀 · 教学", Vector3(-4.5, 0, -3.5), {"kit": "sword_shield", "scale": 1.1}, func(_n: ArpgNpc) -> void: _start_tutorial())
+	_npc("功业碑 · 成就 %d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], Vector3(4.5, 0, -3.5), {"kit": "shrine", "scale": 1.1}, func(_n: ArpgNpc) -> void: _open_achievements())
 	# 残页石：看已经找到的寂光残页（隐藏剧情）
 	if not ArpgStory.pages().is_empty():
 		_npc("残页 %d / %d" % [ArpgStory.pages().size(), ArpgStory.PAGES.size()], Vector3(0, 0, 2.5), {"kit": "gravestone", "scale": 1.2}, _read_pages)
@@ -507,6 +525,7 @@ func _open_weapons(_n: ArpgNpc) -> void:
 			Game.save["arpg_weapons"] = owned
 		Game.save["arpg_weapon"] = id
 		Game.write_save()
+		ArpgAch.check_save()
 		hero.apply_stats(ArpgData.talent_stats(), id, true)
 		hud.jade = int(Game.save["jade"])
 		feel.callout(hero.head_top(), String(ArpgData.WEAPONS[id]["name"]), Color(1.0, 0.85, 0.45), 1.1)
@@ -523,6 +542,7 @@ func _start_run(fresh_hero: bool = true) -> void:
 	hero.reset_for_run()
 	hero.apply_stats(state.stats(), state.weapon, true)
 	hero.revives = state.revives
+	_run_t0 = _clock
 
 
 ## 数值调校用：--tel 时每间房打一行统计（耗时、挨打、剩血、药、铜钱）
@@ -543,6 +563,9 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	_ensure_hero()
 	_tel = {"t": 0.0, "dmg0": hero.dmg_total}
 	room_kind = kind if kind != "" else state.room_type()
+	_room_hits0 = hero.hits_taken
+	if room_kind != "tutorial":
+		ArpgAch.unlock("first_run")
 	var fl := state.floor_i()
 	var zone_id := state.zone()
 	if room_kind == "boss":
@@ -684,6 +707,7 @@ func _tut_next() -> void:
 		_tut_need = ""
 		Game.save["arpg_tutorial"] = true
 		Game.write_save()
+		ArpgAch.unlock("tutorial")
 		hero.hp = hero.max_hp
 		hero.gourds = hero.max_gourds
 		hud.wave_text = "试刀完成"
@@ -873,6 +897,7 @@ func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
 func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
 	if state != null and kind != "":
 		state.kills += 1
+		ArpgAch.add("kills")
 		# 装备掉落：赤甲武士常掉，小怪偶尔掉
 		var chance := {"samurai": 0.35, "mage": 0.06, "skeleton": 0.04, "rogue": 0.04, "crawler": 0.015}
 		if _rng.randf() < float(chance.get(kind, 0.0)):
@@ -903,7 +928,17 @@ func _room_cleared() -> void:
 	_tel_print("clear")
 	hud.wave_text = "清场"
 	Game.sfx("door")
+	var clean := is_instance_valid(hero) and hero.hits_taken == _room_hits0
+	if clean and room_kind in ["fight", "elite"]:
+		ArpgAch.unlock("room_clean")
 	if room_kind == "boss":
+		var fl := state.floor_i()
+		if fl == 0:
+			ArpgAch.unlock("boss1")
+		elif fl < ArpgState.LAST_FLOOR:
+			ArpgAch.unlock("boss2")
+		if clean:
+			ArpgAch.unlock("boss_clean")
 		get_tree().create_timer(1.6).timeout.connect(_boss_outro.bind(state.floor_i()))
 		return
 	if room_kind == "elite":
@@ -913,6 +948,10 @@ func _room_cleared() -> void:
 		var rw := _trial.reward()
 		var n := _trial.seals()
 		hud.wave_text = "试炼完成　得印 %d / 4" % n
+		if n >= 1:
+			ArpgAch.unlock("seal_1")
+		if n >= 4:
+			ArpgAch.unlock("seal_4")
 		_drop_gear(hero.global_position + hero.facing * 1.5, int(rw["rarity"]))
 		for i in range(mini(int(rw["coins"]) / 5, 12)):
 			_loot(hero.global_position + hero.facing * 1.2, "coin", 5)
@@ -1013,6 +1052,8 @@ func _ending_choice() -> void:
 		var seen: Dictionary = Game.save.get("arpg_endings", {})
 		seen[id] = true
 		Game.save["arpg_endings"] = seen
+		Game.write_save()
+		ArpgAch.check_save()
 		if id == "true":
 			state.add_jade(30)
 		var d := _say(e["lines"])
@@ -1104,6 +1145,7 @@ func _take_page(n: ArpgNpc, pg: int) -> void:
 		["", "（残页 %d / %d）" % [ArpgStory.pages().size(), ArpgStory.PAGES.size()]]]
 	if ArpgStory.has_all_pages():
 		lines.append(["", "五页都齐了。打倒寂光之后，也许能换一个结局。"])
+		ArpgAch.unlock("pages")
 	_say(lines)
 
 
@@ -1154,6 +1196,7 @@ func _hit_secret_wall() -> void:
 		vfx.dust(p, 2.5)
 		vfx.chips(p + Vector3(0, 1, 0), Vector3.UP, Color(0.4, 0.38, 0.36), 24, 8.0, 0.14)
 		hud.banner("裂墙塌了", "后面藏着一间密室", 2.0)
+		ArpgAch.unlock("secret")
 		_make_secret_portal(p - Vector3(signf(p.x) * 1.5, 0, 0))
 
 
@@ -1508,6 +1551,8 @@ func _gain_gear(it: Dictionary) -> void:
 		return
 	var slot := String(it["slot"])
 	var where := ""
+	if int(it["rarity"]) >= 4:
+		ArpgAch.unlock("gear_legend")
 	if (state.gear[slot] as Dictionary).is_empty():
 		state.gear[slot] = it
 		hero.apply_stats(state.stats(), state.weapon)
@@ -1604,6 +1649,7 @@ func _open_pause(sel: int = 0) -> void:
 		{"title": "音乐音量", "right": pct.call("music"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
 		{"title": "音效音量", "right": pct.call("sfx"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
 		{"title": "画质", "right": QUALITY_NAMES[quality], "desc": "低：关阴影和辉光，降低渲染分辨率，适合网页和轻薄本"}]
+	items.append({"title": "成就", "right": "%d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], "desc": "看看做到了哪些"})
 	if mode == "room":
 		items.append({"title": "放弃这一局", "desc": "回到山门，魂玉带回六成"})
 	var m := _open_menu("暂停", "", items, "list", true)
@@ -1635,10 +1681,19 @@ func _on_pause_chosen(i: int) -> void:
 			Game.sfx("coin")
 			_open_pause(i)
 		4:
+			_open_achievements(true)
+		5:
 			_close_menu()
 			_game_over(false)
 		_:
 			_close_menu()
+
+
+## 成就列表（山门功业碑、暂停菜单）。from_pause 时返回回到暂停菜单
+func _open_achievements(from_pause: bool = false) -> void:
+	var m := _open_menu("功业碑", "已达成 %d / %d　　成就跨局永久保存" % [ArpgAch.count(), ArpgAch.LIST.size()], ArpgAch.menu_items(), "list", true)
+	if from_pause:
+		m.cancelled.connect(func() -> void: _open_pause(4), CONNECT_DEFERRED)
 
 
 func _close_menu() -> void:
@@ -1666,6 +1721,12 @@ func _game_over(won: bool, ending: String = "") -> void:
 	_tel_print("won" if won else "dead")
 	mode = "over"
 	var r := state.settle(won)
+	ArpgAch.check_save()   # 首次身死、累计身死、登顶次数
+	if won:
+		if _clock - _run_t0 <= 20.0 * 60.0:
+			ArpgAch.unlock("clear_fast")
+		if is_instance_valid(hero) and hero.drinks == 0:
+			ArpgAch.unlock("clear_dry")
 	var sub := "第 %d 层　走过 %d 间　斩敌 %d　铜钱 %d" % [r["floor"], r["rooms"], r["kills"], r["coins"]]
 	var desc := "魂玉 %d，全部带回" % r["jade"] if won else "魂玉 %d，带回 %d" % [r["jade"], r["kept"]]
 	var items := [{"title": "回到山门", "desc": desc, "right": "存档魂玉 %d" % int(Game.save["jade"])}]
@@ -1688,6 +1749,10 @@ func _process(dt: float) -> void:
 	if state != null:
 		hud.coins = state.coins
 		hud.jade = state.jade
+		if state.coins >= 300:
+			ArpgAch.unlock("rich")
+	if feel.combo >= 25:
+		ArpgAch.combo(feel.combo)
 	_clock += dt
 	_watch_fps(dt)
 	if _args.has("nohud"):
