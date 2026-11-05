@@ -15,6 +15,7 @@
 | skel_rogue.json | KayKit Skeletons 1.0 · Skeleton_Rogue | 弓手、忍者 |
 | skel_minion.json | KayKit Skeletons 1.0 · Skeleton_Minion | 盾兵、僧兵 |
 | skel_mage.json | KayKit Skeletons 1.0 · Skeleton_Mage | 破戒僧 |
+| mage.json | KayKit Adventurers 1.0 · Mage | 斜俯视版小怪 招魂巫 |
 
 ## 场景件（kit/）
 
@@ -26,4 +27,4 @@
 
 ## 武器（weapon/）
 
-`weapon/*.json` 由 `voxelize_prop.py --grip` 体素化（原点在握把），清单见 `tools/voxelize/weapon_list.txt`。KayKit Adventurers 1.0 的单手剑、双手剑、匕首、双手斧、法杖，KayKit Skeletons 1.0 的骷髅刀、骷髅斧、骷髅法杖、骷髅大盾。Kay Lousberg，CC0 1.0。
+`weapon/*.json` 由 `voxelize_prop.py --grip` 体素化（原点在握把），清单见 `tools/voxelize/weapon_list.txt`。KayKit Adventurers 1.0 的单手剑、双手剑、匕首、双手斧、法杖，KayKit Skeletons 1.0 的骷髅刀、骷髅斧、骷髅法杖、骷髅大盾，以及骷髅弩（骨弩手）、骷髅大盾的转向版 shield_f（盾骷髅）、骷髅箭（弩箭飞行物）。Kay Lousberg，CC0 1.0。

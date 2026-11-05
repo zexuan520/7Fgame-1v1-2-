@@ -8,6 +8,6 @@ skel_blade SKELETONS/Skeleton_Blade.gltf
 skel_axe SKELETONS/Skeleton_Axe.gltf
 skel_staff SKELETONS/Skeleton_Staff.gltf
 skel_shield SKELETONS/Skeleton_Shield_Large_A.gltf
-crossbow SKELETONS/Skeleton_Crossbow.gltf
-shield_s SKELETONS/Skeleton_Shield_Small_B.gltf
+crossbow SKELETONS/Skeleton_Crossbow.gltf  （体素化后再把 z 轴转成 -y：x,y,z → x,-z,y）
+shield_f SKELETONS/Skeleton_Shield_Large_A.gltf  （skel_shield 的 x、z 对调，盾面朝前，盾骷髅左手用）
 arrow SKELETONS/Skeleton_Arrow.gltf

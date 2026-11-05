@@ -114,6 +114,19 @@ func _ready() -> void:
 			n.rotation.y = PI
 			n.radius = 0.0
 		hero.visible = false
+	if _args.has("foelineup"):
+		# 测试：新敌人站成一排不动（看模型、兵器、盾的位置）
+		var ks := String(_args["foelineup"]).split(",")
+		for i in range(ks.size()):
+			var f := Foe.new()
+			f.setup_kind(ks[i])
+			add_child(f)
+			f.global_position = hero.global_position + Vector3(-(ks.size() - 1) * 0.9 + i * 1.8, 0, -2.4)
+			f.face_to(Vector3(0, 0, 1))
+			f.set_physics_process(false)
+			f.rig.scale = Vector3.ONE
+			f.rig.apply(f._aim_pose(1.0) if ks[i] == "archer" else Poses.idle(0.0))
+		hero.visible = false
 	if _args.has("outro"):
 		# 测试：直接当作头目已经打倒
 		get_tree().create_timer(1.0).timeout.connect(func() -> void: _room_cleared())
