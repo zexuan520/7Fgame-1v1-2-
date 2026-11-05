@@ -28,10 +28,22 @@ func _act(n: String) -> bool:
 	return Input.is_action_just_pressed(ArpgInput.act(0, n)) or Input.is_action_just_pressed(ArpgInput.act(1, n))
 
 
+var _tapped := false
+
+
+## 触屏：点屏幕任意处 = 确认
+func _gui_input(event: InputEvent) -> void:
+	var mb := event as InputEventMouseButton
+	if TouchPad.active and mb != null and mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+		_tapped = true
+		accept_event()
+
+
 func _process(dt: float) -> void:
 	if Zaohua.is_platform_paused():
 		return   # 平台把游戏暂停了（切后台等），菜单也不能动
 	_t += dt
+	_fit()
 	if Feel.I != null:
 		Feel.I.world_pause = maxf(Feel.I.world_pause, 0.05)
 	queue_redraw()
@@ -42,7 +54,9 @@ func _process(dt: float) -> void:
 	_cool -= dt
 	if _cool > 0.0:
 		return
-	if _act("attack") or _act("interact") or Input.is_action_just_pressed("ui_accept"):
+	var tap := _tapped
+	_tapped = false
+	if tap or _act("attack") or _act("interact") or Input.is_action_just_pressed("ui_accept"):
 		if _shown < text.length():
 			_shown = text.length()
 		else:
@@ -77,7 +91,7 @@ func _draw() -> void:
 		_wrap(text, Vector2(x0, y + 74), w, 21, Color(0.95, 0.93, 0.88), false)
 	if _shown >= String(ln[1]).length():
 		var a := 0.5 + 0.5 * sin(_t * 5.0)
-		draw_string(font, Vector2(x0 + w - 60, y + h - 16), "J ▸", HORIZONTAL_ALIGNMENT_RIGHT, 60, 16, Color(GOLD, a))
+		draw_string(font, Vector2(x0 + w - 60, y + h - 16), TouchPad.hint("J ▸", "点击继续"), HORIZONTAL_ALIGNMENT_RIGHT, 60, 16, Color(GOLD, a))
 
 
 func _wrap(text: String, pos: Vector2, width: float, size: int, col: Color, center: bool) -> void:
@@ -100,3 +114,11 @@ func _wrap(text: String, pos: Vector2, width: float, size: int, col: Color, cent
 	for r: String in rows:
 		draw_string(font, Vector2(pos.x, y), r, HORIZONTAL_ALIGNMENT_CENTER if center else HORIZONTAL_ALIGNMENT_LEFT, width if center else -1, size, col)
 		y += size + 10
+
+
+## 父节点是 CanvasLayer，锚点铺满不生效（尺寸是 0，点不到）；每帧按视口大小摆好，触屏点击才收得到
+func _fit() -> void:
+	var vs := get_viewport_rect().size
+	if size != vs:
+		position = Vector2.ZERO
+		size = vs

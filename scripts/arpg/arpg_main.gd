@@ -18,6 +18,7 @@ var feel: Feel
 var hud: Hud3D
 var post_rect: ColorRect
 var ui_layer: CanvasLayer
+var touch: TouchPad
 var arena: Arena
 var hero: Hero
 var state: ArpgState
@@ -114,6 +115,25 @@ func _ready() -> void:
 		for i in range(int(_args["givegear"])):
 			state.bag.append(ArpgGear.roll(_rng, i % 3))
 		get_tree().create_timer(1.5).timeout.connect(func() -> void: _open_bag())
+	if _args.has("touchtest"):
+		# 测试：模拟手指——左手推摇杆往右上走，右手按住“斩”
+		var send := func(ev: InputEvent) -> void: Input.parse_input_event(ev)
+		get_tree().create_timer(1.0).timeout.connect(func() -> void:
+			var vs := get_viewport().get_visible_rect().size
+			var t := InputEventScreenTouch.new()
+			t.index = 0
+			t.pressed = true
+			t.position = Vector2(180, vs.y - 160)
+			send.call(t)
+			var d := InputEventScreenDrag.new()
+			d.index = 0
+			d.position = Vector2(240, vs.y - 210)
+			send.call(d)
+			var t2 := InputEventScreenTouch.new()
+			t2.index = 1
+			t2.pressed = true
+			t2.position = Vector2(vs.x - 118, vs.y - 112)
+			send.call(t2))
 	if _args.has("pause"):
 		get_tree().create_timer(1.5).timeout.connect(func() -> void: _open_pause())
 	if _args.has("interact"):
@@ -150,7 +170,7 @@ func _initial_quality() -> int:
 		return clampi(int(_args["quality"]), 0, 2)
 	var q := int(Game.settings.get("quality", -1))
 	if q < 0:
-		q = 1 if OS.has_feature("web") else 2
+		q = 0 if TouchPad.want() else (1 if OS.has_feature("web") else 2)   # 手机默认低
 	return q
 
 
@@ -162,6 +182,9 @@ func apply_quality(q: int) -> void:
 	var vp := get_viewport()
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 	vp.scaling_3d_scale = [0.7, 0.85, 1.0][quality]
+	if TouchPad.active or TouchPad.want():
+		# 手机屏幕像素密度高（画布按设备像素算），3D 再降一些也看不出来
+		vp.scaling_3d_scale = [0.5, 0.65, 0.8][quality]
 	vp.msaa_3d = Viewport.MSAA_DISABLED if quality < 2 else Viewport.MSAA_2X
 
 
@@ -182,7 +205,7 @@ func _watch_fps(_dt: float) -> void:
 		apply_quality(quality - 1)
 		Game.settings["quality"] = quality
 		Game.write_settings()
-		hud.banner("画质 · %s" % QUALITY_NAMES[quality], "帧数偏低（%d），已自动调低；Esc 菜单里可以改" % int(fps), 3.0)
+		hud.banner("画质 · %s" % QUALITY_NAMES[quality], ("帧数偏低（%d），已自动调低；%s菜单里可以改" % [int(fps), TouchPad.hint("Esc ", "右上角 Ⅱ ")]), 3.0)
 
 
 # ---------- 世界、镜头、后期、HUD ----------
@@ -244,6 +267,12 @@ func _setup_world() -> void:
 	ui_layer = CanvasLayer.new()
 	ui_layer.layer = 8
 	add_child(ui_layer)
+	# 手机触屏按键
+	var touch_layer := CanvasLayer.new()
+	touch_layer.layer = 9   # 竖屏提示要盖住菜单；菜单打开时按键自己收起
+	add_child(touch_layer)
+	touch = TouchPad.new()
+	touch_layer.add_child(touch)
 
 
 func _apply_zone_env(info: Dictionary) -> void:
@@ -319,6 +348,7 @@ func _ensure_hero() -> void:
 	hero.died.connect(_on_hero_died)
 	cam_rig.target = hero
 	hud.hero = hero
+	touch.hero = hero
 	if _bot != null:
 		_bot.hero = hero
 
@@ -616,6 +646,8 @@ const TUT_STEPS := [
 	["E 终结技", "敌人身上有出血（红点）时引爆，层数越多伤害越高。它们已经在流血了", "finish"],
 	["U 药葫芦", "回复一大截生命，次数有限，土地庙能补满", "heal"],
 ]
+## 触屏模式下的步骤标题
+const TUT_TOUCH := ["左下摇杆 移动", "「滚」 翻滚", "「斩」 攻击", "「突」 突进斩", "「光」 光束斩", "「终」 终结技", "「药」 药葫芦"]
 var _tut_i := -1
 var _tut_t := 0.0
 var _tut_moved := 0.0
@@ -645,11 +677,13 @@ func _tut_next() -> void:
 		hero.hp = hero.max_hp
 		hero.gourds = hero.max_gourds
 		hud.wave_text = "试刀完成"
-		hud.banner("试刀完成", "走进光门正式上山。F 和人说话，Tab 打开行囊", 3.5)
+		hud.banner("试刀完成", TouchPad.hint("走进光门正式上山。F 和人说话，Tab 打开行囊", "走进光门正式上山。靠近人点「互」说话，右上角「囊」打开行囊"), 3.5)
 		Game.sfx("reward")
 		_open_portal("run")
 		return
 	var st: Array = TUT_STEPS[_tut_i]
+	if TouchPad.active:
+		st = [TUT_TOUCH[_tut_i], st[1], st[2]]
 	_tut_need = String(st[2])
 	hud.wave_text = "试刀 %d / %d　%s" % [_tut_i + 1, TUT_STEPS.size(), st[0]]
 	hud.banner(String(st[0]), String(st[1]), 4.0)
@@ -696,6 +730,8 @@ func _tut_tick(dt: float) -> void:
 		return
 	_tut_t += dt
 	var st: Array = TUT_STEPS[_tut_i]
+	if TouchPad.active:
+		st = [TUT_TOUCH[_tut_i], st[1], st[2]]
 	# 隔一阵子再提示一次，免得玩家没看到横幅
 	if fmod(_tut_t, 9.0) < dt and _tut_t > 1.0:
 		hud.banner(String(st[0]), String(st[1]), 3.0)
@@ -1434,7 +1470,7 @@ func _gain_gear(it: Dictionary) -> void:
 		where = "（已装备）"
 	elif state.bag.size() < ArpgGear.BAG_MAX:
 		state.bag.append(it)
-		where = "（放进行囊，Tab 查看）"
+		where = TouchPad.hint("（放进行囊，Tab 查看）", "（放进行囊，右上角「囊」查看）")
 	else:
 		var c := state.add_coins(15 + 15 * int(it["rarity"]))
 		where = "（行囊满了，换成 %d 铜钱）" % c
@@ -1467,7 +1503,7 @@ func _open_bag(keep_index: int = -1) -> void:
 		acts.append(["craft", r])
 	var sub := "行囊 %d / %d　·　心法 %d 个　·　残页 %d / %d" % [state.bag.size(), ArpgGear.BAG_MAX, state.boons.size(), ArpgStory.pages().size(), ArpgStory.PAGES.size()]
 	var m := _open_menu("行囊", sub, items, "list", true)
-	m.footer = "J 选择　　Tab / 空格 关闭"
+	m.footer = TouchPad.hint("J 选择　　Tab / 空格 关闭", "点选一项　　右上角 ✕ 关闭")
 	if keep_index >= 0:
 		m.index = mini(keep_index, items.size() - 1)
 	m.chosen.connect(func(i: int) -> void:
@@ -1521,8 +1557,8 @@ func _no_dialog() -> bool:
 func _open_pause(sel: int = 0) -> void:
 	var pct := func(k: String) -> String: return "%d%%" % int(round(float(Game.settings[k]) * 100.0))
 	var items := [{"title": "继续"},
-		{"title": "音乐音量", "right": pct.call("music"), "desc": "按确认键切换"},
-		{"title": "音效音量", "right": pct.call("sfx"), "desc": "按确认键切换"},
+		{"title": "音乐音量", "right": pct.call("music"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
+		{"title": "音效音量", "right": pct.call("sfx"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
 		{"title": "画质", "right": QUALITY_NAMES[quality], "desc": "低：关阴影和辉光，降低渲染分辨率，适合网页和轻薄本"}]
 	if mode == "room":
 		items.append({"title": "放弃这一局", "desc": "回到山门，魂玉带回六成"})

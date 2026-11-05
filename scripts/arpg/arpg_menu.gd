@@ -21,6 +21,7 @@ var font: Font
 var _t := 0.0
 var _cool := 0.15            # 打开后一小会儿不吃按键（免得攻击键连按直接选掉）
 var extra_draw: Callable     # 额外画点东西（分岔路地图）
+var _hits: Array = []        # 触屏：每帧画出来的 [Rect2, 选项序号]；-1 关闭，-2 上一页，-3 下一页
 
 
 func _ready() -> void:
@@ -28,6 +29,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	font = Feel.I.font if Feel.I != null else Game.font
 	process_mode = Node.PROCESS_MODE_ALWAYS
+	add_to_group("modal_ui")
 	for i in range(items.size()):
 		if bool(items[i].get("enabled", true)):
 			index = i
@@ -42,6 +44,7 @@ func _process(dt: float) -> void:
 	if Zaohua.is_platform_paused():
 		return   # 平台把游戏暂停了（切后台等），菜单也不能动
 	_t += dt
+	_fit()
 	if Feel.I != null:
 		Feel.I.world_pause = maxf(Feel.I.world_pause, 0.05)
 	_cool -= dt
@@ -68,8 +71,39 @@ func _process(dt: float) -> void:
 		cancelled.emit()
 
 
+## 触屏：点选项直接确认，点右上角 ✕ 返回，长列表点 ▲▼ 翻页
+func _gui_input(event: InputEvent) -> void:
+	if not TouchPad.active or Zaohua.is_platform_paused() or _cool > 0.0:
+		return
+	var mb := event as InputEventMouseButton
+	if mb == null or not mb.pressed or mb.button_index != MOUSE_BUTTON_LEFT:
+		return
+	accept_event()
+	for h: Array in _hits:
+		if not (h[0] as Rect2).grow(6).has_point(mb.position):
+			continue
+		var i := int(h[1])
+		if i == -1:
+			cancelled.emit()
+		elif i == -2 or i == -3:
+			index = clampi(index + (-_per_page if i == -2 else _per_page), 0, items.size() - 1)
+			Game.sfx("ui_back", -12.0)
+		else:
+			index = i
+			if bool(items[i].get("enabled", true)):
+				Game.sfx("reward", -6.0)
+				chosen.emit(i)
+			else:
+				Game.sfx("block", -8.0)
+		return
+
+
+var _per_page := 6
+
+
 func _draw() -> void:
 	var vs := get_viewport_rect().size
+	_hits.clear()
 	draw_rect(Rect2(Vector2.ZERO, vs), Color(0.0, 0.02, 0.03, 0.62))
 	var y0 := vs.y * 0.16
 	draw_string(font, Vector2(0, y0), title, HORIZONTAL_ALIGNMENT_CENTER, vs.x, 38, Color(0.96, 0.92, 0.84))
@@ -82,7 +116,13 @@ func _draw() -> void:
 		_draw_cards(vs)
 	else:
 		_draw_list(vs)
-	var foot := footer if footer != "" else ("J 确认" + ("    空格 返回" if cancellable else ""))
+	var foot := footer if footer != "" else TouchPad.hint("J 确认" + ("    空格 返回" if cancellable else ""), "点选一项" + ("    右上角 ✕ 返回" if cancellable else ""))
+	if TouchPad.active and cancellable:
+		var br := Rect2(vs.x - 150, 24, 126, 54)
+		draw_rect(br, Color(0.03, 0.06, 0.07, 0.85))
+		draw_rect(br, Color(GOLD, 0.8), false, 1.5)
+		draw_string(font, br.position + Vector2(0, 36), "✕ 返回", HORIZONTAL_ALIGNMENT_CENTER, br.size.x, 24, Color(0.95, 0.92, 0.85))
+		_hits.append([br, -1])
 	draw_string(font, Vector2(0, vs.y - 40), foot, HORIZONTAL_ALIGNMENT_CENTER, vs.x, 16, Color(0.65, 0.75, 0.75))
 
 
@@ -91,13 +131,25 @@ func _draw_list(vs: Vector2) -> void:
 	var x := (vs.x - w) * 0.5
 	var y := vs.y * 0.16 + 80
 	var h := 62.0
-	var per_page := int((vs.y - y - 80) / h)
+	var per_page := maxi(1, int((vs.y - y - 80) / h))
+	_per_page = per_page
 	var start := clampi(index - per_page + 1, 0, maxi(0, items.size() - per_page))
+	if TouchPad.active and items.size() > per_page:
+		# 长列表：右侧上下翻页
+		var up := Rect2(x + w + 16, y, 56, 56)
+		var dn := Rect2(x + w + 16, y + per_page * h - 64, 56, 56)
+		for pr: Array in [[up, -2, "▲", start > 0], [dn, -3, "▼", start + per_page < items.size()]]:
+			var rr: Rect2 = pr[0]
+			draw_rect(rr, Color(0.03, 0.06, 0.07, 0.85))
+			draw_rect(rr, Color(GOLD, 0.8 if pr[3] else 0.25), false, 1.5)
+			draw_string(font, rr.position + Vector2(0, 38), pr[2], HORIZONTAL_ALIGNMENT_CENTER, rr.size.x, 26, Color(GOLD, 1.0 if pr[3] else 0.3))
+			_hits.append([rr, pr[1]])
 	for i in range(start, mini(items.size(), start + per_page)):
 		var it: Dictionary = items[i]
 		var sel := i == index
 		var en := bool(it.get("enabled", true))
 		var r := Rect2(x, y, w, h - 8)
+		_hits.append([r, i])
 		draw_rect(r, Color(0.03, 0.06, 0.07, 0.85 if sel else 0.6))
 		draw_rect(r, Color(GOLD if sel else Color(TEAL, 0.25), 0.9 if sel else 1.0), false, 2.0 if sel else 1.0)
 		if sel:
@@ -133,6 +185,7 @@ func _draw_cards(vs: Vector2) -> void:
 		var en := bool(it.get("enabled", true))
 		var lift := -10.0 if sel else 0.0
 		var r := Rect2(x + i * (cw + gap), y + lift, cw, ch)
+		_hits.append([r, i])
 		var col: Color = it.get("color", TEAL)
 		draw_rect(r, Color(0.03, 0.05, 0.06, 0.92))
 		draw_rect(Rect2(r.position, Vector2(cw, 6)), Color(col, 0.9))
@@ -167,3 +220,11 @@ func _wrap(text: String, pos: Vector2, width: float, size: int, col: Color) -> v
 			line = t
 	if line != "":
 		draw_string(font, Vector2(pos.x, y), line, HORIZONTAL_ALIGNMENT_LEFT, -1, size, col)
+
+
+## 父节点是 CanvasLayer，锚点铺满不生效（尺寸是 0，点不到）；每帧按视口大小摆好，触屏点击才收得到
+func _fit() -> void:
+	var vs := get_viewport_rect().size
+	if size != vs:
+		position = Vector2.ZERO
+		size = vs

@@ -74,7 +74,7 @@ func _process(dt: float) -> void:
 			portrait_cam.global_position = hp + fwd * 1.5 + Vector3(0, 0.12, 0) + fwd.cross(Vector3.UP) * 0.35
 			portrait_cam.look_at(hp, Vector3.UP)
 	var vs := get_viewport_rect().size
-	portrait_rect.position = Vector2(30, vs.y - 134)
+	portrait_rect.position = Vector2(30, _panel_y(vs) - 52)
 	queue_redraw()
 
 
@@ -83,7 +83,8 @@ func _draw() -> void:
 	_draw_enemy_marks()
 	if is_instance_valid(hero):
 		_draw_player_panel(vs)
-		_draw_skills(vs)
+		if not TouchPad.active:
+			_draw_skills(vs)   # 触屏模式下冷却画在按键上
 	_draw_boss(vs)
 	# 左上：区域名 + 波次 + 钱
 	draw_string(font, Vector2(28, 44), zone_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, GOLD)
@@ -102,11 +103,17 @@ func _draw() -> void:
 			draw_string(font, Vector2(0, y + 26), _banner_sub, HORIZONTAL_ALIGNMENT_CENTER, vs.x, 18, Color(0.6, 0.9, 0.9, a))
 
 
+## 头像圆心的 y：平时在左下；触屏模式左下要放摇杆，挪到左上区域名下面
+func _panel_y(vs: Vector2) -> float:
+	return 168.0 if TouchPad.active else vs.y - 82
+
+
 func _draw_player_panel(vs: Vector2) -> void:
-	var c := Vector2(82, vs.y - 82)
+	var c := Vector2(82, _panel_y(vs))
+	var top := c.y - 38
 	# 底板
-	draw_rect(Rect2(c.x, vs.y - 120, 330, 78), PANEL)
-	draw_line(Vector2(c.x, vs.y - 120), Vector2(c.x + 330, vs.y - 120), Color(GOLD, 0.5), 1.0)
+	draw_rect(Rect2(c.x, top, 330, 78), PANEL)
+	draw_line(Vector2(c.x, top), Vector2(c.x + 330, top), Color(GOLD, 0.5), 1.0)
 	# 头像框：外圈金、内圈青
 	draw_circle(c, 58, Color(0.02, 0.03, 0.04))
 	draw_arc(c, 56, 0, TAU, 64, GOLD, 2.5, true)
@@ -120,7 +127,7 @@ func _draw_player_panel(vs: Vector2) -> void:
 		draw_colored_polygon(PackedVector2Array([p + Vector2(0, -5), p + Vector2(5, 0), p + Vector2(0, 5), p + Vector2(-5, 0)]), GOLD)
 	# 血条
 	var x0 := c.x + 76
-	var y0 := vs.y - 100
+	var y0 := top + 20
 	var w := 240.0
 	draw_string(font, Vector2(x0, y0 - 4), "残刃", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, GOLD)
 	draw_rect(Rect2(x0, y0 + 6, w, 9), Color(0.08, 0.02, 0.03))

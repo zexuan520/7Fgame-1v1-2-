@@ -125,6 +125,31 @@ body {
 			<div id="status-notice"></div>
 		</div>
 
+		<script>
+// 手机：第一次点屏幕时尝试锁定横屏。造化 App 内嵌页面通常不让锁，失败就算了，游戏里会提示“请横过来”。
+// 单独在浏览器打开（不在框架里）时先进全屏，安卓 Chrome 全屏后才允许锁方向。
+(function () {
+	if (!/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)) {
+		return;
+	}
+	let tried = false;
+	function tryLock() {
+		if (tried) {
+			return;
+		}
+		tried = true;
+		const so = screen.orientation;
+		const lock = () => (so && so.lock) ? so.lock('landscape') : Promise.reject(new Error('no lock'));
+		lock().catch(() => {
+			const el = document.documentElement;
+			if (window.top === window && el.requestFullscreen) {
+				el.requestFullscreen({ navigationUI: 'hide' }).then(lock).catch(() => {});
+			}
+		});
+	}
+	window.addEventListener('touchend', tryLock, { passive: true });
+}());
+		</script>
 		<script src="$GODOT_URL"></script>
 		<script>
 const GODOT_CONFIG = $GODOT_CONFIG;

@@ -59,3 +59,12 @@ static func key_name(index: int, name: String) -> String:
 	if keys.is_empty():
 		return ""
 	return OS.get_keycode_string(int(keys[0]))
+
+
+## 触屏模式：手指点屏幕会被模拟成鼠标左键，不能再当“攻击”，否则推摇杆也会出刀
+static func drop_mouse() -> void:
+	setup()
+	for a: String in ["attack", "dash"]:
+		for ev: InputEvent in InputMap.action_get_events(act(0, a)):
+			if ev is InputEventMouseButton:
+				InputMap.action_erase_event(act(0, a), ev)

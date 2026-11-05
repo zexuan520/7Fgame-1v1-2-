@@ -19,6 +19,7 @@ var _label: Label3D
 
 
 func _ready() -> void:
+	add_to_group("npcs")
 	if model_id != "":
 		rig = VoxActor.new()
 		add_child(rig)
@@ -78,7 +79,7 @@ func _process(dt: float) -> void:
 		hero = n as Hero
 		break
 	_near = hero != null and hero.alive and hero.global_position.distance_to(global_position) < radius and not used
-	_label.text = ("[%s] %s" % [ArpgInput.key_name(0, "interact"), display]) if _near else display
+	_label.text = (("[%s] %s" % [ArpgInput.key_name(0, "interact"), display]) if not TouchPad.active else "「互」" + display) if _near else display
 	_label.modulate.a = 1.0 if _near else 0.55
 	if used:
 		_label.modulate.a = 0.25

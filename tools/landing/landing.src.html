@@ -1,0 +1,461 @@
+<!doctype html>
+<!-- landing-diversity:
+  archetype: L1
+  title.placement: top-hero
+  slice.anchor: center
+  slice.motion_axis: radial
+  bg.id: BG-radial-glow
+  hud.zones: TL, TR, BL, BR, top-strip
+  hook.combo: H-A+H-D
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#06080e">
+<title>残刃归途</title>
+<style>
+@font-face { font-family: "CRSerif"; src: url(data:font/woff2;base64,__FONT__) format("woff2"); font-weight: 700; }
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --host-top: max(92px, var(--safe-top));
+  --host-bottom: max(128px, var(--safe-bottom));
+  --bg: #06080e;
+  --gold: #dbb86b;
+  --teal: #59d9d9;
+  --ink: #f7ede0;
+  --blood: #c71f24;
+  --panel: rgba(8, 13, 15, 0.72);
+  --side: max(12px, var(--safe-left), var(--safe-right));
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; width: 100%; height: 100vh; height: 100dvh;
+  overflow: hidden; overscroll-behavior: none; touch-action: manipulation;
+  background: var(--bg); color: var(--ink);
+  font-family: "CRSerif", "Noto Serif SC", "Songti SC", serif;
+  -webkit-user-select: none; user-select: none;
+}
+body {
+  background:
+    radial-gradient(ellipse 80% 46% at 50% 54%, rgba(40, 120, 115, 0.42) 0%, rgba(14, 44, 46, 0.35) 45%, rgba(6, 8, 14, 0) 75%),
+    var(--bg);
+}
+#cv { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+.cover {
+  position: fixed; inset: 0;
+  padding: var(--host-top) var(--side) var(--host-bottom);
+  display: flex; flex-direction: column; pointer-events: none;
+}
+.title-strip { text-align: center; }
+.title {
+  margin: 0; font-size: clamp(22px, 7vw, 36px); letter-spacing: 0.32em; padding-left: 0.32em;
+  color: var(--ink); text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6), 0 0 18px rgba(219, 184, 107, 0.35);
+}
+.rule { width: 46%; height: 1px; margin: 6px auto 6px; background: linear-gradient(90deg, transparent, var(--gold), transparent); }
+.hook { font-size: clamp(12px, 3.6vw, 15px); color: var(--teal); letter-spacing: 0.12em; }
+.hud-row { display: flex; justify-content: space-between; align-items: flex-start; margin-top: clamp(8px, 2.4vh, 18px); }
+.zone .name { font-size: clamp(14px, 4.2vw, 18px); color: var(--gold); border-bottom: 1px solid rgba(219, 184, 107, 0.6); padding-bottom: 2px; }
+.zone .wave { font-size: clamp(11px, 3.2vw, 13px); color: #cce6e6; margin-top: 3px; }
+.money { text-align: right; font-size: clamp(12px, 3.6vw, 15px); line-height: 1.5; }
+.money .coin { color: #ffd973; }
+.money .jade { color: #8cffd9; }
+.spacer { flex: 1; }
+.hud-bottom { display: flex; justify-content: space-between; align-items: flex-end; }
+.panel { background: var(--panel); border-top: 1px solid rgba(219, 184, 107, 0.5); padding: 6px 10px 7px; width: min(52vw, 210px); }
+.panel .lbl { display: flex; justify-content: space-between; font-size: clamp(11px, 3.2vw, 13px); }
+.panel .lbl b { color: var(--gold); font-weight: 700; }
+.bar { position: relative; height: 7px; margin-top: 4px; background: #140508; outline: 1px solid rgba(219, 184, 107, 0.6); }
+.bar i { position: absolute; left: 0; top: 0; bottom: 0; background: var(--blood); width: 100%; }
+.bar.en { height: 4px; background: #050f12; outline-color: rgba(89, 217, 217, 0.5); margin-top: 5px; }
+.bar.en i { background: var(--teal); width: 0%; }
+.combo { text-align: right; transform-origin: 100% 100%; }
+.combo .n { font-size: clamp(34px, 11vw, 52px); line-height: 1; color: var(--ink); text-shadow: 0 0 14px rgba(255, 210, 120, 0.7), 0 3px 0 rgba(0, 0, 0, 0.6); }
+.combo .t { font-size: clamp(12px, 3.6vw, 15px); color: var(--gold); letter-spacing: 0.2em; }
+.paused * { animation-play-state: paused !important; }
+@media (max-height: 600px) { .hook { display: none; } .hud-row { margin-top: 6px; } }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div class="cover" id="cover">
+  <div class="title-strip">
+    <h1 class="title">残刃归途</h1>
+    <div class="rule"></div>
+    <div class="hook">连招 · 突进斩 · 光束斩</div>
+  </div>
+  <div class="hud-row">
+    <div class="zone"><div class="name">幽林遗迹 · 战</div><div class="wave" id="wave">第 2 波 / 共 3 波</div></div>
+    <div class="money"><div class="coin" id="coin">铜钱 36</div><div class="jade">魂玉 12</div></div>
+  </div>
+  <div class="spacer"></div>
+  <div class="hud-bottom">
+    <div class="panel">
+      <div class="lbl"><b>残刃</b><span id="hpt">120 / 120</span></div>
+      <div class="bar"><i id="hp"></i></div>
+      <div class="bar en"><i id="en"></i></div>
+    </div>
+    <div class="combo" id="combo"><div class="n" id="cn">0</div><div class="t">连击</div></div>
+  </div>
+</div>
+<script>
+(function () {
+  "use strict";
+  var LOOP = 6400;
+  var cv = document.getElementById("cv");
+  var ctx = cv.getContext("2d");
+  var W = 0, H = 0, DPR = 1, S = 1, CX = 0, CY = 0;
+  var els = {
+    cn: document.getElementById("cn"), combo: document.getElementById("combo"),
+    hp: document.getElementById("hp"), hpt: document.getElementById("hpt"),
+    en: document.getElementById("en"), coin: document.getElementById("coin"), wave: document.getElementById("wave")
+  };
+
+  // 固定的伪随机（每次循环一样）
+  function hash(n) { var x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+    S = Math.min(W / 7, H / 11.5);
+    CX = W * 0.5; CY = H * 0.53;
+  }
+
+  // 3/4 俯视：x 向右，y 向屏幕下（地面深度），z 向上
+  function P(x, y, z) { return [CX + x * S, CY + y * S * 0.62 - z * S]; }
+
+  function shade(hex, k) {
+    var n = parseInt(hex.slice(1), 16);
+    var r = Math.min(255, Math.round(((n >> 16) & 255) * k));
+    var g = Math.min(255, Math.round(((n >> 8) & 255) * k));
+    var b = Math.min(255, Math.round((n & 255) * k));
+    return "rgb(" + r + "," + g + "," + b + ")";
+  }
+
+  // 一个体素方块：顶面亮、正面暗
+  function cube(x, y, z, w, h, col, a) {
+    var p = P(x - w / 2, y - w / 2, z + h);
+    var sw = w * S, sd = w * S * 0.62, sh = h * S;
+    ctx.globalAlpha = a == null ? 1 : a;
+    ctx.fillStyle = shade(col, 1.15); ctx.fillRect(p[0], p[1], sw, sd);
+    ctx.fillStyle = shade(col, 0.72); ctx.fillRect(p[0], p[1] + sd, sw, sh);
+    ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.fillRect(p[0], p[1] + sd, sw, Math.max(1, sh * 0.08));
+    ctx.globalAlpha = 1;
+  }
+
+  function shadow(x, y, r) {
+    var p = P(x, y, 0);
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.beginPath(); ctx.ellipse(p[0], p[1], r * S, r * S * 0.42, 0, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // 地面：深色石板 + 青色荧光蘑菇
+  function floor(t) {
+    for (var gy = -9; gy <= 9; gy++) {
+      for (var gx = -6; gx <= 6; gx++) {
+        var p = P(gx - 0.5, gy - 0.5, 0);
+        var d = Math.sqrt(gx * gx + gy * gy * 0.55);
+        var k = Math.max(0, 1 - d / 7.5);
+        if (k <= 0) continue;
+        var v = 0.75 + hash(gx * 31 + gy * 7) * 0.35;
+        ctx.fillStyle = "rgba(" + Math.round(22 * v) + "," + Math.round(40 * v) + "," + Math.round(38 * v) + "," + (k * 0.95).toFixed(3) + ")";
+        ctx.fillRect(p[0] + 1, p[1] + 1, S - 2, S * 0.62 - 2);
+      }
+    }
+    for (var i = 0; i < 9; i++) {
+      var a = hash(i + 3) * Math.PI * 2, r = 2.8 + hash(i + 9) * 2.6;
+      var mx = Math.cos(a) * r, my = Math.sin(a) * r * 1.3;
+      var glow = 0.6 + 0.4 * Math.sin(t / 500 + i);
+      var q = P(mx, my, 0.18);
+      ctx.fillStyle = "rgba(89,217,217," + (0.12 * glow).toFixed(3) + ")";
+      ctx.beginPath(); ctx.arc(q[0], q[1], S * 0.3, 0, Math.PI * 2); ctx.fill();
+      cube(mx, my, 0, 0.08, 0.14, "#9fb8b0");
+      cube(mx, my, 0.14, 0.26, 0.08, i % 3 ? "#59d9d9" : "#a77bff");
+    }
+  }
+
+  // 主角：深蓝兜帽游侠，手里一把剑
+  function hero(x, y, face, swing, lift) {
+    shadow(x, y, 0.42);
+    var z = lift || 0;
+    cube(x - 0.12, y, z, 0.2, 0.36, "#1b2533");
+    cube(x + 0.12, y, z, 0.2, 0.36, "#1b2533");
+    cube(x, y, z + 0.36, 0.56, 0.5, "#24407e");
+    cube(x, y + 0.02, z + 0.86, 0.46, 0.38, "#e0a77a");
+    cube(x, y - 0.04, z + 0.98, 0.56, 0.36, "#1f3a7a");
+    cube(x, y - 0.06, z + 1.3, 0.36, 0.12, "#2a4c96");
+    // 剑：绕身体挥动
+    var a = face + swing;
+    var hx = x + Math.cos(a) * 0.42, hy = y + Math.sin(a) * 0.42;
+    var p0 = P(hx, hy, z + 0.62), p1 = P(x + Math.cos(a) * 1.3, y + Math.sin(a) * 1.3, z + 0.7);
+    ctx.strokeStyle = "#e9eef2"; ctx.lineWidth = Math.max(2, S * 0.09); ctx.lineCap = "square";
+    ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
+    ctx.strokeStyle = "#dbb86b"; ctx.lineWidth = Math.max(2, S * 0.12);
+    ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p0[0] + (p1[0] - p0[0]) * 0.14, p0[1] + (p1[1] - p0[1]) * 0.14); ctx.stroke();
+  }
+
+  // 骷髅小怪：骨白色，眼眶发红
+  function skeleton(x, y, hit, alpha, tele) {
+    shadow(x, y, 0.34);
+    var j = hit > 0 ? Math.sin(hit * 60) * 0.05 : 0;
+    var col = hit > 0 ? "#ffffff" : "#d9d2bc";
+    cube(x - 0.1 + j, y, 0, 0.14, 0.34, "#a8a08a", alpha);
+    cube(x + 0.1 + j, y, 0, 0.14, 0.34, "#a8a08a", alpha);
+    cube(x + j, y, 0.34, 0.42, 0.42, col, alpha);
+    cube(x + j, y, 0.76, 0.42, 0.36, col, alpha);
+    var e = P(x + j - 0.09, y + 0.21, 0.98), e2 = P(x + j + 0.09, y + 0.21, 0.98);
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = tele ? "#ff3b3b" : "#7a1418";
+    ctx.fillRect(e[0] - S * 0.05, e[1], S * 0.08, S * 0.07);
+    ctx.fillRect(e2[0] - S * 0.03, e2[1], S * 0.08, S * 0.07);
+    ctx.globalAlpha = 1;
+  }
+
+  // 刀光：金白色弧
+  function slash(x, y, a0, a1, r, k, col) {
+    var c = P(x, y, 0.65);
+    ctx.save();
+    ctx.translate(c[0], c[1]); ctx.scale(1, 0.62);
+    ctx.globalAlpha = Math.max(0, 1 - k);
+    ctx.strokeStyle = col || "#fff3d0"; ctx.lineWidth = S * (0.34 - 0.24 * k); ctx.lineCap = "round";
+    ctx.shadowColor = "#dbb86b"; ctx.shadowBlur = S * 0.6;
+    ctx.beginPath(); ctx.arc(0, 0, r * S, a0, a0 + (a1 - a0) * Math.min(1, k * 2.2)); ctx.stroke();
+    ctx.restore();
+  }
+
+  function spark(x, y, k, seed, big) {
+    var c = P(x, y, 0.7);
+    var n = big ? 12 : 7;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - k);
+    ctx.fillStyle = big ? "#fff0c0" : "#ffe7a8";
+    ctx.beginPath(); ctx.arc(c[0], c[1], S * (big ? 0.55 : 0.32) * (1 - k * 0.6), 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#ffd27a"; ctx.lineWidth = Math.max(1.5, S * 0.05);
+    for (var i = 0; i < n; i++) {
+      var a = hash(seed * 13 + i) * Math.PI * 2, r0 = S * 0.2, r1 = S * (0.5 + hash(seed + i * 5) * 0.6) * (0.4 + k);
+      ctx.beginPath(); ctx.moveTo(c[0] + Math.cos(a) * r0, c[1] + Math.sin(a) * r0); ctx.lineTo(c[0] + Math.cos(a) * r1, c[1] + Math.sin(a) * r1); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // 体素碎块（骷髅被打碎）
+  function shatter(x, y, k, seed) {
+    for (var i = 0; i < 10; i++) {
+      var a = hash(seed * 7 + i) * Math.PI * 2, sp = 0.6 + hash(seed + i * 3) * 1.4;
+      var px = x + Math.cos(a) * sp * k, py = y + Math.sin(a) * sp * k * 0.8;
+      var pz = Math.max(0, 0.6 + 2.2 * k - 4.2 * k * k) ;
+      cube(px, py, pz, 0.14, 0.14, i % 3 ? "#d9d2bc" : "#8f876f", Math.max(0, 1 - k * 0.9));
+    }
+  }
+
+  function num(x, y, k, text, crit) {
+    var c = P(x, y, 1.3 + k * 0.9);
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, 1 - Math.pow(k, 2));
+    var fs = (crit ? 0.95 : 0.62) * S * (k < 0.15 ? 1 + (0.15 - k) * 4 : 1);
+    ctx.font = "700 " + fs.toFixed(1) + "px CRSerif, serif";
+    ctx.textAlign = "center";
+    ctx.lineWidth = Math.max(2, fs * 0.14); ctx.strokeStyle = "rgba(0,0,0,0.75)";
+    ctx.strokeText(text, c[0], c[1]);
+    ctx.fillStyle = crit ? "#ff5a4a" : "#fff4dc";
+    ctx.fillText(text, c[0], c[1]);
+    ctx.restore();
+  }
+
+  // ---------- 一次循环的编排 ----------
+  // 六只骷髅从四周围上来；四段连招 → 突进斩 → 光束斩清场 → 碎块落地 → 下一波
+  var FOES = [];
+  for (var i = 0; i < 6; i++) {
+    var a = -Math.PI / 2 + i * Math.PI / 3 + 0.25;
+    FOES.push({ a: a, die: 0 });
+  }
+  // 每段攻击：[时间, 起角, 终角, 命中的骷髅, 伤害]
+  var HITS = [
+    [700, -2.6, -0.4, [0, 5], ["23", "27"]],
+    [1080, 0.4, 2.6, [2, 3], ["25", "31"]],
+    [1460, -0.6, 1.6, [1, 2], ["29", "24"]],
+    [1900, -3.4, 2.9, [0, 1, 2, 3, 4, 5], ["58", "61", "54", "66", "57", "63"]]
+  ];
+  var DASH_T = 2500, BEAM_T = 3350;
+  var KILL = { 4: 2050, 5: 2050, 0: 2700, 1: 3450, 2: 3450, 3: 3450 };
+
+  function foePos(f, t) {
+    var enter = Math.min(1, t / 650);
+    var e = 1 - Math.pow(1 - enter, 3);
+    var r = 5.2 - e * 3.0;
+    if (t > 5600) r = 5.2 - (t - 5600) / 800 * 0.4;
+    return [Math.cos(f.a) * r, Math.sin(f.a) * r * 1.25];
+  }
+
+  function draw(t) {
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    // 轻微震屏：重击和光束斩时
+    var shake = 0;
+    [[1900, 1], [BEAM_T, 1.6], [DASH_T + 120, 0.6]].forEach(function (s) {
+      var d = t - s[0];
+      if (d >= 0 && d < 180) shake = Math.max(shake, (1 - d / 180) * s[1]);
+    });
+    if (shake > 0) ctx.translate(Math.sin(t * 0.9) * shake * 3, Math.cos(t * 1.3) * shake * 2);
+    floor(t);
+
+    // 主角动作
+    var hx = 0, hy = 0, face = Math.PI / 2, swing = 0, lift = 0;
+    for (var h = 0; h < HITS.length; h++) {
+      var d = t - HITS[h][0];
+      if (d >= -120 && d < 260) {
+        var k = Math.min(1, Math.max(0, (d + 120) / 260));
+        swing = HITS[h][1] + (HITS[h][2] - HITS[h][1]) * k - face;
+        if (h === 3) lift = Math.sin(k * Math.PI) * 0.25;
+      }
+    }
+    // 突进斩：冲到左上那只身边再回来
+    var tgt = foePos(FOES[0], DASH_T);
+    var dd = t - DASH_T;
+    if (dd > -100 && dd < 700) {
+      var go = dd < 160 ? Math.max(0, (dd + 100) / 260) : dd < 420 ? 1 : 1 - (dd - 420) / 280;
+      go = Math.max(0, Math.min(1, go));
+      hx = tgt[0] * 0.75 * go; hy = tgt[1] * 0.75 * go;
+      face = Math.atan2(tgt[1], tgt[0]);
+      swing = dd > 100 && dd < 360 ? -1.4 + (dd - 100) / 260 * 2.8 : 0;
+    }
+    var bd = t - BEAM_T;
+    if (bd > -300 && bd < 500) { face = 0.25; swing = bd < 0 ? -1.6 : 1.2; }
+
+    // 按深度排序画：骷髅、主角
+    var list = [];
+    FOES.forEach(function (f, i) {
+      var kt = KILL[i];
+      var p = foePos(f, t);
+      var hit = 0;
+      HITS.forEach(function (hh) { if (hh[3].indexOf(i) >= 0 && t - hh[0] >= 0 && t - hh[0] < 140) hit = 1 - (t - hh[0]) / 140; });
+      if ((i === 0 && t - DASH_T - 120 >= 0 && t - DASH_T - 120 < 140)) hit = 1;
+      if (t < kt) {
+        var tele = t > 300 && t < 650 && i % 2 === 0;
+        var spawnA = t > 5600 ? Math.min(1, (t - 5600) / 500) : 1;
+        list.push({ y: p[1], f: function (p, hit, tele, spawnA) { return function () { skeleton(p[0], p[1], hit, spawnA, tele); }; }(p, hit, tele, spawnA) });
+      } else if (t - kt < 1300) {
+        list.push({ y: p[1] - 0.01, f: function (p, k, i) { return function () { shatter(p[0], p[1], k, i + 1); }; }(p, (t - kt) / 1300, i) });
+      }
+      // 下一波从边缘冒出来
+      if (t > 5600 && t >= kt) {
+        var p2 = foePos(f, t);
+        list.push({ y: p2[1], f: function (p, a) { return function () { skeleton(p[0], p[1], 0, a, false); }; }(p2, Math.min(1, (t - 5600) / 600)) });
+      }
+    });
+    list.push({ y: hy, f: function () { hero(hx, hy, face, swing, lift); } });
+    list.sort(function (a, b) { return a.y - b.y; });
+    list.forEach(function (o) { o.f(); });
+
+    // 刀光与火花
+    HITS.forEach(function (hh, n) {
+      var d = t - hh[0];
+      if (d >= -60 && d < 320) slash(0, 0, hh[1], hh[2], n === 3 ? 1.5 : 1.25, (d + 60) / 380, n === 3 ? "#ffffff" : null);
+      hh[3].forEach(function (fi, m) {
+        var p = foePos(FOES[fi], hh[0]);
+        if (d >= 0 && d < 300) spark(p[0], p[1], d / 300, n * 10 + fi, n === 3);
+        if (d >= 0 && d < 900) num(p[0] + (m % 2 ? 0.25 : -0.25), p[1], d / 900, hh[4][m], n === 3 && m % 2 === 1);
+      });
+    });
+    if (dd >= 100 && dd < 420) slash(hx, hy, face - 1.4, face + 1.4, 1.2, (dd - 100) / 320, "#9ff5f5");
+    if (dd >= 120 && dd < 1000) { spark(tgt[0], tgt[1], Math.min(1, (dd - 120) / 300), 77, true); num(tgt[0], tgt[1], (dd - 120) / 880, "142", true); }
+
+    // 光束斩：一条横贯画面的金白光束
+    if (bd >= 0 && bd < 700) {
+      var k2 = bd / 700;
+      var a0 = P(-0.3, 0.1, 0.65), a1 = P(9, 2.4, 0.65);
+      ctx.save();
+      ctx.globalAlpha = 1 - k2;
+      ctx.strokeStyle = "#ffe9a8"; ctx.lineCap = "round";
+      ctx.shadowColor = "#dbb86b"; ctx.shadowBlur = S * 1.2;
+      ctx.lineWidth = S * (0.9 - 0.6 * k2);
+      ctx.beginPath(); ctx.moveTo(a0[0], a0[1]); ctx.lineTo(a1[0], a1[1]); ctx.stroke();
+      ctx.strokeStyle = "#ffffff"; ctx.lineWidth = S * (0.3 - 0.2 * k2);
+      ctx.beginPath(); ctx.moveTo(a0[0], a0[1]); ctx.lineTo(a1[0], a1[1]); ctx.stroke();
+      ctx.restore();
+      // 光束沿途也砍到另一侧的骷髅（编排上算它穿透）
+      [1, 2, 3].forEach(function (fi, m) {
+        var p = foePos(FOES[fi], BEAM_T);
+        if (bd < 320) spark(p[0], p[1], bd / 320, 50 + fi, true);
+        num(p[0], p[1], bd / 700, ["218", "236", "251"][m], true);
+      });
+      if (bd < 120) { ctx.fillStyle = "rgba(255,240,200," + (0.35 * (1 - bd / 120)).toFixed(3) + ")"; ctx.fillRect(-10, -10, W + 20, H + 20); }
+    }
+    // 四周压暗（聚焦中间）
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    var g = ctx.createRadialGradient(CX, CY, Math.min(W, H) * 0.3, CX, CY, Math.max(W, H) * 0.75);
+    g.addColorStop(0, "rgba(6,8,14,0)"); g.addColorStop(1, "rgba(6,8,14,0.85)");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  }
+
+  // HUD 数字：连击、血量、气力、铜钱
+  var COMBO_T = [700, 1080, 1460, 1900, 2620, 3350];
+  var COMBO_N = [2, 4, 6, 12, 13, 16];
+  var lastCombo = -1;
+  function hud(t) {
+    var c = 0;
+    for (var i = 0; i < COMBO_T.length; i++) if (t >= COMBO_T[i]) c = COMBO_N[i];
+    if (t > 5200) c = 0;
+    if (c !== lastCombo) { els.cn.textContent = String(c); lastCombo = c; }
+    var pop = 1;
+    for (var j = 0; j < COMBO_T.length; j++) { var d = t - COMBO_T[j]; if (d >= 0 && d < 220) pop = 1 + (1 - d / 220) * (j >= 3 ? 0.6 : 0.3); }
+    els.combo.style.transform = "scale(" + pop.toFixed(3) + ")";
+    els.combo.style.opacity = c > 0 ? "1" : "0.35";
+    // 一只骷髅在 300~650ms 出手，挨了一下；之后慢慢回不来
+    var hp = t > 620 ? 96 : 120;
+    els.hp.style.width = (hp / 120 * 100).toFixed(1) + "%";
+    els.hpt.textContent = hp + " / 120";
+    // 气力：连招攒满，光束斩用掉
+    var en = Math.min(100, (t / 3300) * 100);
+    if (t >= BEAM_T) en = Math.max(0, 100 - (t - BEAM_T) / 3);
+    if (t < 300) en = 0;
+    els.en.style.width = en.toFixed(1) + "%";
+    els.en.style.background = en >= 100 ? "#ffd966" : "";
+    var coins = 36;
+    [2050, 2700, 3450].forEach(function (k, n) { if (t >= k + 400) coins += [7, 4, 12][n]; });
+    els.coin.textContent = "铜钱 " + coins;
+    els.wave.textContent = t > 5600 ? "第 3 波 / 共 3 波" : "第 2 波 / 共 3 波";
+  }
+
+  // ---------- 只在可见时播放 ----------
+  var raf = 0, playing = false, startAt = 0, pausedAt = 0, visible = true, inView = true;
+  function frame(now) {
+    var t = (now - startAt) % LOOP;
+    draw(t); hud(t);
+    raf = requestAnimationFrame(frame);
+  }
+  function setCoverPlaying(active) {
+    if (active === playing) return;
+    playing = active;
+    document.documentElement.classList.toggle("paused", !active);
+    if (active) {
+      startAt = performance.now() - pausedAt;
+      raf = requestAnimationFrame(frame);
+    } else {
+      if (raf) cancelAnimationFrame(raf);
+      raf = 0;
+      pausedAt = (performance.now() - startAt) % LOOP;
+    }
+  }
+  function update() { setCoverPlaying(visible && inView); }
+  document.addEventListener("visibilitychange", function () { visible = document.visibilityState === "visible"; update(); });
+  window.addEventListener("pagehide", function () { visible = false; update(); });
+  window.addEventListener("pageshow", function () { visible = document.visibilityState === "visible"; update(); });
+  document.addEventListener("freeze", function () { visible = false; update(); });
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (es) { inView = es[0].intersectionRatio > 0; update(); }, { threshold: [0, 0.01] }).observe(document.documentElement);
+  }
+  window.addEventListener("resize", function () { resize(); if (!playing) { draw(pausedAt); hud(pausedAt); } });
+  resize();
+  visible = document.visibilityState !== "hidden";
+  draw(0); hud(0);
+  update();
+}());
+</script>
+</body>
+</html>

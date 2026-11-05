@@ -66,6 +66,9 @@ if exist "%PROJECT_DIR%\addons\zaohua_platform\plugin.cfg" (
 	)
 )
 
+rem Mobile publishing: copy the source-root landing.html unchanged into dist
+if exist "%PROJECT_DIR%\landing.html" copy /y "%PROJECT_DIR%\landing.html" "%STAGE_DIR%\landing.html" >nul
+
 echo [3/3] Publishing atomically to "%OUTPUT_DIR%"...
 robocopy "%STAGE_DIR%" "%NEXT_DIR%" /E /NFL /NDL /NJH /NJS /NP >nul
 if errorlevel 8 (
