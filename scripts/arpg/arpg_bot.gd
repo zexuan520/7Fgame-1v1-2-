@@ -10,6 +10,10 @@ var _atk_t := 0.0
 var _roll_t := 0.0
 var _skill_t := 0.0
 var _menu_t := 0.0
+var _stuck_t := 0.0
+var _last_p := Vector3.ZERO
+var _side_t := 0.0
+var _side := 1.0
 
 
 func _act(n: String) -> String:
@@ -62,6 +66,20 @@ func _physics_process(dt: float) -> void:
 			bleeding += 1
 		if a.state == "windup" and d < 4.0 and a.st_t > a._windup_time() * 0.6:
 			danger = true
+		if a.state in ["windup", "attack"] and a._atk in ["leap", "boss_leap"] and a._atk_target.distance_to(hero.global_position) < 3.4:
+			danger = true
+	# 试刀场：按教学要求的键来
+	var need = get_parent().get("_tut_need")
+	if need is String and need != "":
+		if need == "move":
+			_set_move(Vector3(sin(_t * 1.3), 0, cos(_t * 0.9)))
+			return
+		_skill_t -= dt
+		if need != "attack" and _skill_t <= 0.0 and (near != null or need in ["roll", "heal"]):
+			_skill_t = 1.2
+			if need != "dash" or nd < 8.0:
+				_tap(need)
+				return
 	var move := Vector3.ZERO
 	var portal := get_parent().get("_portal") as Node3D
 	if near == null:
@@ -69,11 +87,29 @@ func _physics_process(dt: float) -> void:
 			move = portal.global_position - hero.global_position
 	elif nd > 2.2:
 		move = near.global_position - hero.global_position
+	# 卡在障碍上：原地不动超过 0.8 秒就往侧面绕一下
+	if move.length() > 0.5:
+		if hero.global_position.distance_to(_last_p) < 0.05:
+			_stuck_t += dt
+		else:
+			_stuck_t = 0.0
+		if _stuck_t > 0.8:
+			_stuck_t = 0.0
+			_side_t = 0.7
+			_side = -_side
+	_last_p = hero.global_position
+	if _side_t > 0.0:
+		_side_t -= dt
+		move = move.normalized().cross(Vector3.UP) * _side * 2.0 - move.normalized() * 0.5
 	_set_move(move)
 	_atk_t -= dt
 	_roll_t -= dt
 	_skill_t -= dt
 	if near == null:
+		return
+	if hero.hp < hero.max_hp * 0.4 and hero.gourds > 0 and (nd > 3.0 or near.state == "recover") and _skill_t <= 0.0:
+		_skill_t = 1.0
+		_tap("heal")
 		return
 	if danger and _roll_t <= 0.0:
 		_roll_t = 0.9

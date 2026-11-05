@@ -72,7 +72,7 @@ func _ready() -> void:
 			_bot.hero = hero
 			_bot.mode = String(_args["demo"])
 			add_child(_bot)
-			hero.invincible = true
+			hero.invincible = not _args.has("mortal")
 	elif _args.has("hub"):
 		_enter_hub()
 	else:
@@ -323,6 +323,7 @@ func _enter_hub() -> void:
 	_npc("拾骨婆 · 天赋", Vector3(-4.0, 0, 1.0), {"model": "skel_mage", "weapon": "skel_staff", "tint": Color(1.1, 0.95, 0.8)}, _open_talents)
 	_npc("兵器架", Vector3(4.0, 0, 1.0), {"kit": "sword_shield", "scale": 1.3}, _open_weapons)
 	_make_portal(Vector3(0, 0, -hz + 2.5), "run", Color(1.0, 0.8, 0.45))
+	_npc("试刀 · 教学", Vector3(-4.5, 0, -3.5), {"kit": "sword_shield", "scale": 1.1}, func(_n: ArpgNpc) -> void: _start_tutorial())
 	# 残页石：看已经找到的寂光残页（隐藏剧情）
 	if not ArpgStory.pages().is_empty():
 		_npc("残页 %d / %d" % [ArpgStory.pages().size(), ArpgStory.PAGES.size()], Vector3(0, 0, 2.5), {"kit": "gravestone", "scale": 1.2}, _read_pages)
@@ -436,11 +437,23 @@ func _start_run(fresh_hero: bool = true) -> void:
 	hero.revives = state.revives
 
 
+## 数值调校用：--tel 时每间房打一行统计（耗时、挨打、剩血、药、铜钱）
+var _tel := {}
+
+
+func _tel_print(what: String) -> void:
+	if not _args.has("tel") or state == null or not is_instance_valid(hero) or _tel.is_empty():
+		return
+	print("TEL %s %s fl=%d row=%d secs=%.1f dmg=%.0f hp=%.0f/%.0f gourd=%d coins=%d kills=%d" % [what, room_kind, state.floor_i(), state.run.row,
+		float(_tel["t"]), hero.dmg_total - float(_tel["dmg0"]), hero.hp, hero.max_hp, hero.gourds, state.coins, state.kills])
+
+
 ## 进当前房间（kind 为空时按地图上的房间类型）
 func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	mode = "room"
 	_clear_scene()
 	_ensure_hero()
+	_tel = {"t": 0.0, "dmg0": hero.dmg_total}
 	room_kind = kind if kind != "" else state.room_type()
 	var fl := state.floor_i()
 	var zone_id := state.zone()
@@ -449,7 +462,7 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	if zone_override != "":
 		zone_id = zone_override
 	var sz := Vector2(30, 22)
-	if room_kind in ["shop", "rest", "event", "start", "story", "treasure", "secret"]:
+	if room_kind in ["shop", "rest", "event", "start", "story", "treasure", "secret", "tutorial"]:
 		sz = Vector2(24, 18)
 	elif room_kind == "boss":
 		sz = Vector2(32, 24)
@@ -468,16 +481,19 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	var title := "%s · %s" % [ArpgState.FLOOR_NAMES[mini(fl, 1)], ArpgState.TYPE_NAMES.get(room_kind, "")]
 	if room_kind == "boss":
 		title = "夜樱广场" if fl == 0 else "古寺 · 寂光殿"
+	if room_kind == "tutorial":
+		title = "山门 · 试刀场"
 	hud.zone_name = title
 	hud.wave_text = ""
 	hud.visible = true
 	var sub := "第 %d 层　第 %d / %d 间" % [fl + 1, state.run.row + 1, state.run.rows.size()]
-	hud.banner(title, sub, 2.4)
+	if room_kind != "tutorial":
+		hud.banner(title, sub, 2.4)
 	feel.screen_flash(Color(0, 0, 0, 1), 1.6)
 	match room_kind:
 		"boss":
 			Game.music("boss")
-		"shop", "rest", "event", "start", "story", "treasure", "secret":
+		"shop", "rest", "event", "start", "story", "treasure", "secret", "tutorial":
 			Game.music("hub")
 		_:
 			Game.music("bamboo" if zone_id == "temple" else "village")
@@ -488,6 +504,9 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 			state.flags.erase("secret_hint")
 			_make_secret_wall(sz)
 	match room_kind:
+		"tutorial":
+			_tut_i = -1
+			_tut_next()
 		"start":
 			_open_portal()
 			if state.run.row == 0 and fl < ArpgStory.FLOOR_START.size() and not _args.has("demo") and not _args.has("lineup"):
@@ -529,6 +548,133 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 			var kits := {"blood_altar": "skull_candle", "wounded_ronin": "tent", "gambler": "table", "hermit": "well"}
 			_npc(String(ev["name"]), mid, {"kit": kits.get(ev["id"], "grave_a"), "scale": 1.1}, _open_event)
 			_open_portal()
+
+
+# ---------- 试刀场（新手教学） ----------
+## 每步：[标题（按键）, 说明, 要做的动作（机器人录像用）]
+const TUT_STEPS := [
+	["WASD 移动", "在院子里随便走两步", "move"],
+	["空格 翻滚", "翻滚的一瞬间无敌，敌人举刀发红光时就滚开", "roll"],
+	["J 攻击", "连按打出四段连招，最后一段最重。把这几只腐骨虫砍了", "attack"],
+	["K 突进斩", "朝前冲过去斩一刀，隔得远也能贴上去，用完要等冷却", "dash"],
+	["I 光束斩", "气力条（左下青色）满了才能放，一条直线上的敌人全吃到。现在已经给你攒满了", "beam"],
+	["E 终结技", "敌人身上有出血（红点）时引爆，层数越多伤害越高。它们已经在流血了", "finish"],
+	["U 药葫芦", "回复一大截生命，次数有限，土地庙能补满", "heal"],
+]
+var _tut_i := -1
+var _tut_t := 0.0
+var _tut_moved := 0.0
+var _tut_last := Vector3.ZERO
+var _tut_did := false
+var _tut_need := ""          # 机器人看这个按键
+var _tut_wait := false       # 这一步完成了，等一下再进下一步
+
+
+func _start_tutorial() -> void:
+	_going = true
+	_start_run()
+	_fade_then(func() -> void: _enter_room("tutorial", "forest"))
+
+
+func _tut_next() -> void:
+	_tut_wait = false
+	_tut_i += 1
+	if _args.has("dbg"):
+		print("TUT step ", _tut_i, " t=", _clock)
+	_tut_t = 0.0
+	_tut_did = false
+	if _tut_i >= TUT_STEPS.size():
+		_tut_need = ""
+		Game.save["arpg_tutorial"] = true
+		Game.write_save()
+		hero.hp = hero.max_hp
+		hero.gourds = hero.max_gourds
+		hud.wave_text = "试刀完成"
+		hud.banner("试刀完成", "走进光门正式上山。F 和人说话，Tab 打开行囊", 3.5)
+		Game.sfx("reward")
+		_open_portal("run")
+		return
+	var st: Array = TUT_STEPS[_tut_i]
+	_tut_need = String(st[2])
+	hud.wave_text = "试刀 %d / %d　%s" % [_tut_i + 1, TUT_STEPS.size(), st[0]]
+	hud.banner(String(st[0]), String(st[1]), 4.0)
+	Game.sfx("ui_back", -6.0)
+	# 练习敌人刷在房间中间偏后（不管主角走到哪），突进斩的靶子放远一点
+	var ahead := Vector3(0, 0, -2.5)
+	var far_p := Vector3(0, 0, -4.0) if hero.global_position.z > 0.0 else Vector3(0, 0, 5.0)
+	match _tut_need:
+		"move":
+			_tut_moved = 0.0
+			_tut_last = hero.global_position
+		"attack":
+			for i in range(3):
+				_tut_foe("crawler", ahead + Vector3(i * 1.6 - 1.6, 0, 0))
+		"dash":
+			_tut_foe("skeleton", far_p)
+		"beam":
+			hero.energy = hero.max_energy
+			hero.energy_changed.emit()
+			for i in range(4):
+				_tut_foe("crawler", ahead + Vector3(randf_range(-0.6, 0.6), 0, -i * 1.2))
+		"finish":
+			hero.cd["finish"] = 0.0
+			for i in range(3):
+				var f := _tut_foe("skeleton", ahead + Vector3(i * 1.8 - 1.8, 0, 1.5))
+				f.add_bleed(4)
+		"heal":
+			hero.hp = hero.max_hp * 0.45
+			hero.gourds = maxi(hero.gourds, 1)
+
+
+## 练习用的敌人：血少、伤害很低
+func _tut_foe(kind: String, p: Vector3) -> Foe:
+	var f := Foe.new()
+	f.setup_kind(kind, 0.6, 0.25)
+	add_child(f)
+	f.global_position = p
+	f.face_to(hero.global_position - p)
+	return f
+
+
+func _tut_tick(dt: float) -> void:
+	if _tut_wait or _tut_i < 0 or _tut_i >= TUT_STEPS.size() or not is_instance_valid(hero) or is_instance_valid(_menu):
+		return
+	_tut_t += dt
+	var st: Array = TUT_STEPS[_tut_i]
+	# 隔一阵子再提示一次，免得玩家没看到横幅
+	if fmod(_tut_t, 9.0) < dt and _tut_t > 1.0:
+		hud.banner(String(st[0]), String(st[1]), 3.0)
+	if _tut_need == "move":
+		_tut_moved += hero.global_position.distance_to(_tut_last)
+		_tut_last = hero.global_position
+		_tut_did = _tut_moved > 5.0
+	elif _tut_need in ["roll", "dash", "beam", "finish", "heal"] and hero.state == _tut_need:
+		_tut_did = true
+	elif _tut_need == "attack" and hero.state == "attack":
+		_tut_did = true
+	# 守着练习敌人别让它们把人打死
+	if hero.hp < hero.max_hp * 0.3 and _tut_need != "heal":
+		hero.hp = hero.max_hp * 0.6
+	var left := 0
+	for f: Node in get_tree().get_nodes_in_group("foes"):
+		if (f as Foe).alive:
+			left += 1
+	# 招式放完了，但还有没打死的：提示“把剩下的打完”
+	if _tut_did and left > 0 and _tut_need != "heal":
+		_tut_need = "attack"
+		hud.wave_text = "试刀 %d / %d　把剩下的打完" % [_tut_i + 1, TUT_STEPS.size()]
+	# 靶子被普通攻击打死了、招式还没用过：重新放一批再来
+	if not _tut_did and left == 0 and _tut_need in ["dash", "beam", "finish"] and _tut_t > 1.5:
+		_tut_i -= 1
+		_tut_next()
+		return
+	if _tut_did and left == 0 and _tut_t > 0.8:
+		hud.banner("好", "", 0.8)
+		Game.sfx("reward", -8.0)
+		get_tree().create_timer(0.9).timeout.connect(func() -> void:
+			if mode == "room" and room_kind == "tutorial":
+				_tut_next())
+		_tut_wait = true
 
 
 ## 按房间类型配几波敌人：层数越深越多越硬
@@ -624,6 +770,7 @@ func _loot(pos: Vector3, kind: String, amount: int) -> void:
 
 func _room_cleared() -> void:
 	_room_done = true
+	_tel_print("clear")
 	hud.wave_text = "清场"
 	Game.sfx("door")
 	if room_kind == "boss":
@@ -1067,6 +1214,22 @@ func _step_portal() -> void:
 	Game.sfx("door")
 	match _portal_kind:
 		"run":
+			if mode == "hub" and not bool(Game.save.get("arpg_tutorial", false)) and not _args.has("demo"):
+				_going = false
+				var items := [{"title": "先试试刀", "desc": "一间练习房，一步一步学会移动、翻滚、连招和三个招式（约两分钟）", "tag": "推荐"},
+					{"title": "直接出发", "desc": "已经会了，直接上山"}]
+				var mn := _open_menu("第一次上山", "拾骨婆：“先在院子里比划两下？”", items, "cards", false)
+				mn.chosen.connect(func(i: int) -> void:
+					_close_menu()
+					if i == 0:
+						_start_tutorial()
+					else:
+						Game.save["arpg_tutorial"] = true
+						Game.write_save()
+						_going = true
+						_start_run()
+						_fade_then(func() -> void: _enter_room()))
+				return
 			_start_run()
 			_fade_then(func() -> void: _enter_room())
 		"floor":
@@ -1283,6 +1446,7 @@ func _on_hero_died(_a: Actor) -> void:
 func _game_over(won: bool, ending: String = "") -> void:
 	if mode == "over":
 		return
+	_tel_print("won" if won else "dead")
 	mode = "over"
 	var r := state.settle(won)
 	var sub := "第 %d 层　走过 %d 间　斩敌 %d　铜钱 %d" % [r["floor"], r["rooms"], r["kills"], r["coins"]]
@@ -1298,6 +1462,10 @@ func _game_over(won: bool, ending: String = "") -> void:
 # ---------- 每帧 ----------
 
 func _process(dt: float) -> void:
+	if mode == "room" and room_kind == "tutorial":
+		_tut_tick(dt)
+	if not _tel.is_empty():
+		_tel["t"] = float(_tel["t"]) + dt
 	if arena != null and cam_rig.cam != null and is_instance_valid(hero):
 		arena.update_occluders(cam_rig.cam, [hero])
 	if state != null:

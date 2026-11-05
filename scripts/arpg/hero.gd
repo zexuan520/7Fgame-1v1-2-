@@ -48,6 +48,7 @@ var _dash_to := Vector3.ZERO
 var _combo_reset := 0.0
 var foot_ring: MeshInstance3D
 var invincible := false          # 调试：不掉血
+var dmg_total := 0.0             # 统计用：这一局一共挨了多少伤害
 ## 加成（apply_stats 从天赋、兵器、护甲、护符、心法算出来）
 var crit_bonus := 0.0
 var crit_mult := 1.8
@@ -529,6 +530,8 @@ func take_hit(info: HitInfo) -> bool:
 	if state == "dash":
 		return false
 	var ok := super.take_hit(info)
+	if ok:
+		dmg_total += info.damage
 	if ok and alive:
 		Feel.I.hurt_pulse(0.7)
 		Game.sfx("hurt", -2.0)

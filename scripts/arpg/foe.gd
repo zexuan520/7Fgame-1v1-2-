@@ -11,17 +11,17 @@ static var tokens := 0
 
 const TYPES := {
 	"crawler": {"name": "腐骨虫", "model": "skel_minion", "weapon": "", "wlen": 0.0, "tint": Color(0.85, 0.95, 0.8), "k": 0.72,
-		"hp": 26.0, "speed": 5.4, "detect": 13.0, "range": 2.2, "dmg": 7.0, "windup": 0.42, "attack": "lunge", "poise": 0.0, "coins": 2},
+		"hp": 26.0, "speed": 5.4, "detect": 13.0, "range": 2.2, "dmg": 7.0, "windup": 0.42, "attack": "lunge", "poise": 0.0, "coins": 1},
 	"skeleton": {"name": "骷髅兵", "model": "skel_warrior", "weapon": "skel_blade", "wlen": 30.0, "tint": Color(0.95, 0.95, 0.9), "k": 1.0,
-		"hp": 55.0, "speed": 3.8, "detect": 12.0, "range": 2.1, "dmg": 11.0, "windup": 0.55, "attack": "slash", "poise": 0.0, "coins": 4},
+		"hp": 55.0, "speed": 3.8, "detect": 12.0, "range": 2.1, "dmg": 11.0, "windup": 0.55, "attack": "slash", "poise": 0.0, "coins": 3},
 	"samurai": {"name": "赤甲武士", "model": "knight", "weapon": "axe2", "wlen": 44.0, "tint": Color(1.25, 0.5, 0.45), "k": 1.25,
-		"hp": 190.0, "speed": 3.2, "detect": 14.0, "range": 2.8, "dmg": 22.0, "windup": 0.75, "attack": "heavy", "poise": 45.0, "coins": 12},
+		"hp": 190.0, "speed": 3.2, "detect": 14.0, "range": 2.8, "dmg": 22.0, "windup": 0.75, "attack": "heavy", "poise": 45.0, "coins": 9},
 	"mage": {"name": "幽魂术士", "model": "skel_mage", "weapon": "skel_staff", "wlen": 34.0, "tint": Color(0.85, 0.7, 1.15), "k": 1.0,
-		"hp": 42.0, "speed": 3.4, "detect": 16.0, "range": 11.0, "dmg": 14.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 6, "keep": 7.5},
+		"hp": 42.0, "speed": 3.4, "detect": 16.0, "range": 11.0, "dmg": 14.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 4, "keep": 7.5},
 	"boss": {"name": "夜樱剑鬼", "model": "barbarian", "weapon": "sword2", "wlen": 52.0, "tint": Color(0.78, 0.72, 0.9), "k": 1.55,
-		"hp": 900.0, "speed": 3.6, "detect": 40.0, "range": 3.2, "dmg": 24.0, "windup": 0.6, "attack": "boss", "poise": 120.0, "coins": 60, "boss": true},
+		"hp": 900.0, "speed": 3.6, "detect": 40.0, "range": 3.2, "dmg": 20.0, "windup": 0.6, "attack": "boss", "poise": 120.0, "coins": 60, "boss": true},
 	"boss2": {"name": "寂光", "model": "knight", "weapon": "sword2", "wlen": 56.0, "tint": Color(0.85, 0.9, 1.05), "k": 1.6,
-		"hp": 1300.0, "speed": 3.9, "detect": 40.0, "range": 3.4, "dmg": 28.0, "windup": 0.55, "attack": "boss", "poise": 160.0, "coins": 90, "boss": true},
+		"hp": 1300.0, "speed": 3.9, "detect": 40.0, "range": 3.4, "dmg": 24.0, "windup": 0.55, "attack": "boss", "poise": 160.0, "coins": 90, "boss": true},
 }
 
 var kind := "skeleton"
@@ -486,7 +486,7 @@ func _spawn_wave(d: Vector3) -> void:
 
 
 func _end_attack() -> void:
-	_cool = randf_range(0.9, 1.8) if not is_boss else randf_range(0.3, 0.8) * (1.0 if _boss_phase == 0 else 0.6)
+	_cool = randf_range(0.9, 1.8) if not is_boss else randf_range(0.6, 1.2) * (1.0 if _boss_phase == 0 else 0.6)
 	rig.position.y = 0
 	_set_state("recover")
 	_blend = 0.3
