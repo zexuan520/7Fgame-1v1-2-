@@ -57,7 +57,7 @@ func on_hit(info: HitInfo) -> bool:
 		var col := Color(1.0, 0.86, 0.3) if info.crit else (Color(1, 1, 1) if tgt.team == 1 else Color(1.0, 0.3, 0.3))
 		number(info.point, "%d" % int(round(info.damage)), col, 1.45 if info.crit else 1.0, info.crit)
 	var snd := "hit_heavy" if w >= 1 or info.crit else "hit"
-	Game.sfx(snd, 0.0, 0.1)
+	Game.sfx(snd, -3.0 if w < 1 else 0.0, 0.1)
 	if info.attacker != null and info.gain > 0.0 and info.attacker.has_method("gain_energy"):
 		info.attacker.call("gain_energy", info.gain)
 	return true

@@ -132,6 +132,11 @@ func _setup_audio() -> void:
 			var i := AudioServer.bus_count - 1
 			AudioServer.set_bus_name(i, bus)
 			AudioServer.set_bus_send(i, "Master")
+	# 一群怪同时挨打时音效会叠爆：主线路上压一个限幅器
+	var lim := AudioEffectHardLimiter.new()
+	lim.ceiling_db = -1.0
+	lim.pre_gain_db = -2.0
+	AudioServer.add_bus_effect(0, lim)
 	for i in range(SFX_VOICES):
 		var v := AudioStreamPlayer.new()
 		v.bus = "SFX"
@@ -155,7 +160,7 @@ func sfx(sound: String, volume_db: float = 0.0, pitch_var: float = 0.06) -> void
 	if now - float(_sfx_last.get(sound, -1.0)) < SFX_GAP:
 		return
 	_sfx_last[sound] = now
-	var stream := _load_sound("res://assets/sfx/%s.wav" % sound)
+	var stream := _sfx_stream(sound)
 	if stream == null or _voices.is_empty():
 		return
 	var v := _voices[_voice]
@@ -177,8 +182,14 @@ func music(track: String) -> void:
 	if _bgm.playing:
 		_bgm_tween.tween_property(_bgm, "volume_db", -40.0, 0.6)
 	_bgm_tween.tween_callback(func() -> void:
-		var s := _load_sound("res://assets/music/%s.wav" % track) if track != "" else null
+		var s: AudioStream = null
+		if track != "":
+			s = _load_sound("res://assets/music/%s.ogg" % track)
+			if s == null:
+				s = _load_sound("res://assets/music/%s.wav" % track)
 		_bgm.stop()
+		if s is AudioStreamOggVorbis:
+			(s as AudioStreamOggVorbis).loop = true
 		if s is AudioStreamWAV:
 			var w := s as AudioStreamWAV
 			w.loop_mode = AudioStreamWAV.LOOP_FORWARD
@@ -193,6 +204,29 @@ func music(track: String) -> void:
 
 func music_name() -> String:
 	return _bgm_name
+
+
+## 音效：assets/sfx/<名字>/0.ogg、1.ogg… 是几个变体（随机挑一个，不连着重复）；没有就用 assets/sfx/<名字>.wav
+var _variants := {}
+var _last_variant := {}
+
+
+func _sfx_stream(sound: String) -> AudioStream:
+	if not _variants.has(sound):
+		var list: Array[AudioStream] = []
+		var i := 0
+		while ResourceLoader.exists("res://assets/sfx/%s/%d.ogg" % [sound, i]):
+			list.append(load("res://assets/sfx/%s/%d.ogg" % [sound, i]))
+			i += 1
+		_variants[sound] = list
+	var vs: Array[AudioStream] = _variants[sound]
+	if vs.is_empty():
+		return _load_sound("res://assets/sfx/%s.wav" % sound)
+	var k := randi() % vs.size()
+	if vs.size() > 1 and k == int(_last_variant.get(sound, -1)):
+		k = (k + 1) % vs.size()
+	_last_variant[sound] = k
+	return vs[k]
 
 
 func _load_sound(path: String) -> AudioStream:

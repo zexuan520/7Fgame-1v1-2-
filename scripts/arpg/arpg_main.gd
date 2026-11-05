@@ -492,8 +492,10 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	feel.screen_flash(Color(0, 0, 0, 1), 1.6)
 	match room_kind:
 		"boss":
-			Game.music("boss")
-		"shop", "rest", "event", "start", "story", "treasure", "secret", "tutorial":
+			Game.music("boss" if fl == 0 else "boss2")
+		"secret":
+			Game.music("secret")
+		"shop", "rest", "event", "start", "story", "treasure", "tutorial":
 			Game.music("hub")
 		_:
 			Game.music("bamboo" if zone_id == "temple" else "village")
