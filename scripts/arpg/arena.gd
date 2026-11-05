@@ -23,6 +23,8 @@ var exit_pos := Vector3.ZERO
 var entry_pos := Vector3.ZERO
 var _solid := []                   # 不能走的格子（地面坐标矩形），刷怪时避开
 var _placed: Array[Vector3] = []   # _free_spot 找过的位置（互相隔开）
+## 侧墙上开的门（通侧室）：[{side: -1 左 / 1 右, z: 门中心, w: 门宽}]，build 之前填好
+var doors: Array = []
 ## 画质档（ArpgMain.apply_quality 设）：0 低档时漂浮光尘、雾片、落花减半
 static var lod := 2
 
@@ -56,6 +58,9 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 	if OS.get_cmdline_user_args().has("--dbg"):
 		print("floor ms ", Time.get_ticks_msec() - _t0)
 	_build_bounds()
+	# 门口留出空地：摆设、刷怪点都别放这里
+	for dr: Dictionary in doors:
+		_solid.append(_door_clear_rect(dr))
 	match zone:
 		"forest":
 			_dress_forest()
@@ -66,6 +71,7 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 		"sakura":
 			_dress_sakura()
 	_atmosphere()
+	_clear_doorways()
 	_make_spawns()
 
 
@@ -171,17 +177,30 @@ func _build_floor() -> void:
 	# 只有边上的草丛 / 碎石凸起走 VoxelGrid
 	var nx := int(size.x / FV) + 20
 	var nz := int(size.y / FV) + 20
+	_floor_patch(-nx * 0.5 * FV, -nz * 0.5 * FV, nx, nz, true, Color.WHITE)
+
+
+## 侧室的地面：rect 是 xz 矩形（米），颜色乘 tint、再加一层方砖缝，看得出是另一间屋
+func floor_patch(rect: Rect2, tint: Color) -> void:
+	_floor_patch(rect.position.x, rect.position.y, int(round(rect.size.x / FV)), int(round(rect.size.y / FV)), false, tint)
+
+
+func _floor_patch(x0: float, z0: float, nx: int, nz: int, main_room: bool, tint: Color) -> void:
 	var px := PackedByteArray()
 	px.resize(nx * nz * 3)
 	var bumps := VoxelGrid.new(rng.randi())
 	for iz in range(nz):
-		var z := (iz - nz * 0.5) * FV
+		var z := z0 + iz * FV
 		var row := iz * nx * 3
 		for ix in range(nx):
-			var x := (ix - nx * 0.5) * FV
+			var x := x0 + ix * FV
 			var c := _floor_color(x, z)
+			if not main_room:
+				c = c * tint
+				if fposmod(x, 1.0) < FV * 0.6 or fposmod(z, 1.0) < FV * 0.6:
+					c = c * 0.72
 			# 草丛 / 碎石凸起（只在边上，不挡路）
-			if zone == "forest":
+			elif zone == "forest":
 				var edge := maxf(absf(x) - size.x * 0.5 + 3.0, absf(z) - size.y * 0.5 + 3.0)
 				if edge > 0.0 and noise.get_noise_2d(x * 9.0, z * 9.0) > 0.4:
 					var h := 2 + int(rng.randf() * 3.0)
@@ -197,8 +216,6 @@ func _build_floor() -> void:
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/arpg/floor.gdshader")
 	mat.set_shader_parameter("floor_tex", ImageTexture.create_from_image(img))
-	var x0 := -nx * 0.5 * FV
-	var z0 := -nz * 0.5 * FV
 	mat.set_shader_parameter("floor_rect", Vector4(x0, z0, nx * FV, nz * FV))
 	# 分块：每块约 10 米见方
 	var cx := maxi(1, int(ceil(nx * FV / 10.0)))
@@ -213,6 +230,7 @@ func _build_floor() -> void:
 			mi.mesh = pm
 			mi.material_override = mat
 			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			mi.set_meta("floor", true)
 			add_child(mi)
 			mi.position = Vector3(x0 + (i + 0.5) * cw, 0.0, z0 + (j + 0.5) * cd)
 	if bumps.size() > 0:
@@ -220,6 +238,7 @@ func _build_floor() -> void:
 		bi.mesh = bumps.build(FV, Vector3(nx * 0.5, 1.0, nz * 0.5))
 		bi.material_override = env_mat
 		bi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		bi.set_meta("floor", true)
 		add_child(bi)
 
 
@@ -243,8 +262,49 @@ func _build_bounds() -> void:
 	var hz := size.y * 0.5
 	_box_collider(Vector3(0, 1, -hz - 0.5), Vector3(size.x + 2, 2, 1))
 	_box_collider(Vector3(0, 1, hz + 0.5), Vector3(size.x + 2, 2, 1))
-	_box_collider(Vector3(-hx - 0.5, 1, 0), Vector3(1, 2, size.y + 2))
-	_box_collider(Vector3(hx + 0.5, 1, 0), Vector3(1, 2, size.y + 2))
+	for side: float in [-1.0, 1.0]:
+		# 侧墙按门切成几段，门口空出来
+		var gaps := []
+		for dr: Dictionary in doors:
+			if float(dr["side"]) == side:
+				gaps.append(Vector2(float(dr["z"]) - float(dr["w"]) * 0.5, float(dr["z"]) + float(dr["w"]) * 0.5))
+		gaps.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.x < b.x)
+		var z := -hz - 1.0
+		for g: Vector2 in gaps:
+			if g.x > z:
+				_box_collider(Vector3(side * (hx + 0.5), 1, (z + g.x) * 0.5), Vector3(1, 2, g.x - z))
+			z = g.y
+		_box_collider(Vector3(side * (hx + 0.5), 1, (z + hz + 1.0) * 0.5), Vector3(1, 2, hz + 1.0 - z))
+
+
+## 门口要清空的一块（房间里靠墙那一截 + 墙本身）
+func _door_clear_rect(dr: Dictionary) -> Rect2:
+	var hx := size.x * 0.5
+	var side := float(dr["side"])
+	var w := float(dr["w"]) + 2.4
+	var x0 := hx - 3.6 if side > 0.0 else -hx - 1.2
+	return Rect2(x0, float(dr["z"]) - w * 0.5, 4.8, w)
+
+
+## 摆完以后，把挡在门口的东西（侧墙的树干、灯柱、蘑菇……）拿掉
+func _clear_doorways() -> void:
+	if doors.is_empty():
+		return
+	var rects: Array[Rect2] = []
+	for dr: Dictionary in doors:
+		rects.append(_door_clear_rect(dr))
+	for c: Node in get_children():
+		var n := c as Node3D
+		if n == null or n.has_meta("floor"):
+			continue
+		var p := Vector2(n.global_position.x, n.global_position.z)
+		for r: Rect2 in rects:
+			if r.has_point(p):
+				n.queue_free()
+				break
+	occluders = occluders.filter(func(o: Array) -> bool:
+		var nd: Node3D = o[0]
+		return not nd.is_queued_for_deletion())
 
 
 # ---------- 放件 ----------
