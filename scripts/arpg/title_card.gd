@@ -43,7 +43,7 @@ func _draw() -> void:
 	draw_string(font, Vector2(0, y + 4), "残刃归途", HORIZONTAL_ALIGNMENT_CENTER, vs.x, 96, Color(0.0, 0.0, 0.0, 0.5 * a))
 	draw_string(font, Vector2(0, y), "残刃归途", HORIZONTAL_ALIGNMENT_CENTER, vs.x, 96, Color(0.97, 0.93, 0.86, a))
 	draw_line(Vector2(vs.x * 0.36, y + 30), Vector2(vs.x * 0.64, y + 30), gold, 1.0)
-	draw_string(font, Vector2(0, y + 64), "幽林　·　古寺　·　夜樱", HORIZONTAL_ALIGNMENT_CENTER, vs.x, 22, Color(0.6, 0.9, 0.9, a))
+	draw_string(font, Vector2(0, y + 64), "幽林　·　无名冢　·　古寺", HORIZONTAL_ALIGNMENT_CENTER, vs.x, 22, Color(0.6, 0.9, 0.9, a))
 	var blink := 0.55 + 0.45 * sin(_t * 3.0)
 	draw_string(font, Vector2(0, vs.y * 0.74), "按 J 开始", HORIZONTAL_ALIGNMENT_CENTER, vs.x, 26, Color(1.0, 0.9, 0.65, a * blink))
 	var keys := "WASD 移动　J 攻击　空格 翻滚　K 突进斩　I 光束斩　E 终结技　U 喝药　F 互动"

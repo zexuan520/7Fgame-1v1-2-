@@ -6,7 +6,7 @@ extends Node3D
 ##
 ## 命令行（-- 后面）：
 ##   --demo=fight 自动打（录视频用，主角不掉血）  --zone=temple 指定区域  --room=shop 直接进某种房间  --hub 直接进山门
-##   --shot=路径 --shot_t=3,6 按时间拍图后退出  --nowaves 不刷怪  --cam_dist/--cam_pitch/--cam_yaw 调镜头
+##   --shot=路径 --shot_t=3,6 按时间拍图后退出（--nohud 不画界面）  --nowaves 不刷怪  --cam_dist/--cam_pitch/--cam_yaw 调镜头
 
 const HUB_SIZE := Vector2(24, 18)
 
@@ -1550,6 +1550,8 @@ func _process(dt: float) -> void:
 		hud.coins = state.coins
 		hud.jade = state.jade
 	_clock += dt
+	if _args.has("nohud"):
+		hud.visible = false   # 拍宣传图用
 	if _args.has("dbg") and int(_clock * 2.0) != int((_clock - dt) * 2.0):
 		var out := []
 		for f: Node in get_tree().get_nodes_in_group("foes"):
