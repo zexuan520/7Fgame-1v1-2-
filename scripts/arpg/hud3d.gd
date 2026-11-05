@@ -18,6 +18,7 @@ var portrait_cam: Camera3D
 var portrait_rect: TextureRect
 var zone_name := ""
 var wave_text := ""
+var seals: Array = []            # 试炼房四枚印：0 没开始 / 1 进行中 / 2 得印 / 3 失手
 var coins := 0
 var jade := 0
 var boss: Foe
@@ -90,6 +91,8 @@ func _draw() -> void:
 	draw_string(font, Vector2(28, 44), zone_name, HORIZONTAL_ALIGNMENT_LEFT, -1, 26, GOLD)
 	draw_line(Vector2(28, 52), Vector2(220, 52), Color(GOLD, 0.6), 1.0)
 	draw_string(font, Vector2(28, 76), wave_text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.8, 0.9, 0.9))
+	if not seals.is_empty():
+		_draw_seals()
 	draw_string(font, Vector2(vs.x - 220, 44), "铜钱 %d" % coins, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(1.0, 0.85, 0.45))
 	draw_string(font, Vector2(vs.x - 220, 70), "魂玉 %d" % jade, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(0.55, 1.0, 0.85))
 	if _banner_t > 0.0:
@@ -239,3 +242,24 @@ func _draw_boss(vs: Vector2) -> void:
 	draw_rect(Rect2(x, y + 13, w * boss.poise / maxf(boss.max_poise, 1.0), 3), Color(1.0, 0.8, 0.4, 0.8))
 	if boss.bleed > 0:
 		draw_string(font, Vector2(x + w + 10, y + 11), "出血 ×%d" % boss.bleed, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1.0, 0.35, 0.35))
+
+
+## 试炼四枚印：方块里写“疾守狂乱”，得印金色、进行中闪、失手灰
+func _draw_seals() -> void:
+	var names := ["疾", "守", "狂", "乱"]
+	for i in range(mini(seals.size(), 4)):
+		var st := int(seals[i])
+		var c := Color(0.35, 0.4, 0.42, 0.8)
+		match st:
+			1:
+				c = Color(0.85, 0.95, 0.95, 0.6 + 0.4 * absf(sin(Time.get_ticks_msec() * 0.006)))
+			2:
+				c = Color(1.0, 0.82, 0.35)
+			3:
+				c = Color(0.4, 0.3, 0.3, 0.8)
+		var r := Rect2(28 + i * 34, 86, 28, 28)
+		draw_rect(r, Color(0, 0, 0, 0.45))
+		draw_rect(r, c, false, 2.0)
+		draw_string(font, Vector2(r.position.x, r.position.y + 21), names[i], HORIZONTAL_ALIGNMENT_CENTER, 28, 18, c)
+		if st == 3:
+			draw_line(r.position + Vector2(4, 24), r.position + Vector2(24, 4), c, 2.0)

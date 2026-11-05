@@ -39,8 +39,7 @@ var _menu: Control             # 打开着的菜单或对话框（ArpgMenu / Dia
 var _hold_waves := false       # 头目登场对话还没说完，先别刷怪
 var _secret: Node3D            # 这间房里的裂墙（打三下开出密室）
 var _secret_hits := 0
-var _trial_t := 0.0            # 试炼房剩余时间
-var _trial_ok := true
+var _trial: ArpgTrial           # 试炼房：同一间房里四道试（疾 / 守 / 狂 / 乱）
 var _extra_portals: Array[Node3D] = []   # 密室光门（和“前路”光门同时存在）
 var _sw_step := -1
 var _sw_t := 0.0
@@ -559,14 +558,18 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	_place_hero(arena.entry_pos)
 	state.rooms += 1
 	wave_i = -1
+	_trial = null
+	if room_kind == "trial":
+		_trial = ArpgTrial.new()
+		_trial.main = self
+		_trial.floor_i = fl
+		arena.add_child(_trial)
 	waves = _make_waves(room_kind, fl)
 	_wave_delay = 1.4
 	_room_done = waves.is_empty()
 	_hold_waves = false
 	_secret = null
 	_secret_hits = 0
-	_trial_t = 50.0
-	_trial_ok = true
 	var title := "%s · %s" % [ArpgState.FLOOR_NAMES[mini(fl, ArpgState.LAST_FLOOR)], ArpgState.TYPE_NAMES.get(room_kind, "")]
 	if room_kind == "boss":
 		title = ArpgState.BOSS_TITLES[mini(fl, ArpgState.LAST_FLOOR)]
@@ -574,6 +577,7 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 		title = "山门 · 试刀场"
 	hud.zone_name = title
 	hud.wave_text = ""
+	hud.seals = []
 	hud.visible = true
 	var sub := "第 %d 层　第 %d / %d 间" % [fl + 1, state.run.row + 1, state.run.rows.size()]
 	if room_kind != "tutorial":
@@ -795,17 +799,21 @@ func _make_waves(kind: String, fl: int) -> Array:
 		"boss":
 			return [[ArpgState.BOSS_KINDS[mini(fl, ArpgState.LAST_FLOOR)], 1]]
 		"trial":
-			return [["crawler", 8, "skeleton", 3], ["crawler", 8, "mage", 2, "skeleton", 3], ["samurai", 1 + fl, "crawler", 10]]
+			return _trial.make_waves() if _trial != null else []
 	return []
 
 
 func _next_wave() -> void:
+	if _trial != null and wave_i >= 0:
+		_trial.finish()
 	wave_i += 1
 	if wave_i >= waves.size():
 		_room_cleared()
 		return
 	var w: Array = waves[wave_i]
 	hud.wave_text = "第 %d 波 / 共 %d 波" % [wave_i + 1, waves.size()]
+	if _trial != null:
+		_trial.begin(wave_i)
 	var pts := arena.spawn_points.duplicate()
 	pts.shuffle()
 	# 房间大了，不再刷在离主角最远的角落（要跑半天）：优先挑离主角 8~16 米的点，不够再按远近补
@@ -846,7 +854,11 @@ func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
 	var row := state.run.row if state != null else 0
 	var f := Foe.new()
 	f.setup_kind(kind, 1.0 + fl * 0.35 + row * 0.04, 1.0 + fl * 0.18 + row * 0.03)
+	if _trial != null:
+		_trial.mod_foe(f)
 	add_child(f)
+	if _trial != null:
+		_trial.dress_foe(f)
 	f.global_position = p
 	f.face_to(hero.global_position - p)
 	f.detect_mult = 1.6   # 波次刷的怪一出来就该找人，大房间里别在角落发呆
@@ -896,11 +908,22 @@ func _room_cleared() -> void:
 		return
 	if room_kind == "elite":
 		_drop_gear(hero.global_position + hero.facing * 1.5, -1, 0.25)
-	if room_kind == "trial":
-		hud.wave_text = "试炼完成" if _trial_ok else "试炼超时"
-		_drop_gear(hero.global_position + hero.facing * 1.5, 3 if _trial_ok else 1)
+	var n_boons := 3 if room_kind != "elite" else 4
+	if room_kind == "trial" and _trial != null:
+		var rw := _trial.reward()
+		var n := _trial.seals()
+		hud.wave_text = "试炼完成　得印 %d / 4" % n
+		_drop_gear(hero.global_position + hero.facing * 1.5, int(rw["rarity"]))
+		for i in range(mini(int(rw["coins"]) / 5, 12)):
+			_loot(hero.global_position + hero.facing * 1.2, "coin", 5)
+		for i in range(int(rw["jade"])):
+			_loot(hero.global_position + hero.facing * 1.2, "jade", 1)
+		n_boons = int(rw["boons"])
+		hud.banner("试炼完成", "得印 %d / 4　%s" % [n, "四印俱全，多一个心法可选" if n == 4 else "印越多，装备越好"], 2.2)
+		get_tree().create_timer(1.6).timeout.connect(func() -> void: _offer_boons(n_boons, "next"))
+		return
 	hud.banner("清场", "选一个心法", 1.6)
-	get_tree().create_timer(0.9).timeout.connect(func() -> void: _offer_boons(3 if room_kind != "elite" else 4, "next"))
+	get_tree().create_timer(0.9).timeout.connect(func() -> void: _offer_boons(n_boons, "next"))
 
 
 # ---------- 主线：头目战前战后、结局 ----------
@@ -1690,12 +1713,9 @@ func _process(dt: float) -> void:
 	if (mode == "room" or mode == "hub") and _menu == null and _no_dialog() and is_instance_valid(hero) and hero.alive \
 			and Input.is_action_just_pressed("quit"):
 		_open_pause()
-	if mode == "room" and room_kind == "trial" and not _room_done and wave_i >= 0:
-		_trial_t -= dt if feel.world_pause <= 0.0 else 0.0
-		if _trial_t <= 0.0 and _trial_ok:
-			_trial_ok = false
-			hud.banner("超时", "还能打完，但奖励差一些", 1.6)
-		hud.wave_text = "第 %d 波 / 共 %d 波　限时 %d 秒" % [wave_i + 1, waves.size(), maxi(0, int(ceil(_trial_t)))] if _trial_ok else "第 %d 波 / 共 %d 波　已超时" % [wave_i + 1, waves.size()]
+	if mode == "room" and is_instance_valid(_trial) and not _room_done:
+		_trial.tick(dt)
+		hud.seals = _trial.results
 	for sp: Node3D in _extra_portals:
 		if is_instance_valid(sp):
 			sp.rotation.y += dt
