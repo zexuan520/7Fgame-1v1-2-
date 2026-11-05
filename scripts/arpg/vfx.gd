@@ -18,6 +18,7 @@ var _pool: Array[MeshInstance3D] = []
 var _live: Array = []          # [节点, 已过时间, 总时长, 更新函数(Callable)]
 var _arc_cache := {}
 var pool_size := 160
+var lod := 2                   # 画质档 0 低 / 1 中 / 2 高：低档少放碎块、冲击线，不放地面刀痕
 
 
 func _ready() -> void:
@@ -162,6 +163,8 @@ func impact_flash(pos: Vector3, size: float = 3.0, c: Color = Color(1, 1, 1)) ->
 
 ## 小方块碎片：从 pos 往 dir 方向溅开（体素风格的“喷血”换成方块）
 func chips(pos: Vector3, dir: Vector3, c: Color, n: int = 8, speed: float = 6.0, size: float = 0.09) -> void:
+	if lod == 0:
+		n = (n + 1) / 2
 	for i in range(n):
 		var mi := MeshInstance3D.new()
 		mi.mesh = _cube
@@ -207,6 +210,124 @@ func dust(pos: Vector3, radius: float = 1.5, c: Color = Color(0.62, 0.66, 0.62, 
 ## 冲击环
 func shock_ring(pos: Vector3, c: Color, r0: float, r1: float, dur: float = 0.3) -> void:
 	ground(pos, "lm_ring_b", c, r0, r1, dur, true)
+
+
+# ---------- 打击：冲击线、斩线、地面刀痕、击杀爆发 ----------
+
+func _cam_dir(pos: Vector3) -> Vector3:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return Vector3.UP
+	return (cam.global_position - pos).normalized()
+
+
+## 把方向投到朝镜头的平面里（屏幕上看得到的那个方向）
+func _screen_dir(dir: Vector3, to_cam: Vector3) -> Vector3:
+	var d := dir - to_cam * dir.dot(to_cam)
+	if d.length_squared() < 0.0001:
+		d = to_cam.cross(Vector3.UP)
+	return d.normalized()
+
+
+## 一道细长亮线：中心 center，方向 d，长 l、宽 w（在朝镜头的平面里）
+func _bar(n: Node3D, center: Vector3, d: Vector3, l: float, w: float, to_cam: Vector3) -> void:
+	var side := d.cross(to_cam).normalized()
+	n.transform = Transform3D(Basis(side * maxf(w, 0.001), d * maxf(l, 0.001), to_cam), center)
+
+
+## 冲击线：从命中点顺着打击方向喷出几道细长亮线（动漫式“打穿”的感觉）
+func streaks(pos: Vector3, dir: Vector3, c: Color, n: int = 5, length: float = 1.6, dur: float = 0.14, spread: float = 0.6, width: float = 0.13) -> void:
+	if lod == 0:
+		n = maxi(n / 2, 1)
+	var to_cam := _cam_dir(pos)
+	var d := _screen_dir(dir, to_cam)
+	for i in range(n):
+		var dd := d.rotated(to_cam, randf_range(-spread, spread))
+		var L := length * randf_range(0.55, 1.2)
+		var w := width * randf_range(0.7, 1.3)
+		var off := randf_range(0.0, 0.35)
+		var mi := _take()
+		var m := _mat(mi, true, "trace_01", c, false, 3.2)
+		_run(mi, dur * randf_range(0.8, 1.25), func(nd: MeshInstance3D, k: float) -> void:
+			var e := 1.0 - pow(1.0 - k, 3.0)
+			var l := L * lerpf(0.35, 1.0, e)
+			_bar(nd, pos + dd * (off + e * L * 0.7 + l * 0.5), dd, l, w * (1.0 - k * 0.8), to_cam)
+			var cc := c
+			cc.a = c.a * (1.0 - k * k)
+			m.set_shader_parameter("color", cc))
+
+
+## 斩线：一道横穿目标的极细白线，瞬间出现、再收细消失（击杀、居合用）
+func cut_line(pos: Vector3, dir: Vector3, length: float = 4.0, c: Color = Color(1, 1, 1), dur: float = 0.22, width: float = 0.22, glow: Color = Color(0.45, 0.9, 1.0)) -> void:
+	var to_cam := _cam_dir(pos)
+	var d := _screen_dir(dir, to_cam)
+	for layer in range(2):
+		var mi := _take()
+		var col := c if layer == 0 else glow
+		var m := _mat(mi, true, "trace_01", col, false, 4.0 if layer == 0 else 2.0)
+		var ww := width * (1.0 if layer == 0 else 2.6)
+		_run(mi, dur, func(nd: MeshInstance3D, k: float) -> void:
+			var grow := minf(k * 6.0, 1.0)
+			_bar(nd, pos, d, length * lerpf(0.5, 1.0, grow) * (1.0 + k * 0.15), ww * pow(1.0 - k, 1.5), to_cam)
+			var cc := col
+			cc.a = 1.0 - k * k
+			m.set_shader_parameter("color", cc))
+
+
+## 地面刀痕：深色划痕贴在地上，慢慢淡掉（重击、突进斩）
+func scar(pos: Vector3, dir: Vector3, size: float = 1.6, dur: float = 1.4) -> void:
+	if lod == 0:
+		return
+	var mi := _take()
+	var m := _mat(mi, false, "scratch_01", Color(0.05, 0.06, 0.07, 0.55), false)
+	var yaw := atan2(dir.x, dir.z) + randf_range(-0.4, 0.4)
+	var p := Vector3(pos.x, 0.035, pos.z)
+	_run(mi, dur, func(nd: MeshInstance3D, k: float) -> void:
+		nd.transform = Transform3D((Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -PI / 2)).scaled(Vector3.ONE * size), p)
+		m.set_shader_parameter("color", Color(0.05, 0.06, 0.07, 0.55 * (1.0 - k * k))))
+	# 刚划出来的那一下带点青光
+	var g := _take()
+	var gm := _mat(g, true, "scratch_01", Color(0.4, 0.9, 1.0), false, 2.0)
+	_run(g, 0.25, func(nd: MeshInstance3D, k: float) -> void:
+		nd.transform = Transform3D((Basis(Vector3.UP, yaw) * Basis(Vector3.RIGHT, -PI / 2)).scaled(Vector3.ONE * size), p + Vector3(0, 0.005, 0))
+		gm.set_shader_parameter("color", Color(0.4, 0.9, 1.0, 1.0 - k)))
+
+
+## 击杀爆发：斩线 + 一圈放射冲击线 + 冲击环；big 是精英
+func kill_burst(pos: Vector3, dir: Vector3, c: Color, big: bool = false) -> void:
+	var to_cam := _cam_dir(pos)
+	var d := _screen_dir(dir, to_cam)
+	cut_line(pos, d.rotated(to_cam, randf_range(0.9, 1.3) * (1.0 if randf() < 0.5 else -1.0)), 3.6 if not big else 5.5, Color(1, 1, 1), 0.24, 0.2 if not big else 0.3, c)
+	var n := 8 if big else 6
+	for i in range(n):
+		var a := TAU * i / n + randf() * 0.3
+		streaks(pos, d.rotated(to_cam, a), c, 1, 1.4 if not big else 2.2, 0.18, 0.05, 0.1)
+	shock_ring(Vector3(pos.x, 0.0, pos.z), c, 0.3, 2.6 if not big else 4.0, 0.3)
+
+
+## 头目倒下：一圈慢慢转开的光芒 + 三道冲击环 + 大白闪
+func boss_burst(pos: Vector3, c: Color) -> void:
+	var to_cam := _cam_dir(pos)
+	var up := _screen_dir(Vector3.UP, to_cam)
+	for i in range(14):
+		var a := TAU * i / 14.0
+		var dd := up.rotated(to_cam, a)
+		var L := randf_range(4.0, 7.0)
+		var w := randf_range(0.25, 0.5)
+		var mi := _take()
+		var m := _mat(mi, true, "trace_01", c, false, 3.0)
+		_run(mi, 1.1, func(nd: MeshInstance3D, k: float) -> void:
+			var e := 1.0 - pow(1.0 - k, 2.0)
+			var dr := dd.rotated(to_cam, k * 0.35)
+			var l := L * e
+			_bar(nd, pos + dr * (0.4 + l * 0.5), dr, l, w * (1.0 - k), to_cam)
+			var cc := c
+			cc.a = 1.0 - k
+			m.set_shader_parameter("color", cc))
+	for j in range(3):
+		shock_ring(Vector3(pos.x, 0.0, pos.z), c if j != 1 else Color(1, 1, 1), 0.5, 6.0 + j * 3.0, 0.5 + j * 0.25)
+	impact_flash(pos, 7.0, Color(1, 1, 1))
+	pop(pos, "flare_01", c, 3.0, 12.0, 0.6, true, 0.0, 2.5)
 
 
 # ---------- 刀光 ----------

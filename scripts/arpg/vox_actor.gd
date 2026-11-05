@@ -116,6 +116,16 @@ func flash(t: float = 0.1, c: Color = Color.WHITE) -> void:
 	mat.set_shader_parameter("flash_color", Vector3(c.r, c.g, c.b))
 
 
+## 受击挤压：上下压扁、左右鼓起，再弹两下回原样（顿帧时也在动，所以停住的那一下能看到被打扁）
+var _sq := 0.0
+var _sq_t := 1.0
+
+
+func squash(amount: float) -> void:
+	_sq = maxf(amount, _sq * maxf(0.0, 1.0 - _sq_t * 4.0))
+	_sq_t = 0.0
+
+
 func set_fade(f: float) -> void:
 	mat.set_shader_parameter("fade", f)
 
@@ -124,6 +134,12 @@ func tick_flash(dt: float) -> void:
 	if _flash > 0.0:
 		_flash = maxf(_flash - dt, 0.0)
 		mat.set_shader_parameter("flash", clampf(_flash / 0.1, 0.0, 1.0))
+	if _sq_t < 0.5:
+		_sq_t += dt
+		var a := 0.0
+		if _sq_t < 0.5:
+			a = _sq * exp(-_sq_t * 9.0) * cos(_sq_t * 34.0)
+		scale = Vector3(1.0 + a * 0.6, 1.0 - a, 1.0 + a * 0.6)
 
 
 ## 模型空间（格）→ body 节点空间（米）：模型 +x 朝前 → -z，+z 朝右 → +x

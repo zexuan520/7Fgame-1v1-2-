@@ -155,7 +155,7 @@ func apply_volume() -> void:
 
 
 ## 放一个音效。pitch_var 是随机音高的幅度（同一个声音听起来不那么机械）
-func sfx(sound: String, volume_db: float = 0.0, pitch_var: float = 0.06) -> void:
+func sfx(sound: String, volume_db: float = 0.0, pitch_var: float = 0.06, pitch: float = 1.0) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	if now - float(_sfx_last.get(sound, -1.0)) < SFX_GAP:
 		return
@@ -167,7 +167,7 @@ func sfx(sound: String, volume_db: float = 0.0, pitch_var: float = 0.06) -> void
 	_voice = (_voice + 1) % _voices.size()
 	v.stream = stream
 	v.volume_db = volume_db
-	v.pitch_scale = 1.0 + randf_range(-pitch_var, pitch_var)
+	v.pitch_scale = pitch * (1.0 + randf_range(-pitch_var, pitch_var))
 	v.play()
 
 

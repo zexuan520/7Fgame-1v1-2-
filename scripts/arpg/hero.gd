@@ -62,6 +62,7 @@ var finish_mult := 1.0
 var gourd_heal := 0.4
 var revives := 0
 var weapon_id := "sword"
+var trail: BladeTrail
 const BASE_HP := 120.0
 const BASE_MOVE := 7.2
 const BASE_DASH_CD := 3.5
@@ -174,6 +175,11 @@ func _ready_body() -> void:
 	_pose = Poses.idle(0.0)
 	add_to_group("heroes")
 	_make_foot_ring()
+	trail = BladeTrail.new()
+	trail.actor = self
+	trail.rig = rig
+	add_child(trail)
+	trail.set_colors(Color(1, 1, 1), Color(0.35, 0.8, 1.0))
 
 
 func _make_foot_ring() -> void:
@@ -276,6 +282,13 @@ func _take_buffer(allowed: Array) -> String:
 func _set_state(s: String) -> void:
 	state = s
 	st_t = 0.0
+	if trail != null:
+		trail.active = s in ["attack", "finish", "dash"]
+		if s == "finish":
+			trail.set_colors(Color(1.0, 0.85, 0.8), Color(1.0, 0.15, 0.15))
+			trail.life = 0.22
+		elif s != "attack":
+			trail.set_colors(Color(1, 1, 1), Color(0.35, 0.8, 1.0))
 	_pose_prev = _pose
 	_blend = 0.0
 
@@ -360,6 +373,9 @@ func _start_attack(i: int) -> void:
 	_lunge_dir = facing
 	var s: AttackStep = combo[i]
 	Game.sfx("slash_heavy" if s.heavy else "slash", -2.0, 0.1)
+	# 拖尾：轻击青白、重击更亮更长、回旋斩最长
+	trail.life = 0.3 if s.swing == "spin" else (0.2 if s.heavy else 0.15)
+	trail.set_colors(Color(1, 1, 1), Color(0.45, 0.95, 1.0) if s.heavy else Color(0.35, 0.78, 1.0))
 	_move = Vector3.ZERO
 
 
@@ -639,7 +655,15 @@ func _do_dash() -> void:
 	Vfx.I.slash(base, 2.6, deg_to_rad(-130), deg_to_rad(110), 0.22, Color(1, 1, 1), Color(0.3, 0.95, 1.0), 3.5)
 	Vfx.I.dust(global_position, 1.2, Color(0.5, 0.7, 0.7, 0.4))
 	CamRig.I.shake(1 if n > 0 else 0)
+	# 居合：路径上留一道横贯的斩线和一串地面刀痕，砍中了就慢一下
+	var mid := (_dash_from + _dash_to) * 0.5 + Vector3(0, 0.9, 0)
+	Vfx.I.cut_line(mid, seg, seg.length() + 2.5, Color(1, 1, 1), 0.38, 0.32, Color(0.3, 0.95, 1.0))
+	var marks := int(seg.length() / 1.8)
+	for i in range(marks):
+		Vfx.I.scar(_dash_from.lerp(_dash_to, (i + 0.5) / marks), seg, 1.3, 1.2)
+	CamRig.I.kick(facing, 0.22)
 	if n > 0:
+		Feel.I.slowmo(0.35, 0.22)
 		Feel.I.callout(head_top() + Vector3(0.6, 0.3, 0), "突进斩!", Color(0.55, 1.0, 1.0), 1.1)
 	_set_state("dash")
 	_blend = 1.0
@@ -691,7 +715,16 @@ func _fire_beam() -> void:
 	Vfx.I.beam(from, to, 2.4, 0.6)
 	Vfx.I.impact_flash(global_position + Vector3(0, 1, 0), 4.0, Color(0.6, 1, 1))
 	CamRig.I.shake(2, 1.2)
+	CamRig.I.kick(-dir, 0.35, 0.02)       # 后坐：镜头往身后一顿
 	Game.sfx("boom", 0.0)
+	# 地上烧出一道焦痕，尽头炸开一圈
+	var gp := Vector3(global_position.x, 0, global_position.z)
+	for i in range(0, 9 if Vfx.I.lod > 0 else 4):
+		var q := gp + dir * (1.5 + i * (2.2 if Vfx.I.lod > 0 else 4.4))
+		Vfx.I.ground(q, "scorch_01", Color(0.03, 0.06, 0.08, 0.6), 2.0, 2.4, 1.8, false)
+		Vfx.I.ground(q, "lm_circle_a", Color(0.4, 0.95, 1.0, 0.7), 1.2, 3.0, 0.45, true)
+	Vfx.I.shock_ring(gp + dir * 18.0, Color(0.5, 1.0, 1.0), 0.5, 5.0, 0.45)
+	Vfx.I.streaks(global_position + Vector3(0, 1, 0) + dir * 2.0, dir, Color(0.6, 1.0, 1.0), 8, 4.0, 0.3, 0.25, 0.25)
 	var seg := to - from
 	seg.y = 0
 	var f2 := Vector3(from.x, 0, from.z)
@@ -755,11 +788,16 @@ func _detonate() -> void:
 		info.attacker = null
 		info.hitstop = 0.12
 		Vfx.I.explosion(a.chest(), 0.7 + 0.15 * stacks)
+		Vfx.I.cut_line(a.chest(), Vector3(randf_range(-1, 1), 1.2, randf_range(-1, 1)), 3.5 + 0.4 * stacks, Color(1, 0.9, 0.9), 0.3, 0.3, Color(1.0, 0.1, 0.1))
+		Vfx.I.streaks(a.chest(), Vector3.UP, Color(1.0, 0.25, 0.2), 6, 2.2, 0.25, PI, 0.18)
 		Vfx.I.sheet("dark-explosion", a.global_position, 4.2 + 0.35 * stacks, Color(1, 1, 1), 1.8, false, 0.0, 1.6)
 		Feel.I.on_hit(info)
 		n += 1
 	CamRig.I.shake(2, 1.3)
+	CamRig.I.punch_zoom(0.5, 0.3)
 	Feel.I.screen_flash(Color(0.9, 0.1, 0.1, 0.35), 3.0)
+	if n > 0:
+		Feel.I.slowmo(0.3, 0.35)
 	Game.sfx("execute", 0.0)
 	Feel.I.callout(head_top() + Vector3(0.6, 0.5, 0), "血爆 ×%d" % n, Color(1.0, 0.35, 0.35), 1.3)
 

@@ -61,6 +61,7 @@ var _spikes: Array[Vector3] = []     # 百骨将：地刺落点
 var _retreat_t := 0.0                # 骨刺客：刺完往后退
 var target: Hero
 var is_boss := false
+var _trail: BladeTrail
 var dmg_scale := 1.0
 
 
@@ -94,6 +95,16 @@ func _ready() -> void:
 	add_child(rig)
 	rig.setup(String(data["model"]), String(data["weapon"]), float(data["wlen"]), data["tint"], k)
 	rig.set_rim(Color(0.6, 0.85, 0.9) if not is_boss else Color(1.0, 0.6, 0.8), 0.3)
+	# 精英和头目出刀带拖尾（颜色同时也是“危险”提示）
+	if max_poise > 0.0 and rig.weapon != null:
+		_trail = BladeTrail.new()
+		_trail.actor = self
+		_trail.rig = rig
+		_trail.life = 0.2 if is_boss else 0.15
+		_trail.width_k = 0.75
+		add_child(_trail)
+		var fc := fx_color()
+		_trail.set_colors(Color(1, 0.95, 0.9), fc)
 	_home = global_position
 	_pose = Poses.idle(0.0)
 	add_to_group("foes")
@@ -166,6 +177,8 @@ func _pick_target() -> Hero:
 func _set_state(s: String) -> void:
 	state = s
 	st_t = 0.0
+	if _trail != null:
+		_trail.active = s == "attack"
 	_pose_prev = _pose
 	_blend = 0.0
 
@@ -439,7 +452,8 @@ func _st_attack(dt: float) -> void:
 				_did_hit = true
 				var base := Transform3D(Basis(Vector3.UP, rotation.y), global_position + Vector3(0, 0.9 * float(data["k"]), 0))
 				var a0 := deg_to_rad(110) if _combo_n % 2 == 0 else deg_to_rad(-110)
-				Vfx.I.slash(base, float(data["range"]) * 0.95, a0, -a0, 0.2, Color(1.0, 0.85, 0.8), Color(1.0, 0.2, 0.15), 2.2)
+				Vfx.I.slash(base, float(data["range"]) * 0.95, a0, -a0, 0.2 if not is_boss else 0.26, Color(1.0, 0.85, 0.8),
+					Color(1.0, 0.2, 0.15) if not is_boss else fx_color(), 2.2 if not is_boss else 3.0)
 				_melee_hit(float(data["range"]) + 0.3, 130.0, float(data["dmg"]), HitInfo.Weight.LIGHT if not is_boss else HitInfo.Weight.HEAVY)
 			if k >= 1.0:
 				if is_boss and _combo_n < (1 if _boss_phase == 0 else 2):
@@ -507,6 +521,12 @@ func _st_attack(dt: float) -> void:
 				Vfx.I.chips(global_position, Vector3.UP, Color(0.35, 0.33, 0.3), 18, 8.0, 0.13)
 				Vfx.I.ground(global_position, "scorch_01", Color(0.05, 0.04, 0.04, 0.7), r * 1.6, r * 1.8, 1.5, false)
 				Vfx.I.sheet("ground-slam", global_position, r * 1.5, Color(1.0, 0.9, 0.85), 1.4, false, 0.0, 1.5)
+				if is_boss:
+					# 头目落地：一圈本色的放射线 + 第二道冲击环，镜头往下一砸
+					for i in range(8):
+						Vfx.I.streaks(global_position + Vector3(0, 0.4, 0), Vector3(cos(TAU * i / 8.0), 0, sin(TAU * i / 8.0)), fx_color(), 1, r * 1.3, 0.25, 0.05, 0.2)
+					Vfx.I.shock_ring(global_position, fx_color(), 0.3, r * 3.2, 0.5)
+					CamRig.I.kick(Vector3(0, 0, 1), 0.3, 0.015)
 				CamRig.I.shake(2)
 				Game.sfx("boom", -2.0)
 				_area_hit(global_position, r, float(data["dmg"]) * 1.2, HitInfo.Weight.HEAVY)
@@ -521,6 +541,7 @@ func _st_attack(dt: float) -> void:
 				for s in _spikes:
 					Vfx.I.chips(s, Vector3.UP, Color(0.9, 0.9, 0.8), 8, 9.0, 0.12)
 					Vfx.I.shock_ring(s, Color(0.7, 1.0, 0.6), 0.2, 2.4, 0.25)
+					Vfx.I.streaks(s, Vector3.UP, Color(0.8, 1.0, 0.7), 3, 2.4, 0.22, 0.25, 0.2)
 					_area_hit(s, 1.2, float(data["dmg"]) * 0.9, HitInfo.Weight.LIGHT)
 				CamRig.I.shake(1)
 				Game.sfx("death", -6.0)
@@ -639,18 +660,40 @@ func take_hit(info: HitInfo) -> bool:
 		knock *= 0.15
 	if is_boss and _boss_phase == 0 and hp < max_hp * 0.5:
 		_boss_phase = 1
-		rig.set_rim(Color(1.0, 0.3, 0.5), 0.9)
+		rig.set_rim(fx_color(), 0.9)
 		Feel.I.callout(head_top() + Vector3(0, 0.6, 0), String(RAGE_NAMES.get(kind, "狂")), Color(1.0, 0.4, 0.55), 1.5)
-		Feel.I.screen_flash(Color(1.0, 0.3, 0.5, 0.35), 2.0)
+		Feel.I.screen_flash(Color(fx_color(), 0.4), 2.0)
+		# 进入狂暴：慢镜头一下，本色冲击环一圈圈推开
+		Feel.I.slowmo(0.3, 0.6)
+		for j in range(3):
+			Vfx.I.shock_ring(global_position, fx_color() if j != 1 else Color(1, 1, 1), 0.4, 5.0 + j * 2.5, 0.45 + j * 0.2)
+		Vfx.I.streaks(chest(), Vector3.UP, fx_color(), 10, 3.5, 0.4, PI, 0.22)
+		CamRig.I.shake(2, 1.2)
+		Game.sfx("boss_kill", -6.0, 0.0, 1.3)
 		data = data.duplicate()
 		data["speed"] = float(data["speed"]) * 1.25
 	return ok
+
+
+## 这个敌人的特效主色：头目各有一套（夜樱粉、百骨将骨青、寂光金），精英橙红，小怪暖黄
+func fx_color() -> Color:
+	match kind:
+		"boss":
+			return Color(1.0, 0.45, 0.7)
+		"boss3":
+			return Color(0.75, 1.0, 0.7)
+		"boss2":
+			return Color(1.0, 0.82, 0.4)
+	return Color(1.0, 0.5, 0.3) if max_poise > 0.0 else Color(1.0, 0.85, 0.4)
 
 
 func die(impulse: Vector3) -> void:
 	super.die(impulse)
 	_release()
 	remove_from_group("foes")
+	if _trail != null:
+		_trail.active = false
+	Feel.I.on_kill(self, impulse)
 	Game.sfx("death", -4.0)
 	if is_boss:
 		# 头目倒下，召出来的小怪跟着散架

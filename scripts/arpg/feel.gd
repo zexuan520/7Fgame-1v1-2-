@@ -17,6 +17,15 @@ var _nums: Array = []             # [Label, 世界坐标, 屏幕偏移速度, �
 var _flash := Color(0, 0, 0, 0)
 var _flash_decay := 4.0
 var _hurt := 0.0
+var _slow_scale := 1.0
+var _slow_left := 0.0
+var _slow_dur := 0.0
+const COMBO_KEEP := 2.2           # 多久没打中就断连击
+const COMBO_TIERS := [[10, Color(0.55, 1.0, 1.0)], [25, Color(1.0, 0.85, 0.35)], [50, Color(1.0, 0.4, 0.35)]]
+var combo := 0
+var _combo_t := 0.0
+var _combo_punch := 0.0
+var _combo_lbl: Label
 
 
 func _ready() -> void:
@@ -34,33 +43,170 @@ func on_hit(info: HitInfo) -> bool:
 	if tgt == null or not tgt.take_hit(info):
 		return false
 	var w := int(info.weight)
+	# 技能命中时 attacker 是空的（主角瞬移后不停顿），按挨打的一方算
+	var hero_hit := (info.attacker != null and info.attacker.team == 0) or (info.attacker == null and tgt.team == 1)
+	var boss := tgt is Foe and (tgt as Foe).is_boss
+	var killed := not tgt.alive
+	if hero_hit:
+		_combo_add()
+	elif tgt.team == 0:
+		_combo_break()
 	var hs: float = info.hitstop if info.hitstop >= 0.0 else HITSTOP[w]
-	# 伤害越高顿得越久（最多再加 40%）
+	# 伤害越高顿得越久（最多再加 40%）；连段越长每一下也略沉一点
 	hs *= 1.0 + clampf(info.damage / 120.0, 0.0, 0.4)
 	if info.crit:
 		hs *= 1.25
+	if hero_hit:
+		hs *= 1.0 + clampf(combo / 60.0, 0.0, 0.25)
+	if killed:
+		hs = maxf(hs, HITSTOP[1] * 1.2)
 	tgt.freeze(hs)
 	if info.attacker != null:
 		info.attacker.freeze(hs * 0.9)
+	# 受击挤压：压扁再弹回
+	if tgt.rig != null:
+		tgt.rig.squash((0.16 if w == 0 else 0.26) * (0.45 if boss else 1.0) * (1.3 if info.crit else 1.0))
+		if tgt.team == 0:
+			tgt.rig.flash(0.12, Color(1.0, 0.35, 0.35))
 	var sl: int = info.shake if info.shake >= 0 else w
 	if CamRig.I != null:
 		CamRig.I.shake(sl, 1.0 + clampf(info.damage / 150.0, 0.0, 0.6))
+		# 定向冲击：镜头顺着打击方向推一下（挨打时更猛，让玩家“疼”）
+		var kick: float = [0.06, 0.13, 0.2][w] * (1.4 if tgt.team == 0 else 1.0) * (1.3 if info.crit else 1.0)
+		CamRig.I.kick(info.dir, kick, 0.0 if w == 0 else 0.012 * (w + 1))
 	if Vfx.I != null:
+		var spark_col := Color(1.0, 0.86, 0.35)
+		if tgt.team == 0:
+			spark_col = Color(1.0, 0.3, 0.25)
+		elif boss:
+			spark_col = (tgt as Foe).fx_color()
 		Vfx.I.hit_spark(info.point, w >= 1, info.crit)
+		Vfx.I.streaks(info.point, info.dir, spark_col if not info.crit else Color(1.0, 0.95, 0.6),
+			3 + w * 2 + (2 if info.crit else 0), 1.1 + 0.5 * w, 0.12 + 0.03 * w)
 		if info.crit:
 			Vfx.I.sheet("crit-hit", info.point - Vector3(0, 0.7, 0), 3.3, Color(1, 1, 1), 2.2)
-		elif w >= 1:
+			Vfx.I.cut_line(info.point, info.dir.rotated(Vector3.UP, PI / 2) + Vector3.UP * 0.6, 3.0, Color(1, 1, 0.85), 0.16, 0.16, Color(1.0, 0.8, 0.3))
+		elif w >= 1 or boss:
 			Vfx.I.sheet("hit-spark", info.point - Vector3(0, 0.4, 0), 1.6, Color(1, 1, 1), 2.0, false, 0.0, 1.4)
+		if w >= 1 and hero_hit:
+			Vfx.I.scar(tgt.global_position - info.dir * 0.3, info.dir, 1.4 + 0.4 * w)
 		var chip_col := Color(0.92, 0.9, 0.82) if tgt.team == 1 else Color(0.9, 0.15, 0.2)
 		Vfx.I.chips(info.point, info.dir + Vector3.UP * 0.3, chip_col, 5 + 4 * w, 5.0 + 2.0 * w)
 	if Game.show_damage:
 		var col := Color(1.0, 0.86, 0.3) if info.crit else (Color(1, 1, 1) if tgt.team == 1 else Color(1.0, 0.3, 0.3))
 		number(info.point, "%d" % int(round(info.damage)), col, 1.45 if info.crit else 1.0, info.crit)
+	# 声音：命中音随连段慢慢升调（最多高 3 个半音），会心叠一声刀鸣，击杀叠一记闷响
 	var snd := "hit_heavy" if w >= 1 or info.crit else "hit"
-	Game.sfx(snd, -3.0 if w < 1 else 0.0, 0.1)
+	var pitch := 1.0 + (minf(combo, 30) / 30.0 * 0.19 if hero_hit else 0.0)
+	Game.sfx(snd, -3.0 if w < 1 else 0.0, 0.08, pitch)
+	if info.crit:
+		Game.sfx("crit", -6.0, 0.05)
+	if killed and tgt.team == 1:
+		Game.sfx("kill", -4.0 if not boss else 0.0, 0.08)
 	if info.attacker != null and info.gain > 0.0 and info.attacker.has_method("gain_energy"):
 		info.attacker.call("gain_energy", info.gain)
 	return true
+
+
+## 敌人倒下（Foe.die 调）：斩线 + 放射线；精英、一波最后一个、头目会短暂慢镜头
+func on_kill(f: Foe, impulse: Vector3) -> void:
+	var p := f.chest()
+	var last := get_tree().get_nodes_in_group("foes").filter(func(n: Node) -> bool: return n != f and (n as Actor).alive).is_empty()
+	if f.is_boss:
+		slowmo(0.15, 1.3)
+		screen_flash(Color(1, 1, 1, 0.85), 1.6)
+		Vfx.I.boss_burst(p, f.fx_color())
+		CamRig.I.punch_zoom(0.9, 1.0)
+		CamRig.I.shake(2, 1.6)
+		Game.sfx("boss_kill", 2.0, 0.0)
+		callout(f.head_top() + Vector3(0, 0.8, 0), "斩!", Color(1.0, 0.95, 0.85), 2.4)
+		return
+	var elite := f.max_poise > 0.0
+	Vfx.I.kill_burst(p, impulse, Color(1.0, 0.85, 0.4) if not elite else Color(1.0, 0.55, 0.3), elite)
+	if last:
+		# 清完一波：慢镜头 + 拉近，给玩家一口气
+		slowmo(0.22, 0.55)
+		CamRig.I.punch_zoom(0.55, 0.45)
+		screen_flash(Color(1, 1, 1, 0.25), 3.0)
+	elif elite:
+		slowmo(0.35, 0.22)
+		CamRig.I.punch_zoom(0.35, 0.18)
+
+
+## 慢镜头：时间缩放到 scale，持续 dur 秒（真实时间），最后 40% 慢慢恢复
+func slowmo(scale: float, dur: float) -> void:
+	if _slow_left <= 0.0 or scale < _slow_scale:
+		_slow_scale = scale
+	_slow_dur = maxf(_slow_left, dur)
+	_slow_left = _slow_dur
+
+
+func _tick_slow(real_dt: float) -> void:
+	if _slow_left > 0.0:
+		_slow_left = maxf(_slow_left - real_dt, 0.0)
+		var k := _slow_left / maxf(_slow_dur, 0.001)   # 1 → 0
+		var ts := _slow_scale if k > 0.4 else lerpf(1.0, _slow_scale, k / 0.4)
+		Engine.time_scale = ts
+		if _slow_left <= 0.0:
+			Engine.time_scale = 1.0
+			_slow_scale = 1.0
+
+
+# ---------- 连击计数 ----------
+
+func _combo_add() -> void:
+	combo += 1
+	_combo_t = COMBO_KEEP
+	if combo < 3:
+		return
+	_combo_punch = 1.0
+	if _combo_lbl == null:
+		_combo_lbl = Label.new()
+		_combo_lbl.add_theme_font_override("font", font)
+		_combo_lbl.add_theme_constant_override("outline_size", 10)
+		_combo_lbl.add_theme_color_override("font_outline_color", Color(0.03, 0.04, 0.06))
+		_combo_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		_combo_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_combo_lbl)
+	var col := Color(1, 1, 1)
+	for tier: Array in COMBO_TIERS:
+		if combo >= int(tier[0]):
+			col = tier[1]
+	_combo_lbl.text = "%d 连击" % combo
+	_combo_lbl.add_theme_font_size_override("font_size", 34 if combo < 25 else 40)
+	_combo_lbl.add_theme_color_override("font_color", col)
+	_combo_lbl.visible = true
+	_combo_lbl.modulate.a = 1.0
+	if combo in [10, 25, 50, 100]:
+		_combo_punch = 1.8
+		Game.sfx("crit", -8.0, 0.0, 0.8 + combo / 100.0)
+
+
+func _combo_break() -> void:
+	if combo >= 3 and _combo_lbl != null:
+		_combo_lbl.add_theme_color_override("font_color", Color(0.6, 0.6, 0.65))
+	combo = 0
+	_combo_t = minf(_combo_t, 0.35)
+
+
+func _tick_combo(dt: float) -> void:
+	if _combo_t > 0.0:
+		_combo_t -= dt
+		if _combo_t <= 0.0:
+			combo = 0
+	if _combo_lbl == null or not _combo_lbl.visible:
+		return
+	var vs := get_viewport().get_visible_rect().size
+	_combo_punch = maxf(_combo_punch - dt * 6.0, 0.0)
+	var s := 1.0 + 0.35 * _combo_punch
+	_combo_lbl.scale = Vector2(s, s)
+	_combo_lbl.size = Vector2(260, 60)
+	_combo_lbl.pivot_offset = Vector2(260, 30)
+	_combo_lbl.position = Vector2(vs.x - 260 - vs.x * 0.04, vs.y * 0.26)
+	if _combo_t <= 0.35:
+		_combo_lbl.modulate.a = maxf(_combo_t / 0.35, 0.0)
+		if _combo_t <= 0.0:
+			_combo_lbl.visible = false
 
 
 ## 伤害数字 / 飘字
@@ -109,6 +255,9 @@ func pause_world(t: float) -> void:
 
 
 func _process(dt: float) -> void:
+	# dt 已经乘过 Engine.time_scale；慢镜头本身要按真实时间走
+	_tick_slow(dt / maxf(Engine.time_scale, 0.01))
+	_tick_combo(dt)
 	world_pause = maxf(world_pause - dt, 0.0)
 	var cam := get_viewport().get_camera_3d()
 	var i := 0

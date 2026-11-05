@@ -25,6 +25,8 @@ KEN = "RPGsounds_Kenney/OGG/%s.ogg"
 BFH = "sfx_breaking_and_falling/bfh1_%s.ogg"
 CLASH = "sword_clash_-_starninjas_0/sword_clash.%d.ogg"
 TINY = "tinysized/sfx-cc0/%s.wav"
+IMP = "impact_-_starninjas/impact.%d.ogg"
+SWD = "sword_-_starninjas_1/sword - StarNinjas/sword.%d.ogg"
 
 # 每个音效：变体列表。每个变体是 [(文件, 音量 dB, 音高倍数)...]，多个文件叠在一起；
 # 后面是通用处理：最长秒数、淡出秒数
@@ -45,6 +47,12 @@ SFX = {
                    [(BFH % "hit_06", 0, 0.85), (KEN % "knifeSlice2", -4, 0.8), (BFH % "wood_hit_02", -8, 1.0)],
                    [(BFH % "hit_10", 0, 0.85), (KEN % "chop", -4, 0.75), (BFH % "rock_hit_01", -8, 1.0)],
                    [(BFH % "hit_12", 0, 0.85), (KEN % "knifeSlice", -4, 0.8), (BFH % "wood_hit_03", -8, 1.0)]], 0.6, 0.2),
+    # 击杀：一声清脆的刀鸣 + 低沉的闷击（只在击杀那一下叠在命中音上）
+    "kill": ([[(IMP % i, 0, 0.8), (SWD % j, -5, 1.15)] for i, j in ((1, 1), (3, 3), (5, 6), (7, 8), (9, 10))], 0.6, 0.25),
+    # 会心：短促的高音刀鸣
+    "crit": ([[(CLASH % i, -2, 1.3)] for i in (2, 4, 6)], 0.35, 0.15),
+    # 头目倒下：很低的轰击 + 碎裂
+    "boss_kill": ([[(IMP % 4, 0, 0.55), (BFH % "hit_12", -2, 0.6), (BFH % "rock_breaking_01", -4, 0.8)]], 1.6, 0.6),
     # 格挡 / 打在硬东西上：刀剑相击
     "block": ([[(CLASH % i, 0, 1.0)] for i in (1, 3, 5, 7, 9)], 0.5, 0.25),
     # 骷髅碎掉：木头 / 石头断裂
@@ -85,7 +93,10 @@ def main():
     for z in ZIPS:
         with zipfile.ZipFile(os.path.join(SRC, z)) as f:
             f.extractall(os.path.join(tmp, z[:-4]))
+    only = [x for x in os.environ.get("ONLY", "").split(",") if x]   # ONLY=kill,crit 只重做这几个
     for name, (variants, max_len, fade) in SFX.items():
+        if only and name not in only:
+            continue
         out_dir = os.path.join(SFX_OUT, name)
         shutil.rmtree(out_dir, ignore_errors=True)
         os.makedirs(out_dir)
@@ -105,6 +116,8 @@ def main():
             run(args)
         print(name, len(variants))
     for name, src in MUSIC.items():
+        if only:
+            break
         if ":" in src:
             z, inner = src.split(":", 1)
             with zipfile.ZipFile(os.path.join(SRC, z)) as f:

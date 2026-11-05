@@ -176,6 +176,7 @@ func _initial_quality() -> int:
 
 func apply_quality(q: int) -> void:
 	quality = clampi(q, 0, 2)
+	vfx.lod = quality
 	sun.shadow_enabled = quality >= 2
 	world_env.environment.glow_enabled = quality >= 1
 	post_rect.visible = quality >= 1

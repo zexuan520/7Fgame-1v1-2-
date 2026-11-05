@@ -24,6 +24,10 @@ var _zoom_hold := 0.0
 var _t := 0.0
 var bounds := Rect2(-100, -100, 200, 200)   # 镜头焦点能去的范围（xz）
 var lead_dir := Vector3.ZERO
+var _kick := Vector3.ZERO              # 定向冲击：镜头顺着打击方向猛推一下再弹簧回位
+var _kick_v := Vector3.ZERO
+var _roll := 0.0                       # 镜头滚转（重击时歪一下）
+var _roll_v := 0.0
 
 
 func _ready() -> void:
@@ -48,6 +52,15 @@ func shake(level: int, scale: float = 1.0) -> void:
 	_trauma = minf(_trauma + a, 0.6)
 
 
+## 定向冲击：镜头沿 dir（地面方向）被推 amt 米，带一点回弹；roll 是顺带歪的角度（弧度）
+func kick(dir: Vector3, amt: float, roll: float = 0.0) -> void:
+	dir.y = 0
+	if dir.length_squared() < 0.0001:
+		return
+	_kick_v += dir.normalized() * amt * 28.0
+	_roll_v += roll * 28.0 * (1.0 if randf() < 0.5 else -1.0)
+
+
 ## 拉近：amount 0~1，hold 秒后弹回
 func punch_zoom(amount: float, hold: float = 0.12) -> void:
 	_zoom_target = maxf(_zoom_target, amount)
@@ -68,6 +81,12 @@ func _process(dt: float) -> void:
 		_zoom_target = 0.0
 		_zoom = lerpf(_zoom, 0.0, 1.0 - exp(-6.0 * dt))
 	_trauma = maxf(_trauma - dt * 1.6 * maxf(_trauma, 0.08) * 6.0, 0.0)
+	# 弹簧：刚度 260、阻尼 22（略欠阻尼，回弹一下就停）
+	var sdt := minf(dt, 0.05)
+	_kick_v += (-_kick * 260.0 - _kick_v * 22.0) * sdt
+	_kick += _kick_v * sdt
+	_roll_v += (-_roll * 260.0 - _roll_v * 22.0) * sdt
+	_roll += _roll_v * sdt
 	_place(dt)
 
 
@@ -83,8 +102,10 @@ func _place(_dt: float) -> void:
 		var a := _trauma
 		shake = Vector3(sin(_t * 71.0) + sin(_t * 37.0) * 0.5, cos(_t * 63.0) + sin(_t * 29.0) * 0.5, sin(_t * 53.0)) * a * 0.66
 	global_position = pos
-	cam.global_position = pos + shake
-	cam.look_at(look + shake * 0.5, Vector3.UP)
+	cam.global_position = pos + shake + _kick
+	cam.look_at(look + shake * 0.5 + _kick * 0.6, Vector3.UP)
+	if absf(_roll) > 0.0001:
+		cam.rotate_object_local(Vector3.BACK, _roll)
 	cam.fov = fov * (1.0 - 0.06 * _zoom)
 
 
