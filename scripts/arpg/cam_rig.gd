@@ -7,7 +7,7 @@ static var I: CamRig
 
 @export var pitch_deg := 50.0          # 俯角：40~55，越大越像俯视
 @export var yaw_deg := 0.0
-@export var distance := 13.5
+@export var distance := 14.5
 @export var fov := 38.0
 @export var follow_speed := 7.0
 @export var look_offset := Vector3(0, 0.9, 0.0)

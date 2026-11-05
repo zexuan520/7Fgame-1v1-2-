@@ -8,7 +8,11 @@ extends Node3D
 ##   --demo=fight 自动打（录视频用，主角不掉血）  --zone=temple 指定区域  --room=shop 直接进某种房间  --hub 直接进山门
 ##   --shot=路径 --shot_t=3,6 按时间拍图后退出（--nohud 不画界面）  --nowaves 不刷怪  --cam_dist/--cam_pitch/--cam_yaw 调镜头
 
-const HUB_SIZE := Vector2(24, 18)
+const HUB_SIZE := Vector2(30, 22)
+## 房间尺寸（米，x 宽 × z 深）：战斗房 / 商人土地庙之类的小房 / 头目
+const ROOM_SIZE := Vector2(44, 32)
+const SMALL_ROOM := Vector2(30, 22)
+const BOSS_ROOM := Vector2(40, 30)
 
 var world_env: WorldEnvironment
 var sun: DirectionalLight3D
@@ -177,6 +181,7 @@ func _initial_quality() -> int:
 func apply_quality(q: int) -> void:
 	quality = clampi(q, 0, 2)
 	vfx.lod = quality
+	Arena.lod = quality
 	sun.shadow_enabled = quality >= 2
 	world_env.environment.glow_enabled = quality >= 1
 	post_rect.visible = quality >= 1
@@ -334,7 +339,7 @@ func _build_arena(zone_id: String, seed_value: int, sz: Vector2) -> void:
 		print("arena rebuild ms ", Time.get_ticks_msec() - t2)
 		a2.queue_free()
 	_apply_zone_env(arena.zone_info())
-	cam_rig.bounds = Rect2(-sz.x * 0.5 + 6.0, -sz.y * 0.5 + 2.0, sz.x - 12.0, sz.y - 4.0)
+	cam_rig.bounds = Rect2(-sz.x * 0.5 + 6.0, -sz.y * 0.5 + 2.0, sz.x - 12.0, sz.y - 6.5)   # 靠镜头那边多收一点，别拍到墙外
 
 
 ## 主角：死过一次（人偶碎了）或者还没有，就新做一个
@@ -545,11 +550,11 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 		zone_id = ArpgState.BOSS_ZONES[mini(fl, ArpgState.LAST_FLOOR)]
 	if zone_override != "":
 		zone_id = zone_override
-	var sz := Vector2(30, 22)
+	var sz := ROOM_SIZE
 	if room_kind in ["shop", "rest", "event", "start", "story", "treasure", "secret", "tutorial"]:
-		sz = Vector2(24, 18)
+		sz = SMALL_ROOM
 	elif room_kind == "boss":
-		sz = Vector2(32, 24)
+		sz = BOSS_ROOM
 	_build_arena(zone_id, state.seed_value + fl * 1000 + state.run.row * 37 + state.run.col * 7 + (500 if room_kind == "secret" else 0), sz)
 	_place_hero(arena.entry_pos)
 	state.rooms += 1
@@ -803,7 +808,12 @@ func _next_wave() -> void:
 	hud.wave_text = "第 %d 波 / 共 %d 波" % [wave_i + 1, waves.size()]
 	var pts := arena.spawn_points.duplicate()
 	pts.shuffle()
-	pts.sort_custom(func(a: Vector3, b: Vector3) -> bool: return a.distance_to(hero.global_position) > b.distance_to(hero.global_position))
+	# 房间大了，不再刷在离主角最远的角落（要跑半天）：优先挑离主角 8~16 米的点，不够再按远近补
+	var hp := hero.global_position
+	var score := {}
+	for q: Vector3 in pts:
+		score[q] = _spawn_score(q.distance_to(hp))
+	pts.sort_custom(func(a: Vector3, b: Vector3) -> bool: return float(score[a]) < float(score[b]))
 	var pi := 0
 	for j in range(0, w.size(), 2):
 		var kind: String = w[j]
@@ -818,6 +828,15 @@ func _next_wave() -> void:
 		Game.sfx("boss" if String(w[0]).begins_with("boss") else "danger", -6.0)
 
 
+## 刷怪点打分（越小越好）：8~16 米最好，太近容易贴脸，太远要跑
+func _spawn_score(d: float) -> float:
+	if d < 8.0:
+		return 100.0 + (8.0 - d)
+	if d > 16.0:
+		return d - 16.0
+	return randf() * 0.5
+
+
 func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
 	if delay > 0.0:
 		await get_tree().create_timer(delay).timeout
@@ -830,6 +849,7 @@ func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
 	add_child(f)
 	f.global_position = p
 	f.face_to(hero.global_position - p)
+	f.detect_mult = 1.6   # 波次刷的怪一出来就该找人，大房间里别在角落发呆
 	f.dropped.connect(_on_drop.bind(kind))
 	if f.is_boss:
 		hud.boss = f

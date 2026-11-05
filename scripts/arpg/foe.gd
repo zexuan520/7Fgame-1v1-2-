@@ -37,6 +37,7 @@ var data: Dictionary
 var state := "spawn"
 var st_t := 0.0
 var _home := Vector3.ZERO
+var detect_mult := 1.0          # 发现主角的距离倍数（大房间的波次怪调大）
 var _wander := Vector3.ZERO
 var _wander_t := 0.0
 var _has_token := false
@@ -249,7 +250,7 @@ func _st_patrol(dt: float) -> void:
 		v = _wander.normalized() * float(data["speed"]) * 0.35
 		_wander -= v * dt
 	_walk(v, dt)
-	if target != null and _dist_to_target() < float(data["detect"]):
+	if target != null and _dist_to_target() < float(data["detect"]) * detect_mult:
 		_set_state("chase")
 		# 发现主角：头上冒个“!”
 		Feel.I.callout(head_top(), "!", Color(1.0, 0.35, 0.3), 0.9)

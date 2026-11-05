@@ -22,6 +22,9 @@ var spawn_points: Array[Vector3] = []
 var exit_pos := Vector3.ZERO
 var entry_pos := Vector3.ZERO
 var _solid := []                   # 不能走的格子（地面坐标矩形），刷怪时避开
+var _placed: Array[Vector3] = []   # _free_spot 找过的位置（互相隔开）
+## 画质档（ArpgMain.apply_quality 设）：0 低档时漂浮光尘、雾片、落花减半
+static var lod := 2
 
 const ZONES := {
 	"forest": {"bg": Color(0.03, 0.07, 0.08), "fog": Color(0.07, 0.2, 0.21), "fog_d": 0.75, "amb": Color(0.3, 0.55, 0.58), "amb_e": 1.15,
@@ -48,7 +51,10 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 	glow_mat.shader = load("res://shaders/arpg/vcol_emit.gdshader")
 	entry_pos = Vector3(0, 0, size.y * 0.5 - 3.0)
 	exit_pos = Vector3(0, 0, -size.y * 0.5 + 1.5)
+	var _t0 := Time.get_ticks_msec()
 	_build_floor()
+	if OS.get_cmdline_user_args().has("--dbg"):
+		print("floor ms ", Time.get_ticks_msec() - _t0)
 	_build_bounds()
 	match zone:
 		"forest":
@@ -65,6 +71,42 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 
 func zone_info() -> Dictionary:
 	return ZONES[zone]
+
+
+## 房间相对 30×22 老尺寸的倍数（摆设按这个放大位置、加数量，密度保持差不多）
+func _kx() -> float:
+	return size.x / 30.0
+
+
+func _kz() -> float:
+	return size.y / 22.0
+
+
+func _ka() -> float:
+	return size.x * size.y / 660.0
+
+
+## 找一块空地：离墙 margin 米，避开中间那条入口→出口的路（半宽 lane）、入口出口附近、
+## 已经有碰撞的东西和之前找过的位置（相距 gap 米）。找不到返回 Vector3.INF
+func _free_spot(gap: float = 3.5, margin: float = 3.0, lane: float = 2.5) -> Vector3:
+	for t in range(60):
+		var p := Vector3(rng.randf_range(-size.x * 0.5 + margin, size.x * 0.5 - margin), 0, rng.randf_range(-size.y * 0.5 + margin, size.y * 0.5 - margin))
+		if absf(p.x) < lane or p.distance_to(entry_pos) < 5.0 or p.distance_to(exit_pos) < 4.0:
+			continue
+		var ok := true
+		for r: Rect2 in _solid:
+			if r.grow(0.8).has_point(Vector2(p.x, p.z)):
+				ok = false
+				break
+		if ok:
+			for q: Vector3 in _placed:
+				if q.distance_to(p) < gap:
+					ok = false
+					break
+		if ok:
+			_placed.append(p)
+			return p
+	return Vector3.INF
 
 
 # ---------- 地面 ----------
@@ -124,62 +166,55 @@ func _floor_color(x: float, z: float) -> Color:
 
 
 func _build_floor() -> void:
-	# 地面格子多（0.1 米一格，一间房六七万格），平的部分直接拼顶面四边形，不走通用体素网格（快很多）；
+	# 地面 0.1 米一格（大房间十几万格）。每格的颜色写进一张贴图（一像素一格，最近邻采样），
+	# 地面本身只是几块平面（分块好让每块只吃附近的灯：兼容渲染器每个物体最多 8 盏）；
 	# 只有边上的草丛 / 碎石凸起走 VoxelGrid
 	var nx := int(size.x / FV) + 20
 	var nz := int(size.y / FV) + 20
-	var verts := PackedVector3Array()
-	var norms := PackedVector3Array()
-	var cols := PackedColorArray()
-	var idx := PackedInt32Array()
-	verts.resize(nx * nz * 4)
-	norms.resize(nx * nz * 4)
-	cols.resize(nx * nz * 4)
-	idx.resize(nx * nz * 6)
+	var px := PackedByteArray()
+	px.resize(nx * nz * 3)
 	var bumps := VoxelGrid.new(rng.randi())
-	var q := 0
-	for ix in range(nx):
-		for iz in range(nz):
+	for iz in range(nz):
+		var z := (iz - nz * 0.5) * FV
+		var row := iz * nx * 3
+		for ix in range(nx):
 			var x := (ix - nx * 0.5) * FV
-			var z := (iz - nz * 0.5) * FV
 			var c := _floor_color(x, z)
 			# 草丛 / 碎石凸起（只在边上，不挡路）
-			var edge := maxf(absf(x) - size.x * 0.5 + 3.0, absf(z) - size.y * 0.5 + 3.0)
-			if zone == "forest" and edge > 0.0 and noise.get_noise_2d(x * 9.0, z * 9.0) > 0.4:
-				var h := 2 + int(rng.randf() * 3.0)
-				c = Color(0.1, 0.22, 0.16).lerp(Color(0.16, 0.3, 0.2), rng.randf())
-				for y in range(1, h + 1):
-					bumps.cells[Vector3i(ix, y, iz)] = c * (1.0 + 0.1 * y)
-				c = c * 0.7
-			var v := q * 4
-			verts[v] = Vector3(x, 0.0, z)
-			verts[v + 1] = Vector3(x + FV, 0.0, z)
-			verts[v + 2] = Vector3(x + FV, 0.0, z + FV)
-			verts[v + 3] = Vector3(x, 0.0, z + FV)
-			for k in range(4):
-				norms[v + k] = Vector3.UP
-				cols[v + k] = c
-			var i := q * 6
-			idx[i] = v
-			idx[i + 1] = v + 1
-			idx[i + 2] = v + 2
-			idx[i + 3] = v
-			idx[i + 4] = v + 2
-			idx[i + 5] = v + 3
-			q += 1
-	var arr := []
-	arr.resize(Mesh.ARRAY_MAX)
-	arr[Mesh.ARRAY_VERTEX] = verts
-	arr[Mesh.ARRAY_NORMAL] = norms
-	arr[Mesh.ARRAY_COLOR] = cols
-	arr[Mesh.ARRAY_INDEX] = idx
-	var mesh := ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
-	var mi := MeshInstance3D.new()
-	mi.mesh = mesh
-	mi.material_override = env_mat
-	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(mi)
+			if zone == "forest":
+				var edge := maxf(absf(x) - size.x * 0.5 + 3.0, absf(z) - size.y * 0.5 + 3.0)
+				if edge > 0.0 and noise.get_noise_2d(x * 9.0, z * 9.0) > 0.4:
+					var h := 2 + int(rng.randf() * 3.0)
+					c = Color(0.1, 0.22, 0.16).lerp(Color(0.16, 0.3, 0.2), rng.randf())
+					for y in range(1, h + 1):
+						bumps.cells[Vector3i(ix, y, iz)] = c * (1.0 + 0.1 * y)
+					c = c * 0.7
+			var o := row + ix * 3
+			px[o] = clampi(int(c.r * 255.0), 0, 255)
+			px[o + 1] = clampi(int(c.g * 255.0), 0, 255)
+			px[o + 2] = clampi(int(c.b * 255.0), 0, 255)
+	var img := Image.create_from_data(nx, nz, false, Image.FORMAT_RGB8, px)
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/arpg/floor.gdshader")
+	mat.set_shader_parameter("floor_tex", ImageTexture.create_from_image(img))
+	var x0 := -nx * 0.5 * FV
+	var z0 := -nz * 0.5 * FV
+	mat.set_shader_parameter("floor_rect", Vector4(x0, z0, nx * FV, nz * FV))
+	# 分块：每块约 10 米见方
+	var cx := maxi(1, int(ceil(nx * FV / 10.0)))
+	var cz := maxi(1, int(ceil(nz * FV / 10.0)))
+	var cw := nx * FV / cx
+	var cd := nz * FV / cz
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(cw, cd)
+	for i in range(cx):
+		for j in range(cz):
+			var mi := MeshInstance3D.new()
+			mi.mesh = pm
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mi)
+			mi.position = Vector3(x0 + (i + 0.5) * cw, 0.0, z0 + (j + 0.5) * cd)
 	if bumps.size() > 0:
 		var bi := MeshInstance3D.new()
 		bi.mesh = bumps.build(FV, Vector3(nx * 0.5, 1.0, nz * 0.5))
@@ -633,8 +668,12 @@ func _scroll() -> VoxelGrid:
 func _dress_forest() -> void:
 	var hx := size.x * 0.5
 	var hz := size.y * 0.5
+	var kx := _kx()
+	var kz := _kz()
+	var ka := _ka()
 	# 远处（画面上方）：断墙 + 巨管 + 脚手架，形成背景墙
-	for i in range(-4, 5):
+	var nw := int(hx / 3.3)
+	for i in range(-nw, nw + 1):
 		var x := i * 3.3 + rng.randf_range(-0.3, 0.3)
 		if absf(x) < 2.5:
 			continue   # 出口留空
@@ -646,13 +685,18 @@ func _dress_forest() -> void:
 	voxel_piece(_scaffold(30, 28), Vector3(hx - 5.5, 0, -hz + 1.6), 0.12)
 	# 左右两侧：大树干和枯树
 	for side: float in [-1.0, 1.0]:
-		for j in range(4):
-			var z := -hz + 3.0 + j * (size.y - 5.0) / 3.0 + rng.randf_range(-1, 1)
+		var nt := maxi(4, int(round(4.0 * kz)))
+		for j in range(nt):
+			var z := -hz + 3.0 + j * (size.y - 5.0) / float(nt - 1) + rng.randf_range(-1, 1)
 			var x := side * (hx - 0.5 + rng.randf_range(-0.4, 0.4))
 			voxel_piece(_trunk_c(rng.randi_range(40, 60), rng.randf_range(4.0, 6.0), Color(0.16, 0.13, 0.12), Color(0.18, 0.34, 0.22)), Vector3(x, 0, z), 0.12 / FINE, null, Vector3(1.4, 4, 1.4))
 		kit("tree_dead", Vector3(side * (hx - 3.0), 0, -hz + 4.0), rng.randf() * TAU, 1.0, true)
 	# 房间里的障碍：柱子、碎石、墓碑、火把
-	var spots := [Vector3(-7, 0, -3), Vector3(7.5, 0, -2), Vector3(-5, 0, 5), Vector3(6, 0, 4.5)]
+	var spots := [Vector3(-7 * kx, 0, -3 * kz), Vector3(7.5 * kx, 0, -2 * kz), Vector3(-5 * kx, 0, 5 * kz), Vector3(6 * kx, 0, 4.5 * kz)]
+	for i in range(int(round(4.0 * (ka - 1.0)))):
+		var fp := _free_spot(4.5)
+		if fp != Vector3.INF:
+			spots.append(fp)
 	for s: Vector3 in spots:
 		var r := rng.randf()
 		if r < 0.35:
@@ -663,26 +707,39 @@ func _dress_forest() -> void:
 			kit("column", s, 0.0, 1.8, true)
 		else:
 			kit("crates", s, rng.randf() * TAU, 1.0, true)
-	for s: Vector3 in [Vector3(-3.5, 0, -hz + 1.2), Vector3(3.5, 0, -hz + 1.2), Vector3(-hx + 2.5, 0, 1), Vector3(hx - 2.5, 0, -1)]:
+	var lamps := [Vector3(-3.5, 0, -hz + 1.2), Vector3(3.5, 0, -hz + 1.2), Vector3(-hx + 2.5, 0, 1), Vector3(hx - 2.5, 0, -1)]
+	if ka > 1.5:
+		lamps.append_array([Vector3(-hx + 2.5, 0, -hz * 0.55), Vector3(hx - 2.5, 0, hz * 0.45)])
+	for s: Vector3 in lamps:
 		kit("post_lantern", s, 0.0, 1.0, true)
-	for i in range(6):
+	# 大房间：中间两侧各一处断墙残垣，可以绕着打、卡位
+	if ka > 1.5:
+		for _k in range(2):
+			var c := _free_spot(6.0, 5.0, 5.0)
+			if c == Vector3.INF:
+				continue
+			var side := signf(c.x)
+			kit("wall_broken", c, PI * 0.5 * float(rng.randi() % 2), 1.0, true)
+			kit("rubble", c + Vector3(side * 2.2, 0, 1.6), rng.randf() * TAU, 1.0, true)
+			spirit_fire(c + Vector3(-side * 1.6, 0.5, 1.2), Color(0.55, 1.0, 0.85), 0.9, 1.4, 5.5)
+	for i in range(int(6 * ka)):
 		var p := Vector3(rng.randf_range(-hx + 3, hx - 3), 0, rng.randf_range(-hz + 3, hz - 3))
 		if p.length() > 4.0:
 			kit(["gravestone", "grave_a", "gravemarker", "ribcage", "sword_shield"][rng.randi() % 5], p, rng.randf() * TAU, 1.0, false)
 	# 鬼火：几团飘在墙根的青色火，给暗处一点光
-	for i in range(4):
+	for i in range(int(round(4.0 * sqrt(ka)))):
 		var side := -1.0 if i % 2 == 0 else 1.0
 		var p := Vector3(side * rng.randf_range(hx - 5.0, hx - 3.0), 0.5, rng.randf_range(-hz + 3, hz - 4))
 		spirit_fire(p, Color(0.55, 1.0, 0.85), 0.9, 1.4, 5.5)
 	# 发光蘑菇丛：青色小光点，沿墙根和树根长
-	for i in range(16):
+	for i in range(int(16 * ka)):
 		var edge_p := Vector3(rng.randf_range(-hx + 1.5, hx - 1.5), 0, rng.randf_range(-hz + 1.5, hz - 1.5))
 		if rng.randf() < 0.6:
 			edge_p.x = (hx - rng.randf_range(1.0, 3.0)) * (1.0 if rng.randf() < 0.5 else -1.0)
 		voxel_piece_glow(_mushrooms(), edge_p, 0.03)
 	# 前景剪影（靠镜头那边）：粗树干、垂藤，挡住主角时自动变透明
-	for side: float in [-1.0, 1.0]:
-		var x := side * (hx - 3.0 + rng.randf_range(-1.0, 1.0))
+	for x0: float in _fg_xs():
+		var x := x0 + rng.randf_range(-1.0, 1.0)
 		voxel_piece(_trunk_c(rng.randi_range(55, 65), rng.randf_range(5.0, 6.0), Color(0.04, 0.05, 0.05), Color(0.05, 0.09, 0.07)), Vector3(x, 0, hz + 1.5), 0.12 / FINE, null, Vector3.ZERO, true)
 
 
@@ -690,30 +747,42 @@ func _dress_forest() -> void:
 func _dress_grave() -> void:
 	var hx := size.x * 0.5
 	var hz := size.y * 0.5
+	var kx := _kx()
+	var kz := _kz()
+	var ka := _ka()
 	# 后排：地穴、石门、栅栏
 	kit("crypt", Vector3(-hx + 5.0, 0, -hz - 1.2), 0.0, 1.0, false)
 	kit("crypt", Vector3(hx - 5.0, 0, -hz - 1.2), 0.0, 1.0, false)
 	kit("arch_gate", Vector3(0, 0, -hz - 0.4), 0.0, 1.0, false)
-	for i in range(-6, 7):
+	var nf := int((hx - 1.0) / 1.9)
+	for i in range(-nf, nf + 1):
 		var x := i * 1.9
 		if absf(x) < 2.6 or absf(absf(x) - (hx - 5.0)) < 2.6:
 			continue
 		kit("fence" if rng.randf() < 0.7 else "fence_broken", Vector3(x, 0, -hz + 0.2), 0.0, 1.0, false)
 	# 两侧：枯树、松树、挂骷髅的杆子
 	for side: float in [-1.0, 1.0]:
-		for j in range(3):
-			var z := -hz + 3.0 + j * (size.y - 6.0) / 2.0 + rng.randf_range(-1, 1)
+		var nt := maxi(3, int(round(3.0 * kz)))
+		for j in range(nt):
+			var z := -hz + 3.0 + j * (size.y - 6.0) / float(nt - 1) + rng.randf_range(-1, 1)
 			kit(["tree_dead", "tree_dead_m", "tree_pine"][rng.randi() % 3], Vector3(side * (hx - 1.0), 0, z), rng.randf() * TAU, 1.0, true)
 		kit("post_skull", Vector3(side * (hx - 3.2), 0, -hz + 2.0), 0.0, 1.0, true)
 	# 场地里：几排墓碑（成排更像墓园），中间留出路
-	for row in range(3):
+	var nrow := maxi(3, int((size.y - 9.0) / 4.2) + 1)
+	var ncol := maxi(2, int(round(2.5 * kx)))
+	for row in range(nrow):
 		var z := -hz + 4.0 + row * 4.2
-		for i in range(5):
-			var x := (-hx + 3.0) + i * 1.6 if i < 3 else (hx - 3.0) - (i - 3) * 1.6
+		for i in range(ncol * 2):
+			var x := (-hx + 3.0) + i * 1.6 if i < ncol else (hx - 3.0) - (i - ncol) * 1.6
 			if rng.randf() < 0.3:
 				continue
 			kit(["gravestone", "grave_a", "grave_b", "gravemarker"][rng.randi() % 4], Vector3(x + rng.randf_range(-0.3, 0.3), 0, z + rng.randf_range(-0.3, 0.3)), rng.randf_range(-0.2, 0.2), 1.0, true)
-	for s: Vector3 in [Vector3(-6.5, 0, 1.5), Vector3(6.0, 0, -2.5), Vector3(-2.5, 0, 6.0)]:
+	var spots := [Vector3(-6.5 * kx, 0, 1.5 * kz), Vector3(6.0 * kx, 0, -2.5 * kz), Vector3(-2.5 * kx, 0, 6.0 * kz)]
+	for i in range(int(round(3.0 * (ka - 1.0)))):
+		var fp := _free_spot(4.0)
+		if fp != Vector3.INF:
+			spots.append(fp)
+	for s: Vector3 in spots:
 		var r := rng.randf()
 		if r < 0.4:
 			kit("coffin", s, rng.randf() * TAU, 1.0, true)
@@ -722,16 +791,29 @@ func _dress_grave() -> void:
 		else:
 			kit("rubble", s, rng.randf() * TAU, 1.0, true)
 	# 灯：挂灯和骷髅烛，冷绿色的鬼火
-	for s: Vector3 in [Vector3(-3.2, 0, -hz + 1.6), Vector3(3.2, 0, -hz + 1.6), Vector3(-hx + 2.2, 0, 2.0), Vector3(hx - 2.2, 0, 0.0)]:
+	var lamps := [Vector3(-3.2, 0, -hz + 1.6), Vector3(3.2, 0, -hz + 1.6), Vector3(-hx + 2.2, 0, 2.0), Vector3(hx - 2.2, 0, 0.0)]
+	if ka > 1.5:
+		lamps.append_array([Vector3(-hx + 2.2, 0, -hz * 0.5), Vector3(hx - 2.2, 0, hz * 0.5)])
+	for s: Vector3 in lamps:
 		kit("post_lantern", s, 0.0, 1.0, true)
-	for i in range(3):
+	# 大房间：场地中间一左一右两座石门残墓（带棺材和鬼火），可以绕着打
+	if ka > 1.5:
+		for _k in range(2):
+			var c := _free_spot(6.0, 5.0, 5.0)
+			if c == Vector3.INF:
+				continue
+			var side := signf(c.x)
+			kit("arch_gate", c, PI * 0.5, 1.0, true)
+			kit("coffin", c + Vector3(side * 2.0, 0, 1.5), rng.randf() * TAU, 1.0, true)
+			spirit_fire(c + Vector3(-side * 1.4, 0.6, 0.8), Color(0.5, 1.0, 0.55), 0.9, 1.3, 5.0)
+	for i in range(int(round(3.0 * ka))):
 		kit("skull_candle", Vector3(rng.randf_range(-hx + 3, hx - 3), 0, rng.randf_range(-hz + 3, hz - 3)), rng.randf() * TAU, 1.0, false)
-	for i in range(5):
+	for i in range(int(round(5.0 * sqrt(ka)))):
 		var side := -1.0 if i % 2 == 0 else 1.0
 		spirit_fire(Vector3(side * rng.randf_range(2.0, hx - 3.0), 0.6, rng.randf_range(-hz + 2, hz - 4)), Color(0.5, 1.0, 0.55), 0.9, 1.3, 5.0)
-	# 前景：两棵黑树干剪影
-	for side: float in [-1.0, 1.0]:
-		var x := side * (hx - 3.0 + rng.randf_range(-1.0, 1.0))
+	# 前景：黑树干剪影
+	for x0: float in _fg_xs():
+		var x := x0 + rng.randf_range(-1.0, 1.0)
 		voxel_piece(_trunk_c(60, 5.0, Color(0.04, 0.05, 0.05), Color(0.06, 0.08, 0.06)), Vector3(x, 0, hz + 1.5), 0.12 / FINE, null, Vector3.ZERO, true)
 
 
@@ -739,8 +821,12 @@ func _dress_temple() -> void:
 	var hx := size.x * 0.5
 	var hz := size.y * 0.5
 	var red := Color(0.45, 0.08, 0.06)
+	var kx := _kx()
+	var kz := _kz()
+	var ka := _ka()
 	# 后墙：纸窗一排，透冷蓝月光
-	for i in range(-5, 6):
+	var nwin := int((hx - 1.6) / 2.6)
+	for i in range(-nwin, nwin + 1):
 		var x := i * 2.6
 		if absf(x) < 2.0:
 			continue
@@ -761,10 +847,14 @@ func _dress_temple() -> void:
 	g.box(Vector3i(0, 0, 0), Vector3i(int(size.x / 0.2), 2, 6), Color(0.2, 0.13, 0.09), 0.1)
 	voxel_piece(g, Vector3(-hx, 0, -hz - 0.4), 0.2)
 	# 柱子：两排朱红柱（障碍）
-	for i in range(-2, 3):
+	var npl := int((hx - 2.5) / 6.0)
+	for i in range(-npl, npl + 1):
 		if i == 0:
 			continue
-		for zz: float in [-hz + 3.5, hz - 4.0]:
+		var rows := [-hz + 3.5, hz - 4.0]
+		if size.y >= 28.0 and absi(i) >= 2:
+			rows.append(-0.5)   # 大殿：两翼中间再立一根，隔出几处可以绕的柱间
+		for zz: float in rows:
 			voxel_piece(_pillar(34, red), Vector3(i * 6.0, 0, zz), 0.12, null, Vector3(0.7, 4, 0.7))
 	# 供台、蜡烛、香炉
 	var alt := VoxelGrid.new(2)
@@ -778,8 +868,10 @@ func _dress_temple() -> void:
 		kit("candles", Vector3(x, 0, -hz + 2.0), 0.0, 1.2, false)
 		kit("lantern", Vector3(x, 0, hz - 2.5), 0.0, 1.2, false)
 	# 挂轴
-	for x: float in [-9.0, -4.5, 4.5, 9.0]:
-		voxel_piece(_scroll(), Vector3(x, 0.8, -hz + 0.25), 0.12)
+	var nsc := int((hx - 3.0) / 4.5)
+	for i in range(-nsc, nsc + 1):
+		if i != 0:
+			voxel_piece(_scroll(), Vector3(i * 4.5, 0.8, -hz + 0.25), 0.12)
 	# 左右墙
 	for side: float in [-1.0, 1.0]:
 		var w := VoxelGrid.new(3)
@@ -788,11 +880,17 @@ func _dress_temple() -> void:
 	# 香烟
 	_smoke_column(Vector3(0, 1.3, -hz + 1.2))
 	# 殿中四盏石灯，点着青色鬼火；头顶几盏暖色吊灯把地板照亮
-	for p: Vector3 in [Vector3(-3.6, 0, -3.0), Vector3(3.6, 0, -3.0), Vector3(-3.6, 0, 3.0), Vector3(3.6, 0, 3.0)]:
+	var stones := [Vector3(-3.6 * kx, 0, -3.0 * kz), Vector3(3.6 * kx, 0, -3.0 * kz), Vector3(-3.6 * kx, 0, 3.0 * kz), Vector3(3.6 * kx, 0, 3.0 * kz)]
+	if ka > 1.5:
+		stones.append_array([Vector3(-hx + 4.0, 0, 0.5), Vector3(hx - 4.0, 0, 0.5)])
+	for p: Vector3 in stones:
 		var sl := _stone_lantern()
 		voxel_piece(sl[0], p, 0.12, sl[1], Vector3(0.8, 2, 0.8))
 		spirit_fire(p + Vector3(0, 1.7, 0), Color(0.6, 1.0, 1.0), 1.9, 2.2, 7.0)
-	for p: Vector3 in [Vector3(0, 4.0, -1.0), Vector3(-9, 4.0, 3.0), Vector3(9, 4.0, 3.0)]:
+	var tops := [Vector3(0, 4.0, -1.0), Vector3(-9 * kx, 4.0, 3.0 * kz), Vector3(9 * kx, 4.0, 3.0 * kz)]
+	if ka > 1.5:
+		tops.append_array([Vector3(-9 * kx, 4.0, -4.0 * kz), Vector3(9 * kx, 4.0, -4.0 * kz)])
+	for p: Vector3 in tops:
 		var wl := OmniLight3D.new()
 		wl.light_color = Color(1.0, 0.72, 0.45)
 		wl.light_energy = 2.0
@@ -800,8 +898,9 @@ func _dress_temple() -> void:
 		add_child(wl)
 		wl.position = p
 	# 前景：靠镜头的粗梁和柱子剪影
-	for i in range(3):
-		var x := -hx + 5.0 + i * (size.x - 10.0) / 2.0
+	var nfp := maxi(3, int(round(3.0 * kx)))
+	for i in range(nfp):
+		var x := -hx + 5.0 + i * (size.x - 10.0) / float(nfp - 1)
 		voxel_piece(_pillar(60, Color(0.08, 0.05, 0.05)), Vector3(x, 0, hz + 1.0), 0.14, null, Vector3.ZERO, true)
 	var beam := VoxelGrid.new(4)
 	beam.box(Vector3i(0, 0, 0), Vector3i(int(size.x / 0.14), 4, 4), Color(0.07, 0.05, 0.04), 0.05)
@@ -811,6 +910,8 @@ func _dress_temple() -> void:
 func _dress_sakura() -> void:
 	var hx := size.x * 0.5
 	var hz := size.y * 0.5
+	var kx := _kx()
+	var kz := _kz()
 	# 中央偏后：发光大樱树（有碰撞，绕着打）
 	var st: Array = _cached("sakura|%d" % (rng.randi() % 2), _sakura_tree)
 	var tree := voxel_piece(st[0], Vector3(0, 0, -hz + 4.5), 0.14 / FINE, st[1], Vector3(1.4, 4, 1.4))
@@ -824,7 +925,7 @@ func _dress_sakura() -> void:
 	voxel_piece(_torii(46, 40), Vector3(-hx + 1.0, 0, -hz + 0.5), 0.14, null, Vector3.ZERO)
 	voxel_piece(_torii(46, 40), Vector3(hx - 7.5, 0, -hz + 0.5), 0.14, null, Vector3.ZERO)
 	# 石灯笼一圈
-	for p: Vector3 in [Vector3(-9, 0, -4), Vector3(9, 0, -4), Vector3(-11, 0, 4), Vector3(11, 0, 4), Vector3(-5, 0, -hz + 2), Vector3(5, 0, -hz + 2), Vector3(-3.8, 0, 5.5), Vector3(3.8, 0, 5.5)]:
+	for p: Vector3 in [Vector3(-9 * kx, 0, -4 * kz), Vector3(9 * kx, 0, -4 * kz), Vector3(-11 * kx, 0, 4 * kz), Vector3(11 * kx, 0, 4 * kz), Vector3(-5 * kx, 0, -hz + 2), Vector3(5 * kx, 0, -hz + 2), Vector3(-3.8 * kx, 0, 5.5 * kz), Vector3(3.8 * kx, 0, 5.5 * kz)]:
 		var sl := _stone_lantern()
 		var n := voxel_piece(sl[0], p, 0.12, sl[1], Vector3(0.8, 2, 0.8))
 		var l := OmniLight3D.new()
@@ -845,22 +946,32 @@ func _dress_sakura() -> void:
 	back.box(Vector3i(0, 9, -1), Vector3i(int(size.x / 0.14), 10, 5), Color(0.15, 0.13, 0.18), 0.05)
 	voxel_piece(back, Vector3(-hx, 0, -hz - 0.8), 0.14)
 	# 前景：樱花枝剪影
-	for i in range(3):
-		var x := -hx + 4.0 + i * (size.x - 8.0) / 2.0 + rng.randf_range(-2, 2)
+	var nfg := maxi(3, int(round(3.0 * kx)))
+	for i in range(nfg):
+		var x := -hx + 4.0 + i * (size.x - 8.0) / float(nfg - 1) + rng.randf_range(-2, 2)
 		voxel_piece(_trunk_c(70, 5.0, Color(0.06, 0.04, 0.05), Color(0.12, 0.05, 0.08)), Vector3(x, 0, hz + 1.5), 0.12 / FINE, null, Vector3.ZERO, true)
 	# 前面两侧再种两棵小樱树、摆长椅和灯笼，免得入口一片空地
 	for side: float in [-1.0, 1.0]:
 		var st2: Array = _cached("sakura|%d" % (rng.randi() % 2), _sakura_tree)
-		var t2 := voxel_piece(st2[0], Vector3(side * 9.5, 0, 5.5), 0.1 / FINE, st2[1], Vector3(1.0, 4, 1.0), false, rng.randf() * TAU)
+		var t2 := voxel_piece(st2[0], Vector3(side * 9.5 * kx, 0, 5.5 * kz), 0.1 / FINE, st2[1], Vector3(1.0, 4, 1.0), false, rng.randf() * TAU)
 		var l2 := OmniLight3D.new()
 		l2.light_color = Color(1.0, 0.55, 0.75)
 		l2.light_energy = 1.6
 		l2.omni_range = 8.0
 		t2.add_child(l2)
 		l2.position = Vector3(0, 4.0, 0)
-		kit("bench", Vector3(side * 6.5, 0, 8.0), PI * 0.5, 1.0, true)
-		kit("lantern", Vector3(side * 12.5, 0, -1.0), 0.0, 1.2, false)
+		kit("bench", Vector3(side * 6.5 * kx, 0, 8.0 * kz), PI * 0.5, 1.0, true)
+		kit("lantern", Vector3(side * 12.5 * kx, 0, -1.0 * kz), 0.0, 1.2, false)
 	_petals()
+
+
+## 前景剪影的 x 位置：左右两侧各一棵，房间宽了中间再加
+func _fg_xs() -> Array[float]:
+	var hx := size.x * 0.5
+	var xs: Array[float] = [-(hx - 3.0), hx - 3.0]
+	if size.x >= 40.0:
+		xs.append_array([-hx * 0.35, hx * 0.35])
+	return xs
 
 
 # ---------- 氛围 ----------
@@ -901,7 +1012,7 @@ func _smoke_column(p: Vector3) -> void:
 
 func _petals() -> void:
 	var pt := CPUParticles3D.new()
-	pt.amount = 90
+	pt.amount = mini(int(90 * _ka()), 180) / (2 if lod == 0 else 1)
 	pt.lifetime = 7.0
 	pt.preprocess = 7.0
 	pt.mesh = _particle_quad(0.14)
@@ -921,7 +1032,7 @@ func _atmosphere() -> void:
 	var info: Dictionary = ZONES[zone]
 	# 漂浮孢子 / 光尘
 	var sp := CPUParticles3D.new()
-	sp.amount = 140
+	sp.amount = mini(int(140 * _ka()), 280) / (2 if lod == 0 else 1)
 	sp.lifetime = 8.0
 	sp.preprocess = 8.0
 	sp.mesh = _particle_quad(0.09)
@@ -938,7 +1049,7 @@ func _atmosphere() -> void:
 	add_child(sp)
 	sp.position = Vector3(0, 1.8, 0)
 	# 贴地雾片：几层慢慢飘的雾，挡一点地面，让画面有层次
-	for i in range(14):
+	for i in range(mini(int(14 * _ka()), 28) / (2 if lod == 0 else 1)):
 		var mi := MeshInstance3D.new()
 		var q := QuadMesh.new()
 		q.size = Vector2(rng.randf_range(8, 14), rng.randf_range(3, 5))
@@ -957,15 +1068,26 @@ func _atmosphere() -> void:
 		drift.speed = rng.randf_range(0.15, 0.35) * (1.0 if rng.randf() < 0.5 else -1.0)
 		drift.span = size.x * 0.6
 		mi.add_child(drift)
+	# 大房间：靠镜头这半边离灯远，补几盏不显眼的补光（区域氛围色），免得入口一片黑
+	if _ka() > 1.5:
+		for p: Vector3 in [Vector3(0, 3.5, size.y * 0.5 - 4.0), Vector3(-size.x * 0.3, 3.5, size.y * 0.2), Vector3(size.x * 0.3, 3.5, size.y * 0.2)]:
+			var fl := OmniLight3D.new()
+			fl.light_color = info["spore"]
+			fl.light_energy = 0.9
+			fl.omni_range = 11.0
+			fl.omni_attenuation = 1.2
+			add_child(fl)
+			fl.position = p
 	if zone == "forest":
-		for i in range(4):
+		for i in range(int(round(4.0 * sqrt(_ka())))):
 			_shaft(Vector3(rng.randf_range(-size.x * 0.4, size.x * 0.4), 0, rng.randf_range(-size.y * 0.4, size.y * 0.2)), Color(0.5, 1.0, 0.9, 0.09), rng.randf_range(1.5, 2.5))
 
 
 func _make_spawns() -> void:
 	spawn_points.clear()
 	var tries := 0
-	while spawn_points.size() < 24 and tries < 400:
+	var want := int(24 * _ka())
+	while spawn_points.size() < want and tries < 800:
 		tries += 1
 		var p := Vector3(rng.randf_range(-size.x * 0.5 + 2.0, size.x * 0.5 - 2.0), 0, rng.randf_range(-size.y * 0.5 + 2.0, size.y * 0.5 - 4.0))
 		if p.distance_to(entry_pos) < 7.0:
