@@ -20,6 +20,8 @@ var model: VoxelModel
 var parts := {}               # 部件名 → MeshInstance3D
 var weapon: MeshInstance3D
 var weapon_len := 30.0
+var offhand: MeshInstance3D       # 左手拿的东西（盾兵的盾）
+var offhand_len := 20.0
 var body: Node3D              # 转到 Godot 朝向（模型 +x → 本节点 -z），翻滚、回旋在这里做
 var mat: ShaderMaterial       # 这个人偶专用的卡通材质（闪白、染色）
 var _hipmid := Vector3.ZERO
@@ -95,6 +97,21 @@ func set_weapon(weapon_id: String, wlen: float) -> void:
 		weapon.mesh = wm
 		weapon.material_override = mat
 		body.add_child(weapon)
+
+
+## 左手挂一件（盾牌等），跟着左手走，面朝前
+func set_offhand(item_id: String, l: float) -> void:
+	if offhand != null:
+		offhand.queue_free()
+		offhand = null
+	offhand_len = l
+	var wm := VoxelModel.weapon_mesh(item_id, l)
+	if wm != null:
+		offhand = MeshInstance3D.new()
+		offhand.mesh = wm
+		offhand.material_override = mat
+		body.add_child(offhand)
+	apply({})
 
 
 func set_tint(c: Color) -> void:
@@ -251,6 +268,11 @@ func apply(p: Dictionary) -> void:
 		var bw := body.global_transform
 		blade_base = bw * _m2b(hr + bd * weapon_len * 0.25)
 		blade_tip = bw * _m2b(hr + bd * weapon_len)
+	if offhand != null:
+		# 盾：竖着立在左手前面（握把在手里，盾面朝前）
+		var hl: Vector3 = hand["l"]
+		var od: Vector3 = p.get("shield", Vector3(0.25, 1.0, 0.0))
+		_place("", hl + Vector3(2.0, 0, 0), hl + Vector3(2.0, 0, 0) + od.normalized(), offhand)
 
 
 ## 死了碎成方块：把每块部件拆出来，往外飞、落地弹一下、缩小消失
@@ -258,6 +280,8 @@ func shatter(world: Node3D, impulse: Vector3) -> void:
 	var list: Array = parts.values()
 	if weapon != null:
 		list.append(weapon)
+	if offhand != null:
+		list.append(offhand)
 	# 先按每个部件自己的颜色崩出一把细小方块（精细体素碎成颗粒，比只飞几块肢体更像“碎掉”）
 	if Vfx.I != null:
 		for mi: MeshInstance3D in list:

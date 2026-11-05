@@ -5,6 +5,7 @@ extends Node3D
 ##   → 清房三选一心法 → 光门选下一间 → 第一层头目「夜樱剑鬼」→ 第二层无名冢 → 头目「百骨将」→ 第三层古寺 → 头目「寂光」→ 结算（死了魂玉带回 60%）→ 山门。
 ##
 ## 命令行（-- 后面）：
+##   --foes=archer,bomber 战斗房只刷这几种（测试新敌人）
 ##   --demo=fight 自动打（录视频用，主角不掉血）  --zone=temple 指定区域  --room=shop 直接进某种房间  --hub 直接进山门
 ##   --shot=路径 --shot_t=3,6 按时间拍图后退出（--nohud 不画界面）  --nowaves 不刷怪  --cam_dist/--cam_pitch/--cam_yaw 调镜头
 
@@ -778,24 +779,55 @@ func _tut_tick(dt: float) -> void:
 		_tut_wait = true
 
 
+## 战斗房的波次编成池（每层一组，前三个是第一波用的轻松编成）。
+## 幽林：小怪为主，开始见到骨弩手、爆骨鬼、盾骷髅；无名冢：骨刺客、招魂巫、冲阵骨登场；古寺：全种类混编、数量更多。
+const FIGHT_POOLS := [
+	[["crawler", 6, "bomber", 1], ["skeleton", 3, "crawler", 3], ["crawler", 4, "archer", 2],
+		["skeleton", 3, "archer", 2], ["skeleton", 2, "shield", 2, "crawler", 2], ["crawler", 4, "mage", 1, "archer", 1],
+		["skeleton", 3, "bomber", 3], ["skeleton", 2, "mage", 1, "crawler", 3]],
+	[["crawler", 7, "bomber", 2], ["skeleton", 3, "rogue", 2], ["rogue", 2, "archer", 2, "crawler", 2],
+		["shield", 3, "archer", 2], ["summoner", 1, "skeleton", 2, "rogue", 1], ["rogue", 2, "mage", 2, "crawler", 3],
+		["charger", 1, "shield", 2, "crawler", 2], ["bomber", 4, "skeleton", 2]],
+	[["crawler", 8, "bomber", 3], ["rogue", 3, "archer", 2], ["skeleton", 4, "bomber", 2],
+		["shield", 3, "archer", 3], ["charger", 2, "crawler", 4], ["summoner", 2, "skeleton", 3],
+		["mage", 2, "archer", 2, "shield", 2], ["rogue", 3, "charger", 1, "bomber", 2]],
+]
+## 每层深处（第 4 排起）多加的精英波
+const LATE_WAVES := [
+	[["samurai", 1, "skeleton", 2], ["charger", 1, "crawler", 4]],
+	[["samurai", 1, "rogue", 2, "skeleton", 1], ["summoner", 1, "charger", 1, "archer", 2]],
+	[["samurai", 1, "summoner", 1, "shield", 2], ["samurai", 2, "archer", 2], ["charger", 2, "summoner", 1, "rogue", 2]],
+]
+
+
 ## 按房间类型配几波敌人：层数越深越多越硬
 func _make_waves(kind: String, fl: int) -> Array:
 	if _args.has("nowaves"):
 		return []
+	if _args.has("foes") and kind in ["fight", "elite"]:
+		# 测试用：--foes=archer,bomber 每波每种刷 3 个
+		var tw := []
+		for k: String in String(_args["foes"]).split(","):
+			tw.append_array([k, 3])
+		return [tw, tw, tw]
 	match kind:
 		"fight":
-			var w := [["crawler", 5 + fl * 2], ["skeleton", 3 + fl, "crawler", 3], ["skeleton", 2, "mage", 1 + mini(fl, 1), "crawler", 3]]
-			if fl >= 1:
-				# 无名冢起有骨刺客：快、血少，刺一下就退
-				w[1] = ["skeleton", 2 + fl, "rogue", 2]
-				w[2] = ["rogue", 2, "mage", 1 + mini(fl, 1), "crawler", 3]
+			# 每层一个编成池：第一波从前三个里挑（好打的），后两波从剩下的随机挑，深处再加一波精英
+			var pool: Array = FIGHT_POOLS[mini(fl, FIGHT_POOLS.size() - 1)]
+			var easy: Array = pool.slice(0, 3)
+			var rest: Array = pool.slice(3)
+			rest.shuffle()
+			var w := [easy[_rng.randi() % easy.size()], rest[0], rest[1]]
 			if state.run.row >= 3:
-				w.append(["samurai", 1, "skeleton", 2 + mini(fl, 1)] if fl == 0 else ["samurai", 1, "rogue", 2, "skeleton", 1])
+				var late: Array = LATE_WAVES[mini(fl, LATE_WAVES.size() - 1)]
+				w.append(late[_rng.randi() % late.size()])
 			return w
 		"elite":
+			if fl >= 2:
+				return [["shield", 3, "archer", 3], ["samurai", 2, "bomber", 3], ["samurai", 2, "summoner", 1, "charger", 1]]
 			if fl >= 1:
-				return [["skeleton", 3, "rogue", 2, "mage", 1], ["samurai", 1 + mini(fl, 1), "crawler", 4], ["samurai", 2, "mage", 2, "rogue", 2]]
-			return [["skeleton", 4, "mage", 2], ["samurai", 1 + fl, "crawler", 4], ["samurai", 2, "mage", 2, "skeleton", 2]]
+				return [["skeleton", 3, "rogue", 2, "archer", 1], ["samurai", 1 + mini(fl, 1), "bomber", 3], ["samurai", 2, "summoner", 1, "rogue", 2]]
+			return [["skeleton", 4, "mage", 2], ["samurai", 1 + fl, "crawler", 4], ["samurai", 2, "archer", 2, "shield", 1]]
 		"boss":
 			return [[ArpgState.BOSS_KINDS[mini(fl, ArpgState.LAST_FLOOR)], 1]]
 		"trial":
@@ -874,7 +906,8 @@ func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
 	if state != null and kind != "":
 		state.kills += 1
 		# 装备掉落：赤甲武士常掉，小怪偶尔掉
-		var chance := {"samurai": 0.35, "mage": 0.06, "skeleton": 0.04, "rogue": 0.04, "crawler": 0.015}
+		var chance := {"samurai": 0.35, "charger": 0.15, "summoner": 0.1, "shield": 0.08, "mage": 0.06, "archer": 0.05,
+			"skeleton": 0.04, "rogue": 0.04, "crawler": 0.015}
 		if _rng.randf() < float(chance.get(kind, 0.0)):
 			_drop_gear(pos, -1, 0.1 if kind == "samurai" else 0.0)
 	for i in range(mini(c, 12)):

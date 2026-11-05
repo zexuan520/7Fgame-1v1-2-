@@ -3,7 +3,8 @@ extends Actor
 ## 敌人：状态机 巡逻 → 发现 → 追击 → 攻击前摇（红色预警）→ 攻击 → 硬直，挨打会僵直（重甲要先打掉韧性）。
 ## 攻击令牌：同时最多 MAX_TOKENS 个敌人在出招，其余的绕着主角游走，不会一拥而上。
 ## 种类在 TYPES 里：腐骨虫（小型快攻）、骷髅兵（近战）、骨刺客（快速突刺，打完就退开）、赤甲武士（重攻击、跳劈落地扬尘）、
-## 幽魂术士（远程法阵）、头目（夜樱剑鬼、百骨将会召唤小怪和地刺、寂光）。
+## 幽魂术士（远程法阵）、骨弩手（远程弩箭，会躲着打）、冲阵骨（远距离直线冲锋，撞墙会晕）、爆骨鬼（贴脸自爆，先打死它反而炸到旁边的怪）、
+## 盾骷髅（正面举盾挡刀，绕后或连砍破盾）、招魂巫（躲在后面招小鬼，打死它小鬼散架）、头目（夜樱剑鬼、百骨将会召唤小怪和地刺、寂光）。
 
 ## 头目进二阶段时头上冒的字
 const RAGE_NAMES := {"boss": "剑鬼·狂", "boss3": "万骨·醒", "boss2": "残灯·燃"}
@@ -24,6 +25,17 @@ const TYPES := {
 		"hp": 42.0, "speed": 3.4, "detect": 16.0, "range": 11.0, "dmg": 14.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 4, "keep": 7.5},
 	"rogue": {"name": "骨刺客", "model": "skel_rogue", "weapon": "dagger", "wlen": 22.0, "tint": Color(0.8, 0.95, 0.85), "k": 0.95,
 		"hp": 38.0, "speed": 5.0, "detect": 15.0, "range": 2.6, "dmg": 10.0, "windup": 0.32, "attack": "lunge", "poise": 0.0, "coins": 3},
+	"archer": {"name": "骨弩手", "model": "skel_minion", "weapon": "crossbow", "wlen": 24.0, "tint": Color(0.95, 0.9, 0.8), "k": 0.95,
+		"hp": 34.0, "speed": 3.6, "detect": 17.0, "range": 14.0, "dmg": 10.0, "windup": 0.65, "attack": "shot", "poise": 0.0, "coins": 3, "keep": 9.0},
+	"charger": {"name": "冲阵骨", "model": "skel_warrior", "weapon": "skel_axe", "wlen": 38.0, "tint": Color(1.2, 0.72, 0.55), "k": 1.3,
+		"hp": 120.0, "speed": 3.1, "detect": 16.0, "range": 2.6, "dmg": 18.0, "windup": 0.7, "attack": "charge", "poise": 30.0, "coins": 6},
+	"bomber": {"name": "爆骨鬼", "model": "skel_minion", "weapon": "", "wlen": 0.0, "tint": Color(1.35, 0.8, 0.45), "k": 0.8,
+		"hp": 20.0, "speed": 6.2, "detect": 16.0, "range": 2.3, "dmg": 20.0, "windup": 0.8, "attack": "blast", "poise": 0.0, "coins": 2},
+	"shield": {"name": "盾骷髅", "model": "skel_warrior", "weapon": "skel_blade", "wlen": 28.0, "tint": Color(0.85, 0.9, 1.0), "k": 1.1,
+		"hp": 70.0, "speed": 3.3, "detect": 12.0, "range": 2.2, "dmg": 12.0, "windup": 0.6, "attack": "slash", "poise": 0.0, "coins": 5,
+		"offhand": "skel_shield", "olen": 24.0, "guard": 4.0},
+	"summoner": {"name": "招魂巫", "model": "mage", "weapon": "staff", "wlen": 34.0, "tint": Color(0.75, 0.95, 0.8), "k": 1.0,
+		"hp": 60.0, "speed": 3.2, "detect": 17.0, "range": 12.0, "dmg": 12.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 6, "keep": 10.0},
 	"boss3": {"name": "百骨将", "model": "skel_warrior", "weapon": "skel_axe", "wlen": 50.0, "tint": Color(0.9, 1.0, 0.85), "k": 2.0,
 		"hp": 1100.0, "speed": 3.3, "detect": 40.0, "range": 3.4, "dmg": 22.0, "windup": 0.65, "attack": "boss", "poise": 140.0, "coins": 75, "boss": true},
 	"boss": {"name": "夜樱剑鬼", "model": "barbarian", "weapon": "sword2", "wlen": 52.0, "tint": Color(0.78, 0.72, 0.9), "k": 1.55,
@@ -62,6 +74,17 @@ var _spikes: Array[Vector3] = []     # 百骨将：地刺落点
 var _retreat_t := 0.0                # 骨刺客：刺完往后退
 var target: Hero
 var is_boss := false
+var guard := 0.0                     # 盾骷髅：举着盾还能挡几下（挡满就破盾）
+var _guard_down := 0.0               # 破盾后多久举不起来
+var no_loot := false                 # 被召唤出来的小鬼不掉钱
+var _minions: Array[Foe] = []        # 招魂巫招出来的
+var _summon_cd := 2.5
+var _exploded := false               # 爆骨鬼已经炸过
+var _aim: Array[Vector3] = []        # 骨弩手这一轮射哪几个方向
+## 每种新敌人第一次出现时头上冒一句提示（一次游戏里只冒一次）
+static var _seen := {}
+const HINTS := {"archer": "骨弩手 · 躲开红线", "charger": "冲阵骨 · 引它撞墙", "bomber": "爆骨鬼 · 先下手",
+	"shield": "盾骷髅 · 绕后或连砍破盾", "summoner": "招魂巫 · 先杀它"}
 var _trail: BladeTrail
 var dmg_scale := 1.0
 
@@ -76,6 +99,7 @@ func setup_kind(k: String, hp_scale: float = 1.0, dmg_mult: float = 1.0) -> void
 	poise = max_poise
 	is_boss = bool(data.get("boss", false))
 	display_name = String(data["name"])
+	guard = float(data.get("guard", 0.0))
 
 
 func _ready() -> void:
@@ -96,6 +120,15 @@ func _ready() -> void:
 	add_child(rig)
 	rig.setup(String(data["model"]), String(data["weapon"]), float(data["wlen"]), data["tint"], k)
 	rig.set_rim(Color(0.6, 0.85, 0.9) if not is_boss else Color(1.0, 0.6, 0.8), 0.3)
+	if data.has("offhand"):
+		rig.set_offhand(String(data["offhand"]), float(data.get("olen", 22.0)))
+	match kind:
+		"bomber":
+			rig.set_rim(Color(1.0, 0.55, 0.2), 0.9)
+		"summoner":
+			rig.set_rim(Color(0.5, 1.0, 0.6), 0.6)
+		"charger":
+			rig.set_rim(Color(1.0, 0.5, 0.3), 0.5)
 	# 精英和头目出刀带拖尾（颜色同时也是“危险”提示）
 	if max_poise > 0.0 and rig.weapon != null:
 		_trail = BladeTrail.new()
@@ -132,6 +165,15 @@ func _physics_process(delta: float) -> void:
 	if max_poise > 0.0 and state != "stagger":
 		poise = minf(poise + max_poise * 0.12 * dt, max_poise)
 	target = _pick_target()
+	if _guard_down > 0.0:
+		_guard_down -= dt
+		if _guard_down <= 0.0:
+			guard = float(data.get("guard", 0.0))
+			if rig.offhand != null:
+				rig.offhand.visible = true
+	if kind == "bomber" and state != "windup":
+		# 爆骨鬼身上一直一明一暗地烧着
+		rig.set_glow(Color(1.0, 0.45, 0.1) * (0.25 + 0.2 * sin(_anim_t * 9.0)))
 	match state:
 		"spawn":
 			rig.scale = Vector3(1, minf(st_t / 0.45, 1.0), 1)
@@ -140,6 +182,9 @@ func _physics_process(delta: float) -> void:
 			if st_t >= 0.45:
 				rig.scale = Vector3.ONE
 				_set_state("patrol")
+				if HINTS.has(kind) and not _seen.has(kind):
+					_seen[kind] = true
+					Feel.I.callout(head_top() + Vector3(0, 0.3, 0), String(HINTS[kind]), Color(1.0, 0.9, 0.6), 2.2)
 		"patrol":
 			_st_patrol(dt)
 		"chase":
@@ -197,8 +242,10 @@ func _recover_time() -> float:
 			return 0.9
 		"boss_combo", "boss_leap", "boss_wave":
 			return 0.6 if _boss_phase == 0 else 0.4
-		"rune":
-			return 0.5
+		"rune", "shot", "volley", "summon_s":
+			return 0.45
+		"charge":
+			return 0.6
 	return 0.55
 
 
@@ -229,7 +276,12 @@ func _walk(v: Vector3, dt: float) -> void:
 	var sp := v.length() / maxf(float(data["speed"]), 0.1)
 	_phase += dt * (5.0 + 6.0 * sp)
 	if v.length() > 0.2:
-		face_to(facing.slerp(v.normalized(), 1.0 - exp(-10.0 * dt)) if facing.dot(v.normalized()) > -0.9 else v)
+		if guard > 0.0 and target != null:
+			# 盾骷髅不跟着脚转身，盾一直慢慢对着主角（所以绕到侧后面就能砍）
+			var td := target.global_position - global_position
+			face_to(facing.slerp(td.normalized(), 1.0 - exp(-2.5 * dt)))
+		else:
+			face_to(facing.slerp(v.normalized(), 1.0 - exp(-10.0 * dt)) if facing.dot(v.normalized()) > -0.9 else v)
 		_pose = Poses.run(_phase, clampf(sp, 0.0, 1.0) * 0.85)
 	else:
 		_pose = Poses.idle(_anim_t)
@@ -280,7 +332,21 @@ func _st_chase(dt: float) -> void:
 		_walk((-dir + dir.cross(Vector3.UP) * _strafe * 0.7).normalized() * speed * 0.9, dt)
 		face_to(facing.slerp(dir, 1.0 - exp(-8.0 * dt)))
 		return
-	if kind == "mage":
+	if kind == "bomber":
+		# 爆骨鬼不排队，直接冲上来，贴脸就点火
+		if dist < rng:
+			_begin_attack("blast")
+			return
+		_walk(dir * speed, dt)
+		return
+	if kind == "summoner":
+		_summon_cd -= dt
+		_minions = _minions.filter(func(m: Foe) -> bool: return is_instance_valid(m) and m.alive)
+		if _summon_cd <= 0.0 and _cool <= 0.0 and _minions.size() < 3 and get_tree().get_nodes_in_group("foes").size() < 10:
+			_summon_cd = randf_range(7.0, 9.0)
+			_begin_attack("summon_s")
+			return
+	if data.has("keep"):
 		var keep := float(data.get("keep", 7.0))
 		if dist < keep - 1.5:
 			v = -dir * speed
@@ -289,7 +355,10 @@ func _st_chase(dt: float) -> void:
 		else:
 			v = dir.cross(Vector3.UP) * _strafe * speed * 0.5
 		if _cool <= 0.0 and dist < rng and _get_token():
-			_begin_attack("rune")
+			if kind == "archer":
+				_begin_attack("volley" if randf() < 0.3 else "shot")
+			else:
+				_begin_attack("rune")
 			return
 	else:
 		if dist > rng * 0.85:
@@ -304,6 +373,9 @@ func _st_chase(dt: float) -> void:
 			return
 		else:
 			v = dir.cross(Vector3.UP) * _strafe * speed * 0.35
+		if kind == "charger" and _cool <= 0.0 and dist > 4.5 and dist < 13.0 and randf() < dt * 1.5 and _get_token():
+			_begin_attack("charge")
+			return
 		if kind == "samurai" and _cool <= 0.0 and dist > 4.0 and dist < 9.0 and randf() < dt * 0.8 and _get_token():
 			_begin_attack("leap")
 			return
@@ -314,7 +386,7 @@ func _st_chase(dt: float) -> void:
 				_begin_attack("boss_leap" if randf() < 0.5 else "boss_wave")
 			return
 	_walk(v, dt)
-	face_to(facing.slerp(dir, 1.0 - exp(-8.0 * dt)))
+	face_to(facing.slerp(dir, 1.0 - exp((-2.5 if guard > 0.0 else -8.0) * dt)))
 
 
 func _get_token() -> bool:
@@ -339,6 +411,10 @@ func _choose_attack(_dist: float) -> String:
 			return "heavy"
 		"rogue":
 			return "lunge"
+		"charger":
+			return "heavy"
+		"shield":
+			return "bash" if guard > 0.0 and randf() < 0.4 else "slash"
 		"boss", "boss2":
 			return "boss_combo"
 		"boss3":
@@ -359,6 +435,14 @@ func _windup_time() -> float:
 			return 0.9
 		"boss_spikes":
 			return 0.75 if _boss_phase == 0 else 0.6
+		"charge":
+			return 0.8
+		"volley":
+			return w + 0.2
+		"summon_s":
+			return 0.9
+		"bash":
+			return 0.45
 	return w
 
 
@@ -410,6 +494,30 @@ func _begin_attack(kind_: String) -> void:
 		"boss_summon":
 			Vfx.I.ground(global_position, "magic_01", Color(0.5, 1.0, 0.6, 0.8), 0.5, 5.0, wt + 0.3)
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "起来！", Color(0.7, 1.0, 0.7), 1.0)
+		"shot", "volley":
+			# 红线是箭的路线：开弓前就定了方向，横着一步就能躲
+			_aim.clear()
+			var lead := target.velocity * 0.15 if target != null else Vector3.ZERO
+			var ad := (_atk_target + lead - global_position)
+			ad.y = 0
+			ad = ad.normalized() if ad.length() > 0.01 else facing
+			for a in ([0.0] if _atk == "shot" else [-0.28, 0.0, 0.28]):
+				var d := ad.rotated(Vector3.UP, a)
+				_aim.append(d)
+				Vfx.I.telegraph_rect(global_position, global_position + d * 15.0, 0.45, Color(1.0, 0.3, 0.1, 0.5), wt)
+			_atk_dir = ad
+			face_to(ad)
+		"charge":
+			Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * 15.0, 1.9, red, wt)
+			Feel.I.callout(head_top(), "冲!", Color(1.0, 0.5, 0.3), 0.8)
+		"blast":
+			Vfx.I.telegraph_circle(global_position, 2.8, Color(1.0, 0.5, 0.1, 0.65), wt)
+			Game.sfx("flame", -6.0, 0.1, 1.4)
+		"summon_s":
+			Vfx.I.ground(global_position, "magic_01", Color(0.5, 1.0, 0.6, 0.8), 0.5, 4.0, wt + 0.3)
+			Vfx.I.sheet("spawn-cast", global_position, 3.0, Color(0.6, 1.0, 0.7, 0.9), 1.6, false, 0.0, 1.6)
+		"bash":
+			Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * 3.0, 1.8, red, wt)
 	Game.sfx("danger", -8.0)
 
 
@@ -418,11 +526,24 @@ func _st_windup(dt: float) -> void:
 	var k := clampf(st_t / wt, 0.0, 1.0)
 	move_with_knock(Vector3.ZERO, dt)
 	# 红色预警：身上越来越红地闪
-	var pulse := 0.5 + 0.5 * sin(st_t * 28.0)
-	rig.set_glow(Color(1.0, 0.1, 0.05) * (0.25 + 0.6 * k) * pulse)
+	var pulse := 0.5 + 0.5 * sin(st_t * (28.0 if _atk != "blast" else 20.0 + 50.0 * k))
+	rig.set_glow((Color(1.0, 0.1, 0.05) if _atk != "blast" else Color(1.0, 0.55, 0.1) * 1.6) * (0.25 + 0.6 * k) * pulse)
 	match _atk:
-		"rune", "boss_summon":
+		"rune", "boss_summon", "summon_s":
 			_pose = Poses.cast(k, _anim_t)
+		"shot", "volley":
+			_pose = _aim_pose(k)
+		"charge":
+			_pose = Poses.dash_ready(k)
+			if randf() < dt * 8.0:
+				Vfx.I.dust(global_position - _atk_dir * 0.6, 0.6, Color(0.5, 0.45, 0.4, 0.5))
+		"blast":
+			_pose = Poses.hurt(0.4 + 0.3 * sin(st_t * 30.0))
+			# 越涨越大、越闪越快
+			var sw := 1.0 + 0.35 * k + 0.05 * sin(st_t * (20.0 + 40.0 * k))
+			rig.scale = Vector3(sw, sw, sw)
+		"bash":
+			_pose = Poses.windup("enemy_h", k, st_t)
 		"boss_spikes":
 			_pose = Poses.windup("enemy_v", k, st_t)
 		"leap", "boss_leap":
@@ -438,8 +559,10 @@ func _st_windup(dt: float) -> void:
 		_leap_from = global_position
 		_set_state("attack")
 		_blend = 1.0
-		if _atk in ["slash", "heavy", "boss_combo", "lunge"]:
+		if _atk in ["slash", "heavy", "boss_combo", "lunge", "bash"]:
 			Game.sfx("slash_heavy" if _atk == "heavy" else "slash", -4.0, 0.1)
+		elif _atk in ["shot", "volley"]:
+			Game.sfx("bow", -4.0, 0.1)
 
 
 func _st_attack(dt: float) -> void:
@@ -564,6 +687,95 @@ func _st_attack(dt: float) -> void:
 				Game.sfx("boom", -6.0)
 			if k >= 1.0:
 				_end_attack()
+		"shot", "volley":
+			var k := st_t / 0.3
+			_pose = _aim_pose(1.0 - k * 0.4)
+			move_with_knock(-_atk_dir * 2.0 * (1.0 - k), dt)
+			if not _did_hit:
+				_did_hit = true
+				for d in _aim:
+					_shoot(d)
+			if k >= 1.0:
+				_end_attack()
+		"charge":
+			var dur := 1.05
+			var k := st_t / dur
+			_phase += dt * 16.0
+			_pose = Poses.run(_phase, 1.0)
+			_pose["lean"] = 0.5
+			move_with_knock(_atk_dir * 16.0 * (1.0 - k * 0.3), dt)
+			if Vfx.I.lod > 0 and randf() < dt * 20.0:
+				Vfx.I.dust(global_position, 0.7, Color(0.5, 0.45, 0.4, 0.45))
+			if not _did_hit:
+				for h: Node in get_tree().get_nodes_in_group("heroes"):
+					var hh := h as Hero
+					if hh != null and hh.alive and hh.global_position.distance_to(global_position) < radius + hh.radius + 0.5:
+						_did_hit = true
+						_hit_target(hh, float(data["dmg"]), HitInfo.Weight.HEAVY)
+			# 撞到墙、柱子：自己晕一会儿（这时候是白打的机会）
+			if st_t > 0.1 and get_slide_collision_count() > 0 and get_real_velocity().length() < 6.0:
+				Vfx.I.dust(global_position + _atk_dir * 0.8, 1.6)
+				Vfx.I.chips(global_position + _atk_dir * 0.8 + Vector3(0, 1, 0), -_atk_dir + Vector3.UP, Color(0.45, 0.42, 0.38), 12, 7.0, 0.12)
+				Vfx.I.shock_ring(global_position + _atk_dir * 0.8, Color(1.0, 0.7, 0.4), 0.3, 2.6, 0.3)
+				CamRig.I.shake(1)
+				Game.sfx("boom", -5.0)
+				Feel.I.callout(head_top(), "撞墙!", Color(1.0, 0.85, 0.4), 1.0)
+				_end_attack()
+				_release()
+				hit_stun = 2.8
+				Vfx.I.sheet("stunned", head_top() - Vector3(0, 0.3, 0), 1.0, Color(1, 1, 1), 1.6, false, 1.4)
+				_set_state("stagger")
+				return
+			if k >= 1.0:
+				_end_attack()
+		"blast":
+			_explode(true)
+			return
+		"summon_s":
+			var k := st_t / 0.5
+			_pose = Poses.cast(1.0, _anim_t)
+			move_with_knock(Vector3.ZERO, dt)
+			if not _did_hit:
+				_did_hit = true
+				var n := 2
+				var fl := 0
+				var main := get_parent()
+				var stt: Variant = main.get("state") if main != null else null
+				if stt != null:
+					fl = stt.floor_i()
+				for i in range(n):
+					var a := TAU * i / n + randf() * 0.8
+					var p := global_position + Vector3(cos(a), 0, sin(a)) * 2.2
+					var mk := "bomber" if fl >= 2 and i == 1 else "crawler"
+					var m := _summon(mk, p)
+					if m != null:
+						_minions.append(m)
+				Game.sfx("boom", -8.0, 0.1, 1.3)
+			if k >= 1.0:
+				_end_attack()
+		"bash":
+			var dur := 0.28
+			var k := st_t / dur
+			_pose = Poses.swing("enemy_h", 1.0, clampf(k / 0.4, 0, 1), clampf((k - 0.4) / 0.6, 0, 1))
+			_pose["hand_l"] = Poses.dirv(0, 10, 0.95)
+			_pose["shield"] = Vector3(0.6, 1.0, 0.0)
+			move_with_knock(_atk_dir * 8.0 * (1.0 - k), dt)
+			if not _did_hit and k >= 0.3:
+				_did_hit = true
+				Vfx.I.shock_ring(global_position + _atk_dir * 1.4 + Vector3(0, 0.1, 0), Color(0.8, 0.9, 1.0), 0.3, 2.2, 0.2)
+				for h: Node in get_tree().get_nodes_in_group("heroes"):
+					var hh := h as Hero
+					if hh == null or not hh.alive:
+						continue
+					var to := hh.global_position - global_position
+					to.y = 0
+					if to.length() < 2.2 + hh.radius and rad_to_deg(_atk_dir.angle_to(to)) < 60.0:
+						var info := HitInfo.make(self, hh, float(data["dmg"]) * 0.8 * dmg_scale, HitInfo.Weight.LIGHT)
+						info.knock = 13.0
+						Feel.I.on_hit(info)
+				Game.sfx("block", -4.0)
+			if k >= 1.0:
+				_end_attack()
 		"boss_wave":
 			var k := st_t / 0.4
 			_pose = Poses.swing("enemy_v", 1.0, clampf(k / 0.4, 0, 1), clampf((k - 0.4) / 0.6, 0, 1))
@@ -587,6 +799,73 @@ func _spawn_wave(d: Vector3) -> void:
 	w.damage = float(data["dmg"]) * 0.8 * dmg_scale
 	get_parent().add_child(w)
 	w.global_position = global_position + d * 1.0 + Vector3(0, 0.7, 0)
+
+
+## 骨弩手端弩瞄准：两手往前平举，弩身朝前（k 越大端得越稳）
+func _aim_pose(k: float) -> Dictionary:
+	var e := Poses.ease_out(k)
+	return {"lean": 0.05, "twist": -0.15 * e, "bob": -0.8,
+		"hand_r": Poses.dirv(-5, lerpf(-40, 5, e), 0.85), "blade": Poses.dirv(0, lerpf(-30, 0, e)),
+		"hand_l": Poses.dirv(15, lerpf(-50, 5, e), 0.75), "foot_r": Vector3(-1.5, 0, 0.8), "foot_l": Vector3(2.0, 0, -0.8)}
+
+
+func _shoot(d: Vector3) -> void:
+	var s := FoeShot.new()
+	s.dir = d
+	s.owner_foe = self
+	s.damage = float(data["dmg"]) * dmg_scale
+	get_parent().add_child(s)
+	s.global_position = global_position + d * 0.8 + Vector3(0, 1.0 * float(data["k"]), 0)
+	Vfx.I.pop(s.global_position, "muzzle_02", Color(1.0, 0.6, 0.3), 0.4, 1.4, 0.12)
+
+
+## 招魂巫招小鬼：直接在身边生出来（不经过波次，不掉钱，巫死了跟着散架）
+func _summon(k: String, p: Vector3) -> Foe:
+	var f := Foe.new()
+	f.setup_kind(k, max_hp / float(data["hp"]) * 0.8, dmg_scale)
+	f.no_loot = true
+	get_parent().add_child(f)
+	f.global_position = p
+	if target != null:
+		f.face_to(target.global_position - p)
+	f.detect_mult = 2.0
+	var main := get_parent()
+	if main.has_method("_on_drop"):
+		f.dropped.connect(main._on_drop.bind(k))
+	return f
+
+
+## 爆骨鬼炸开：hurt_hero 时（自己点火）也伤主角；被打死的残爆只伤旁边的怪
+func _explode(hurt_hero: bool) -> void:
+	if _exploded:
+		return
+	_exploded = true
+	var p := global_position
+	var r := 2.8 if hurt_hero else 2.4
+	Vfx.I.explosion(p + Vector3(0, 0.6, 0), 0.9)
+	Vfx.I.shock_ring(p, Color(1.0, 0.6, 0.2), 0.4, r * 2.0, 0.3)
+	if Vfx.I.lod > 0:
+		Vfx.I.sheet("dark-explosion", p, r * 1.6, Color(1.0, 0.75, 0.5), 1.8)
+	CamRig.I.shake(2 if hurt_hero else 1)
+	Game.sfx("boom", -2.0 if hurt_hero else -5.0)
+	if hurt_hero:
+		_area_hit(p, r, float(data["dmg"]), HitInfo.Weight.HEAVY)
+	for f: Node in get_tree().get_nodes_in_group("foes"):
+		var ff := f as Foe
+		if ff == null or ff == self or not ff.alive:
+			continue
+		var d := ff.global_position - p
+		d.y = 0
+		if d.length() > r + ff.radius:
+			continue
+		var info := HitInfo.make(null, ff, (40.0 if not ff.is_boss else 25.0), HitInfo.Weight.HEAVY)
+		info.dir = d.normalized() if d.length() > 0.01 else Vector3.FORWARD
+		info.point = ff.chest()
+		info.knock = 9.0
+		Feel.I.on_hit(info)
+	if alive:
+		hp = 0.0
+		die(Vector3.UP * 4.0)
 
 
 func _end_attack() -> void:
@@ -632,7 +911,35 @@ func _hit_target(hh: Hero, dmg: float, w: int) -> void:
 func take_hit(info: HitInfo) -> bool:
 	if state == "spawn" and st_t < 0.2:
 		return false
+	# 盾骷髅：正面来的刀挡掉大半，挡满几下就破盾；绕到侧后面、或者大招，直接打进去
+	var blocked := false
+	if guard > 0.0 and alive and iframes <= 0.0 and info.weight < HitInfo.Weight.ULT and state != "stagger":
+		var from := -info.dir
+		from.y = 0
+		if from.length() > 0.01 and facing.dot(from.normalized()) > 0.3:
+			blocked = true
+			guard -= 2.0 if info.weight == HitInfo.Weight.HEAVY else 1.0
+			if guard <= 0.0:
+				guard = 0.0
+				_guard_down = 4.0
+				if rig.offhand != null:
+					rig.offhand.visible = false
+					Vfx.I.chips(chest(), info.dir + Vector3.UP, Color(0.6, 0.62, 0.66), 14, 7.0, 0.12)
+				Feel.I.callout(head_top(), "破盾!", Color(1.0, 0.85, 0.4), 1.0)
+				Game.sfx("guard_break", -3.0)
+				info.damage *= 0.5
+				info.stun = maxf(info.stun, 1.0)
+				blocked = false
+			else:
+				info.damage *= 0.15
+				info.knock *= 0.3
+				Vfx.I.pop(chest() - info.dir * 0.4, "spark_05", Color(0.8, 0.9, 1.0), 0.4, 1.8, 0.14)
+				Feel.I.callout(head_top(), "格", Color(0.75, 0.85, 1.0), 0.5)
+				Game.sfx("block", -5.0)
 	var ok := super.take_hit(info)
+	if ok and blocked:
+		knock *= 0.3
+		return ok
 	if not ok or not alive:
 		return ok
 	# 韧性：重甲要先打掉韧性才会僵直；正在跳劈的不打断
@@ -649,6 +956,7 @@ func take_hit(info: HitInfo) -> bool:
 	if interrupt:
 		_release()
 		rig.position.y = 0
+		rig.scale = Vector3.ONE
 		hit_stun = info.stun * (0.6 if is_boss else 1.0)
 		if max_poise > 0.0:
 			# 重甲被打断：头上冒星星
@@ -696,6 +1004,14 @@ func die(impulse: Vector3) -> void:
 		_trail.active = false
 	Feel.I.on_kill(self, impulse)
 	Game.sfx("death", -4.0)
+	if kind == "bomber" and not _exploded:
+		# 爆骨鬼被打死：短暂一下后残爆，炸旁边的怪，不伤主角
+		get_tree().create_timer(0.18).timeout.connect(func() -> void:
+			if is_instance_valid(self):
+				_explode(false))
+	for m in _minions:
+		if is_instance_valid(m) and m.alive:
+			m.die(Vector3.UP * 2.0)
 	if is_boss:
 		# 头目倒下，召出来的小怪跟着散架
 		for f: Node in get_tree().get_nodes_in_group("foes"):
@@ -705,11 +1021,11 @@ func die(impulse: Vector3) -> void:
 	Vfx.I.chips(chest(), impulse, Color(0.85, 0.85, 0.78), 10, 6.0)
 	CamRig.I.shake(1 if not is_boss else 2)
 	rig.shatter(get_parent(), impulse)
-	var jade := 3 if is_boss else (1 if randf() < 0.25 else 0)
+	var jade := 3 if is_boss else (1 if randf() < 0.25 and not no_loot else 0)
 	if jade > 0:
 		# 掉魂玉的敌人飘出一缕魂
 		Vfx.I.sheet("soul-rise", global_position, 3.0 if not is_boss else 5.0, Color(0.7, 1.0, 0.95, 0.9), 1.6, false, 0.0, 1.3)
-	dropped.emit(global_position, int(data["coins"]), jade)
+	dropped.emit(global_position, 0 if no_loot else int(data["coins"]), jade)
 	collision_layer = 0
 	remove_from_group("foes")
 	queue_free_later()
