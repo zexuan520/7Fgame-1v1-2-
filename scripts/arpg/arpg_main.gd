@@ -72,6 +72,9 @@ func _ready() -> void:
 	_parse_args()
 	if _args.has("diff"):
 		Game.save["arpg_diff"] = clampi(int(_args["diff"]), 0, 1)   # 测试：不写存档，只改这次
+	if _args.has("cyclemax"):
+		Game.save["arpg_cycle_max"] = clampi(int(_args["cyclemax"]), 0, ArpgCycle.MAX)   # 测试：开出轮回到第几级
+		Game.save["arpg_cycle_told"] = _args.has("cycletold")
 	if _args.has("storytest"):
 		_story_test_save(String(_args["storytest"]))
 	_setup_world()
@@ -219,6 +222,17 @@ func _ready() -> void:
 		get_tree().create_timer(0.8).timeout.connect(func() -> void: ach_toast.push("四印俱全", "一间试炼房里拿齐疾、守、狂、乱四印"))
 		if _args["achtest"] == "menu":
 			get_tree().create_timer(1.2).timeout.connect(func() -> void: _open_achievements())
+	if _args.has("cyclewin") and state != null:
+		# 测试：进房两秒后直接算打通（看轮回结算、开下一级）
+		get_tree().create_timer(2.0).timeout.connect(func() -> void:
+			_game_over(true, "测试通关")
+			print("CYCLE max=%d best=%s clear=%s jade=%d" % [ArpgCycle.unlocked(), str(Game.save.get("arpg_cycle_best")), str(Game.save.get("arpg_cycle_clear")), int(Game.save["jade"])]))
+	if _args.has("cyclemenu"):
+		# 测试：山门里打开轮回盘（配 --hub --cyclemax=N --cycletold）
+		get_tree().create_timer(1.5).timeout.connect(func() -> void:
+			for n: ArpgNpc in _npcs:
+				if n.display.begins_with("轮回盘"):
+					_open_cycle(n))
 	if _args.has("interact"):
 		# 测试：过一会儿自动和第一个互动物说话（拍菜单截图用）
 		get_tree().create_timer(float(_args["interact"]) if _args["interact"] != "1" else 1.5).timeout.connect(func() -> void:
@@ -592,6 +606,11 @@ func _enter_hub() -> void:
 	_make_portal(Vector3(0, 0, -hz + 2.5), "run", Color(1.0, 0.8, 0.45))
 	_npc("试刀 · 教学", Vector3(-4.5, 0, -3.5), {"kit": "sword_shield", "scale": 1.1}, func(_n: ArpgNpc) -> void: _start_tutorial())
 	_npc("功业碑 · 成就 %d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], Vector3(4.5, 0, -3.5), {"kit": "shrine", "scale": 1.1}, func(_n: ArpgNpc) -> void: _open_achievements())
+	# 轮回盘：打通过一次以后出现在光门左边，选这次出发的轮回级（通关后的加难）
+	if ArpgCycle.unlocked() > 0:
+		var cp := Vector3(-3.6, 0, -hz + 3.4)
+		_npc(_cycle_npc_name(), cp, {"kit": "candles", "scale": 1.4}, _open_cycle)
+		arena.spirit_fire(cp + Vector3(0, 0.9, 0), Color(0.75, 0.5, 1.0), 1.0, 1.8, 6.0)
 	# 支线：无名碑（拿到守墓人的名单后立起来）、阿樱的风筝（凑齐三件后飘在山门上空）
 	if ArpgStory.has_name_list():
 		_npc("无名碑 %d / %d" % [ArpgStory.names().size(), ArpgStory.NAMES.size()], Vector3(-8.5, 0, -0.5), {"kit": "gravestone", "scale": 1.4}, _read_names)
@@ -620,6 +639,14 @@ func _enter_hub() -> void:
 			Game.save["arpg_intro"] = true
 			Game.write_save()
 			_say(ArpgStory.INTRO))
+	# 第一次打通：拾骨婆讲轮回（光门左边亮起轮回盘）
+	elif ArpgCycle.unlocked() > 0 and not bool(Game.save.get("arpg_cycle_told", false)) and not _args.has("demo"):
+		get_tree().create_timer(1.0).timeout.connect(func() -> void:
+			if mode != "hub":
+				return
+			Game.save["arpg_cycle_told"] = true
+			Game.write_save()
+			_say(CYCLE_TALK))
 	# 第二幕 · 拾骨婆的身世：看过灯冢的壁画、又在井底对枯荣做过选择，回山门时她自己说出来（一次）
 	elif ArpgStory.hag_reveal_ready() and not _args.has("demo"):
 		get_tree().create_timer(1.0).timeout.connect(func() -> void:
@@ -656,6 +683,64 @@ func _show_save_notice(note: String, delay: float) -> void:
 			_show_save_notice(note, 1.0)
 			return
 		hud.banner("存档", note, 5.0))
+
+
+## 拾骨婆第一次讲轮回
+const CYCLE_TALK := [
+	["拾骨婆", "走通了？……走通了也还得回来。灯没灭，山就还在，人就还得一遍一遍地上。", ArpgStory.C_HAG],
+	["拾骨婆", "光门左边那盏灯盘，叫轮回盘。点一盏，山就凶一分：骨头更硬，刀子更快，还有身上带着怨的。", ArpgStory.C_HAG],
+	["拾骨婆", "凶一分，魂玉也厚一分。你在哪一级走通了，下一级就给你点上。", ArpgStory.C_HAG],
+	["", "（轮回盘：选这次出发的轮回级。级数叠加：轮回三包含一、二、三的规矩。每一级第一次打通还有一笔魂玉）"],
+]
+
+
+func _cycle_npc_name() -> String:
+	return "轮回盘 · %s" % ArpgCycle.label(ArpgCycle.picked())
+
+
+## 轮回盘：选出发的轮回级（0 本相 ~ 已开出的最高级），下面列每一级加的规矩和两幕的通关记录
+func _open_cycle(n: ArpgNpc, keep_index: int = -1) -> void:
+	var items := []
+	var top := mini(ArpgCycle.unlocked() + 1, ArpgCycle.MAX)
+	var cur := ArpgCycle.picked()
+	for lv in range(top + 1):
+		var open := lv <= ArpgCycle.unlocked()
+		var rec := []
+		for a in [1, 2, 3]:
+			if a == 3 and ArpgState.ACT_NAMES.size() < 3:
+				continue
+			if ArpgCycle.best(a) >= lv:
+				rec.append("%s幕已过" % ArpgState.CN_NUM[a - 1])
+		var desc := String(ArpgCycle.RULES[lv][1])
+		var title := ArpgCycle.label(lv)
+		if lv > 0:
+			title += "「%s」　敌人 +%d%%　魂玉 +%d%%" % [ArpgCycle.RULES[lv][0], int(round(ArpgCycle.HP_PER * lv * 100.0)), int(round(ArpgCycle.JADE_PER * lv * 100.0))]
+			if not ArpgCycle.cleared(1, lv) or not ArpgCycle.cleared(2, lv):
+				desc += "（首通 +%d 魂玉）" % ArpgCycle.first_clear_jade(lv)
+		if not open:
+			desc = "在%s打通任一幕后开出：%s" % [ArpgCycle.label(lv - 1), desc]
+		items.append({"title": title, "desc": desc,
+			"right": "当前" if lv == cur else (" · ".join(rec) if not rec.is_empty() else ("" if open else "未开")),
+			"enabled": open,
+			"color": Color(0.85, 0.6, 1.0) if lv == cur else Color(0.95, 0.92, 0.85)})
+	var m := _open_menu("轮回盘", "级数叠加：选轮回三，一到三的规矩全都生效。　已开出 %s" % ArpgCycle.label(ArpgCycle.unlocked()), items, "list", true)
+	m.index = keep_index if keep_index >= 0 else cur
+	m.chosen.connect(func(i: int) -> void:
+		ArpgCycle.pick(i)
+		Game.sfx("coin")
+		n.display = _cycle_npc_name()
+		if is_instance_valid(_portal):
+			for c: Node in _portal.get_children():
+				if c is Label3D:
+					(c as Label3D).text = "出发" + ("" if i == 0 else " · " + ArpgCycle.label(i))
+		for sp: Node3D in _extra_portals:
+			if is_instance_valid(sp) and String(sp.get_meta("kind", "")) == "act2":
+				for c: Node in sp.get_children():
+					if c is Label3D:
+						(c as Label3D).text = "入井 · 第二幕" + ("" if i == 0 else " · " + ArpgCycle.label(i))
+		feel.callout(hero.head_top(), ArpgCycle.label(i), Color(0.85, 0.6, 1.0), 1.1)
+		_close_menu()
+		_open_cycle(n, i))
 
 
 func _npc(label: String, p: Vector3, spec: Dictionary, cb: Callable) -> ArpgNpc:
@@ -959,6 +1044,8 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 		var om: Dictionary = ArpgState.OMENS[state.omen]
 		hud.omen = "天象 · %s" % om["name"]
 		hud.omen_color = om["color"]
+		if state.cycle > 0:
+			hud.omen += "　%s" % ArpgCycle.label(state.cycle)
 		if state.rooms == 1:
 			# 一局的第一间：报一下这局的天象
 			get_tree().create_timer(2.8).timeout.connect(func() -> void:
@@ -971,8 +1058,14 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 		sub = "「%s」%s" % [_squad["name"], _squad["desc"]]
 		title = "%s · %s" % [state.floor_name(), _squad["name"]]
 		hud.zone_name = title
+	if state.cycle > 0:
+		sub += "　·　" + ArpgCycle.label(state.cycle)
 	if room_kind != "tutorial":
 		hud.banner(title, sub, 2.4)
+	if state.cycle > 0 and state.rooms == 1 and room_kind != "tutorial":
+		get_tree().create_timer(6.2).timeout.connect(func() -> void:
+			if mode == "room":
+				hud.banner(ArpgCycle.label(state.cycle), ArpgCycle.summary(state.cycle), 3.6))
 	feel.screen_flash(Color(0, 0, 0, 1), 1.6)
 	if state.flags.has("xiaoman"):
 		_ensure_xiaoman()
@@ -1290,17 +1383,36 @@ func _next_wave() -> void:
 		score[q] = _spawn_score(q.distance_to(hp))
 	pts.sort_custom(func(a: Vector3, b: Vector3) -> bool: return float(score[a]) < float(score[b]))
 	var pi := 0
+	var counts := []
+	var total := 0
 	for j in range(0, w.size(), 2):
 		var kind: String = w[j]
 		var n: int = w[j + 1]
 		if not kind.begins_with("boss") and state != null:
-			n = maxi(1, int(round(n * state.omen_val("count"))))   # 天象：血月、骨潮多刷
+			n = maxi(1, int(round(n * state.omen_val("count") * ArpgCycle.count_mult(state.cycle))))   # 天象：血月、骨潮多刷；轮回三起多两成
+		counts.append(n)
+		total += n
+	# 轮回：这一波哪几只带词缀（试刀场、头目波不抽）
+	var marks := {}
+	if state != null and state.cycle > 0 and room_kind != "tutorial" and not String(w[0]).begins_with("boss"):
+		marks = ArpgCycle.roll_wave(state.cycle, total, _rng)
+	for j in range(0, w.size(), 2):
+		var kind: String = w[j]
+		var n: int = counts[j / 2]
 		for k in range(n):
 			var p: Vector3 = pts[pi % pts.size()] + Vector3(randf_range(-0.6, 0.6), 0, randf_range(-0.6, 0.6))
+			var afx: Array = marks.get(pi, [])
 			pi += 1
 			if kind.begins_with("boss"):
 				p = Vector3(0, 0, -2.0)
-			_spawn_foe(kind, p, k * 0.12, _affix_for(kind) if _args.has("affix") or (j == aff_slot and k == 0) else [])
+				if state != null:
+					afx = ArpgCycle.boss_affixes(state.cycle, _rng)
+			# 本来就该带词缀的（精英房领头、深处那一波）+ 轮回抽到的，去重
+			var base: Array = _affix_for(kind) if _args.has("affix") or (j == aff_slot and k == 0) else []
+			for x: String in afx:
+				if not base.has(x):
+					base.append(x)
+			_spawn_foe(kind, p, k * 0.12, base)
 	if wave_i > 0:
 		Game.sfx("boss" if String(w[0]).begins_with("boss") else "danger", -6.0)
 
@@ -1371,13 +1483,15 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 	var ah := state.act_hp() if state != null else 1.0
 	var ad := state.act_dmg() if state != null else 1.0
 	f.setup_kind(kind, (1.0 + fl * 0.35 + rk * 0.04) * om_hp * ah, (1.0 + fl * 0.18 + rk * 0.03) * om_dmg * ad)
+	if state != null and room_kind != "tutorial" and not f.data.has("phantom"):
+		ArpgCycle.scale_foe(f, state.cycle)   # 轮回：敌人更硬、更疼
 	if state != null and state.omen_val("speed") != 1.0:
 		f.data = f.data.duplicate()
 		f.data["speed"] = float(f.data["speed"]) * state.omen_val("speed")
 	if _trial != null:
 		_trial.mod_foe(f)
-	if not affix.is_empty() and not kind.begins_with("boss"):
-		FoeAffix.apply(f, affix)
+	if not affix.is_empty() and (not kind.begins_with("boss") or (state != null and state.cycle > 0)):
+		FoeAffix.apply(f, affix)   # 头目只有轮回四起才带词缀
 	add_child(f)
 	if _trial != null:
 		_trial.dress_foe(f)
@@ -1387,6 +1501,8 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 	f.dropped.connect(_on_drop.bind(kind))
 	if not f.affixes.is_empty():
 		f.dropped.connect(func(_p: Vector3, _c: int, _j: int) -> void: ArpgAch.add("k_affix"))
+		if state != null and state.cycle > 0 and not f.no_loot:
+			f.dropped.connect(func(dp: Vector3, _c: int, _j: int) -> void: _loot(dp, "jade", 1))   # 轮回里的词缀怪多掉一颗魂玉
 	if f.is_boss:
 		hud.boss = f
 		var sub: String = {"boss": "守在樱树下的无名剑客", "boss3": "无名冢下，万骨之主", "boss2": "古寺深处，一盏不灭的灯",
@@ -2166,7 +2282,7 @@ func _open_rest(n: ArpgNpc) -> void:
 
 
 func _heal(frac: float) -> void:
-	var v := hero.max_hp * frac
+	var v := hero.max_hp * frac * (ArpgCycle.heal_mult(state.cycle) if state != null else 1.0)
 	hero.hp = minf(hero.max_hp, hero.hp + v)
 	feel.number(hero.chest(), "+%d" % int(v), Color(0.5, 1.0, 0.6), 1.0)
 	vfx.shock_ring(hero.global_position, Color(0.5, 1.0, 0.6), 0.3, 3.0, 0.5)
@@ -2292,7 +2408,8 @@ func _make_portal(p: Vector3, kind: String, col: Color) -> void:
 	lab.pixel_size = 0.008
 	lab.modulate = Color(col.lightened(0.4), 0.9)
 	lab.position.y = 3.2
-	lab.text = {"run": "出发", "act2": "入井 · 第二幕", "floor": "前往第%s层" % ArpgState.CN_NUM[state.gfloor()] if state != null else "", "next": "前路", "secret": "密室"}.get(kind, "")
+	var cyc := "" if ArpgCycle.picked() <= 0 else " · " + ArpgCycle.label(ArpgCycle.picked())
+	lab.text = {"run": "出发" + cyc, "act2": "入井 · 第二幕" + cyc, "floor": "前往第%s层" % ArpgState.CN_NUM[state.gfloor()] if state != null else "", "next": "前路", "secret": "密室"}.get(kind, "")
 	_portal.add_child(lab)
 
 
@@ -2441,7 +2558,7 @@ func _say(lines: Array) -> DialogBox:
 func _drop_gear(pos: Vector3, rarity: int = -1, luck: float = 0.0) -> void:
 	if state == null:
 		return
-	var it := ArpgGear.roll(_rng, rarity, luck + state.floor_i() * 0.08 + state.omen_val("luck", 0.0))
+	var it := ArpgGear.roll(_rng, rarity, luck + state.floor_i() * 0.08 + state.omen_val("luck", 0.0) + ArpgCycle.luck(state.cycle))
 	var l := Loot.new()
 	l.kind = "gear"
 	l.item = it
@@ -2615,6 +2732,8 @@ func _on_pause_chosen(i: int) -> void:
 ## 暂停菜单“这一局”：上面画整层路线图，下面列天象、心法流派进度
 func _open_run_info() -> void:
 	var items := []
+	if state.cycle > 0:
+		items.append({"title": ArpgCycle.label(state.cycle), "desc": ArpgCycle.summary(state.cycle), "tag": "轮回", "tag_color": Color(0.85, 0.6, 1.0)})
 	if state.omen != "":
 		var om: Dictionary = ArpgState.OMENS[state.omen]
 		items.append({"title": "天象 · %s" % om["name"], "desc": om["desc"], "tag": "天象"})
@@ -2749,6 +2868,7 @@ func _game_over(won: bool, ending: String = "") -> void:
 	mode = "over"
 	var r := state.settle(won)
 	Game.clear_checkpoint()
+	var cyc_lines: Array = ArpgCycle.on_clear(state) if won else []
 	ArpgAch.check_save()   # 首次身死、累计身死、登顶次数
 	if won:
 		if _clock - _run_t0 <= 20.0 * 60.0:
@@ -2757,12 +2877,18 @@ func _game_over(won: bool, ending: String = "") -> void:
 			ArpgAch.unlock("clear_dry")
 	var sub := "第 %d 层　走过 %d 间　斩敌 %d　铜钱 %d" % [r["floor"], r["rooms"], r["kills"], r["coins"]]
 	var desc := "魂玉 %d，全部带回" % r["jade"] if won else "魂玉 %d，带回 %d" % [r["jade"], r["kept"]]
+	if state.cycle > 0:
+		sub += "　" + ArpgCycle.label(state.cycle)
 	var items := [{"title": "回到山门", "desc": desc, "right": "存档魂玉 %d" % int(Game.save["jade"])}]
+	for cl: String in cyc_lines:
+		items.append({"title": "轮回", "desc": cl, "tag": "轮回", "color": Color(0.85, 0.6, 1.0)})
 	var m := _open_menu(ending if ending != "" else ("登顶" if won else "身死"), sub, items, "list", false)
 	m.chosen.connect(func(_i: int) -> void:
 		_close_menu()
 		feel.screen_flash(Color(0, 0, 0, 1), 0.0)
 		_enter_hub())
+	if not cyc_lines.is_empty():
+		Game.sfx("reward")
 
 
 # ---------- 每帧 ----------

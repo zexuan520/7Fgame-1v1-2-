@@ -28,6 +28,7 @@ const TYPE_DESC := {"start": "", "fight": "成群的敌人，清完选一个心�
 
 var run: Run
 var act := 1                # 第几幕（1 归乡 / 2 入山）
+var cycle := 0              # 轮回级（通关后的加难，见 ArpgCycle；0 = 本相）
 var coins := 0
 var jade := 0
 var kills := 0
@@ -56,6 +57,7 @@ var event_cache := {}       # 奇遇房间抽到的奇遇
 static func start_new(act_: int = 1) -> ArpgState:
 	var s := ArpgState.new()
 	s.act = act_
+	s.cycle = ArpgCycle.picked()
 	s.seed_value = randi() if not OS.get_cmdline_user_args().has("--seed0") else 12345   # --seed0：测试时固定房间
 	s.run = Run.create(0, s.seed_value)
 	s.weapon = String(Game.save.get("arpg_weapon", "sword"))
@@ -197,6 +199,8 @@ func stats() -> Dictionary:
 	for k: String in sc:
 		if int(sc[k]) >= ArpgData.SET_NEED and ArpgData.SETS.has(k):
 			st[String(ArpgData.SETS[k]["id"])] = 1.0
+	if cycle > 0:
+		ArpgData.add_stats(st, ArpgCycle.hero_stats(cycle))
 	if difficulty() == 0:
 		ArpgData.add_stats(st, {"easy": EASY_TAKEN})
 	else:

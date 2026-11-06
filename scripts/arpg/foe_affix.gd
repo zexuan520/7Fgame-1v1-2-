@@ -14,6 +14,8 @@ const DEFS := {
 	"blazing": {"name": "焰", "full": "焚身", "desc": "走过的地方留下一滩火", "color": Color(1.0, 0.48, 0.12)},
 	"miasma": {"name": "瘴", "full": "瘴毒", "desc": "走过的地方留下毒瘴", "color": Color(0.6, 1.0, 0.3)},
 	"thunder": {"name": "雷", "full": "引雷", "desc": "隔一阵往你脚下引一道雷，看见白圈就挪", "color": Color(0.82, 0.8, 1.0)},
+	# 轮回专用（ArpgCycle 抽，FoeSquads 的池里没有）
+	"mend": {"name": "回", "full": "回春", "desc": "两秒没挨打就回血，别停手", "color": Color(0.4, 0.95, 0.85)},
 }
 
 
@@ -111,6 +113,8 @@ static func tick(f: Foe, dt: float) -> void:
 		# 金罩：面朝镜头的一团淡金光，随罩子剩多少变淡
 		var mm := f._ward_fx.material_override as ShaderMaterial
 		mm.set_shader_parameter("color", Color(1.0, 0.85, 0.4, 0.12 + 0.2 * f.ward / maxf(f.ward_max, 1.0)))
+	if f.affixes.has("mend"):
+		_mend(f, dt)
 	f._affix_t -= dt
 	if f._affix_t > 0.0:
 		return
@@ -141,6 +145,23 @@ static func tick(f: Foe, dt: float) -> void:
 					f._affix_t = randf_range(5.0, 6.5)
 					return
 	f._affix_t = 0.5
+
+
+## 回春：两秒没掉血，每秒回 4% 生命（头目 1.5%），一挨打就停
+static func _mend(f: Foe, dt: float) -> void:
+	var last := float(f.get_meta("mend_hp", f.hp))
+	var quiet := float(f.get_meta("mend_quiet", 0.0)) + dt
+	if f.hp < last - 0.01:
+		quiet = 0.0
+	if quiet > 2.0 and f.hp < f.max_hp:
+		f.hp = minf(f.max_hp, f.hp + f.max_hp * (0.015 if f.is_boss else 0.04) * dt)
+		var fx := float(f.get_meta("mend_fx", 0.0)) - dt
+		if fx <= 0.0:
+			fx = 0.9
+			Feel.I.callout(f.head_top(), "回", DEFS["mend"]["color"], 0.5)
+		f.set_meta("mend_fx", fx)
+	f.set_meta("mend_quiet", quiet)
+	f.set_meta("mend_hp", f.hp)
 
 
 ## 金罩挡伤害：直接从 info.damage 里扣
