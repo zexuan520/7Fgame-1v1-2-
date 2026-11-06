@@ -1252,7 +1252,7 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 		"shop", "rest", "event", "start", "story", "treasure", "tutorial":
 			Game.music("hub")
 		_:
-			Game.music({"temple": "bamboo", "grave": "secret", "well": "secret", "vault": "bamboo", "camp": "village", "liuxi": "village", "post": "secret", "palace": "bamboo"}.get(zone_id, "village"))
+			Game.music(String(ArpgState.ZONE_MUSIC.get(zone_id, "village")))
 	var mid := Vector3(-3.5, 0, -1.5)   # 摆在一边，别挡住去光门的路
 	if room_kind in ["fight", "elite", "trial"] and not state.secrets_done.has(state.run.room_id()):
 		var hint := state.flags.has("secret_hint")

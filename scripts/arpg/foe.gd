@@ -499,7 +499,8 @@ func _st_lurk(dt: float) -> void:
 		Vfx.I.chips(global_position + Vector3(0, 0.3, 0), Vector3.UP, Color(0.55, 0.85, 1.0), 16, 7.0, 0.1)
 		Vfx.I.shock_ring(global_position, Color(0.5, 0.85, 1.0), 0.3, 3.0, 0.35)
 		Vfx.I.dust(global_position, 1.2, Color(0.5, 0.75, 0.9, 0.55))
-		Game.sfx("slash", -8.0, 0.1, 0.7)
+		if not FoeSfx.play(self, "emerge"):
+			Game.sfx("slash", -8.0, 0.1, 0.7)
 		_set_state("chase")
 		if near and _get_token():
 			_begin_attack("lunge")
@@ -522,6 +523,7 @@ func _submerge() -> void:
 	collision_layer = 0
 	Vfx.I.chips(global_position + Vector3(0, 0.3, 0), Vector3.UP, Color(0.55, 0.85, 1.0), 10, 5.0, 0.09)
 	Vfx.I.shock_ring(global_position, Color(0.5, 0.85, 1.0), 0.3, 2.2, 0.3)
+	FoeSfx.play(self, "submerge")
 	_set_state("lurk")
 
 
@@ -909,6 +911,7 @@ func _begin_attack(kind_: String) -> void:
 			Vfx.I.ground(global_position, "magic_01", Color(0.4, 0.8, 1.0, 0.8), 0.5, 6.0, wt + 0.3)
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "水来了——翻滚!", Color(0.6, 0.9, 1.0), 1.2)
 	Game.sfx("danger", -8.0)
+	FoeSfx.play(self, "windup:" + _atk)
 
 
 func _st_windup(dt: float) -> void:
@@ -976,6 +979,7 @@ func _st_windup(dt: float) -> void:
 			Game.sfx("slash_heavy" if _atk == "heavy" else "slash", -4.0, 0.1)
 		elif _atk in ["shot", "volley"]:
 			Game.sfx("bow", -4.0, 0.1)
+		FoeSfx.play(self, "release:" + _atk)
 
 
 func _st_attack(dt: float) -> void:
@@ -1458,7 +1462,8 @@ func _do_aura() -> void:
 	var col := Color(0.55, 1.0, 0.75) if heal else Color(1.0, 0.35, 0.2)
 	Vfx.I.shock_ring(global_position, col, 0.5, AURA_R * 2.0, 0.5)
 	Vfx.I.sheet("soul-rise" if heal else "spawn-cast", global_position, 2.6, Color(col, 0.9), 1.6, false, 0.0, 1.6)
-	Game.sfx("heal" if heal else "danger", -6.0)
+	if not FoeSfx.play(self, "aura"):
+		Game.sfx("heal" if heal else "danger", -6.0)
 	for f: Node in get_tree().get_nodes_in_group("foes"):
 		var ff := f as Foe
 		if ff == null or ff == self or not ff.alive or ff.data.has("phantom") or ff.data.has("aura") or ff.state == "lurk":
@@ -1521,6 +1526,7 @@ static func _revive_twin(main: Node, ar: Variant, p: Vector3, hs: float, ds: flo
 	main.add_child(f)
 	f.global_position = p
 	f.detect_mult = 2.0
+	FoeSfx.play(f, "rise")
 	if main.has_method("_on_drop"):
 		f.dropped.connect(main._on_drop.bind("twin"))
 
@@ -1692,6 +1698,7 @@ func take_hit(info: HitInfo) -> bool:
 		# 烛国甲士：铜甲挡掉大半，火星四溅
 		info.damage *= float(data["armor"])
 		Vfx.I.pop(chest() - info.dir * 0.4, "spark_05", Color(1.0, 0.8, 0.45), 0.35, 1.5, 0.12)
+		FoeSfx.play(self, "armor")
 	# 盾骷髅：正面来的刀挡掉大半，挡满几下就破盾；绕到侧后面、或者大招，直接打进去
 	var blocked := false
 	if guard > 0.0 and alive and iframes <= 0.0 and info.weight < HitInfo.Weight.ULT and state != "stagger":
@@ -1761,6 +1768,7 @@ func take_hit(info: HitInfo) -> bool:
 		rig.set_glow(Color(0.35, 0.1, 0.02))
 		rig.set_rim(Color(1.0, 0.45, 0.2), 1.2)
 		Feel.I.callout(head_top() + Vector3(0, 0.6, 0), "烬·燃", Color(1.0, 0.45, 0.25), 1.5)
+		FoeSfx.play(self, "rage2")
 		Feel.I.callout(head_top() + Vector3(0, 1.4, 0), "“师弟，你不该来的。”", Color(0.95, 0.92, 0.85), 2.2)
 		CamRig.I.close_up(self, 1.3, 0.55)
 		if Hud3D.I != null:
@@ -1786,6 +1794,7 @@ func take_hit(info: HitInfo) -> bool:
 		Vfx.I.streaks(chest(), Vector3.UP, fx_color(), 10, 3.5, 0.4, PI, 0.22)
 		CamRig.I.shake(2, 1.2)
 		Game.sfx("boss_kill", -6.0, 0.0, 1.3)
+		FoeSfx.play(self, "rage")
 		data = data.duplicate()
 		data["speed"] = float(data["speed"]) * 1.25
 		if kind == "boss6":
@@ -1832,7 +1841,8 @@ func die(impulse: Vector3) -> void:
 	if _trail != null:
 		_trail.active = false
 	Feel.I.on_kill(self, impulse)
-	Game.sfx("death", -4.0)
+	if not FoeSfx.play(self, "death"):
+		Game.sfx("death", -4.0)
 	if data.get("fire", false):
 		var fp := FirePool.new()
 		fp.radius = 1.5

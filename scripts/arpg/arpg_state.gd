@@ -13,7 +13,11 @@ const FLOOR_NAMES := ["幽林遗迹", "无名冢", "古寺", "青井地宫", "�
 const BOSS_KINDS := ["boss", "boss3", "boss2", "boss4", "boss5", "boss6", "boss7", "boss8", "boss9"]
 const BOSS_ZONES := ["sakura", "grave", "temple", "well", "vault", "camp", "liuxi", "post", "palace"]
 const BOSS_TITLES := ["夜樱广场", "无名冢 · 万骨坑", "古寺 · 寂光殿", "青井 · 井底", "灯冢 · 不夜殿", "灰衣营 · 帅帐", "柳溪村 · 祠堂前", "官道 · 十里亭", "长明宫 · 金殿"]
-const BOSS_MUSIC := ["boss", "boss2", "boss", "boss2", "boss", "boss2", "boss", "boss2", "boss"]
+## 头目曲：第一幕三首轮着用；第二、三幕每个头目一首（assets/music/boss_<场景>.ogg）
+const BOSS_MUSIC := ["boss", "boss2", "boss", "boss_well", "boss_vault", "boss_camp", "boss_liuxi", "boss_post", "boss_palace"]
+## 场景曲（战斗房、精英房等）：第二、三幕每层一首
+const ZONE_MUSIC := {"temple": "bamboo", "grave": "secret", "well": "well", "vault": "vault", "camp": "camp",
+	"liuxi": "liuxi", "post": "post", "palace": "palace"}
 const LAST_FLOOR := 2
 ## 第二幕已经做好的层数（分阶段做：先只有青井地宫，打完头目算这一章暂时通关）
 const ACT2_READY := 3
