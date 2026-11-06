@@ -90,6 +90,7 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 			_dress_camp()
 		_:
 			_dress_more()
+	TerrainDress.apply(self)   # 地形层：墙外边坡、地面碎件、场中石丛、每层专属摆设
 	_atmosphere()
 	_clear_doorways()
 	_make_spawns()
