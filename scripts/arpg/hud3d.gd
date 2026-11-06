@@ -246,6 +246,8 @@ func _draw_skills(vs: Vector2) -> void:
 	]
 	if hero.art_id() != "":
 		items.insert(3, ["秘", "art", 1.0 - float(hero.cd["art"]) / hero.art_cd, ArpgInput.key_name(hero.index, "art")])
+	if hero.index == 0:
+		items = items.filter(func(it: Array) -> bool: return not ArpgHints.locked(String(it[1])))   # 第一局还没亮出来的招式
 	var x0 := vs.x - 250 - (items.size() - 4) * 62
 	for i in range(items.size()):
 		var it: Array = items[i]

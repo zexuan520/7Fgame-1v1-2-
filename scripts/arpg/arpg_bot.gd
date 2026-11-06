@@ -22,7 +22,7 @@ func _act(n: String) -> String:
 
 func _tap(n: String) -> void:
 	# 已经按着的先松开一帧，不然 is_action_just_pressed 不会再触发（一直按住就卡住了）
-	if _press.has(n) or Input.is_action_pressed(_act(n)):
+	if _press.has(n) or Input.is_action_pressed(_act(n)) or ArpgHints.locked(n):
 		return
 	Input.action_press(_act(n))
 	_press[n] = 0.05

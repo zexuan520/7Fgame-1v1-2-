@@ -75,6 +75,15 @@ func _ready() -> void:
 	Foe.tokens = 0
 	_rng.randomize()
 	_parse_args()
+	if _args.has("guide"):
+		# 测试：当成新存档的第一局（逐步解锁、提示全没看过），--guidefights=N 当作已经打过几间战斗房
+		Game.save["arpg_guide"] = "on"
+		Game.save["arpg_unlocked"] = []
+		Game.save["arpg_guide_fights"] = int(_args.get("guidefights", "0"))
+		Game.save.erase("arpg_hints")
+		Game.save.erase("arpg_hints_off")
+	if _args.has("pad"):
+		ArpgInput.pad_used[0] = true   # 测试：按键提示写成手柄的
 	if _args.has("diff"):
 		Game.save["arpg_diff"] = clampi(int(_args["diff"]), 0, 1)   # 测试：不写存档，只改这次
 	if _args.has("cyclemax"):
@@ -270,6 +279,9 @@ func _ready() -> void:
 					Input.parse_input_event(up)))
 	if _args.has("pause"):
 		get_tree().create_timer(1.5).timeout.connect(func() -> void: _open_pause())
+	if _args.has("guidemenu"):
+		# 测试：打开暂停菜单里的“新手提示”（--guidesel=N 选中第 N 项）
+		get_tree().create_timer(1.5).timeout.connect(func() -> void: hints.open_menu(_close_menu, int(_args.get("guidesel", "0"))))
 	if _args.has("statspanel"):
 		# 测试：过一会儿打开属性面板（--statstab=N 第 N 页，--statsrow=M 选中第 M 行，--statsat=秒）
 		get_tree().create_timer(float(_args.get("statsat", "1.5"))).timeout.connect(func() -> void:
@@ -627,8 +639,15 @@ func _after_title_go() -> void:
 		Game.save["arpg_intro"] = true
 		Game.write_save()
 		_first_intro = true
+		ArpgHints.begin_guide()   # 第一局逐步解锁招式
 		_start_run()
 		_enter_room()
+		if _args.has("hintbot"):
+			# 测试：新存档第一局交给机器人打（提示照常弹，没亮出来的招式机器人也不按）
+			_bot = ArpgBot.new()
+			_bot.hero = hero
+			add_child(_bot)
+			hero.invincible = not _args.has("mortal")
 	else:
 		_enter_hub()
 
@@ -715,6 +734,7 @@ func _enter_hub() -> void:
 		_npc("地藏 · 求保佑" if String(Game.save.get("arpg_bless", "")) == "" else "地藏 · 已求过", Vector3(-9.0, 0, 3.5), {"kit": "shrine", "scale": 1.1}, _pray_jizo)
 	# 隐藏机制：信物匣、阿七（闲聊、信物，见 ArpgSecrets）
 	secrets.hub_entered()
+	hints.hub_entered()   # 第一局的逐步解锁到此结束；第一次回来提示山门是做什么的
 	# 第一次进山门：拾骨婆说开场白
 	if not bool(Game.save.get("arpg_intro", false)) and not _args.has("demo"):
 		get_tree().create_timer(1.0).timeout.connect(func() -> void:
@@ -1159,8 +1179,6 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	_clear_scene()
 	_ensure_hero()
 	_tel = {"t": 0.0, "dmg0": hero.dmg_total}
-	if hints != null:
-		hints.room_entered()
 	room_kind = kind if kind != "" else state.room_type()
 	_save_checkpoint(kind, zone_override)
 	_room_hits0 = hero.hits_taken
@@ -1183,6 +1201,8 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	_build_arena(zone_id, state.seed_value + fl * 1000 + state.run.row * 37 + state.run.col * 7 + (500 if room_kind == "secret" else 0) + (700 if room_kind == "realm" else 0), sz, plans)
 	_place_hero(arena.entry_pos)
 	state.rooms += 1
+	if hints != null:
+		hints.room_entered()
 	wave_i = -1
 	_trial = null
 	if room_kind == "trial":
@@ -2407,6 +2427,7 @@ func _offer_boons(n: int, then_portal: String) -> void:
 		items.append({"title": b["name"], "desc": b["desc"], "tag": _school_tag(String(b["school"])), "color": ArpgData.SCHOOL_COLORS.get(b["school"], ArpgMenu.TEAL),
 			"right": ("已有 %d" % have) if have > 0 else "", "glyph": String(b["name"]).substr(0, 1)})
 	var m := _open_menu("心法", "三选一，留在身上直到这一局结束", items, "cards", false)
+	hints.menu_tip("boons", m)
 	m.chosen.connect(func(i: int) -> void:
 		_take_boon(String(offer[i]["id"]))
 		_close_menu()
@@ -2469,6 +2490,7 @@ func _on_level_up(ups: int) -> void:
 		vfx.shock_ring(p, Color(1.0, 0.85, 0.45), 0.3 + j * 0.2, 3.0 + j * 1.8, 0.45 + j * 0.1)
 	feel.callout(hero.head_top() + Vector3(0, 0.5, 0), "悟道 · %s重" % Hud3D._cn(state.level), Color(1.0, 0.88, 0.5), 1.5)
 	feel.number(hero.head_top() + Vector3(0.8, 0.1, 0), "天赋点 +%d" % ups, Color(1.0, 0.85, 0.45), 0.9)
+	hints.show("level")
 	feel.screen_flash(Color(1.0, 0.85, 0.45, 0.2), 3.0)
 	Game.sfx("reward", -3.0)
 	hero.hp = minf(hero.hp + hero.max_hp * 0.08 * ups, hero.max_hp)
@@ -2517,6 +2539,7 @@ func _open_skills(keep_index: int = -1, from_pause: bool = false) -> void:
 			"desc": "　　".join(parts), "right": "可点" if open else "", "color": s["color"], "enabled": open or from_pause})
 	var sub := "悟道 %s重　　天赋点 %d　　每招两支，只能走一支" % [Hud3D._cn(state.level), state.points]
 	var m := _open_menu("技能分支", sub, items, "list", true)
+	hints.menu_tip("skills", m)
 	if keep_index >= 0:
 		m.index = keep_index
 	m.chosen.connect(func(i: int) -> void: _open_branch(i, from_pause))
@@ -2828,6 +2851,7 @@ func _choose_path(ex: Array) -> void:
 		items.append({"title": ArpgState.TYPE_NAMES.get(t, t), "desc": ArpgRoutes.card_desc(nd, String(ArpgState.TYPE_DESC.get(t, ""))), "tag": ArpgRoutes.card_tag(nd),
 			"color": _type_color(t), "glyph": String(ArpgState.TYPE_NAMES.get(t, t)).substr(0, 1)})
 	var m := _open_menu("分岔路", "第 %d 层　第 %d / %d 间　·　往哪走？" % [state.gfloor() + 1, state.run.row + 2, state.run.rows.size()], items, "cards", true)
+	hints.menu_tip("path", m)
 	var r0 := state.run.row
 	m.extra_draw = func(c: Control, vs: Vector2) -> void:
 		c.set("cards_top_min", _map_top(vs) + _map_h(vs) + 16)   # 卡片让到路线图下面
@@ -3067,6 +3091,7 @@ func _gain_gear(it: Dictionary) -> void:
 		where = "（行囊满了，换成 %d 铜钱）" % c
 	feel.callout(hero.head_top() + Vector3(0, 0.3, 0), String(it["name"]), ArpgGear.color(it), 1.3)
 	hud.banner(String(it["name"]), ArpgGear.slot_name(it) + "：" + ArpgGear.describe(it) + where, 2.2)
+	hints.show("gear")
 
 
 ## 套装成就：穿齐一套三件
@@ -3129,6 +3154,7 @@ func _open_bag(keep_index: int = -1) -> void:
 		acts.append(["craft", r])
 	var sub := "行囊 %d / %d　·　心法 %d 个　·　残页 %d / %d" % [state.bag.size(), ArpgGear.BAG_MAX, state.boons.size(), ArpgStory.pages().size(), ArpgStory.PAGES.size()]
 	var m := _open_menu("行囊", sub, items, "list", true)
+	hints.menu_tip("bag", m)
 	m.footer = TouchPad.hint("J 选择　　Tab / 空格 关闭", "点选一项　　右上角 ✕ 关闭")
 	if keep_index >= 0:
 		m.index = mini(keep_index, items.size() - 1)
@@ -3209,6 +3235,7 @@ func _open_pause(sel: Variant = 0) -> void:
 		{"id": "quality", "title": "画质", "right": QUALITY_NAMES[quality], "desc": "低：关阴影和辉光，降低渲染分辨率，适合网页和轻薄本"},
 		{"id": "diff", "title": "难度", "right": ArpgState.DIFF_NAMES[ArpgState.difficulty()], "desc": ArpgState.DIFF_DESC[ArpgState.difficulty()]}]
 	items.append({"id": "ach", "title": "成就", "right": "%d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], "desc": "看看做到了哪些"})
+	items.append({"id": "guide", "title": "新手提示", "right": "开" if ArpgHints.enabled() else "关", "desc": "开关提示、回看全部提示、重新提示一遍"})
 	if mode == "room":
 		items.append({"id": "run", "title": "这一局", "desc": "路线图、天象、心法、流派、双修和连携"})
 		items.append({"id": "giveup", "title": "放弃这一局", "desc": "回到山门，魂玉带回六成"})
@@ -3257,6 +3284,8 @@ func _on_pause_chosen(i: int) -> void:
 			_open_stats(true)
 		"ach":
 			_open_achievements(true)
+		"guide":
+			hints.open_menu(func() -> void: _open_pause("guide"))
 		"run":
 			_open_run_info()
 		"giveup":
@@ -3288,6 +3317,7 @@ func _open_stats(from_pause: bool = false, tab: int = 0) -> void:
 	_menu = m
 	hud.visible = false
 	hero.clear_buffer()
+	hints.menu_tip("stats_menu", m)
 
 
 ## 山门里主角的数值：按“出发时”的样子算（天赋 + 兵器架的兵器 + 轮回级 + 难度），属性面板和试刀看到的一样

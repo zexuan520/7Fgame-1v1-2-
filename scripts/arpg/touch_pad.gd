@@ -80,7 +80,7 @@ func _buttons(vs: Vector2) -> Array:
 			out.append(["swap", "换", a + Vector2(-120, -232), 32.0, Color(0.6, 1.0, 0.95)])
 		if not hero.kit.props.is_empty():
 			out.append(["item", "器", a + Vector2(-336, 20), 32.0, Color(1.0, 0.7, 0.4)])
-	return out
+	return out.filter(func(b: Array) -> bool: return not ArpgHints.locked(String(b[0])))   # 第一局还没亮出来的招式
 
 
 func _top_buttons(vs: Vector2) -> Array:

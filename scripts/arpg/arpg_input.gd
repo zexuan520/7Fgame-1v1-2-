@@ -5,7 +5,7 @@ extends RefCounted
 ## 鼠标左键攻击、右键突进斩。P2（本地同屏双人）：方向键、小键盘 1 攻击 2 翻滚 3 突进 4 光束 5 终结 6 药 8 秘技 0 互动、
 ## 9 换兵器、+ 用道具、- 换道具。
 ## 手柄：左摇杆移动、X 攻击、A 翻滚、B 突进斩、Y 终结技、RB 光束斩、十字键上 药葫芦、十字键右 秘技、LB 互动、
-## 十字键左 换兵器、十字键下 用道具、按下左摇杆 换道具。
+## 十字键左 换兵器、十字键下 用道具、按下左摇杆 换道具、按下右摇杆 属性。
 
 const KEYS := [
 	{"up": [KEY_W], "down": [KEY_S], "left": [KEY_A], "right": [KEY_D], "attack": [KEY_J], "roll": [KEY_SPACE, KEY_SHIFT, KEY_L],
@@ -17,10 +17,45 @@ const KEYS := [
 ]
 const PAD := {"attack": JOY_BUTTON_X, "roll": JOY_BUTTON_A, "dash": JOY_BUTTON_B, "finish": JOY_BUTTON_Y,
 	"beam": JOY_BUTTON_RIGHT_SHOULDER, "heal": JOY_BUTTON_DPAD_UP, "interact": JOY_BUTTON_LEFT_SHOULDER, "bag": JOY_BUTTON_BACK, "art": JOY_BUTTON_DPAD_RIGHT,
-	"swap": JOY_BUTTON_DPAD_LEFT, "item": JOY_BUTTON_DPAD_DOWN, "item_next": JOY_BUTTON_LEFT_STICK}
+	"swap": JOY_BUTTON_DPAD_LEFT, "item": JOY_BUTTON_DPAD_DOWN, "item_next": JOY_BUTTON_LEFT_STICK, "stats": JOY_BUTTON_RIGHT_STICK}
 const NAMES := {"attack": "攻击", "roll": "翻滚", "dash": "突进斩", "beam": "光束斩", "finish": "终结技", "heal": "药葫芦", "interact": "互动", "bag": "行囊", "art": "秘技", "swap": "换兵器", "item": "道具", "item_next": "换道具", "stats": "属性"}
 
+## 手柄上的按键名（Xbox 布局）
+const PAD_NAMES := {JOY_BUTTON_A: "A", JOY_BUTTON_B: "B", JOY_BUTTON_X: "X", JOY_BUTTON_Y: "Y", JOY_BUTTON_LEFT_SHOULDER: "LB",
+	JOY_BUTTON_RIGHT_SHOULDER: "RB", JOY_BUTTON_DPAD_UP: "十字↑", JOY_BUTTON_DPAD_RIGHT: "十字→", JOY_BUTTON_DPAD_LEFT: "十字←",
+	JOY_BUTTON_DPAD_DOWN: "十字↓", JOY_BUTTON_LEFT_STICK: "L3", JOY_BUTTON_RIGHT_STICK: "R3", JOY_BUTTON_BACK: "Back", JOY_BUTTON_START: "Start"}
+
 static var _done := false
+## 每个玩家最近一次用的是不是手柄：按键提示跟着换（键盘 J / 手柄 X / 触屏「斩」）
+static var pad_used := [false, false]
+
+
+## 记下玩家最近用的设备（ArpgHints._input 里调）
+static func note(event: InputEvent) -> void:
+	if event is InputEventJoypadButton:
+		if (event as InputEventJoypadButton).pressed and event.device >= 0 and event.device < 2:
+			pad_used[event.device] = true
+	elif event is InputEventJoypadMotion:
+		if absf((event as InputEventJoypadMotion).axis_value) > 0.6 and event.device >= 0 and event.device < 2:
+			pad_used[event.device] = true
+	elif event is InputEventKey:
+		if not (event as InputEventKey).pressed:
+			return
+		var k := int((event as InputEventKey).physical_keycode)
+		for i in range(KEYS.size()):
+			for a: String in KEYS[i]:
+				if (KEYS[i][a] as Array).has(k):
+					pad_used[i] = false
+					return
+	elif event is InputEventMouseButton and not TouchPad.active:
+		pad_used[0] = false
+
+
+## 当前该显示哪套按键提示：kb 键鼠 / pad 手柄 / touch 触屏
+static func device(index: int = 0) -> String:
+	if TouchPad.active and index == 0:
+		return "touch"
+	return "pad" if pad_used[clampi(index, 0, 1)] else "kb"
 
 
 static func act(index: int, name: String) -> String:
@@ -61,6 +96,13 @@ static func setup() -> void:
 
 
 static func key_name(index: int, name: String) -> String:
+	if pad_used[clampi(index, 0, 1)] and not (TouchPad.active and index == 0):
+		if name == "quit":
+			return "Start"
+		if PAD.has(name):
+			return String(PAD_NAMES.get(PAD[name], "?"))
+	if name == "quit":
+		return "Esc"
 	var keys: Array = KEYS[index].get(name, [])
 	if keys.is_empty():
 		return ""
