@@ -199,38 +199,98 @@ func room_type() -> String:
 	return run.room_type()
 
 
-## 所有加成：天赋 + 兵器 + 护甲 + 护符 + 心法
+## 所有加成：天赋 + 兵器 + 护甲 + 护符 + 心法……（逐项见 stat_parts，属性面板按它列出每一项的来源）
 func stats() -> Dictionary:
-	var st := ArpgData.talent_stats()
-	ArpgData.add_stats(st, ArpgArms.weapon_stats(weapon))
-	ArpgData.add_stats(st, ArpgGear.stats(arms[0]))
+	var st := {}
+	for p: Dictionary in stat_parts():
+		ArpgData.add_stats(st, p["st"])
+	return st
+
+
+## 加成的每一个来源：[{"src": 显示名, "kind": 分类, "st": 这一项给的 stats}]。stats() 就是把它们全加起来
+func stat_parts() -> Array:
+	var out := []
+	var add := func(kind: String, src: String, st: Dictionary) -> void:
+		if not st.is_empty():
+			out.append({"kind": kind, "src": src, "st": st})
+	for t: Dictionary in ArpgData.TALENT_TREES:
+		for tier: Array in t["tiers"]:
+			for nd: Dictionary in tier:
+				var r := ArpgData.talent_rank(nd["id"])
+				if r > 0:
+					var ts := {}
+					ArpgData.add_stats(ts, nd["stats"], r)
+					add.call("天赋", "天赋·%s%s" % [nd["name"], " ×%d" % r if r > 1 else ""], ts)
+	for kid: String in ArpgSecrets.keeps():
+		add.call("信物", "信物·%s" % ArpgSecrets.keep_info(kid).get("name", kid), ArpgSecrets.keep_info(kid).get("stats", {}))
+	var wd := ArpgData.weapon(weapon)
+	add.call("兵器", "兵器特性·%s" % wd["name"], ArpgArms.weapon_stats(weapon))
+	add.call("兵器", "主手·%s" % String((arms[0] as Dictionary).get("name", wd["name"])), ArpgGear.stats(arms[0]))
 	for slot: String in gear:
-		ArpgData.add_stats(st, ArpgGear.stats(gear[slot]))
-	ArpgData.add_stats(st, ArpgArms.set_stats(gear))
+		var it: Dictionary = gear[slot]
+		if not it.is_empty():
+			add.call("装备", "%s·%s" % [ArpgData.SLOT_NAMES.get(slot, slot), it.get("name", ArpgData.gear(String(it.get("base", ""))).get("name", ""))], ArpgGear.stats(it))
+	for sp: Array in ArpgArms.set_parts(gear):
+		add.call("套装", "套装·%s（%d 件）" % [ArpgArms.GEAR_SETS[sp[0]]["name"], sp[1]], sp[2])
 	if curse > 0:
-		ArpgData.add_stats(st, {"dmg_taken": 0.1 * curse})
+		add.call("境况", "诅咒·地藏的钱%s" % (" ×%d" % curse if curse > 1 else ""), {"dmg_taken": 0.1 * curse})
+	var seen_b := {}
 	for b: String in boons:
-		ArpgData.add_stats(st, ArpgData.boon(b).get("stats", {}))
+		seen_b[b] = int(seen_b.get(b, 0)) + 1
+	for b: String in seen_b:
+		var bd := ArpgData.boon(b)
+		var bs := {}
+		ArpgData.add_stats(bs, bd.get("stats", {}), int(seen_b[b]))
+		add.call("心法", "心法·%s%s" % [bd.get("name", b), " ×%d" % seen_b[b] if int(seen_b[b]) > 1 else ""], bs)
 	if whet > 0:
-		ArpgData.add_stats(st, {"atk": WHET_ATK * whet})
+		add.call("境况", "磨刀 ×%d" % whet, {"atk": WHET_ATK * whet})
 	if forged > 0:
-		ArpgData.add_stats(st, {"hp": FORGE_HP * forged})
+		add.call("境况", "熔铜炉铸甲 ×%d" % forged, {"hp": FORGE_HP * forged})
 	if omen != "" and OMENS.has(omen):
-		ArpgData.add_stats(st, OMENS[omen].get("stats", {}))
+		add.call("境况", "天象·%s" % OMENS[omen]["name"], OMENS[omen].get("stats", {}))
 	if act == 3:
-		Act3.run_stats(self, st)   # 第三幕：带着的石门灯、喂过的驿马
+		# 第三幕：带着的石门灯、喂过的驿马、支线尽头拿的加成（数值照 Act3.run_stats 算，这里只起个名字）
+		var a3 := {}
+		Act3.run_stats(self, a3)
+		var got := []
+		if flags.has("lamp_carried"):
+			got.append("石门灯")
+		if flags.has("stable_fed"):
+			got.append("驿马")
+		if not (flags.get("route_stats", {}) as Dictionary).is_empty():
+			got.append("支线所得")
+		add.call("境况", "路上·%s" % "、".join(got), a3)
 	var sc := ArpgData.school_counts(boons)
 	for k: String in sc:
 		if int(sc[k]) >= ArpgData.SET_NEED and ArpgData.SETS.has(k):
-			st[String(ArpgData.SETS[k]["id"])] = 1.0
+			add.call("心法", "大成·%s" % ArpgData.SETS[k]["name"], {String(ArpgData.SETS[k]["id"]): 1.0})
 	if cycle > 0:
-		ArpgData.add_stats(st, ArpgCycle.hero_stats(cycle))
-	ArpgSkills.add_stats(st, skills, boons)
+		add.call("轮回", ArpgCycle.label(cycle), ArpgCycle.hero_stats(cycle))
+	var ks := {}
+	ArpgSkills.add_stats(ks, skills, boons)
+	add.call("技能", "技能分支与双修", ks)
 	if difficulty() == 0:
-		ArpgData.add_stats(st, {"easy": EASY_TAKEN})
+		add.call("难度", "难度·游历", {"easy": EASY_TAKEN})
 	else:
-		ArpgData.add_stats(st, {"jade": HARD_JADE})
-	return st
+		add.call("难度", "难度·修罗", {"jade": HARD_JADE})
+	return out
+
+
+## 山门里看的“出发时”的样子：兵器架选的主副手、这次出发的轮回级，没有心法和装备（不改 cur，不掷随机数）
+static func preview() -> ArpgState:
+	var s := ArpgState.new()
+	s.cycle = ArpgCycle.picked()
+	s.weapon = String(Game.save.get("arpg_weapon", "sword"))
+	if not ArpgData.WEAPONS.has(s.weapon):
+		s.weapon = "sword"
+	s.arms[0] = ArpgGear.weapon_item(s.weapon)
+	var w2 := String(Game.save.get("arpg_weapon2", ""))
+	if bool(Game.save.get("arpg_spare", false)) and w2 != "" and w2 != s.weapon and ArpgData.WEAPONS.has(w2):
+		s.arms[1] = ArpgGear.weapon_item(w2)
+	var st := ArpgData.talent_stats()
+	s.coins = int(ArpgData.stat(st, "start_coins"))
+	s.points = int(ArpgData.stat(st, "insight"))
+	return s
 
 
 ## 难度：0 游历（受伤 -35%，头目前倒下可以重打一次）/ 1 修罗（原数值，魂玉 +20%）。存在存档里，没选过算游历

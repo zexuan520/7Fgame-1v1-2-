@@ -270,6 +270,12 @@ func _ready() -> void:
 					Input.parse_input_event(up)))
 	if _args.has("pause"):
 		get_tree().create_timer(1.5).timeout.connect(func() -> void: _open_pause())
+	if _args.has("statspanel"):
+		# 测试：过一会儿打开属性面板（--statstab=N 第 N 页，--statsrow=M 选中第 M 行，--statsat=秒）
+		get_tree().create_timer(float(_args.get("statsat", "1.5"))).timeout.connect(func() -> void:
+			_open_stats(false, int(_args.get("statstab", "0")))
+			if _args.has("statsrow") and _menu is ArpgStatsPanel:
+				(_menu as ArpgStatsPanel).index = int(_args["statsrow"]))
 	if _args.has("achtest"):
 		# 测试：弹一个成就窗，再打开成就列表（拍图用）
 		get_tree().create_timer(0.8).timeout.connect(func() -> void: ach_toast.push("四印俱全", "一间试炼房里拿齐疾、守、狂、乱四印"))
@@ -659,7 +665,7 @@ func _enter_hub() -> void:
 	_ensure_hero()
 	hero.reset_for_run()
 	hero.kit = null
-	hero.apply_stats(ArpgData.talent_stats(), String(Game.save.get("arpg_weapon", "sword")), true)
+	_hub_stats()
 	_place_hero(arena.entry_pos)
 	hud.visible = true
 	hud.zone_name = "山门 · 拾骨婆的小院"
@@ -876,7 +882,7 @@ func _open_talents(_n: ArpgNpc, keep_index: int = -1) -> void:
 		var tal: Dictionary = Game.save["talents"]
 		tal[id] = int(tal.get(id, 0)) + 1
 		Game.write_save()
-		hero.apply_stats(ArpgData.talent_stats(), String(Game.save.get("arpg_weapon", "sword")), true)
+		_hub_stats()
 		hud.jade = int(Game.save["jade"])
 		vfx.shock_ring(hero.global_position, Color(1.0, 0.85, 0.45), 0.3, 3.0, 0.4)
 		_close_menu()
@@ -1035,7 +1041,7 @@ func _open_weapons(_n: ArpgNpc, keep_index: int = -1) -> void:
 				feel.callout(hero.head_top(), "双佩", Color(1.0, 0.85, 0.45), 1.1)
 		Game.write_save()
 		ArpgAch.check_save()
-		hero.apply_stats(ArpgData.talent_stats(), String(Game.save.get("arpg_weapon", "sword")), true)
+		_hub_stats()
 		hud.jade = int(Game.save["jade"])
 		_close_menu()
 		_open_weapons(_n, i))
@@ -1073,7 +1079,7 @@ func _open_skins(_n: ArpgNpc, keep_index: int = -1) -> void:
 		Game.save["arpg_skin"] = id
 		Game.write_save()
 		hero.apply_skin(id)
-		hero.apply_stats(ArpgData.talent_stats(), String(Game.save.get("arpg_weapon", "sword")), true)
+		_hub_stats()
 		ArpgAch.unlock("skin_any")
 		vfx.shock_ring(hero.global_position, sk.get("rim", Color.WHITE), 0.3, 3.0, 0.4)
 		vfx.ghost(hero.rig, sk.get("rim", Color.WHITE), 0.4)
@@ -1396,7 +1402,7 @@ func _tut_next() -> void:
 		hero.hp = hero.max_hp
 		hero.gourds = hero.max_gourds
 		hud.wave_text = "试刀完成"
-		hud.banner("试刀完成", TouchPad.hint("走进光门正式上山。F 和人说话，Tab 打开行囊", "走进光门正式上山。靠近人点「互」说话，右上角「囊」打开行囊"), 3.5)
+		hud.banner("试刀完成", TouchPad.hint("走进光门正式上山。F 和人说话，Tab 打开行囊，C 看属性", "走进光门正式上山。靠近人点「互」说话，右上角「囊」打开行囊、「属」看属性"), 3.5)
 		Game.sfx("reward")
 		_open_portal("run")
 		return
@@ -2516,7 +2522,7 @@ func _open_skills(keep_index: int = -1, from_pause: bool = false) -> void:
 	m.chosen.connect(func(i: int) -> void: _open_branch(i, from_pause))
 	m.cancelled.connect(func() -> void:
 		if from_pause:
-			_open_pause(8), CONNECT_DEFERRED)
+			_open_pause("skills"), CONNECT_DEFERRED)
 
 
 ## 一招的两支：卡片 + 下面列出三级的效果
@@ -3190,28 +3196,35 @@ func _no_dialog() -> bool:
 
 
 ## Esc / 手柄 Start：暂停菜单（音量、放弃这一局）。网页版里没有“退出游戏”
-func _open_pause(sel: int = 0) -> void:
+## sel：选中第几项，或者选项 id（"stats"、"run"、"skills" ...，从子菜单返回时用）
+var _pause_ids: Array = []
+
+
+func _open_pause(sel: Variant = 0) -> void:
 	var pct := func(k: String) -> String: return "%d%%" % int(round(float(Game.settings[k]) * 100.0))
-	var items := [{"title": "继续"},
-		{"title": "音乐音量", "right": pct.call("music"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
-		{"title": "音效音量", "right": pct.call("sfx"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
-		{"title": "画质", "right": QUALITY_NAMES[quality], "desc": "低：关阴影和辉光，降低渲染分辨率，适合网页和轻薄本"},
-		{"title": "难度", "right": ArpgState.DIFF_NAMES[ArpgState.difficulty()], "desc": ArpgState.DIFF_DESC[ArpgState.difficulty()]}]
-	items.append({"title": "成就", "right": "%d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], "desc": "看看做到了哪些"})
+	var items := [{"id": "resume", "title": "继续"},
+		{"id": "stats", "title": "属性", "desc": "数值和加成来源、装备套装、心法技能、轮回规矩（%s）" % TouchPad.hint(ArpgInput.key_name(0, "stats") + " 键", "右上角“属”")},
+		{"id": "music", "title": "音乐音量", "right": pct.call("music"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
+		{"id": "sfx", "title": "音效音量", "right": pct.call("sfx"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
+		{"id": "quality", "title": "画质", "right": QUALITY_NAMES[quality], "desc": "低：关阴影和辉光，降低渲染分辨率，适合网页和轻薄本"},
+		{"id": "diff", "title": "难度", "right": ArpgState.DIFF_NAMES[ArpgState.difficulty()], "desc": ArpgState.DIFF_DESC[ArpgState.difficulty()]}]
+	items.append({"id": "ach", "title": "成就", "right": "%d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], "desc": "看看做到了哪些"})
 	if mode == "room":
-		items.append({"title": "这一局", "desc": "路线图、天象、心法、流派、双修和连携"})
-		items.append({"title": "放弃这一局", "desc": "回到山门，魂玉带回六成"})
-		items.append({"title": "技能分支", "right": "天赋点 %d" % state.points if state.points > 0 else "悟道 %s重" % Hud3D._cn(state.level),
+		items.append({"id": "run", "title": "这一局", "desc": "路线图、天象、心法、流派、双修和连携"})
+		items.append({"id": "giveup", "title": "放弃这一局", "desc": "回到山门，魂玉带回六成"})
+		items.append({"id": "skills", "title": "技能分支", "right": "天赋点 %d" % state.points if state.points > 0 else "悟道 %s重" % Hud3D._cn(state.level),
 			"desc": "斩敌悟道，每升一重得 1 个天赋点，用来点招式的分支"})
+	_pause_ids = items.map(func(it: Dictionary) -> String: return String(it["id"]))
 	var m := _open_menu("暂停", "", items, "list", true)
-	m.index = sel
+	m.index = maxi(0, _pause_ids.find(sel)) if sel is String else clampi(int(sel), 0, items.size() - 1)
 	m.chosen.connect(_on_pause_chosen)
 
 
 func _on_pause_chosen(i: int) -> void:
-	match i:
-		1, 2:
-			var k := "music" if i == 1 else "sfx"
+	var id := String(_pause_ids[i]) if i < _pause_ids.size() else "resume"
+	match id:
+		"music", "sfx":
+			var k := id
 			var steps := [1.0, 0.75, 0.5, 0.25, 0.0]
 			var cur := float(Game.settings[k])
 			var nxt := 1.0   # 往下调一档，到 0 之后回到 100%
@@ -3223,32 +3236,63 @@ func _on_pause_chosen(i: int) -> void:
 			Game.apply_volume()
 			Game.write_settings()
 			Game.sfx("coin")
-			_open_pause(i)
-		3:
+			_open_pause(id)
+		"quality":
 			apply_quality((quality + 2) % 3)   # 高 → 中 → 低 → 高
 			Game.settings["quality"] = quality
 			Game.write_settings()
 			_fps_checked = true
 			Game.sfx("coin")
-			_open_pause(i)
-		4:
+			_open_pause(id)
+		"diff":
 			Game.save["arpg_diff"] = 1 - ArpgState.difficulty()
 			Game.write_save()
 			if state != null and is_instance_valid(hero):
 				hero.apply_stats(state.stats(), state.weapon)
+			elif mode == "hub" and is_instance_valid(hero):
+				_hub_stats()
 			Game.sfx("coin")
-			_open_pause(i)
-		5:
+			_open_pause(id)
+		"stats":
+			_open_stats(true)
+		"ach":
 			_open_achievements(true)
-		6:
+		"run":
 			_open_run_info()
-		7:
+		"giveup":
 			_close_menu()
 			_game_over(false)
-		8:
+		"skills":
 			_open_skills(-1, true)
 		_:
 			_close_menu()
+
+
+## 属性面板（暂停菜单“属性”、C 键、触屏“属”）。局里看这一局的主角，山门里看出发时的样子
+func _open_stats(from_pause: bool = false, tab: int = 0) -> void:
+	if not is_instance_valid(hero):
+		return
+	var hub := mode == "hub" or state == null
+	_close_menu()
+	var m := ArpgStatsPanel.new()
+	m.hero = hero
+	m.in_hub = hub
+	m.state = ArpgState.preview() if hub else state
+	m.tab = tab
+	m.cancellable = true
+	ui_layer.add_child(m)
+	if from_pause:
+		m.cancelled.connect(func() -> void: _open_pause("stats"), CONNECT_DEFERRED)
+	else:
+		m.cancelled.connect(_close_menu)
+	_menu = m
+	hud.visible = false
+	hero.clear_buffer()
+
+
+## 山门里主角的数值：按“出发时”的样子算（天赋 + 兵器架的兵器 + 轮回级 + 难度），属性面板和试刀看到的一样
+func _hub_stats() -> void:
+	hero.apply_stats(ArpgState.preview().stats(), String(Game.save.get("arpg_weapon", "sword")), true)
 
 
 ## 暂停菜单“这一局”：上面画整层路线图，下面列天象、心法流派进度
@@ -3288,15 +3332,15 @@ func _open_run_info() -> void:
 			"color": l["color"], "enabled": got})
 	var m := _open_menu("这一局", "%s　第 %d 层　第 %d / %d 间　心法 %d 个" % [ArpgState.ACT_NAMES[state.act], state.gfloor() + 1, state.run.row + 1, state.run.rows.size(), state.boons.size()], items, "list", true)
 	m.extra_draw = func(c: Control, vs: Vector2) -> void: _draw_map(c, vs, [], vs.y - 150.0)   # 列表下面
-	m.chosen.connect(func(_i: int) -> void: _open_pause(6))
-	m.cancelled.connect(func() -> void: _open_pause(6), CONNECT_DEFERRED)
+	m.chosen.connect(func(_i: int) -> void: _open_pause("run"))
+	m.cancelled.connect(func() -> void: _open_pause("run"), CONNECT_DEFERRED)
 
 
 ## 成就列表（山门功业碑、暂停菜单）。from_pause 时返回回到暂停菜单
 func _open_achievements(from_pause: bool = false) -> void:
 	var m := _open_menu("功业碑", "已达成 %d / %d　　成就跨局永久保存" % [ArpgAch.count(), ArpgAch.LIST.size()], ArpgAch.menu_items(), "list", true)
 	if from_pause:
-		m.cancelled.connect(func() -> void: _open_pause(5), CONNECT_DEFERRED)
+		m.cancelled.connect(func() -> void: _open_pause("ach"), CONNECT_DEFERRED)
 
 
 func _close_menu() -> void:
@@ -3482,6 +3526,9 @@ func _process(dt: float) -> void:
 	if (mode == "room" or mode == "hub") and _menu == null and state != null and is_instance_valid(hero) and hero.alive \
 			and Input.is_action_just_pressed(ArpgInput.act(0, "bag")):
 		_open_bag()
+	if (mode == "room" or mode == "hub") and _menu == null and _no_dialog() and is_instance_valid(hero) and hero.alive \
+			and (Input.is_action_just_pressed(ArpgInput.act(0, "stats")) or Input.is_action_just_pressed(ArpgInput.act(1, "stats"))):
+		_open_stats()
 	if (mode == "room" or mode == "hub") and _menu == null and _no_dialog() and is_instance_valid(hero) and hero.alive \
 			and Input.is_action_just_pressed("quit"):
 		_open_pause()

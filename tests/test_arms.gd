@@ -2,7 +2,7 @@ extends Node
 ## 兵器、装备、道具、皮肤的数据自检（无界面运行，不碰正式存档）：
 ##   godot --headless --path . res://tests/test_arms.tscn
 ## 验证：九种兵器的连招都能建出来、装备表 id 不重复且都查得到、套装件数对、道具叠加和上限、
-## 局中断点带着主副手/道具/新部位存进去读回来、旧断点（没有新字段）能补齐、皮肤都能查到解锁条件。
+## 属性面板列的来源加起来等于实际生效的 stats()、局中断点带着主副手/道具/新部位存进去读回来、旧断点（没有新字段）能补齐、皮肤都能查到解锁条件。
 
 var failures := 0
 
@@ -70,6 +70,23 @@ func _run() -> void:
 	_check(s.add_item("smoke_ball") == 0 and s.add_item_room("smoke_ball") == 0, "最多带三种")
 	s.use_item("elixir")
 	_check(s.props.size() == 2, "用完的道具空出格子")
+
+	print("属性面板的来源")
+	var ps := ArpgState.start_new(1)
+	ps.gear = gear.duplicate(true)
+	ps.boons = ["edge", "edge", "keen", "keen", "keen"]
+	ps.whet = 2
+	var sum := {}
+	for part: Dictionary in ps.stat_parts():
+		ArpgData.add_stats(sum, part["st"])
+	var full := ps.stats()
+	var same := sum.size() == full.size()
+	for k: String in full:
+		same = same and absf(float(full[k]) - float(sum.get(k, 0.0))) < 0.0001
+	_check(same, "stats() 等于 stat_parts() 逐项相加（面板列的来源和实际生效的一致）")
+	var srcs := ps.stat_parts().map(func(x: Dictionary) -> String: return String(x["src"]))
+	_check(srcs.has("心法·利刃 ×2") and srcs.has("套装·不动（3 件）") and srcs.has("磨刀 ×2") and srcs.has("大成·修罗场"), "来源按心法、套装、磨刀、流派大成分开列")
+	_check(ArpgStatsPanel.fmt_key("dash_cd", 0.15) == "-15%" and ArpgStatsPanel.fmt_key("hp", 25.0, true) == "生命 +25", "数值写法：冷却显示减号，生命显示整数")
 
 	print("局中断点")
 	s.arms[0] = ArpgGear.weapon_item("spear", 2, [["crit", 0.05]])

@@ -242,7 +242,7 @@ func give_keep(id: String) -> bool:
 		if main.state != null:
 			main.hero.apply_stats(main.state.stats(), main.state.weapon)
 		else:
-			main.hero.apply_stats(ArpgData.talent_stats(), String(Game.save.get("arpg_weapon", "sword")), true)
+			main._hub_stats()
 		main.feel.callout(main.hero.head_top() + Vector3(0, 0.3, 0), "信物 · %s" % k["name"], C_KEEP, 1.3)
 		main.vfx.shock_ring(main.hero.global_position, C_KEEP, 0.3, 3.0, 0.5)
 	Game.sfx("reward")

@@ -10,15 +10,15 @@ extends RefCounted
 const KEYS := [
 	{"up": [KEY_W], "down": [KEY_S], "left": [KEY_A], "right": [KEY_D], "attack": [KEY_J], "roll": [KEY_SPACE, KEY_SHIFT, KEY_L],
 	 "dash": [KEY_K], "beam": [KEY_I], "finish": [KEY_E], "heal": [KEY_U], "interact": [KEY_F], "bag": [KEY_TAB, KEY_B], "art": [KEY_O],
-	 "swap": [KEY_Q], "item": [KEY_R], "item_next": [KEY_T]},
+	 "swap": [KEY_Q], "item": [KEY_R], "item_next": [KEY_T], "stats": [KEY_C]},
 	{"up": [KEY_UP], "down": [KEY_DOWN], "left": [KEY_LEFT], "right": [KEY_RIGHT], "attack": [KEY_KP_1], "roll": [KEY_KP_2],
 	 "dash": [KEY_KP_3], "beam": [KEY_KP_4], "finish": [KEY_KP_5], "heal": [KEY_KP_6], "interact": [KEY_KP_0], "bag": [KEY_KP_7], "art": [KEY_KP_8],
-	 "swap": [KEY_KP_9], "item": [KEY_KP_ADD], "item_next": [KEY_KP_SUBTRACT]},
+	 "swap": [KEY_KP_9], "item": [KEY_KP_ADD], "item_next": [KEY_KP_SUBTRACT], "stats": [KEY_KP_DIVIDE]},
 ]
 const PAD := {"attack": JOY_BUTTON_X, "roll": JOY_BUTTON_A, "dash": JOY_BUTTON_B, "finish": JOY_BUTTON_Y,
 	"beam": JOY_BUTTON_RIGHT_SHOULDER, "heal": JOY_BUTTON_DPAD_UP, "interact": JOY_BUTTON_LEFT_SHOULDER, "bag": JOY_BUTTON_BACK, "art": JOY_BUTTON_DPAD_RIGHT,
 	"swap": JOY_BUTTON_DPAD_LEFT, "item": JOY_BUTTON_DPAD_DOWN, "item_next": JOY_BUTTON_LEFT_STICK}
-const NAMES := {"attack": "攻击", "roll": "翻滚", "dash": "突进斩", "beam": "光束斩", "finish": "终结技", "heal": "药葫芦", "interact": "互动", "bag": "行囊", "art": "秘技", "swap": "换兵器", "item": "道具", "item_next": "换道具"}
+const NAMES := {"attack": "攻击", "roll": "翻滚", "dash": "突进斩", "beam": "光束斩", "finish": "终结技", "heal": "药葫芦", "interact": "互动", "bag": "行囊", "art": "秘技", "swap": "换兵器", "item": "道具", "item_next": "换道具", "stats": "属性"}
 
 static var _done := false
 

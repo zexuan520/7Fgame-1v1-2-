@@ -121,14 +121,25 @@ static func set_counts(gear: Dictionary) -> Dictionary:
 
 static func set_stats(gear: Dictionary) -> Dictionary:
 	var st := {}
+	for sp: Array in set_parts(gear):
+		ArpgData.add_stats(st, sp[2])
+	return st
+
+
+## 每套各给了什么：[[套装 id, 件数, stats]...]（不够两件的不算）
+static func set_parts(gear: Dictionary) -> Array:
+	var out := []
 	var n := set_counts(gear)
 	for sid: String in n:
 		var gs: Dictionary = GEAR_SETS[sid]
+		var st := {}
 		if int(n[sid]) >= 2:
 			ArpgData.add_stats(st, gs["s2"])
 		if int(n[sid]) >= 3:
 			ArpgData.add_stats(st, gs["s3"])
-	return st
+		if not st.is_empty():
+			out.append([sid, int(n[sid]), st])
+	return out
 
 
 # ---------- 道具 ----------
