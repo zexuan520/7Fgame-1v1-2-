@@ -22,11 +22,11 @@ const ACT3_READY := 3
 const ACT_NAMES := {1: "第一幕 · 归乡", 2: "第二幕 · 入山", 3: "第三幕 · 出山"}
 const CN_NUM := ["一", "二", "三", "四", "五", "六", "七", "八", "九"]
 const TYPE_NAMES := {"start": "林口", "fight": "战", "elite": "精英", "shop": "商人", "rest": "歇脚", "event": "奇遇", "boss": "头目",
-	"treasure": "宝箱", "trial": "试炼", "story": "故人", "secret": "密室"}
+	"treasure": "宝箱", "trial": "试炼", "story": "故人", "secret": "密室", "nook": "秘处"}
 const TYPE_DESC := {"start": "", "fight": "成群的敌人，清完选一个心法", "elite": "赤甲武士带队，心法更好，必掉装备",
 	"shop": "游商：买心法、装备、补药，也能合成装备", "rest": "土地庙：回血或者补满药葫芦，也能合成装备", "event": "说不准会碰到什么",
 	"boss": "这一层的守关头目", "treasure": "没人看守的宝箱，开出装备和铜钱", "trial": "同一间房里连过四道试（疾、守、狂、乱），得印越多奖励越好",
-	"story": "路上遇到的人。你的选择会改变后面的事", "secret": "藏在裂墙后面的房间"}
+	"story": "路上遇到的人。你的选择会改变后面的事", "secret": "藏在裂墙后面的房间", "nook": "支线的尽头：三样别处拿不到的东西选一样"}
 
 var run: Run
 var act := 1                # 第几幕（1 归乡 / 2 入山 / 3 出山）
@@ -140,6 +140,8 @@ func remap() -> void:
 			if nd["type"] == "fight":
 				nd["type"] = "story"
 				break
+	# 第三幕：一层多两列房间，再加一条分岔支线（ArpgRoutes）
+	ArpgRoutes.expand(self)
 
 
 func floor_i() -> int:

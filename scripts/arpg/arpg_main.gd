@@ -1154,7 +1154,7 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	var a2 := state.act == 2 and room_kind != "tutorial"
 	var a3 := state.act == 3 and room_kind != "tutorial"
 	var sz := ACT3_ROOM if a3 else (ACT2_ROOM if a2 else ROOM_SIZE)
-	if room_kind in ["shop", "rest", "event", "start", "story", "treasure", "secret", "tutorial"]:
+	if room_kind in ["shop", "rest", "event", "start", "story", "treasure", "secret", "tutorial", "nook"]:
 		sz = ACT3_SMALL if a3 else (ACT2_SMALL if a2 else SMALL_ROOM)
 	elif room_kind == "boss":
 		sz = ACT3_BOSS if a3 else (ACT2_BOSS if a2 else BOSS_ROOM)
@@ -1226,7 +1226,7 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	match room_kind:
 		"boss":
 			Game.music(state.boss_music())
-		"secret":
+		"secret", "nook":
 			Game.music("secret")
 		"shop", "rest", "event", "start", "story", "treasure", "tutorial":
 			Game.music("hub")
@@ -1305,6 +1305,8 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 			_open_portal()
 	if state.act == 3 and room_kind != "tutorial":
 		Act3.enter_room(self, room_kind)
+	if room_kind != "tutorial":
+		ArpgRoutes.enter_room(self, room_kind)   # 分岔支线的房间、支线尽头的秘处
 	# 第一次玩：第一间房先听拾骨婆的开场白，说完再刷怪
 	if _first_intro:
 		_first_intro = false
@@ -1789,6 +1791,8 @@ func _room_cleared() -> void:
 		hud.banner("试炼完成", "得印 %d / 4　%s" % [n, "四印俱全，多一个心法可选" if n == 4 else "印越多，装备越好"], 2.2)
 		get_tree().create_timer(1.6).timeout.connect(func() -> void: _offer_boons(n_boons, "next"))
 		return
+	if room_kind == "fight":
+		ArpgRoutes.cleared(self)   # 支线的战斗房多给铜钱
 	hud.banner("清场", "选一个心法", 1.6)
 	get_tree().create_timer(0.9).timeout.connect(func() -> void: _offer_boons(n_boons, "next"))
 
@@ -2777,7 +2781,7 @@ func _choose_path(ex: Array) -> void:
 	for e: Array in ex:
 		var nd: Dictionary = e[1]
 		var t := String(nd["type"])
-		items.append({"title": ArpgState.TYPE_NAMES.get(t, t), "desc": ArpgState.TYPE_DESC.get(t, ""), "tag": "岔路",
+		items.append({"title": ArpgState.TYPE_NAMES.get(t, t), "desc": ArpgRoutes.card_desc(nd, String(ArpgState.TYPE_DESC.get(t, ""))), "tag": ArpgRoutes.card_tag(nd),
 			"color": _type_color(t), "glyph": String(ArpgState.TYPE_NAMES.get(t, t)).substr(0, 1)})
 	var m := _open_menu("分岔路", "第 %d 层　第 %d / %d 间　·　往哪走？" % [state.gfloor() + 1, state.run.row + 2, state.run.rows.size()], items, "cards", true)
 	var r0 := state.run.row
@@ -2797,7 +2801,7 @@ func _choose_path(ex: Array) -> void:
 
 func _type_color(t: String) -> Color:
 	return {"fight": Color(0.75, 0.85, 0.9), "elite": Color(1.0, 0.4, 0.35), "shop": Color(1.0, 0.85, 0.45), "rest": Color(0.5, 1.0, 0.6),
-		"event": Color(0.75, 0.6, 1.0), "boss": Color(0.95, 0.25, 0.4), "start": Color(0.6, 0.9, 0.9)}.get(t, ArpgMenu.TEAL)
+		"event": Color(0.75, 0.6, 1.0), "boss": Color(0.95, 0.25, 0.4), "start": Color(0.6, 0.9, 0.9), "nook": Color(1.0, 0.7, 0.35)}.get(t, ArpgMenu.TEAL)
 
 
 ## 路线图的位置：标题和副标题是固定像素排的，所以至少从 165 开始；矮屏（触屏 576 高）画扁一点
@@ -2806,7 +2810,13 @@ func _map_top(vs: Vector2) -> float:
 
 
 func _map_h(vs: Vector2) -> float:
-	return 66.0 if vs.y >= 650 else 52.0
+	var h := 66.0 if vs.y >= 650 else 52.0
+	# 一列有四间（加了分岔支线）：画高一点，别挤成一团
+	if state != null:
+		for r: Array in state.run.rows:
+			if r.size() >= 4:
+				return h * 1.4
+	return h
 
 
 ## 菜单上方画整层路线图：每个房间一个带字的圆点（战 / 精 / 商 / 歇 / 奇 / 首 …），走过的路亮，
@@ -2859,6 +2869,8 @@ func _draw_map(c: Control, vs: Vector2, ex: Array = [], top: float = -1.0) -> vo
 			c.draw_arc(p, rad, 0, TAU, 20, Color(col, 1.0 if on else 0.35), 1.5)
 			var g := String(ArpgState.TYPE_NAMES.get(t, "?")).substr(0, 1)
 			c.draw_string(font, p + Vector2(-5.5, 4.5), g, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(col, 1.0 if on else 0.4))
+			if nd.has("branch"):
+				c.draw_arc(p, rad + 3.0, 0, TAU, 20, Color(1.0, 0.7, 0.35, 0.85 if on else 0.35), 1.0)   # 分岔支线：外面多一圈橙
 			if here:
 				c.draw_arc(p, 14.0, 0, TAU, 24, ArpgMenu.GOLD, 2.0)
 
@@ -3714,6 +3726,40 @@ func _story_test(c: String) -> void:
 				print("STORYTEST ending enabled %s" % str(mm.items.map(func(it: Dictionary) -> bool: return bool(it.get("enabled", true)))))
 				if c == "act3end":
 					mm.chosen.emit(2))
+		"route":
+			# 分岔支线：打印三层的地图（列数、支线在哪），然后直接走到第一层支线尽头，拿第一样
+			if _title != null:
+				_title.queue_free()
+				_title = null
+			_start_run(true, 3)
+			for fl in range(3):
+				var desc := []
+				for r: Array in state.run.rows:
+					desc.append("".join(r.map(func(nd: Dictionary) -> String: return String(ArpgState.TYPE_NAMES.get(nd["type"], "?")).substr(0, 1) + ("*" if nd.has("branch") else ""))))
+				print("STORYTEST route floor=%d rows=%d %s" % [fl, state.run.rows.size(), " | ".join(desc)])
+				if fl < 2:
+					state.run.next_floor()
+					state.remap()
+			_start_run(true, 3)
+			for r in range(state.run.rows.size()):
+				for i in range((state.run.rows[r] as Array).size()):
+					if String(state.run.rows[r][i]["type"]) == "nook":
+						state.run.row = r
+						state.run.col = i
+			print("STORYTEST tag %s" % ArpgRoutes.card_tag(state.run.node()))
+			_enter_room()
+			get_tree().create_timer(4.0).timeout.connect(func() -> void:
+				for n: ArpgNpc in _npcs:
+					if is_instance_valid(n) and n.display == "山神庙":
+						n.interacted.emit(n)
+				get_tree().create_timer(1.0).timeout.connect(func() -> void:
+					var dd := _menu as DialogBox
+					if dd != null:
+						dd.finished.emit()
+					get_tree().create_timer(0.5).timeout.connect(func() -> void:
+						if _menu is ArpgMenu:
+							(_menu as ArpgMenu).chosen.emit(0)
+						print("STORYTEST route_stats %s max_hp %d" % [str(state.flags.get("route_stats", {})), int(hero.max_hp)]))))
 		"act3hub":
 			for n: ArpgNpc in _npcs:
 				print("STORYTEST npc %s" % n.display)

@@ -51,6 +51,7 @@ static func run_stats(st: ArpgState, stats: Dictionary) -> void:
 		ArpgData.add_stats(stats, {"atk": 0.15, "energy": 0.2})
 	if st.flags.has("stable_fed"):
 		ArpgData.add_stats(stats, {"move": 0.12})
+	ArpgRoutes.run_stats(st, stats)   # 支线尽头拿的加成
 
 
 ## 出发：把第一、二幕的选择带进来（剧情遭遇、头目对白用）
