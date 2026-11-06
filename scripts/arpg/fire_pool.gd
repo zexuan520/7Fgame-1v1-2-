@@ -3,6 +3,7 @@ extends Node3D
 ## 地上一滩火：披火骨死后留下的、不夜将军二阶段点着的灯油。站在里面每 0.5 秒烫一下（只伤主角，烧不死人）。
 ## warn > 0 时先亮一圈预警，过了这段时间才烧起来。
 ## elem = "poison" 时是一滩毒瘴（瘴菇骨、瘴毒词缀、瘴林）：绿色、冒烟，字是“毒”。
+## 敌人留下的这种也烫敌人（SharedHazards，火骨不怕火、瘴菇骨不怕毒），可以把敌人引进来。
 
 var radius := 1.6
 var damage := 6.0
@@ -109,5 +110,7 @@ func _process(dt: float) -> void:
 					Vfx.I.elem_burst(hh.chest(), "poison", false)
 				else:
 					Feel.I.callout(hh.head_top(), "烫", Color(1.0, 0.55, 0.2), 0.5)
+		# 敌我共享：敌人留下的火和毒、机关滴的铜汁，站在里面的敌人一样烫（SharedHazards）
+		SharedHazards.hit_foes(get_tree(), global_position, radius, "pool_poison" if elem == "poison" else "pool_fire", damage, 0.0, elem)
 	if _t >= life:
 		queue_free()

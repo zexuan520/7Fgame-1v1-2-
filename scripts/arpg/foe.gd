@@ -177,6 +177,7 @@ static var _twin_dead_t := -100.0    # 殉灯俑：上一只倒下的时间（�
 const AURA_R := 7.0                  # 灯童回血、旗手激励的半径
 const SPORE_R := 1.9                 # 瘴菇骨喷出的那团瘴的半径
 const BELL_R := 9.0                  # 铜钟僧钟声推多远
+var _trampled := {}                  # 冲阵骨这一趟冲锋已经撞翻的自己人（SharedHazards）
 var charge_dir := Vector3.ZERO       # 亲兵：列阵冲锋的方向（定好了就不跟着主角转）
 var _rank_t := 9.0                   # 不夜将军：多久号令一次亲兵
 var _fire_t := 6.0                   # 不夜将军二阶段：多久点一次灯油
@@ -813,6 +814,7 @@ func _windup_time() -> float:
 func _begin_attack(kind_: String) -> void:
 	_atk = kind_
 	_did_hit = false
+	_trampled.clear()
 	_combo_n = 0
 	_set_state("windup")
 	_blend = 0.3
@@ -1143,6 +1145,16 @@ func _st_attack(dt: float) -> void:
 					if hh != null and hh.alive and hh.global_position.distance_to(global_position) < radius + hh.radius + 0.5:
 						_did_hit = true
 						_hit_target(hh, float(data["dmg"]), HitInfo.Weight.HEAVY)
+			# 敌我共享：冲锋路上的自己人也被撞翻（每个只撞一次）
+			if not data.has("phantom"):
+				for f: Node in get_tree().get_nodes_in_group("foes"):
+					var ff := f as Foe
+					if ff == null or ff == self or not ff.alive or _trampled.has(ff.get_instance_id()):
+						continue
+					if ff.global_position.distance_to(global_position) < radius + ff.radius + 0.3:
+						_trampled[ff.get_instance_id()] = true
+						var side := (ff.global_position - global_position).normalized()
+						SharedHazards.hit_foe(ff, "charge", float(data["dmg"]) * dmg_scale, (_atk_dir + side).normalized(), 9.0)
 			# 撞到墙、柱子：自己晕一会儿（这时候是白打的机会）
 			if data.has("phantom") and st_t > 0.1 and get_slide_collision_count() > 0 and get_real_velocity().length() < 6.0:
 				_vanish()

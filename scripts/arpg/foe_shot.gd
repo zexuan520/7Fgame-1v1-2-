@@ -78,6 +78,18 @@ func _process(dt: float) -> void:
 			if Feel.I.on_hit(info):
 				queue_free()
 				return
+	# 敌我共享：箭不认人，挡在路上的别的敌人会挨一下（站到弩手和别的怪连成一线）
+	if _t > 0.06:
+		for f: Node in get_tree().get_nodes_in_group("foes"):
+			var ff := f as Foe
+			if ff == null or ff == owner_foe or not ff.alive:
+				continue
+			var d2 := ff.global_position - global_position
+			d2.y = 0
+			if d2.length() < 0.45 + ff.radius and SharedHazards.hit_foe(ff, "arrow", damage, dir, 4.0):
+				Vfx.I.pop(ff.chest(), "spark_01", color, 0.3, 1.2, 0.15)
+				queue_free()
+				return
 	if _t >= life:
 		queue_free()
 

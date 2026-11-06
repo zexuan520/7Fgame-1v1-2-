@@ -1407,6 +1407,7 @@ func _bench_end(won: bool) -> void:
 		won, state.jade, state.act, state.weapon, state.cycle, ArpgState.difficulty(), state.floor_i() + 1, state.run.row, state.rooms, state.kills,
 		_clock - _run_t0, state.level, hero.hits_taken, hero.dmg_total, hero.drinks, hero.max_hp, hero.dmg_mult, hero.taken_mult,
 		hero.crit_bonus, ",".join(state.boons), ",".join(state.relics), ",".join(gear), str(state.skills).replace(" ", ""), "" if won else hero.last_hit_by])
+	print("RUNSHARED " + " ".join(SharedHazards.stats.keys().map(func(k: String) -> String: return "%s=%d/%.0f" % [k, SharedHazards.stats[k][0], SharedHazards.stats[k][1]])))
 	if not state.daily.is_empty():
 		print("RUNDAILY kind=%s rule=%s seed=%d omen=%s" % [state.daily.get("kind", ""), state.daily.get("rule", ""), state.seed_value, state.omen])
 	get_tree().create_timer(0.5).timeout.connect(get_tree().quit)

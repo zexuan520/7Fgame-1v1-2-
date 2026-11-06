@@ -4,6 +4,7 @@ extends Node3D
 ## miasma 瘴林起瘴（绿）、bones 冢下骨刺（骨白）、bell 寺钟声浪（金环，翻滚穿过）、
 ## geyser 地宫涌泉（青）、molten 灯冢滴铜汁（橙）、arrows 营地箭雨（橙红小圈）。
 ## 只在波次进行中生效，清场就停。伤害按层数涨，不高，主要是逼人挪位置。
+## 机关也打敌人（SharedHazards），所以把怪引到预警圈里再闪开是一种打法。
 
 const NAMES := {"miasma": "林子里起瘴了", "bones": "地下有骨头在顶", "bell": "寺里的钟自己响了",
 	"geyser": "脚下的水在翻", "molten": "顶上在滴铜汁", "arrows": "望楼上有弩手"}
@@ -165,6 +166,7 @@ func _arrow(p: Vector3) -> void:
 
 
 func _hit(p: Vector3, r: float, d: float, elem: String, knock: float) -> void:
+	SharedHazards.hit_foes(get_tree(), p, r, "hazard", d, knock, elem)   # 骨刺、涌泉、箭雨不认人
 	for h: Node in get_tree().get_nodes_in_group("heroes"):
 		var hh := h as Hero
 		if hh == null or not hh.alive:
