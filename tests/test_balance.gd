@@ -110,6 +110,10 @@ func _run() -> void:
 	st2["easy"] = ArpgState.EASY_TAKEN
 	h.apply_stats(st2, "sword", true)
 	_check(h.taken_mult >= 0.3 * (1.0 - ArpgState.EASY_TAKEN) - 0.001, "游历难度下受伤倍率最低 %.3f" % h.taken_mult)
+	var st3 := _extreme("dmg_taken", -1.0)
+	ArpgData.add_stats(st3, ArpgCycle.hero_stats(8))
+	h.apply_stats(st3, "sword", true)
+	_check(h.taken_mult > 0.3 + 0.01, "减伤叠满再开轮回八，“伤”照样多受 15%%（×%.3f）" % h.taken_mult)
 
 	print("\n来回换兵器、穿脱装备不能刷血刷药")
 	h.apply_stats({}, "sword", true)

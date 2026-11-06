@@ -17,7 +17,7 @@ const SOFT := Color(0.72, 0.8, 0.8)
 ## stats 键 → [名字, 写法]。写法：pct 百分比带正负号 / neg 越少越好的百分比（冷却、价格，显示成减号）/ flat 整数 / sec 秒 / lv 级
 const KEYS := {
 	"hp": ["生命", "flat"], "atk": ["伤害", "pct"], "crit": ["会心率", "pct"], "crit_dmg": ["会心伤害", "pct"],
-	"dmg_taken": ["受伤", "pct"], "easy": ["受伤", "neg"], "move": ["移速", "pct"], "dash_cd": ["突进冷却", "neg"],
+	"dmg_taken": ["受伤", "pct"], "easy": ["受伤", "neg"], "taken_extra": ["受伤", "pct"], "move": ["移速", "pct"], "dash_cd": ["突进冷却", "neg"],
 	"finish_cd": ["终结冷却", "neg"], "iframes": ["翻滚无敌", "sec"], "roll_far": ["翻滚距离", "pct"], "energy": ["气力获取", "pct"],
 	"hurt_energy": ["挨打回气", "flat"], "beam": ["光束斩伤害", "pct"], "finish": ["终结技伤害", "pct"], "bleed": ["出血层数", "flat"],
 	"bleed_dmg": ["出血伤害", "pct"], "lifesteal": ["吸血", "pct1"], "kill_heal": ["斩杀回血", "flat"], "gourds": ["药葫芦", "flat"],
@@ -465,12 +465,12 @@ func _stat_rows() -> Array:
 	rows.append(_row("守", "生命", "%d / %d" % [int(ceil(h.hp)), int(h.max_hp)], ["hp"], {"num": h.max_hp, "base_num": Hero.BASE_HP, "base_txt": "%d" % int(Hero.BASE_HP),
 		"note": "生命上限。" + ("不动三件：挨打时震开一圈反震。" if h.set_iron else "") + ("金身：每 10 秒凝一层金光，挡掉下一次伤害。" if h.set_guard else "")}))
 	var tm := h.taken_mult
-	var tn := "挨打时伤害乘这个数（加成后最低 ×0.30，游历难度再另乘 0.65）。"
+	var tn := "挨打时伤害乘这个数（加成后最低 ×0.30，轮回八再另乘 1.15，游历难度再另乘 0.65）。"
 	if state.weapon == "greatsword":
 		tn += "大剑出刀时再 ×0.85。"
 	if h.duo.has("mingjing"):
 		tn += "明镜：光束斩后 4 秒再 ×0.6。"
-	rows.append(_row("守", "受到伤害", "×%.2f（%s %d%%）" % [tm, "减伤" if tm <= 1.0 else "多受", int(round(absf(1.0 - tm) * 100.0))], ["dmg_taken", "easy"],
+	rows.append(_row("守", "受到伤害", "×%.2f（%s %d%%）" % [tm, "减伤" if tm <= 1.0 else "多受", int(round(absf(1.0 - tm) * 100.0))], ["dmg_taken", "taken_extra", "easy"],
 		{"num": tm, "base_num": 1.0, "dir": -1.0, "base_txt": "×1.00", "note": tn}))
 	var ls := "%.1f%%" % (h.lifesteal * 100.0)
 	if h.kill_heal > 0.0:

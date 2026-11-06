@@ -137,7 +137,7 @@ static func hero_stats(lv: int) -> Dictionary:
 	if lv >= 7:
 		st["discount"] = -0.3
 	if lv >= 8:
-		st["dmg_taken"] = 0.15
+		st["taken_extra"] = 0.15   # 单独乘在最后（原来加进 dmg_taken，减伤叠到下限 0.3 的人这一条等于没有）
 	return st
 
 

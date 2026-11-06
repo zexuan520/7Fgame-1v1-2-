@@ -237,7 +237,7 @@ func stat_parts() -> Array:
 	for sp: Array in ArpgArms.set_parts(gear):
 		add.call("套装", "套装·%s（%d 件）" % [ArpgArms.GEAR_SETS[sp[0]]["name"], sp[1]], sp[2])
 	if curse > 0:
-		add.call("境况", "诅咒·地藏的钱%s" % (" ×%d" % curse if curse > 1 else ""), {"dmg_taken": 0.1 * curse})
+		add.call("境况", "诅咒·地藏的钱%s" % (" ×%d" % curse if curse > 1 else ""), {"taken_extra": 0.1 * curse})
 	var seen_b := {}
 	for b: String in boons:
 		seen_b[b] = int(seen_b.get(b, 0)) + 1

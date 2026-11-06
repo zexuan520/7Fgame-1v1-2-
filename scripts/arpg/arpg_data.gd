@@ -99,7 +99,7 @@ const BOONS := [
 	# 专属心法：打赢隐藏头目残影才会出现（hidden，见 ArpgState.roll_boons）
 	{"id": "afterimage", "name": "残影", "desc": "伤害 +10%、会心率 +5%、移速 +5%", "stats": {"atk": 0.1, "crit": 0.05, "move": 0.05}, "school": "风", "hidden": true},
 	# 第二幕：井中人身上取下的灯片（只从战后选择拿到，不进心法池）
-	{"id": "lamp_shard", "name": "灯片", "desc": "伤害 +18%、气力获取 +25%，代价是受伤 +8%", "stats": {"atk": 0.18, "energy": 0.25, "dmg_taken": 0.08}, "school": "光", "hidden": true, "unlock": "-"},
+	{"id": "lamp_shard", "name": "灯片", "desc": "伤害 +18%、气力获取 +25%，代价是受伤 +8%", "stats": {"atk": 0.18, "energy": 0.25, "taken_extra": 0.08}, "school": "光", "hidden": true, "unlock": "-"},
 ]
 
 ## 流派大成：同一流派的心法拿够 SET_NEED 个（同一个叠两次也算），触发一个质变效果
