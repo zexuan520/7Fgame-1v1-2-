@@ -1799,6 +1799,7 @@ func take_hit(info: HitInfo) -> bool:
 		iframes = 0.4
 		Vfx.I.shock_ring(global_position, Color(1.0, 0.85, 0.4), 0.5, 3.5, 0.35)
 		Vfx.I.impact_flash(chest(), 2.0, Color(1.0, 0.85, 0.4))
+		Vfx.I.sheet("parry", global_position + Vector3(0, 0.15, 0), 3.0, Color(1, 1, 1), 1.8, false, 0.0, 1.3)
 		Feel.I.callout(head_top(), "挡", Color(1.0, 0.85, 0.45), 0.8)
 		Game.sfx("parry", -2.0)
 		return false
@@ -1844,6 +1845,7 @@ func _try_mikiri(info: HitInfo) -> void:
 	Vfx.I.shock_ring(global_position, Color(0.5, 0.9, 1.0), 0.4, 4.2, 0.45)
 	Vfx.I.ghost(rig, Color(0.6, 0.95, 1.0), 0.6)
 	Vfx.I.pop(chest(), "flare_01", Color(0.6, 0.95, 1.0), 1.0, 4.0, 0.3, true, 0.0, 2.0)
+	Vfx.I.sheet("mikiri", global_position + Vector3(0, 0.15, 0), 3.4, Color(1, 1, 1), 2.0, false, 0.0, 1.2)
 	CamRig.I.punch_zoom(0.35, 0.3)
 	Game.sfx("mikiri", -2.0, 0.03)
 	ArpgAch.add("mikiri")

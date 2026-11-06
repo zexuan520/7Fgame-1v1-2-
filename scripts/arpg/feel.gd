@@ -30,6 +30,8 @@ var _frame := -1                  # 同一物理帧里第几下命中（一刀�
 var _frame_hits := 0
 var _impact := 0.0                # 冲击帧剩余时间（全屏黑白一两帧）
 var _impact_cd := 0.0
+var _speed: TextureRect           # 冲击帧时盖在屏幕上的放射速度线（pixelfx impact-frame 第 2~9 帧）
+var _speed_t := -1.0
 
 
 func _ready() -> void:
@@ -139,9 +141,13 @@ func _weapon_fx(info: HitInfo, w: int) -> void:
 	match info.snd:
 		"hit_blunt":
 			var gp := Vector3(info.target.global_position.x, 0.0, info.target.global_position.z)
-			if w >= 1 or _frame_hits == 1:
+			# 像素砸击（pixelfx blunt-hit）：白闪 + 一圈短刺 + 一团土；重击脚下再拍出一圈落地尘（heavy-landing）
+			if Vfx.I.room_for(2):
+				Vfx.I.sheet("blunt-hit", info.point - Vector3(0, 0.55, 0), 2.5 + 0.6 * w, Color(1, 0.95, 0.85), 2.2, false, 0.0, 1.5)
+			if w >= 1 and _frame_hits == 1 and Vfx.I.lod >= 1:
+				Vfx.I.sheet("heavy-landing", gp, 2.0, Color(0.85, 0.82, 0.75), 1.3, false, 0.0, 1.6)
+			elif w >= 1 or _frame_hits == 1:
 				Vfx.I.dust(gp, 1.0 + 0.5 * w, Color(0.55, 0.5, 0.42, 0.5))
-			Vfx.I.pop(info.point, "circle_05", Color(1.0, 0.85, 0.6), 0.4, 1.6 + 0.6 * w, 0.12, true, 0.0, 2.5)
 			Vfx.I.chips(info.point, Vector3.UP + info.dir * 0.4, Color(0.8, 0.78, 0.7), 3 + 2 * w, 6.5, 0.13)
 		"hit_pierce":
 			var p := info.point + info.dir * 0.6
@@ -157,8 +163,42 @@ func impact_frame(t: float = 0.05) -> void:
 		return
 	_impact = t
 	_impact_cd = 1.0
+	_speed_lines()
 	if OS.get_cmdline_user_args().has("--feellog"):
 		print("FEEL impact %.2f post=%s" % [t, post != null])
+
+
+
+func _speed_lines() -> void:
+	if _speed == null:
+		_speed = TextureRect.new()
+		var at := AtlasTexture.new()
+		at.atlas = load("res://assets/fx/pfx/impact-frame.png")
+		_speed.texture = at
+		_speed.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		_speed.stretch_mode = TextureRect.STRETCH_SCALE
+		_speed.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_speed.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_speed.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_speed)
+		move_child(_speed, 0)
+	_speed_t = 0.0
+	_tick_speed(0.0)
+
+
+## 速度线按真实时间 30 帧每秒播，从第 2 帧（四周放射）播到第 9 帧，越往后越淡
+func _tick_speed(real_dt: float) -> void:
+	if _speed_t < 0.0 or _speed == null:
+		return
+	_speed_t += real_dt
+	var f := 2 + int(_speed_t * 30.0)
+	if f > 9:
+		_speed.visible = false
+		_speed_t = -1.0
+		return
+	(_speed.texture as AtlasTexture).region = Rect2((f % 3) * 320, (f / 3) * 180, 320, 180)
+	_speed.visible = true
+	_speed.modulate = Color(1, 1, 1, 0.42 * (1.0 - (f - 2) / 8.0))
 
 
 ## 敌人倒下（Foe.die 调）：斩线 + 放射线；精英、一波最后一个、头目会短暂慢镜头
@@ -369,3 +409,4 @@ func _process_body(dt: float) -> void:
 		post.set_shader_parameter("hurt", _hurt)
 		post.set_shader_parameter("impact", 1.0 if _impact > 0.0 else 0.0)
 		_impact = maxf(_impact - real_dt, 0.0)
+	_tick_speed(real_dt)

@@ -16,6 +16,11 @@
 | stunned | status/stunned | 原色 | 重甲敌人被打断时头上的星星 |
 | soul-rise | spawn/soul-rise | 原色 | 掉魂玉的敌人飘出的魂 |
 | charge-up | lightning/charge-up | 原色 | 光束斩蓄力 |
+| blunt-hit | impacts/blunt-hit | 原色 | 锤、棍命中 |
+| heavy-landing | impacts/heavy-landing | 原色 | 锤、棍重击脚下落地尘 |
+| parry | impacts/parry | 原色 | 金身挡下一击、盾骷髅格挡 |
+| mikiri | impacts/parry | 青 | 见切 |
+| impact-frame | impacts/impact-frame | 原色 | 冲击帧时盖在屏幕上的放射速度线（只用第 2~9 帧） |
 | spirit-flame、bleeding | fire/spirit-flame、status/bleeding | 原色 | 备用 |
 
 画廊里的 Patch Pixel 字体不在 MIT 范围内，没有使用。
