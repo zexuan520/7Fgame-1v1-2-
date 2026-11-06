@@ -17,6 +17,8 @@ const NAMES := {
 		"lore": ["藏经阁", "满架经卷"], "trial": ["铜铃阵", "铃在自己响"]},
 	"well": {"cache": ["沉经库", "水底有光"], "ambush": ["水牢", "铁链在晃"], "spring": ["青泉", "水是温的"],
 		"lore": ["刻经僧遗骸", "满墙刻字"], "trial": ["链阵", "七根灯链"]},
+	"vault": {"cache": ["陪葬铜库", "铜锈味"], "ambush": ["甲士俑坑", "甲片在响"], "spring": ["灯油池", "油是凉的"],
+		"lore": ["壁画廊", "墙上有画"], "trial": ["七灯阵", "灯一盏盏亮"]},
 }
 ## 遗骸 / 骨室 / 藏经阁里读到的旧事（每层几段，随机一段）
 const LORE := {
@@ -40,18 +42,24 @@ const LORE := {
 		[["", "石台上摊着一本泡烂的寺志，只有一页还认得出字。"], ["寂光寺志", "“某年冬，住持枯荣下井寻灯，七日不返。弟子寂光守井四十九日，封井。”"]],
 		[["", "水里沉着一块灰布，布上缝着一盏灯的纹样。不是寺里的东西。"], ["", "布角绣着两个小字：续命。你把它塞进行囊，在布底下摸到几枚魂玉。"]],
 	],
+	"vault": [
+		[["", "一面铜壁上刻着铸灯的图：七座炉，七盏灯，炉前跪着一排排的人。"], ["铜壁铭文", "“一灯一村。村尽，灯成。”"]],
+		[["", "一具烛国甲士倒在灯油池边，甲胄还很完整，胸口却是空的。"], ["甲士的腰牌", "“不夜营 · 第三伍。将军说，灯不灭，我们就不用死。”"]],
+		[["", "角落里堆着新挖的土，几把铁锹，一张画了一半的图。不是烛国的东西。"], ["挖掘队的图", "“第四盏灯座已空。续命司令：余下三座，年底前起出。”你在图下面压着的布袋里摸到几枚魂玉。"]],
+	],
 }
-const ZONE_OF := {"forest": "forest", "sakura": "forest", "grave": "grave", "temple": "temple", "well": "well"}
+const ZONE_OF := {"forest": "forest", "sakura": "forest", "grave": "grave", "temple": "temple", "well": "well", "vault": "vault"}
 ## 屋里的摆设（靠墙放）
 const PROPS := {
 	"forest": ["crates", "barrel", "sack", "lumber", "barrel_small", "table", "bench"],
 	"grave": ["coffin", "gravestone", "skull_candle", "ribcage", "post_skull", "candles", "grave_b"],
 	"temple": ["shelf", "candles", "bench", "banner", "lantern", "shelf", "candles"],
 	"well": ["column", "candles", "shrine", "rubble", "skull_candle", "shelf", "pillar"],
+	"vault": ["crates", "coffin", "candles", "barrel", "rubble", "box", "column"],
 }
-const WALL := {"forest": "wall", "grave": "wall_broken", "temple": "wall", "well": "wall_broken"}
-const LIGHT := {"forest": Color(1.0, 0.75, 0.45), "grave": Color(0.55, 1.0, 0.7), "temple": Color(1.0, 0.8, 0.5), "well": Color(0.5, 0.85, 1.0)}
-const TINT := {"forest": Color(1.3, 1.15, 1.0), "grave": Color(0.85, 0.95, 0.9), "temple": Color(0.62, 0.5, 0.48), "well": Color(0.8, 0.95, 1.1)}
+const WALL := {"forest": "wall", "grave": "wall_broken", "temple": "wall", "well": "wall_broken", "vault": "wall"}
+const LIGHT := {"forest": Color(1.0, 0.75, 0.45), "grave": Color(0.55, 1.0, 0.7), "temple": Color(1.0, 0.8, 0.5), "well": Color(0.5, 0.85, 1.0), "vault": Color(1.0, 0.6, 0.3)}
+const TINT := {"forest": Color(1.3, 1.15, 1.0), "grave": Color(0.85, 0.95, 0.9), "temple": Color(0.62, 0.5, 0.48), "well": Color(0.8, 0.95, 1.1), "vault": Color(1.1, 0.85, 0.7)}
 
 var main: ArpgMain
 var arena: Arena
@@ -281,7 +289,7 @@ func _dress() -> void:
 		arena.kit(id, spots[i], (0.0 if i < 3 else PI * 0.5) + _rng.randf_range(-0.2, 0.2), 1.0, true)
 	# 地上散几件小东西（不挡路）
 	var bits := {"forest": ["sack", "barrel_small", "lumber"], "grave": ["ribcage", "gravemarker", "candles"], "temple": ["candles", "candles", "sack"],
-		"well": ["rubble", "candles", "ribcage"]}
+		"well": ["rubble", "candles", "ribcage"], "vault": ["rubble", "candles", "sack"]}
 	for i in range(3):
 		var p := at(_rng.randf_range(0.2, 0.8), _rng.randf_range(0.55, 0.85))
 		arena.kit(bits[zone][i], p, _rng.randf() * TAU, 0.8, false)
@@ -298,17 +306,17 @@ func _build_content() -> void:
 				var lp := at(_rng.randf_range(0.3, 0.9), _rng.randf_range(0.25, 0.75))
 				_coin_pile(lp)
 		"ambush":
-			arena.kit({"forest": "tree_dead", "grave": "crypt", "temple": "shrine", "well": "shrine"}[zone], at(0.85, 0.5), -side * PI * 0.5, 0.9 if zone != "grave" else 0.6, true)
+			arena.kit({"forest": "tree_dead", "grave": "crypt", "temple": "shrine", "well": "shrine", "vault": "coffin"}[zone], at(0.85, 0.5), -side * PI * 0.5, 0.9 if zone != "grave" else 0.6, true)
 		"spring":
 			var k: String = "shrine" if zone == "temple" else "well"
 			main._npc(display_name(), mid, {"kit": k, "scale": 1.3}, _use_spring)
 			if Vfx.I != null:
 				Vfx.I.ground(mid + Vector3(0, 0.02, 0), "magic_01", Color(0.5, 1.0, 0.8, 0.6), 2.2, 2.6, 1.0e6).reparent(self)
 		"lore":
-			var k2: String = {"forest": "grave_a", "grave": "coffin", "temple": "shelf", "well": "coffin"}[zone]
+			var k2: String = {"forest": "grave_a", "grave": "coffin", "temple": "shelf", "well": "coffin", "vault": "shrine"}[zone]
 			main._npc(display_name(), mid, {"kit": k2, "scale": 1.3}, _read_lore)
 		"trial":
-			var k3: String = {"forest": "gravestone", "grave": "skull_candle", "temple": "lantern", "well": "lantern"}[zone]
+			var k3: String = {"forest": "gravestone", "grave": "skull_candle", "temple": "lantern", "well": "lantern", "vault": "candles"}[zone]
 			main._npc(display_name(), mid, {"kit": k3, "scale": 1.6}, _start_trial)
 			arena.spirit_fire(mid + Vector3(0, 0.3, 0), Color(1.0, 0.6, 0.35) if zone != "grave" else Color(0.55, 1.0, 0.7), 1.1, 1.6, 6.0)
 
@@ -370,6 +378,8 @@ func _start_ambush() -> void:
 	var w: Array = [["crawler", 4, "skeleton", 2], ["rogue", 2, "skeleton", 2, "mage", 1], ["skeleton", 2, "rogue", 2, "mage", 1]][mini(fl, 2)]
 	if zone == "well":
 		w = ["drowned", 4, "chainmonk", 1]
+	elif zone == "vault":
+		w = ["armored", 2, "flameskel", 3]
 	if main.state.run.row >= 2 or fl >= 1:
 		w = w + ["samurai", 1]
 	_spawn(w)
@@ -400,6 +410,9 @@ func _start_trial(n: ArpgNpc) -> void:
 	var fl := main.state.floor_i()
 	if zone == "well":
 		_spawn(["crawler", 6, "drowned", 4])
+		return
+	if zone == "vault":
+		_spawn(["crawler", 6, "flameskel", 4])
 		return
 	_spawn([["crawler", 8, "skeleton", 2], ["crawler", 5, "rogue", 3, "mage", 1], ["skeleton", 3, "rogue", 3, "mage", 1]][mini(fl, 2)])
 
@@ -469,6 +482,15 @@ func _story_finds(lines: Array) -> void:
 		Game.save["arpg_jizo_head"] = true
 		Game.write_save()
 		lines.append_array(ArpgStory.JIZO_HEAD_FOUND)
+		return
+	# 第二幕 · 拾骨婆的身世：灯冢壁画廊里第一次看到守灯一族的壁画
+	if zone == "vault" and not bool(Game.save.get("arpg_hag_mural", false)):
+		Game.save["arpg_hag_mural"] = true
+		Game.write_save()
+		var tail: Array = lines.pop_back()
+		lines.clear()
+		lines.append_array(ArpgStory.HAG_MURAL)
+		lines.append(tail)
 		return
 	if zone == "forest" and ArpgStory.kite() < ArpgStory.KITE.size():
 		var k := ArpgStory.kite()

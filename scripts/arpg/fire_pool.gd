@@ -1,0 +1,66 @@
+class_name FirePool
+extends Node3D
+## 地上一滩火：披火骨死后留下的、不夜将军二阶段点着的灯油。站在里面每 0.5 秒烫一下（只伤主角，烧不死人）。
+## warn > 0 时先亮一圈预警，过了这段时间才烧起来。
+
+var radius := 1.6
+var damage := 6.0
+var life := 4.0
+var warn := 0.0
+var _t := 0.0
+var _tick := 0.0
+var _lit := false
+
+
+func _ready() -> void:
+	if warn > 0.0:
+		Vfx.I.telegraph_circle(global_position, radius, Color(1.0, 0.45, 0.1, 0.55), warn)
+	else:
+		_light()
+
+
+func _light() -> void:
+	_lit = true
+	Vfx.I.ground(global_position, "scorch_01", Color(0.08, 0.04, 0.02, 0.8), radius * 1.8, radius * 2.0, life + 0.6, false)
+	Vfx.I.ground(global_position, "magic_03", Color(1.0, 0.45, 0.12, 0.7), radius * 1.6, radius * 2.1, life, true, 0.15)
+	var n := 3 if Vfx.I.lod > 0 else 1
+	for i in range(n):
+		var a := TAU * i / n + randf()
+		var f := Vfx.I.sheet("spirit-flame", global_position + Vector3(cos(a), 0, sin(a)) * radius * 0.45, 1.1, Color(1.0, 0.55, 0.2), 2.2, false, life)
+		if f != null:
+			f.reparent(self)
+	var l := OmniLight3D.new()
+	l.light_color = Color(1.0, 0.5, 0.2)
+	l.light_energy = 1.6
+	l.omni_range = radius * 3.0
+	add_child(l)
+	l.position.y = 0.6
+	Game.sfx("flame", -8.0, 0.1, 0.9)
+
+
+func _process(dt: float) -> void:
+	if Feel.I != null and Feel.I.world_pause > 0.0:
+		return
+	_t += dt
+	if not _lit:
+		if _t >= warn:
+			_t = 0.0
+			_light()
+		return
+	_tick -= dt
+	if _tick <= 0.0:
+		_tick = 0.5
+		for h: Node in get_tree().get_nodes_in_group("heroes"):
+			var hh := h as Hero
+			if hh == null or not hh.alive or hh.iframes > 0.0:
+				continue
+			var d := hh.global_position - global_position
+			d.y = 0
+			if d.length() < radius + hh.radius * 0.5 and not hh.invincible:
+				# 烫一下：直接扣血（不打断动作，好让人走出去；烧不死人，最多剩 1 点）
+				hh.hp = maxf(hh.hp - damage * hh.taken_mult, minf(hh.hp, 1.0))
+				hh.dmg_total += damage * hh.taken_mult
+				Feel.I.hurt_pulse(0.35)
+				Feel.I.callout(hh.head_top(), "烫", Color(1.0, 0.55, 0.2), 0.5)
+	if _t >= life:
+		queue_free()

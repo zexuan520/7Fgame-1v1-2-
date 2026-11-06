@@ -38,6 +38,8 @@ const ZONES := {
 		"sun": Color(0.62, 0.8, 0.75), "sun_e": 1.15, "spore": Color(0.6, 1.0, 0.6)},
 	"well": {"bg": Color(0.02, 0.04, 0.07), "fog": Color(0.05, 0.14, 0.2), "fog_d": 0.6, "amb": Color(0.48, 0.52, 0.58), "amb_e": 1.45,
 		"sun": Color(0.7, 0.85, 1.0), "sun_e": 1.2, "spore": Color(0.5, 0.9, 1.0)},
+	"vault": {"bg": Color(0.06, 0.03, 0.02), "fog": Color(0.18, 0.09, 0.04), "fog_d": 0.55, "amb": Color(0.6, 0.47, 0.36), "amb_e": 1.35,
+		"sun": Color(1.0, 0.78, 0.55), "sun_e": 1.1, "spore": Color(1.0, 0.6, 0.25)},
 	"sakura": {"bg": Color(0.05, 0.04, 0.09), "fog": Color(0.12, 0.1, 0.2), "fog_d": 0.65, "amb": Color(0.45, 0.38, 0.6), "amb_e": 1.25,
 		"sun": Color(0.72, 0.76, 1.0), "sun_e": 1.2, "spore": Color(1.0, 0.6, 0.8)},
 }
@@ -75,6 +77,8 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 			_dress_sakura()
 		"well":
 			_dress_well()
+		"vault":
+			_dress_vault()
 	_atmosphere()
 	_clear_doorways()
 	_make_spawns()
@@ -170,6 +174,23 @@ func _floor_color(x: float, z: float) -> Color:
 				if absf(absf(x) - 1.7) < FV:
 					c = c * 1.2
 			return c * (1.2 + n2 * 0.12)
+		"vault":
+			# 灯冢：深褐的大方砖，砖缝嵌铜线；两道熔铜沟沿着柱廊从里通到外，中间一圈铜纹地心
+			var sx := int(floor(x / 1.8))
+			var sz := int(floor(z / 1.8))
+			var shade := 0.85 + 0.15 * sin(sx * 12.9898 + sz * 78.233)
+			var c := Color(0.25, 0.2, 0.17).lerp(Color(0.31, 0.25, 0.2), n * 0.5 + 0.5) * shade
+			if fposmod(x, 1.8) < FV * 0.8 or fposmod(z, 1.8) < FV * 0.8:
+				c = Color(0.42, 0.3, 0.16) if n2 > -0.2 else Color(0.12, 0.09, 0.07)
+			var ch := _vault_channel(x, z)
+			if ch > 0.0:
+				c = Color(0.12, 0.07, 0.05).lerp(Color(1.0, 0.55, 0.18), ch)
+			var r := Vector2(x, z).length()
+			if absf(r - 3.2) < 0.12 or absf(r - 4.4) < 0.08:
+				c = Color(0.55, 0.4, 0.2)
+			elif r < 3.2 and fposmod(atan2(z, x) * 7.0 / TAU, 1.0) < 0.06:
+				c = Color(0.45, 0.33, 0.18)
+			return c * (1.15 + n2 * 0.1)
 		"temple":
 			var plank := int(floor(x / 0.6))
 			var seam := fposmod(x, 0.6) < FV * 0.6
@@ -1224,6 +1245,271 @@ func _chain(n: int) -> VoxelGrid:
 	g.box(Vector3i(-2, yb - 3, -2), Vector3i(2, yb, 2), Color(0.25, 0.35, 0.4), 0.05)
 	g.cells[Vector3i(0, yb - 2, 3)] = Color(0.4, 0.8, 1.0)
 	return g
+
+
+## 熔铜沟：0 不在沟里，0~1 越靠沟中间越亮（柱廊两侧各一道竖沟，后半截一道横沟连起来）
+func _vault_channel(x: float, z: float) -> float:
+	var cx := 5.0 * _kx()
+	var w := 0.32
+	var d := absf(absf(x) - cx)
+	var best := 0.0
+	if d < w and z > -size.y * 0.5 + 2.5 and z < size.y * 0.5 - 3.5:
+		best = 1.0 - d / w
+	var dz := absf(z + size.y * 0.5 - 4.0)
+	if dz < w and absf(x) <= cx:
+		best = maxf(best, 1.0 - dz / w)
+	return best
+
+
+## 烛国灯冢：后墙一排七盏灯龛（只亮着几盏），两侧铜灯架和熔炉，柱廊里站着成排的铜甲士像；
+## 地上两道熔铜沟，头目半血 ignite() 时沟里的铜水烧起来
+var lava: MeshInstance3D
+var _lava_lights: Array[OmniLight3D] = []
+
+
+func _dress_vault() -> void:
+	var hx := size.x * 0.5
+	var hz := size.y * 0.5
+	var kx := _kx()
+	var kz := _kz()
+	var ka := _ka()
+	# 后墙：灯龛（青铜壁上一格格凹进去，每格一盏铜灯，七格里亮三四格）
+	var nt := int((hx - 1.0) / 2.6)
+	for i in range(-nt, nt + 1):
+		var x := i * 2.6
+		if absf(x) < 2.2:
+			continue
+		var lit := (absi(i) + rng.randi()) % 3 != 0
+		var ni: Array = _cached("niche|%d" % int(lit), _lamp_niche.bind(lit))
+		voxel_piece(ni[0], Vector3(x - 1.1, 0, -hz - 0.3), 0.12, ni[1])
+		if lit and absi(i) % 2 == 1:
+			var l := OmniLight3D.new()
+			l.light_color = Color(1.0, 0.6, 0.3)
+			l.light_energy = 1.6
+			l.omni_range = 5.5
+			add_child(l)
+			l.position = Vector3(x, 2.2, -hz + 0.6)
+	# 两侧：铜灯架一排（高脚灯盏，点着火）
+	for side: float in [-1.0, 1.0]:
+		var np := maxi(3, int(round(3.0 * kz)))
+		for j in range(np):
+			var z := -hz + 3.0 + j * (size.y - 6.0) / float(np - 1)
+			var p := Vector3(side * (hx - 1.3), 0, z)
+			var ls: Array = _cached("lampstand", _lamp_stand)
+			voxel_piece(ls[0], p, 0.12, ls[1], Vector3(0.8, 3, 0.8))
+			if j % 2 == 0:
+				var fl := OmniLight3D.new()
+				fl.light_color = Color(1.0, 0.62, 0.3)
+				fl.light_energy = 1.8
+				fl.omni_range = 6.5
+				add_child(fl)
+				fl.position = p + Vector3(-side * 0.4, 2.6, 0)
+				_flame(p + Vector3(0, 2.45, 0))
+	# 柱廊：熔铜沟外侧一排铜甲士像（站岗的样子，烛国的兵），中间留出打架的场地
+	var cx := 5.0 * kx
+	for sx: float in [-1.0, 1.0]:
+		var ns := maxi(2, int(round(2.0 * kz)))
+		for j in range(ns):
+			var z := lerpf(-hz + 4.5, hz - 5.5, (j + 0.5) / float(ns))
+			_bronze_statue(Vector3(sx * (cx + 2.2), 0, z), -sx * 0.25)
+	# 熔炉：左右后角各一座，冒着烟和火星
+	for sx: float in [-1.0, 1.0]:
+		var fp := Vector3(sx * (hx - 4.5), 0, -hz + 2.2)
+		var fu: Array = _cached("furnace", _furnace)
+		voxel_piece(fu[0], fp, 0.12, fu[1], Vector3(2.2, 2, 1.8))
+		var fl2 := OmniLight3D.new()
+		fl2.light_color = Color(1.0, 0.5, 0.2)
+		fl2.light_energy = 2.4
+		fl2.omni_range = 7.0
+		add_child(fl2)
+		fl2.position = fp + Vector3(0, 1.0, 1.2)
+		_smoke_column(fp + Vector3(0, 2.6, 0))
+		_flame(fp + Vector3(0, 0.6, 1.0))
+	# 场地里：倒下的灯架、铜箱、碎陶俑（障碍）
+	var spots := [Vector3(-2.5 * kx, 0, -5.0 * kz), Vector3(2.8 * kx, 0, 4.0 * kz)]
+	for i in range(int(round(3.0 * (ka - 1.0))) + 2):
+		var fp := _free_spot(4.5)
+		if fp != Vector3.INF:
+			spots.append(fp)
+	for s0: Vector3 in spots:
+		var r := rng.randf()
+		if r < 0.3:
+			kit("crates", s0, rng.randf() * TAU, 1.0, true)
+		elif r < 0.55:
+			kit("rubble", s0, rng.randf() * TAU, 1.1, true)
+		elif r < 0.8:
+			kit("coffin", s0, rng.randf_range(-0.3, 0.3), 1.0, true)
+		else:
+			kit("column", s0, 0.0, 1.5, true)
+	for i in range(int(6 * ka)):
+		var p := Vector3(rng.randf_range(-hx + 3, hx - 3), 0, rng.randf_range(-hz + 3, hz - 3))
+		if absf(absf(p.x) - cx) > 1.0 and absf(p.x) > 2.5:
+			kit(["candles", "skull_candle", "barrel_small", "rubble", "sack"][rng.randi() % 5], p, rng.randf() * TAU, 0.8, false)
+	# 熔铜沟上方的一串暖光（ignite 时一起变亮），顶上几盏大灯把地照亮
+	var nl := maxi(3, int(round(3.0 * kz)))
+	for sx: float in [-1.0, 1.0]:
+		for j in range(nl):
+			var l := OmniLight3D.new()
+			l.light_color = Color(1.0, 0.5, 0.18)
+			l.light_energy = 0.7
+			l.omni_range = 4.5
+			add_child(l)
+			l.position = Vector3(sx * cx, 0.6, lerpf(-hz + 3.0, hz - 4.0, j / float(nl - 1)))
+			_lava_lights.append(l)
+	var tops := [Vector3(0, 4.0, -1.0), Vector3(-9 * kx, 4.0, 2.0 * kz), Vector3(9 * kx, 4.0, 2.0 * kz)]
+	for p: Vector3 in tops:
+		var wl := OmniLight3D.new()
+		wl.light_color = Color(1.0, 0.78, 0.55)
+		wl.light_energy = 1.7
+		wl.omni_range = 12.0
+		add_child(wl)
+		wl.position = p
+	_lava_plane()
+	_embers()
+	# 前景：靠镜头的铜灯架剪影
+	for x0: float in _fg_xs():
+		var ls2: Array = _cached("lampstand_fg", _lamp_stand.bind(Color(0.07, 0.05, 0.03)))
+		voxel_piece(ls2[0], Vector3(x0 + rng.randf_range(-1.0, 1.0), 0, hz + 1.2), 0.18, null, Vector3.ZERO, true)
+
+
+## 铜水：熔铜沟上一层流动的亮橙色（借积水的焦散 shader，换成橙色）
+func _lava_plane() -> void:
+	lava = MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(size.x + 4.0, size.y + 4.0)
+	lava.mesh = pm
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/arpg/water.gdshader")
+	m.set_shader_parameter("caustic", load("res://assets/fx/lm_water_caustics_b.png"))
+	m.set_shader_parameter("tint", Color(0.9, 0.35, 0.08, 0.35))
+	m.set_shader_parameter("glint", Color(1.0, 0.85, 0.4))
+	m.set_shader_parameter("scale", 0.6)
+	m.set_shader_parameter("spread", 0.12)
+	var w := int((size.x + 4.0) / 0.2)
+	var h := int((size.y + 4.0) / 0.2)
+	var px := PackedByteArray()
+	px.resize(w * h)
+	var x0 := -(size.x + 4.0) * 0.5
+	var z0 := -(size.y + 4.0) * 0.5
+	for iz in range(h):
+		for ix in range(w):
+			px[iz * w + ix] = clampi(int(_vault_channel(x0 + ix * 0.2, z0 + iz * 0.2) * 1.6 * 255.0), 0, 255)
+	m.set_shader_parameter("mask", ImageTexture.create_from_image(Image.create_from_data(w, h, false, Image.FORMAT_L8, px)))
+	m.set_shader_parameter("rect", Vector4(x0, z0, size.x + 4.0, size.y + 4.0))
+	lava.material_override = m
+	lava.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	lava.set_meta("floor", true)
+	add_child(lava)
+	lava.position = Vector3(0, 0.02, 0)
+
+
+## 火星：满屋子往上飘的橙色小亮点
+func _embers() -> void:
+	var pt := CPUParticles3D.new()
+	pt.amount = mini(int(50 * _ka()), 110) / (2 if lod == 0 else 1)
+	pt.lifetime = 5.0
+	pt.preprocess = 5.0
+	pt.mesh = _particle_quad(0.08)
+	pt.material_override = _fx_mat("light_01", Color(1.0, 0.55, 0.2), true, 2.2)
+	pt.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	pt.emission_box_extents = Vector3(size.x * 0.5, 0.3, size.y * 0.5)
+	pt.direction = Vector3(0.1, 1, 0)
+	pt.spread = 25.0
+	pt.initial_velocity_min = 0.3
+	pt.initial_velocity_max = 0.8
+	pt.gravity = Vector3(0.1, 0.15, 0)
+	add_child(pt)
+	pt.position = Vector3(0, 0.3, 0)
+
+
+## 灯冢点火（不夜将军半血）：铜水沟烧起来，沟上的光变亮，墙边灯架窜起火苗
+func ignite() -> void:
+	if lava != null:
+		var m := lava.material_override as ShaderMaterial
+		var tw := create_tween()
+		tw.tween_method(func(v: float) -> void: m.set_shader_parameter("level", v), 0.0, 1.0, 1.4)
+	for l: OmniLight3D in _lava_lights:
+		var tw2 := create_tween()
+		tw2.tween_property(l, "light_energy", 2.6, 1.4)
+		tw2.parallel().tween_property(l, "omni_range", 7.0, 1.4)
+	var hz := size.y * 0.5
+	var cx := 5.0 * _kx()
+	for sx: float in [-1.0, 1.0]:
+		for j in range(4):
+			spirit_fire(Vector3(sx * cx, 0.1, lerpf(-hz + 3.0, hz - 4.0, j / 3.0)), Color(1.0, 0.55, 0.2), 1.3, 0.0, 0.1)
+
+
+## 灯龛：一格青铜壁，中间凹进去放一盏灯；返回 [铜壁, 发光的灯火]
+func _lamp_niche(lit: bool) -> Array:
+	var g := VoxelGrid.new(160 + int(lit))
+	var glow := VoxelGrid.new(162)
+	var bronze := Color(0.36, 0.25, 0.14)
+	g.box(Vector3i(0, 0, 0), Vector3i(18, 30, 2), bronze, 0.08)
+	# 凹进去的龛（挖空成深色）
+	for x in range(5, 14):
+		for y in range(12, 24):
+			g.cells[Vector3i(x, y, 2)] = Color(0.08, 0.05, 0.04)
+	g.box(Vector3i(4, 11, 2), Vector3i(14, 11, 4), bronze * 1.3, 0.05)
+	g.box(Vector3i(-1, 31, -1), Vector3i(19, 32, 3), bronze * 0.7, 0.05)
+	g.box(Vector3i(0, 3, 3), Vector3i(18, 3, 3), Color(0.55, 0.4, 0.2), 0.04)
+	# 灯盏：小铜碗
+	g.box(Vector3i(7, 12, 3), Vector3i(11, 13, 5), Color(0.6, 0.42, 0.2), 0.05)
+	if lit:
+		glow.box(Vector3i(8, 14, 4), Vector3i(10, 16, 4), Color(1.0, 0.7, 0.3), 0.0)
+		glow.cells[Vector3i(9, 17, 4)] = Color(1.0, 0.85, 0.5)
+	return [g, glow]
+
+
+## 高脚铜灯架：三足底座 + 细长杆 + 顶上大灯盏（发光的火）
+func _lamp_stand(c: Color = Color(0.45, 0.31, 0.16)) -> Array:
+	var g := VoxelGrid.new(170)
+	var glow := VoxelGrid.new(171)
+	for a in range(3):
+		var d := Vector2(cos(a * TAU / 3.0), sin(a * TAU / 3.0))
+		for k in range(4):
+			g.cells[Vector3i(int(round(d.x * k)), maxi(0, 1 - k / 2), int(round(d.y * k)))] = c * 0.8
+	g.box(Vector3i(-1, 1, -1), Vector3i(1, 2, 1), c, 0.05)
+	g.box(Vector3i(0, 3, 0), Vector3i(0, 18, 0), c, 0.05)
+	g.box(Vector3i(-1, 10, -1), Vector3i(1, 10, 1), c * 1.2, 0.03)
+	g.box(Vector3i(-3, 19, -3), Vector3i(3, 19, 3), c, 0.05)
+	g.box(Vector3i(-3, 20, -3), Vector3i(3, 20, 3), c * 1.15, 0.05)
+	for x in range(-2, 3):
+		for z in range(-2, 3):
+			g.cells.erase(Vector3i(x, 20, z))
+			if c.r > 0.2:
+				glow.cells[Vector3i(x, 20, z)] = Color(1.0, 0.6, 0.25)
+	if c.r > 0.2:
+		glow.box(Vector3i(-1, 21, -1), Vector3i(1, 21, 1), Color(1.0, 0.75, 0.35), 0.0)
+	return [g, glow]
+
+
+## 熔炉：方形铜炉，正面炉口发着橙光
+func _furnace() -> Array:
+	var g := VoxelGrid.new(180)
+	var glow := VoxelGrid.new(181)
+	var b := Color(0.3, 0.21, 0.13)
+	g.box(Vector3i(-9, 0, -7), Vector3i(9, 14, 7), b, 0.08)
+	g.box(Vector3i(-10, 15, -8), Vector3i(10, 16, 8), b * 0.75, 0.05)
+	g.box(Vector3i(-3, 17, -3), Vector3i(3, 22, 3), b * 0.9, 0.05)
+	for x in range(-5, 6):
+		for y in range(2, 8):
+			g.cells.erase(Vector3i(x, y, 7))
+			glow.cells[Vector3i(x, y, 7)] = Color(1.0, 0.5, 0.15).lerp(Color(1.0, 0.8, 0.4), float(y - 2) / 6.0)
+	return [g, glow]
+
+
+## 铜甲士像：一具骑士模型染成铜色，立在方台上，拄着剑
+func _bronze_statue(p: Vector3, yaw: float) -> void:
+	var base := VoxelGrid.new(190)
+	base.box(Vector3i(-5, 0, -5), Vector3i(5, 3, 5), Color(0.24, 0.18, 0.13), 0.06)
+	voxel_piece(base, p, 0.12, null, Vector3(1.3, 3, 1.3))
+	var a := VoxActor.new()
+	add_child(a)
+	a.position = p + Vector3(0, 0.45, 0)
+	a.rotation.y = yaw
+	a.setup("knight", "sword", 36.0, Color(0.85, 0.58, 0.32), 1.15)
+	a.apply(Poses.idle(0.0))
+	a.set_rim(Color(1.0, 0.7, 0.35), 0.35)
 
 
 ## 前景剪影的 x 位置：左右两侧各一棵，房间宽了中间再加

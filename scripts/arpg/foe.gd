@@ -7,9 +7,9 @@ extends Actor
 ## 盾骷髅（正面举盾挡刀，绕后或连砍破盾）、招魂巫（躲在后面招小鬼，打死它小鬼散架）、头目（夜樱剑鬼、百骨将会召唤小怪和地刺、寂光）。
 
 ## 头目进二阶段时头上冒的字
-const RAGE_NAMES := {"boss": "剑鬼·狂", "boss3": "万骨·醒", "boss2": "残灯·燃", "boss4": "枯荣·涨"}
+const RAGE_NAMES := {"boss": "剑鬼·狂", "boss3": "万骨·醒", "boss2": "残灯·燃", "boss4": "枯荣·涨", "boss5": "不夜·燃"}
 ## 头目半血变身时说的一句
-const RAGE_LINES := {"boss": "樱花……还没落完。", "boss3": "都起来！谁准你们躺下的！", "boss2": "灯不能灭……灯不能灭！", "boss4": "水……太冷了。"}
+const RAGE_LINES := {"boss": "樱花……还没落完。", "boss3": "都起来！谁准你们躺下的！", "boss2": "灯不能灭……灯不能灭！", "boss4": "水……太冷了。", "boss5": "四百年了，谁来让我躺下！"}
 
 signal dropped(pos: Vector3, coins: int, jade: int)
 
@@ -50,6 +50,20 @@ const TYPES := {
 	# 阿七（第四层拔刀）：续命司的刀法，快刀加突刺
 	"ronin": {"name": "阿七", "model": "barbarian", "weapon": "sword", "wlen": 34.0, "tint": Color(1.15, 0.85, 0.65), "k": 1.0,
 		"hp": 420.0, "speed": 4.8, "detect": 30.0, "range": 2.5, "dmg": 15.0, "windup": 0.42, "attack": "slash", "poise": 55.0, "coins": 25},
+	# 烛国甲士：一身铜甲，平时只吃三成伤害；打掉韧性（破韧）后甲片松开，几秒内伤害全吃
+	"armored": {"name": "烛国甲士", "model": "knight", "weapon": "axe2", "wlen": 44.0, "tint": Color(1.05, 0.8, 0.5), "k": 1.2,
+		"hp": 150.0, "speed": 2.9, "detect": 13.0, "range": 2.8, "dmg": 19.0, "windup": 0.7, "attack": "heavy", "poise": 55.0, "coins": 8, "armor": 0.35},
+	# 披火骨：浑身着火的骨兵，死了留下一滩火
+	"flameskel": {"name": "披火骨", "model": "skel_warrior", "weapon": "skel_blade", "wlen": 30.0, "tint": Color(1.35, 0.75, 0.45), "k": 1.0,
+		"hp": 60.0, "speed": 4.2, "detect": 14.0, "range": 2.2, "dmg": 12.0, "windup": 0.5, "attack": "slash", "poise": 0.0, "coins": 4, "fire": true},
+	# 不夜将军的亲兵（幻影）：列阵冲一趟就散
+	"phantom": {"name": "亲兵", "model": "knight", "weapon": "axe2", "wlen": 40.0, "tint": Color(1.3, 1.05, 0.6), "k": 1.15,
+		"hp": 9999.0, "speed": 3.0, "detect": 40.0, "range": 2.6, "dmg": 16.0, "windup": 0.8, "attack": "charge", "poise": 999.0, "coins": 0},
+	# 续命司的挖掘队头领（灯冢里的精英战，第一次和活人交手）
+	"digger": {"name": "挖掘队头领", "model": "barbarian", "weapon": "axe2", "wlen": 40.0, "tint": Color(0.75, 0.78, 0.82), "k": 1.15,
+		"hp": 360.0, "speed": 4.0, "detect": 30.0, "range": 2.7, "dmg": 18.0, "windup": 0.55, "attack": "heavy", "poise": 60.0, "coins": 20},
+	"boss5": {"name": "不夜将军", "model": "knight", "weapon": "axe2", "wlen": 60.0, "tint": Color(1.1, 0.85, 0.55), "k": 2.0,
+		"hp": 1050.0, "speed": 3.2, "detect": 40.0, "range": 3.6, "dmg": 22.0, "windup": 0.62, "attack": "boss", "poise": 150.0, "coins": 90, "boss": true},
 	"boss4": {"name": "井中人·枯荣", "model": "skel_mage", "weapon": "skel_staff", "wlen": 48.0, "tint": Color(0.65, 0.88, 1.15), "k": 1.8,
 		"hp": 950.0, "speed": 3.0, "detect": 40.0, "range": 3.4, "dmg": 20.0, "windup": 0.6, "attack": "boss", "poise": 130.0, "coins": 80, "boss": true, "head": "skel_minion"},
 	"boss3": {"name": "百骨将", "model": "skel_warrior", "weapon": "skel_axe", "wlen": 50.0, "tint": Color(0.9, 1.0, 0.85), "k": 2.0,
@@ -99,11 +113,16 @@ var _exploded := false               # 爆骨鬼已经炸过
 var _aim: Array[Vector3] = []        # 骨弩手这一轮射哪几个方向
 var _lurk_t := 0.0                   # 水骨在水里埋了多久
 var _tide_t := 8.0                   # 枯荣：二阶段多久推一次水波
+var _armor_down := 0.0               # 烛国甲士：破甲剩余时间
+var charge_dir := Vector3.ZERO       # 亲兵：列阵冲锋的方向（定好了就不跟着主角转）
+var _rank_t := 9.0                   # 不夜将军：多久号令一次亲兵
+var _fire_t := 6.0                   # 不夜将军二阶段：多久点一次灯油
 ## 每种新敌人第一次出现时头上冒一句提示（一次游戏里只冒一次）
 static var _seen := {}
 const HINTS := {"archer": "骨弩手 · 躲开红线", "charger": "冲阵骨 · 引它撞墙", "bomber": "爆骨鬼 · 先下手",
 	"shield": "盾骷髅 · 绕后或连砍破盾", "summoner": "招魂巫 · 先杀它", "shadow": "残影 · 他用的是你的刀法",
-	"drowned": "水骨 · 小心脚下的水", "chainmonk": "灯奴僧 · 链子扫一圈，翻滚躲开", "ronin": "阿七 · 续命司的刀法"}
+	"drowned": "水骨 · 小心脚下的水", "chainmonk": "灯奴僧 · 链子扫一圈，翻滚躲开", "ronin": "阿七 · 续命司的刀法",
+	"armored": "烛国甲士 · 铜甲挡刀，先打破韧", "flameskel": "披火骨 · 死后留火，别站进去", "digger": "续命司 · 活人"}
 var _trail: BladeTrail
 var dmg_scale := 1.0
 
@@ -150,6 +169,12 @@ func _ready() -> void:
 			rig.set_rim(Color(0.5, 1.0, 0.6), 0.6)
 		"charger":
 			rig.set_rim(Color(1.0, 0.5, 0.3), 0.5)
+		"flameskel":
+			rig.set_rim(Color(1.0, 0.5, 0.15), 0.9)
+		"phantom":
+			rig.set_rim(Color(1.0, 0.8, 0.35), 1.0)
+		"armored":
+			rig.set_rim(Color(1.0, 0.75, 0.4), 0.35)
 	# 精英和头目出刀带拖尾（颜色同时也是“危险”提示）
 	if max_poise > 0.0 and rig.weapon != null:
 		_trail = BladeTrail.new()
@@ -199,6 +224,10 @@ func _physics_process(delta: float) -> void:
 			guard = float(data.get("guard", 0.0))
 			if rig.offhand != null:
 				rig.offhand.visible = true
+	if _armor_down > 0.0:
+		_armor_down -= dt
+	if kind == "flameskel" and state != "windup":
+		rig.set_glow(Color(1.0, 0.4, 0.1) * (0.18 + 0.1 * sin(_anim_t * 7.0)))
 	if kind == "bomber" and state != "windup":
 		# 爆骨鬼身上一直一明一暗地烧着
 		rig.set_glow(Color(1.0, 0.45, 0.1) * (0.25 + 0.2 * sin(_anim_t * 9.0)))
@@ -210,6 +239,9 @@ func _physics_process(delta: float) -> void:
 			if st_t >= 0.45:
 				rig.scale = Vector3.ONE
 				_set_state("patrol")
+				if kind == "phantom":
+					_has_token = false
+					_begin_attack("charge")
 				if HINTS.has(kind) and not _seen.has(kind):
 					_seen[kind] = true
 					Feel.I.callout(head_top() + Vector3(0, 0.3, 0), String(HINTS[kind]), Color(1.0, 0.9, 0.6), 2.2)
@@ -276,7 +308,7 @@ func _recover_time() -> float:
 			return 0.45
 		"chain":
 			return 1.0
-		"boss_chain", "boss_tide":
+		"boss_chain", "boss_tide", "boss_rank", "boss_fire":
 			return 0.6 if _boss_phase == 0 else 0.4
 		"charge":
 			return 0.6
@@ -448,6 +480,18 @@ func _st_chase(dt: float) -> void:
 		if kind == "samurai" and _cool <= 0.0 and dist > 4.0 and dist < 9.0 and randf() < dt * 0.8 and _get_token():
 			_begin_attack("leap")
 			return
+		if kind == "boss5":
+			_rank_t -= dt
+			if _boss_phase == 1:
+				_fire_t -= dt
+			if _rank_t <= 0.0 and _cool <= 0.0 and _get_token():
+				_rank_t = randf_range(10.0, 13.0) if _boss_phase == 0 else randf_range(7.5, 9.5)
+				_begin_attack("boss_rank")
+				return
+			if _boss_phase == 1 and _fire_t <= 0.0 and _cool <= 0.0 and _get_token():
+				_fire_t = randf_range(6.0, 8.0)
+				_begin_attack("boss_fire")
+				return
 		if kind == "boss4" and _boss_phase == 1:
 			_tide_t -= dt
 			if _tide_t <= 0.0 and _cool <= 0.0 and _get_token():
@@ -457,6 +501,8 @@ func _st_chase(dt: float) -> void:
 		if is_boss and _cool <= 0.0 and dist > 5.0 and randf() < dt * 1.2 and _get_token():
 			if kind == "boss4":
 				_begin_attack("boss_spikes" if randf() < 0.7 else "boss_leap")
+			elif kind == "boss5":
+				_begin_attack("boss_leap")
 			elif kind == "boss3":
 				_begin_attack("boss_spikes" if randf() < 0.6 else "boss_leap")
 			else:
@@ -502,6 +548,10 @@ func _choose_attack(_dist: float) -> String:
 			return "lunge" if randf() < 0.35 else "slash"
 		"boss4":
 			return "boss_chain" if randf() < 0.35 else "boss_combo"
+		"boss5":
+			return "boss_chain" if randf() < 0.4 else "boss_combo"
+		"digger":
+			return "heavy" if randf() < 0.5 else "slash"
 		"boss3":
 			return "boss_spikes" if randf() < 0.25 else "boss_combo"
 	return "slash"
@@ -534,6 +584,10 @@ func _windup_time() -> float:
 			return 0.85 if _boss_phase == 0 else 0.65
 		"boss_tide":
 			return 0.8
+		"boss_rank":
+			return 0.7
+		"boss_fire":
+			return 0.6
 	return w
 
 
@@ -548,6 +602,9 @@ func _begin_attack(kind_: String) -> void:
 		_atk_dir.y = 0
 		_atk_dir = _atk_dir.normalized() if _atk_dir.length() > 0.01 else facing
 		_atk_target = target.global_position
+		face_to(_atk_dir)
+	if charge_dir != Vector3.ZERO:
+		_atk_dir = charge_dir
 		face_to(_atk_dir)
 	var wt := _windup_time()
 	var red := Color(1.0, 0.15, 0.1, 0.55)
@@ -611,8 +668,14 @@ func _begin_attack(kind_: String) -> void:
 			Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * 3.0, 1.8, red, wt)
 		"chain", "boss_chain":
 			# 灯链横扫一整圈：脚下一圈青色预警，越涨越满
-			Vfx.I.telegraph_circle(global_position, _chain_r(), Color(0.4, 0.8, 1.0, 0.5), wt)
-			Feel.I.callout(head_top(), "链!", Color(0.6, 0.9, 1.0), 0.8)
+			Vfx.I.telegraph_circle(global_position, _chain_r(), Color(0.4, 0.8, 1.0, 0.5) if kind != "boss5" else Color(1.0, 0.6, 0.2, 0.5), wt)
+			Feel.I.callout(head_top(), "链!" if kind != "boss5" else "扫!", Color(0.6, 0.9, 1.0) if kind != "boss5" else Color(1.0, 0.75, 0.4), 0.8)
+		"boss_rank":
+			Vfx.I.ground(global_position, "magic_01", Color(1.0, 0.8, 0.4, 0.8), 0.5, 5.0, wt + 0.3)
+			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "列阵——冲!", Color(1.0, 0.85, 0.45), 1.2)
+		"boss_fire":
+			Vfx.I.ground(global_position, "magic_01", Color(1.0, 0.5, 0.15, 0.8), 0.5, 5.0, wt + 0.3)
+			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "点灯!", Color(1.0, 0.6, 0.25), 1.0)
 		"boss_tide":
 			Vfx.I.ground(global_position, "magic_01", Color(0.4, 0.8, 1.0, 0.8), 0.5, 6.0, wt + 0.3)
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "水来了——翻滚!", Color(0.6, 0.9, 1.0), 1.2)
@@ -645,8 +708,10 @@ func _st_windup(dt: float) -> void:
 		"chain", "boss_chain":
 			_pose = Poses.windup("enemy_h", k, st_t)
 			_pose["twist"] = -0.9 * k
-		"boss_tide":
+		"boss_tide", "boss_fire":
 			_pose = Poses.cast(k, _anim_t)
+		"boss_rank":
+			_pose = Poses.windup("enemy_v", k, st_t)
 		"boss_spikes":
 			_pose = Poses.windup("enemy_v", k, st_t)
 		"leap", "boss_leap":
@@ -818,6 +883,9 @@ func _st_attack(dt: float) -> void:
 						_did_hit = true
 						_hit_target(hh, float(data["dmg"]), HitInfo.Weight.HEAVY)
 			# 撞到墙、柱子：自己晕一会儿（这时候是白打的机会）
+			if kind == "phantom" and st_t > 0.1 and get_slide_collision_count() > 0 and get_real_velocity().length() < 6.0:
+				_vanish()
+				return
 			if st_t > 0.1 and get_slide_collision_count() > 0 and get_real_velocity().length() < 6.0:
 				Vfx.I.dust(global_position + _atk_dir * 0.8, 1.6)
 				Vfx.I.chips(global_position + _atk_dir * 0.8 + Vector3(0, 1, 0), -_atk_dir + Vector3.UP, Color(0.45, 0.42, 0.38), 12, 7.0, 0.12)
@@ -885,6 +953,10 @@ func _st_attack(dt: float) -> void:
 			_st_chain(dt)
 		"boss_tide":
 			_st_tide(dt)
+		"boss_rank":
+			_st_rank(dt)
+		"boss_fire":
+			_st_fire(dt)
 		"boss_wave":
 			var k := st_t / 0.4
 			_pose = Poses.swing("enemy_v", 1.0, clampf(k / 0.4, 0, 1), clampf((k - 0.4) / 0.6, 0, 1))
@@ -905,6 +977,8 @@ func _st_attack(dt: float) -> void:
 func _chain_r() -> float:
 	if kind == "boss4":
 		return 5.2 if _boss_phase == 0 else 5.8
+	if kind == "boss5":
+		return 5.0 if _boss_phase == 0 else 5.6
 	return 4.2
 
 
@@ -919,8 +993,9 @@ func _st_chain(dt: float) -> void:
 		_did_hit = true
 		var r := _chain_r()
 		var base := Transform3D(Basis(Vector3.UP, rotation.y), global_position + Vector3(0, 0.8, 0))
-		Vfx.I.slash(base, r, PI, -PI, 0.3, Color(0.85, 0.95, 1.0), Color(0.3, 0.7, 1.0), 2.6, 0.75)
-		Vfx.I.shock_ring(global_position, Color(0.5, 0.85, 1.0), 0.5, r * 2.2, 0.35)
+		var gold := kind == "boss5"
+		Vfx.I.slash(base, r, PI, -PI, 0.3, Color(1.0, 0.95, 0.85) if gold else Color(0.85, 0.95, 1.0), Color(1.0, 0.65, 0.25) if gold else Color(0.3, 0.7, 1.0), 2.6, 0.75)
+		Vfx.I.shock_ring(global_position, Color(1.0, 0.75, 0.35) if gold else Color(0.5, 0.85, 1.0), 0.5, r * 2.2, 0.35)
 		for i in range(10):
 			var a := TAU * i / 10.0
 			Vfx.I.chips(global_position + Vector3(cos(a), 0.3, sin(a)) * r * 0.8, Vector3(cos(a), 0.6, sin(a)), Color(0.35, 0.4, 0.45), 2, 6.0, 0.08)
@@ -948,6 +1023,70 @@ func _st_tide(dt: float) -> void:
 			t.global_position = Vector3(global_position.x, 0.0, global_position.z)
 		CamRig.I.shake(1)
 		Game.sfx("boom", -5.0, 0.0, 0.7)
+	if k >= 1.0:
+		_end_attack()
+
+
+## 不夜将军号令亲兵：四个金色幻影排成一排，从房间一头往另一头冲一趟（每个亲兵自己有冲锋预警）
+func _st_rank(dt: float) -> void:
+	var k := st_t / 0.45
+	_pose = Poses.swing("enemy_v", 1.0, clampf(k / 0.4, 0, 1), clampf((k - 0.4) / 0.6, 0, 1))
+	move_with_knock(Vector3.ZERO, dt)
+	if not _did_hit:
+		_did_hit = true
+		var main := get_parent()
+		var ar: Variant = main.get("arena") if main != null else null
+		var half := Vector2(18.0, 13.0)
+		if ar != null:
+			half = (ar.size as Vector2) * 0.5 - Vector2(2.0, 2.0)
+		var hp_ := target.global_position if target != null else Vector3.ZERO
+		var from_side := randf() < 0.5
+		var n := 4 if _boss_phase == 0 else 5
+		for i in range(n):
+			var off := (i - (n - 1) * 0.5) * 2.6
+			var p: Vector3
+			var d: Vector3
+			if from_side:
+				var sx := -1.0 if hp_.x > 0.0 else 1.0
+				p = Vector3(sx * half.x, 0, clampf(hp_.z + off, -half.y, half.y))
+				d = Vector3(-sx, 0, 0)
+			else:
+				p = Vector3(clampf(hp_.x + off, -half.x, half.x), 0, -half.y)
+				d = Vector3(0, 0, 1)
+			var f := Foe.new()
+			f.setup_kind("phantom", 1.0, dmg_scale)
+			f.charge_dir = d
+			f.no_loot = true
+			main.add_child(f)
+			f.global_position = p
+			f.face_to(d)
+		Game.sfx("boss", -6.0)
+		CamRig.I.shake(1)
+	if k >= 1.0:
+		_end_attack()
+
+
+## 不夜将军二阶段：把灯油泼一地点着——主角脚下和周围几处先亮预警圈，一会儿烧起来
+func _st_fire(dt: float) -> void:
+	var k := st_t / 0.45
+	_pose = Poses.cast(1.0, _anim_t)
+	move_with_knock(Vector3.ZERO, dt)
+	if not _did_hit:
+		_did_hit = true
+		var c := target.global_position if target != null else global_position
+		var pts := [c]
+		for i in range(4):
+			var a := TAU * i / 4.0 + randf() * 0.8
+			pts.append(c + Vector3(cos(a), 0, sin(a)) * randf_range(3.0, 5.5))
+		for q: Vector3 in pts:
+			var fp := FirePool.new()
+			fp.radius = 1.7
+			fp.damage = float(data["dmg"]) * 0.3 * dmg_scale
+			fp.life = 4.5
+			fp.warn = 0.95
+			get_parent().add_child(fp)
+			fp.global_position = Vector3(q.x, 0, q.z)
+		Game.sfx("flame", -4.0)
 	if k >= 1.0:
 		_end_attack()
 
@@ -1028,7 +1167,23 @@ func _explode(hurt_hero: bool) -> void:
 		die(Vector3.UP * 4.0)
 
 
+## 亲兵冲完一趟：化成一阵金色的灰散掉（不掉东西）
+func _vanish() -> void:
+	if not alive:
+		return
+	_release()
+	Vfx.I.sheet("soul-rise", global_position, 2.5, Color(1.0, 0.8, 0.4, 0.8), 1.6, false, 0.0, 1.6)
+	Vfx.I.dust(global_position, 1.2, Color(0.8, 0.65, 0.4, 0.5))
+	alive = false
+	remove_from_group("foes")
+	collision_layer = 0
+	queue_free()
+
+
 func _end_attack() -> void:
+	if kind == "phantom":
+		_vanish()
+		return
 	_cool = randf_range(0.9, 1.8) if not is_boss else randf_range(0.6, 1.2) * (1.0 if _boss_phase == 0 else 0.6)
 	if kind == "rogue":
 		_retreat_t = 0.7
@@ -1073,6 +1228,13 @@ func take_hit(info: HitInfo) -> bool:
 		return false
 	if state == "lurk":
 		return false
+	if kind == "phantom":
+		return false
+	var raw_dmg := info.damage
+	if data.has("armor") and _armor_down <= 0.0 and info.weight < HitInfo.Weight.ULT:
+		# 烛国甲士：铜甲挡掉大半，火星四溅
+		info.damage *= float(data["armor"])
+		Vfx.I.pop(chest() - info.dir * 0.4, "spark_05", Color(1.0, 0.8, 0.45), 0.35, 1.5, 0.12)
 	# 盾骷髅：正面来的刀挡掉大半，挡满几下就破盾；绕到侧后面、或者大招，直接打进去
 	var blocked := false
 	if guard > 0.0 and alive and iframes <= 0.0 and info.weight < HitInfo.Weight.ULT and state != "stagger":
@@ -1107,11 +1269,16 @@ func take_hit(info: HitInfo) -> bool:
 	# 韧性：重甲要先打掉韧性才会僵直；正在跳劈的不打断
 	var interrupt := true
 	if max_poise > 0.0:
-		poise -= info.damage * (1.6 if info.weight >= 1 else 1.0)
+		poise -= raw_dmg * (1.6 if info.weight >= 1 else 1.0)
 		interrupt = poise <= 0.0
 		if interrupt:
 			poise = max_poise
-			Feel.I.callout(head_top(), "破韧!", Color(1.0, 0.85, 0.4), 1.0)
+			if data.has("armor"):
+				_armor_down = 3.5
+				Feel.I.callout(head_top(), "破甲!", Color(1.0, 0.75, 0.35), 1.1)
+				Vfx.I.chips(chest(), info.dir + Vector3.UP, Color(0.75, 0.55, 0.3), 14, 7.0, 0.12)
+			else:
+				Feel.I.callout(head_top(), "破韧!", Color(1.0, 0.85, 0.4), 1.0)
 			Game.sfx("posture_break", -3.0)
 	if state == "attack" and _atk in ["leap", "boss_leap"]:
 		interrupt = false
@@ -1148,6 +1315,12 @@ func take_hit(info: HitInfo) -> bool:
 		Game.sfx("boss_kill", -6.0, 0.0, 1.3)
 		data = data.duplicate()
 		data["speed"] = float(data["speed"]) * 1.25
+		if kind == "boss5":
+			# 不夜将军半血：整座灯冢的灯都点着了
+			_fire_t = 2.0
+			var ar5: Variant = get_parent().get("arena") if get_parent() != null else null
+			if ar5 != null and ar5.has_method("ignite"):
+				ar5.ignite()
 		if kind == "boss4":
 			# 枯荣半血：整间殿水位上涨，之后隔一阵推一圈水波
 			_tide_t = 2.5
@@ -1168,6 +1341,8 @@ func fx_color() -> Color:
 			return Color(1.0, 0.82, 0.4)
 		"boss4":
 			return Color(0.45, 0.85, 1.0)
+		"boss5":
+			return Color(1.0, 0.7, 0.3)
 	return Color(1.0, 0.5, 0.3) if max_poise > 0.0 else Color(1.0, 0.85, 0.4)
 
 
@@ -1179,6 +1354,13 @@ func die(impulse: Vector3) -> void:
 		_trail.active = false
 	Feel.I.on_kill(self, impulse)
 	Game.sfx("death", -4.0)
+	if data.get("fire", false):
+		var fp := FirePool.new()
+		fp.radius = 1.5
+		fp.damage = 5.0 * dmg_scale
+		fp.life = 3.5
+		get_parent().add_child(fp)
+		fp.global_position = Vector3(global_position.x, 0, global_position.z)
 	if kind == "bomber" and not _exploded:
 		# 爆骨鬼被打死：短暂一下后残爆，炸旁边的怪，不伤主角
 		get_tree().create_timer(0.18).timeout.connect(func() -> void:

@@ -646,6 +646,8 @@ func take_hit(info: HitInfo) -> bool:
 	if ok:
 		dmg_total += info.damage
 		hits_taken += 1
+		if OS.get_cmdline_user_args().has("--hitlog"):
+			print("HIT %s %.1f hp=%.0f" % [info.attacker.get("kind") if info.attacker != null else "?", info.damage, hp])
 	if ok and alive:
 		Feel.I.hurt_pulse(0.7)
 		Game.sfx("hurt", -2.0)
