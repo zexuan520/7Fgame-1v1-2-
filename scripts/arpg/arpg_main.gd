@@ -2072,8 +2072,50 @@ func _room_cleared() -> void:
 		return
 	if room_kind == "fight":
 		ArpgRoutes.cleared(self)   # 支线的战斗房多给铜钱
+		if _give_reward(state.room_reward()):
+			return
 	hud.banner("清场", "选一个心法", 1.6)
 	get_tree().create_timer(0.9).timeout.connect(func() -> void: _offer_boons(n_boons, "next"))
+
+
+## 战斗房清完按门上写的奖励发（ArpgRewards）；返回 false 表示照旧给心法三选一
+func _give_reward(k: String) -> bool:
+	var at := hero.global_position + hero.facing * 1.4
+	match k:
+		"school":
+			var sc := String(state.run.node().get("school", ""))
+			hud.banner("清场", "心法 · %s" % sc, 1.6)
+			get_tree().create_timer(0.9).timeout.connect(func() -> void: _offer_boons(3, "next", sc))
+		"coins":
+			var n := ArpgRewards.coins(state.gfloor())
+			hud.banner("清场", "得一袋铜钱", 1.6)
+			for i in range(12):
+				_loot(at, "coin", maxi(1, n / 12))
+			Game.sfx("coin")
+			_open_portal("next")
+		"gear":
+			hud.banner("清场", "掉了一件装备", 1.6)
+			_drop_gear(at, 2 if _rng.randf() < 0.65 else 3)
+			_open_portal("next")
+		"jade":
+			var n := ArpgRewards.jade(state.gfloor())
+			hud.banner("清场", "得 %d 颗魂玉" % n, 1.6)
+			for i in range(n):
+				_loot(at, "jade", 1)
+			_open_portal("next")
+		"xp":
+			var ups := state.gain_xp(ArpgRewards.xp(state))
+			hud.banner("清场", "悟道大进", 1.6)
+			_open_portal("next")
+			if ups > 0:
+				_on_level_up(ups)
+			if ArpgSkills.any_open(state.skills, state.points):
+				get_tree().create_timer(1.2).timeout.connect(func() -> void:
+					if _menu == null and mode == "room":
+						_open_skills())
+		_:
+			return false
+	return true
 
 
 # ---------- 主线：头目战前战后、结局 ----------
@@ -2650,10 +2692,10 @@ func _make_secret_portal(p: Vector3, kind: String = "secret", col: Color = Color
 
 
 ## 清房后选一个心法（卡片横排）
-func _offer_boons(n: int, then_portal: String) -> void:
+func _offer_boons(n: int, then_portal: String, school: String = "") -> void:
 	if mode != "room":
 		return
-	var offer := state.roll_boons(n, _rng)
+	var offer := state.roll_boons(n, _rng, school)
 	var items := []
 	for b: Dictionary in offer:
 		var have := state.boons.count(String(b["id"]))
@@ -3048,6 +3090,15 @@ func _make_portal(p: Vector3, kind: String, col: Color) -> void:
 	lab.position.y = 3.2
 	var cyc := "" if ArpgCycle.picked() <= 0 else " · " + ArpgCycle.label(ArpgCycle.picked())
 	lab.text = {"run": "出发" + cyc, "act2": "入井 · 第二幕" + cyc, "act3": "出山 · 第三幕" + cyc, "floor": "前往第%s层" % ArpgState.CN_NUM[state.gfloor()] if state != null else "", "next": "前路", "secret": "密室", "realm": "秘境"}.get(kind, "")
+	if kind == "next" and state != null:
+		# 光门上写出下一间给什么：只有一条路写奖励，几条路写“分岔 · 心法·焰 / 铜钱”
+		var ex := state.run.exits()
+		var tags := []
+		for e: Array in ex:
+			var rl := ArpgRewards.label(e[1])
+			tags.append(rl if rl != "" else String(ArpgState.TYPE_NAMES.get(String(e[1]["type"]), "")))
+		if not tags.is_empty():
+			lab.text = ("前路 · " if ex.size() == 1 else "分岔 · ") + " / ".join(tags)
 	_portal.add_child(lab)
 
 
@@ -3083,8 +3134,13 @@ func _choose_path(ex: Array) -> void:
 	for e: Array in ex:
 		var nd: Dictionary = e[1]
 		var t := String(nd["type"])
-		items.append({"title": ArpgState.TYPE_NAMES.get(t, t), "desc": ArpgRoutes.card_desc(nd, String(ArpgState.TYPE_DESC.get(t, ""))), "tag": ArpgRoutes.card_tag(nd),
-			"color": _type_color(t), "glyph": String(ArpgState.TYPE_NAMES.get(t, t)).substr(0, 1)})
+		var rl := ArpgRewards.label(nd)
+		var rd := ArpgRewards.desc(nd)
+		var base := String(ArpgState.TYPE_DESC.get(t, ""))
+		if rd != "":
+			base = ("成群的敌人，" if t == "fight" else "") + rd
+		items.append({"title": String(ArpgState.TYPE_NAMES.get(t, t)) + ("　" + rl if rl != "" else ""), "desc": ArpgRoutes.card_desc(nd, base), "tag": ArpgRoutes.card_tag(nd),
+			"color": ArpgRewards.color(nd) if rl != "" else _type_color(t), "glyph": (rl if rl != "" else String(ArpgState.TYPE_NAMES.get(t, t))).substr(0, 1)})
 	var m := _open_menu("分岔路", "第 %d 层　第 %d / %d 间　·　往哪走？" % [state.gfloor() + 1, state.run.row + 2, state.run.rows.size()], items, "cards", true)
 	hints.menu_tip("path", m)
 	var r0 := state.run.row
@@ -3172,6 +3228,8 @@ func _draw_map(c: Control, vs: Vector2, ex: Array = [], top: float = -1.0) -> vo
 			c.draw_arc(p, rad, 0, TAU, 20, Color(col, 1.0 if on else 0.35), 1.5)
 			var g := String(ArpgState.TYPE_NAMES.get(t, "?")).substr(0, 1)
 			c.draw_string(font, p + Vector2(-5.5, 4.5), g, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(col, 1.0 if on else 0.4))
+			if ArpgRewards.label(nd) != "":
+				c.draw_circle(p + Vector2(rad * 0.8, -rad * 0.8), 3.2, Color(ArpgRewards.color(nd), 1.0 if on else 0.4))   # 右上角小点：奖励类型的颜色
 			if nd.has("branch"):
 				c.draw_arc(p, rad + 3.0, 0, TAU, 20, Color(1.0, 0.7, 0.35, 0.85 if on else 0.35), 1.0)   # 分岔支线：外面多一圈橙
 			if here:

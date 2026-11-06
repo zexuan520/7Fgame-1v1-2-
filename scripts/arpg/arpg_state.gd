@@ -167,6 +167,8 @@ func remap() -> void:
 				break
 	# 三幕都一样：一层多两列房间，再加一条分岔支线（ArpgRoutes）
 	ArpgRoutes.expand(self)
+	# 每间战斗、精英房清完给什么，现在就定好（选路时看得到）
+	ArpgRewards.assign(self)
 
 
 func floor_i() -> int:
@@ -434,12 +436,20 @@ func price(base: int) -> int:
 
 
 ## 随机抽 n 个心法（不重复）
-func roll_boons(n: int, rng: RandomNumberGenerator) -> Array:
+## school 不空：至少两个（n 小于 2 时全部）出自这一派
+func roll_boons(n: int, rng: RandomNumberGenerator, school: String = "") -> Array:
 	var pool := []
 	for b: Dictionary in ArpgData.BOONS:
 		if not b.get("hidden", false) or bool(Game.save.get(String(b.get("unlock", "arpg_shadow")), false)):
 			pool.append(b)
 	var out := []
+	if school != "":
+		var mine := pool.filter(func(b: Dictionary) -> bool: return String(b.get("school", "")) == school)
+		while out.size() < mini(2, n) and not mine.is_empty():
+			var j := rng.randi_range(0, mine.size() - 1)
+			out.append(mine[j])
+			pool.erase(mine[j])
+			mine.remove_at(j)
 	while out.size() < n and not pool.is_empty():
 		var i := rng.randi_range(0, pool.size() - 1)
 		out.append(pool[i])
@@ -480,6 +490,11 @@ func shop_stock() -> Array:
 	items.append({"kind": "whet", "id": "whet", "name": "磨刀", "desc": "这一局伤害 +6%（可以一直磨，越磨越贵）", "price": 0})
 	shop_cache[key] = items
 	return items
+
+
+## 这间房清完给什么（ArpgRewards）
+func room_reward() -> String:
+	return ArpgRewards.of(run.node())
 
 
 func event_for_room() -> Dictionary:
