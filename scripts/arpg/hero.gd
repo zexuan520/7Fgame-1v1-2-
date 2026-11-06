@@ -117,6 +117,7 @@ var _clone_atk := 0.0
 var _clone_pos := Vector3.ZERO
 var _clone_ghost := 0.0
 var weapon_id := "sword"
+var rel := HeroRelics.new()           # 奇物机制和魂火（HeroRelics）
 var trail: BladeTrail
 ## 兵器多重化、装备机制、道具（ArpgArms）
 var kit: ArpgState                 # 这一局的状态（换兵器、用道具要读）；山门里是 null
@@ -159,7 +160,7 @@ const GOURDS_MAX := 7           # 药葫芦上限（心法“药缘”能叠）
 ## 把一局的加成套到主角身上；fill_hp 时生命和药葫芦补满（开局用）
 func apply_stats(st: Dictionary, wid: String, fill_hp: bool = false) -> void:
 	var old_max := max_hp
-	max_hp = BASE_HP + ArpgData.stat(st, "hp")
+	max_hp = (BASE_HP + ArpgData.stat(st, "hp")) * maxf(0.4, 1.0 + ArpgData.stat(st, "hp_pct"))
 	if fill_hp:
 		hp = max_hp
 		_hp_peak = max_hp
@@ -251,6 +252,8 @@ func apply_stats(st: Dictionary, wid: String, fill_hp: bool = false) -> void:
 	if skr("lotus") >= 3:
 		finish_cd *= 0.85
 	beam_cost = 85.0 if skr("split") >= 3 else 100.0
+	rel.hero = self
+	rel.apply(st)
 	art_cd = float(ArpgSkills.ART_CD.get(art_id(), 8.0))
 
 
@@ -375,6 +378,9 @@ func _ready_body() -> void:
 	apply_skin(String(Game.save.get("arpg_skin", "qing")))
 	add_to_group("heroes")
 	_make_foot_ring()
+	rel.hero = self
+	rel.name = "Relics"
+	add_child(rel)
 	trail = BladeTrail.new()
 	trail.actor = self
 	trail.rig = rig
@@ -419,6 +425,8 @@ func input_dir() -> Vector3:
 
 
 func gain_energy(v: float) -> void:
+	if v > 0.0 and rel.energy_locked():
+		return   # 满溢：光束斩后几秒不回气
 	energy = minf(energy + v * energy_mult, max_energy)
 	energy_changed.emit()
 
@@ -556,6 +564,7 @@ func _try_actions(allowed: Array) -> bool:
 		"heal":
 			if gourds > 0 and hp < max_hp:
 				_set_state("heal")
+				rel.on_heal_start()
 				return true
 		"art":
 			if art_id() == "":
@@ -785,6 +794,7 @@ func _do_hits(s: AttackStep) -> void:
 		_wind_t = 0.0
 		if step_i == combo.size() - 1:
 			_link_mark("combo")
+			rel.on_finisher_landed()
 		if _swap_strike:
 			ArpgAch.unlock("swap_hit")
 	# 只给收招（最后一段）和换刃斩弹字，前几段不弹，免得一群“1段! 2段!”叠在人头上挡视线
@@ -798,7 +808,7 @@ func _do_hits(s: AttackStep) -> void:
 func _strike(a: Actor, s: AttackStep, k: float, force_crit: bool) -> bool:
 	var to := a.global_position - global_position
 	to.y = 0
-	var crit := force_crit or randf() < s.crit_chance + crit_bonus or _wind_t > 0.0
+	var crit := force_crit or randf() < s.crit_chance + crit_bonus + rel.crit_add() or _wind_t > 0.0 or (_swap_strike and rel.has.has("shuangling"))
 	# 双刃短匕 · 背刺：敌人背对着你
 	if weapon_id == "dagger" and to.length() > 0.1 and a.facing.dot(to.normalized()) > 0.3:
 		crit = true
@@ -817,6 +827,7 @@ func _strike(a: Actor, s: AttackStep, k: float, force_crit: bool) -> bool:
 		m *= 1.3
 	if execute > 0.0 and a.max_hp > 0.0 and a.hp < a.max_hp * 0.3:
 		m *= 1.0 + execute   # 斩首
+	m *= rel.strike_mult(crit)   # 奇物：断弦、铁桩、贪狼牙、逆风
 	var dmg := s.damage * m * (crit_mult if crit else 1.0) * randf_range(0.92, 1.08)
 	var info := HitInfo.make(self, a, dmg, HitInfo.Weight.HEAVY if s.heavy else HitInfo.Weight.LIGHT)
 	info.crit = crit
@@ -880,6 +891,7 @@ func _fire_burst(p: Vector3, k: float = 1.0, again: bool = true) -> void:
 	Vfx.I.explosion(p, 0.5 * (r / 1.8))
 	Vfx.I.pop(p, "spark_05", Color(1.0, 0.6, 0.2), 0.4, r, 0.2)
 	Game.sfx("flame", -8.0, 0.1)
+	rel.on_fire_burst(p, r)   # 野火：也烫自己
 	for f: Node in get_tree().get_nodes_in_group("foes"):
 		var b := f as Actor
 		if b == null or not b.alive or b.chest().distance_to(p) > r + b.radius:
@@ -902,6 +914,7 @@ func _fire_burst(p: Vector3, k: float = 1.0, again: bool = true) -> void:
 
 ## 一道落雷（雷符坠、引雷、雷殛套、雷刃都走这里）：天雷大成跳到附近两个敌人，雷火同时炸一团火
 func bolt(at: Vector3, dmg: float, stun: float, chain: bool = true) -> void:
+	dmg *= 1.0 + rel.bolt_dmg   # 风暴眼
 	ArpgArms.lightning(self, at, dmg, stun * (1.5 if set_storm else 1.0))
 	if duo.has("leihuo"):
 		_fire_burst(Vector3(at.x, 1.0, at.z), 0.8, false)
@@ -922,7 +935,7 @@ func bolt(at: Vector3, dmg: float, stun: float, chain: bool = true) -> void:
 		Vfx.I.beam(from, b.chest(), 0.25, 0.14)
 		get_tree().create_timer(0.08 * (i + 1)).timeout.connect(func() -> void:
 			if is_instance_valid(b) and b.alive and is_instance_valid(self):
-				bolt(b.global_position, dmg * 0.6, stun, false))
+				bolt(b.global_position, dmg * 0.6 / (1.0 + rel.bolt_dmg), stun, false))
 
 
 ## 连弩的箭、飞镖打中敌人（HeroBolt 调用）
@@ -1028,6 +1041,7 @@ func swap_arms() -> bool:
 	if OS.get_cmdline_user_args().has("--armslog"):
 		print("ARMS swap -> %s" % String(kit.arms[0]["base"]))
 	apply_stats(kit.stats(), kit.weapon)
+	rel.on_swap()
 	Game.sfx("parry", -8.0, 0.15)
 	Vfx.I.ghost(rig, ArpgArms.trail(weapon_id)[1], 0.25)
 	var near := _auto_target(facing, 5.0)
@@ -1728,6 +1742,7 @@ func _start_roll() -> void:
 		Vfx.I.streaks(chest(), Vector3.UP, SkillFx.LIGHT, 3, 1.2, 0.2, 0.5, 0.1)
 	if skr("decoy") > 0 and _decoy_cd <= 0.0:
 		_leave_decoy()
+	rel.on_roll()
 	Game.sfx("dodge", -3.0)
 	Vfx.I.dust(global_position, 0.8, Color(0.5, 0.6, 0.6, 0.35))
 
@@ -1789,7 +1804,7 @@ func take_hit(info: HitInfo) -> bool:
 	if state == "roll" and iframes > 0.0 and alive:
 		_try_mikiri(info)
 		return false
-	info.damage *= taken_mult
+	info.damage *= taken_mult * rel.taken_mult()
 	if _mirror_t > 0.0:
 		info.damage *= 0.6   # 双修·明镜
 	if invincible:
@@ -1816,6 +1831,7 @@ func take_hit(info: HitInfo) -> bool:
 		hits_taken += 1
 		last_hit_by = String(info.attacker.get("kind")) if info.attacker != null and is_instance_valid(info.attacker) and info.attacker.get("kind") != null else "?"
 		_on_hurt(info)
+		rel.on_hurt(info)
 		if OS.get_cmdline_user_args().has("--hitlog"):
 			print("HIT %s %.1f hp=%.0f" % [info.attacker.get("kind") if info.attacker != null else "?", info.damage, hp])
 	if ok and alive:
@@ -1832,7 +1848,7 @@ func take_hit(info: HitInfo) -> bool:
 ## 见切：翻滚刚起身（头 0.2 秒）就有敌人的刀、箭擦身而过。慢镜头 + 青光一闪，下一刀必会心，回一点气。
 ## 地上的火、毒、机关不算（没有出手的人）。
 func _try_mikiri(info: HitInfo) -> void:
-	if _mikiri_cd > 0.0 or st_t > MIKIRI_WINDOW or info.attacker == null or not is_instance_valid(info.attacker) or info.attacker.team == team:
+	if _mikiri_cd > 0.0 or st_t > rel.mikiri_window() or info.attacker == null or not is_instance_valid(info.attacker) or info.attacker.team == team:
 		return
 	_mikiri_cd = 2.5
 	if OS.get_cmdline_user_args().has("--feellog"):
@@ -1840,6 +1856,7 @@ func _try_mikiri(info: HitInfo) -> void:
 	_wind_t = maxf(_wind_t, 1.6)
 	iframes = maxf(iframes, 0.3)
 	gain_energy(12.0)
+	rel.on_mikiri()
 	Feel.I.slowmo(0.2, 0.5)
 	Feel.I.impact_frame(0.05)
 	Feel.I.screen_flash(Color(0.55, 0.9, 1.0, 0.3), 3.0)
@@ -1992,6 +2009,7 @@ func _do_dash() -> void:
 			if Feel.I.on_hit(info):
 				gain_energy(8.0)
 				on_skill_hit(a, info)
+				rel.on_dash_hit(a)
 			_dash_hits.append(a)
 			n += 1
 	Game.sfx("slash_heavy", 0.0)
@@ -2079,7 +2097,8 @@ func _fire_beam() -> void:
 	Vfx.I.streaks(global_position + Vector3(0, 1, 0) + dir * 2.0, dir, Color(0.6, 1.0, 1.0), 8, 4.0, 0.3, 0.25, 0.25)
 	_beam_hits.clear()
 	var bk := 1.3 if _beam_fast else 1.0
-	_beam_line(from, to, 1.5 * wide, 60.0 * power() * beam_mult * bk)
+	var bdmg := rel.on_beam(from, to, 1.5 * wide, 60.0 * power() * beam_mult * bk)   # 三折光、冥灯、满溢
+	_beam_line(from, to, 1.5 * wide, bdmg)
 	if beam_heal > 0.0 and not _beam_hits.is_empty():
 		hp = minf(hp + beam_heal * _beam_hits.size(), max_hp)   # 流明
 		Vfx.I.streaks(chest(), Vector3.UP, Color(1.0, 0.95, 0.6), 4, 1.4, 0.2, 0.5, 0.12)

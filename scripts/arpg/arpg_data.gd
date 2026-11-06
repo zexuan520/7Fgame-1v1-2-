@@ -111,6 +111,18 @@ const BOONS := [
 	{"id": "ember", "name": "火种", "desc": "命中时 10% 机会在敌人身上炸开一团火", "stats": {"fire_proc": 0.1}, "school": "焰"},
 	{"id": "blaze", "name": "烈焰", "desc": "火团伤害 +60%、范围更大", "stats": {"fire_dmg": 0.6}, "school": "焰"},
 	{"id": "pyre", "name": "焚身", "desc": "斩杀敌人时 35% 机会让它爆燃", "stats": {"kill_fire": 0.35}, "school": "焰"},
+	# 魂：斩杀收魂火，魂火绕身自动飞向敌人（召唤向；HeroRelics 管魂火）
+	{"id": "yinhun", "name": "引魂", "desc": "斩杀时 35% 机会收一团魂火（最多 3 团绕身，自动飞向敌人）", "stats": {"soul_rate": 0.35}, "school": "魂"},
+	{"id": "jupo", "name": "聚魄", "desc": "魂火上限 +2、魂火伤害 +40%；斩杀时 10% 机会收魂火", "stats": {"soul_max": 2, "soul_dmg": 0.4, "soul_rate": 0.1}, "school": "魂"},
+	{"id": "hundeng", "name": "魂灯", "desc": "每波敌人出现时收 2 团魂火；魂火打中回 1 点生命", "stats": {"soul_wave": 2, "soul_heal": 1.0}, "school": "魂"},
+	# 老流派各添一个“带代价”的：强，但要你改打法
+	{"id": "berserk", "name": "狂刃", "desc": "伤害 +30%", "cost": "药葫芦回复 -25%", "stats": {"atk": 0.3, "gourd_heal": -0.25}, "school": "修罗"},
+	{"id": "bloodpact", "name": "血债", "desc": "出血伤害 +80%", "cost": "受伤 +8%", "stats": {"bleed_dmg": 0.8, "taken_extra": 0.08}, "school": "血"},
+	{"id": "glass_wind", "name": "薄翼", "desc": "移速 +15%、突进斩冷却 -25%", "cost": "生命上限 -20", "stats": {"move": 0.15, "dash_cd": 0.25, "hp": -20.0}, "school": "风"},
+	{"id": "overflow", "name": "满溢", "desc": "光束斩伤害 +70%", "cost": "光束斩后 3 秒内不回气力", "stats": {"beam": 0.7, "beam_lock": 3.0}, "school": "光"},
+	{"id": "stone_body", "name": "石身", "desc": "受伤 -20%", "cost": "移速 -10%", "stats": {"dmg_taken": -0.2, "move": -0.1}, "school": "守"},
+	{"id": "storm_eye", "name": "风暴眼", "desc": "落雷伤害 +60%", "cost": "会心伤害 -20%", "stats": {"bolt_dmg": 0.6, "crit_dmg": -0.2}, "school": "雷"},
+	{"id": "wildfire", "name": "野火", "desc": "火团伤害 +50%，命中时火团几率 +8%", "cost": "火团也会烫到自己（每团 3 点）", "stats": {"fire_dmg": 0.5, "fire_proc": 0.08, "fire_self": 3.0}, "school": "焰"},
 	# 专属心法：打赢隐藏头目残影才会出现（hidden，见 ArpgState.roll_boons）
 	{"id": "afterimage", "name": "残影", "desc": "伤害 +10%、会心率 +5%、移速 +5%", "stats": {"atk": 0.1, "crit": 0.05, "move": 0.05}, "school": "风", "hidden": true},
 	# 第二幕：井中人身上取下的灯片（只从战后选择拿到，不进心法池）
@@ -129,21 +141,28 @@ const SETS := {
 	"守": {"id": "set_guard", "name": "金身", "desc": "每 10 秒凝一层金光，挡掉下一次伤害"},
 	"雷": {"id": "set_storm", "name": "天雷", "desc": "落雷会跳到附近两个敌人身上（六成伤害），被劈中的晕得更久"},
 	"焰": {"id": "set_pyre", "name": "燎原", "desc": "火团炸完留下火种，一秒后在原地再炸一次（七成伤害）"},
+	"魂": {"id": "set_soul", "name": "百鬼", "desc": "魂火上限 +3、伤害 +50%，打中后不散，再飞向下一个敌人（最多三个）"},
 }
 
 
 ## 这些心法里每个流派各有几个
+## 奇物 id 也能放进来：每个标签算一件（ArpgState.build_ids() = 心法 + 奇物）
 static func school_counts(boons: Array) -> Dictionary:
 	var out := {}
 	for b in boons:
-		var sc := String(boon(String(b)).get("school", ""))
+		var bd := boon(String(b))
+		if bd.is_empty():
+			for t in ArpgRelics.tags(String(b)):
+				out[String(t)] = int(out.get(String(t), 0)) + 1
+			continue
+		var sc := String(bd.get("school", ""))
 		if sc != "":
 			out[sc] = int(out.get(sc, 0)) + 1
 	return out
 
 
 const SCHOOL_COLORS := {"修罗": Color(1.0, 0.45, 0.35), "血": Color(0.95, 0.2, 0.3), "风": Color(0.45, 1.0, 0.8), "光": Color(1.0, 0.9, 0.5), "守": Color(0.5, 0.75, 1.0),
-	"雷": Color(0.68, 0.72, 1.0), "焰": Color(1.0, 0.58, 0.2)}
+	"雷": Color(0.68, 0.72, 1.0), "焰": Color(1.0, 0.58, 0.2), "魂": Color(0.55, 1.0, 0.85)}
 
 ## 天赋：三棵树（修罗攻 / 不动守 / 行者运），每棵三层，往这棵树里投够点数解锁下一层；用魂玉点，存档里永久保留
 const TALENT_TREES := [
@@ -186,6 +205,12 @@ const EVENTS := [
 
 static func weapon(id: String) -> Dictionary:
 	return WEAPONS.get(id, WEAPONS["sword"])
+
+
+## 卡片上的说明：效果，有代价再加一行
+static func boon_desc(b: Dictionary) -> String:
+	var c := String(b.get("cost", ""))
+	return String(b.get("desc", "")) + ("。代价：" + c if c != "" else "")
 
 
 static func boon(id: String) -> Dictionary:

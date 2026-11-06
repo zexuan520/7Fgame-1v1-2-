@@ -8,14 +8,14 @@ extends RefCounted
 const KINDS := {
 	"school": {"name": "心法·%s", "desc": "清完三选一，至少两个是%s派", "color": Color(0.85, 0.75, 1.0), "w": 38},
 	"boon": {"name": "心法", "desc": "清完三选一", "color": Color(0.7, 0.9, 1.0), "w": 14},
-	"relic": {"name": "奇物", "desc": "清完二选一件奇物，会改变打法", "color": Color(1.0, 0.62, 0.3), "w": 0},
+	"relic": {"name": "奇物", "desc": "清完二选一件奇物，会改变打法", "color": Color(1.0, 0.62, 0.3), "w": 9},
 	"coins": {"name": "铜钱", "desc": "清完得一袋铜钱，商人那里花", "color": Color(1.0, 0.85, 0.4), "w": 11},
 	"gear": {"name": "装备", "desc": "清完掉一件精品以上的装备", "color": Color(0.55, 0.85, 1.0), "w": 11},
 	"xp": {"name": "悟道", "desc": "清完悟道大涨（约一重），多拿天赋点", "color": Color(0.6, 1.0, 0.75), "w": 8},
 	"jade": {"name": "魂玉", "desc": "清完得几颗魂玉，带回山门点天赋", "color": Color(0.5, 1.0, 0.9), "w": 8},
 }
 ## 精英房：奇物（要先有奇物系统）或四选一心法 + 必掉装备
-const ELITE_KINDS := {"relic": 0, "boon": 45}
+const ELITE_KINDS := {"relic": 55, "boon": 45}
 
 
 static func schools() -> Array:

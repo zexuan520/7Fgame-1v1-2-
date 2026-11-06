@@ -301,7 +301,7 @@ func _draw_detail(row: Dictionary, r: Rect2) -> void:
 
 
 const KIND_COLORS := {"天赋": Color(0.95, 0.75, 0.5), "信物": Color(1.0, 0.8, 0.6), "兵器": Color(0.6, 1.0, 0.95), "装备": Color(0.6, 0.8, 1.0), "套装": Color(0.65, 0.85, 1.0),
-	"心法": Color(1.0, 0.85, 0.5), "境况": Color(0.85, 0.9, 0.75), "轮回": Color(0.85, 0.6, 1.0), "技能": Color(0.6, 1.0, 1.0), "难度": Color(0.75, 0.8, 0.8)}
+	"心法": Color(1.0, 0.85, 0.5), "奇物": Color(1.0, 0.62, 0.3), "境况": Color(0.85, 0.9, 0.75), "轮回": Color(0.85, 0.6, 1.0), "技能": Color(0.6, 1.0, 1.0), "难度": Color(0.75, 0.8, 0.8)}
 
 
 func _kind_color(k: String) -> Color:
@@ -585,7 +585,7 @@ func _build_cols() -> Array:
 		a.append({"tag": sc, "tag_color": ArpgData.SCHOOL_COLORS.get(sc, TEAL), "title": String(bd.get("name", bid)) + (" ×%d" % cnt[bid] if int(cnt[bid]) > 1 else ""),
 			"desc": String(bd.get("desc", "")), "color": WHITE})
 	a.append({"head": "流派大成（同一流派 %d 个）" % ArpgData.SET_NEED})
-	var scn := ArpgData.school_counts(state.boons)
+	var scn := ArpgData.school_counts(state.build_ids())
 	for k: String in ArpgData.SETS:
 		var n := int(scn.get(k, 0))
 		var sd: Dictionary = ArpgData.SETS[k]
@@ -606,7 +606,7 @@ func _build_cols() -> Array:
 		b.append({"tag": String(s["full"]), "title": "%s　%s" % [bd["name"], "●".repeat(lv) + "○".repeat(ranks.size() - lv)], "color": s["color"],
 			"right": "%d / %d 级" % [lv, ranks.size()], "desc": "%s\n当前：%s" % [bd["brief"], ranks[clampi(lv - 1, 0, ranks.size() - 1)]]})
 	b.append({"head": "双修（相邻两流派各 %d 个）" % ArpgSkills.DUAL_NEED})
-	var ds := ArpgSkills.duals_of(state.boons)
+	var ds := ArpgSkills.duals_of(state.build_ids())
 	for d: Dictionary in ArpgSkills.DUALS:
 		var on := ds.has(String(d["id"]))
 		var prog := mini(int(scn.get(d["a"], 0)), ArpgSkills.DUAL_NEED) + mini(int(scn.get(d["b"], 0)), ArpgSkills.DUAL_NEED)

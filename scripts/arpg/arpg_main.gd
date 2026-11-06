@@ -207,6 +207,13 @@ func _ready() -> void:
 		# 测试：开局塞几个心法（看流派大成）
 		for id: String in String(_args["boons"]).split(","):
 			_take_boon(id)
+	if _args.has("relics") and state != null:
+		# 测试：开局塞奇物 --relics=bilei,zhaohun（--relics=all 全部，含没解锁的）
+		var ids: Array = ArpgRelics.LIST.map(func(r: Dictionary) -> String: return String(r["id"])) if _args["relics"] == "all" else Array(String(_args["relics"]).split(","))
+		for id: String in ids:
+			_take_relic(id)
+		if _args.has("souls"):
+			hero.rel.add_souls(int(_args["souls"]))   # 测试：直接给几团魂火
 	if _args.has("skills") and state != null:
 		# 测试：开局点好技能分支，--skills=wave:3,thunder:2；--level=N 直接到第 N 重（多出的天赋点留着）
 		for kv: String in String(_args["skills"]).split(","):
@@ -313,6 +320,8 @@ func _ready() -> void:
 				state.run.advance(int(ex[0][0]))
 				ex = state.run.exits()
 			_choose_path(ex))
+	if _args.has("relicmenu") and state != null:
+		get_tree().create_timer(1.2).timeout.connect(func() -> void: _offer_relics(2, "next"))   # 测试：直接打开奇物二选一
 	if _args.has("runinfo") and state != null:
 		get_tree().create_timer(1.2).timeout.connect(_open_run_info)
 	if _args.has("storytest"):
@@ -1363,10 +1372,10 @@ func _bench_end(won: bool) -> void:
 		var it: Dictionary = state.gear[slot]
 		if not it.is_empty():
 			gear.append("%s:%s%d" % [slot, it.get("base", ""), int(it.get("rarity", 0))])
-	print("RUN won=%s jade=%d act=%d weapon=%s cycle=%d diff=%d floor=%d row=%d rooms=%d kills=%d clk=%.0f lv=%d hits=%d dmg=%.0f drinks=%d maxhp=%.0f atk=%.2f taken=%.2f crit=%.2f boons=%s gear=%s skills=%s killer=%s" % [
+	print("RUN won=%s jade=%d act=%d weapon=%s cycle=%d diff=%d floor=%d row=%d rooms=%d kills=%d clk=%.0f lv=%d hits=%d dmg=%.0f drinks=%d maxhp=%.0f atk=%.2f taken=%.2f crit=%.2f boons=%s relics=%s gear=%s skills=%s killer=%s" % [
 		won, state.jade, state.act, state.weapon, state.cycle, ArpgState.difficulty(), state.floor_i() + 1, state.run.row, state.rooms, state.kills,
 		_clock - _run_t0, state.level, hero.hits_taken, hero.dmg_total, hero.drinks, hero.max_hp, hero.dmg_mult, hero.taken_mult,
-		hero.crit_bonus, ",".join(state.boons), ",".join(gear), str(state.skills).replace(" ", ""), "" if won else hero.last_hit_by])
+		hero.crit_bonus, ",".join(state.boons), ",".join(state.relics), ",".join(gear), str(state.skills).replace(" ", ""), "" if won else hero.last_hit_by])
 	if not state.daily.is_empty():
 		print("RUNDAILY kind=%s rule=%s seed=%d omen=%s" % [state.daily.get("kind", ""), state.daily.get("rule", ""), state.seed_value, state.omen])
 	get_tree().create_timer(0.5).timeout.connect(get_tree().quit)
@@ -1399,6 +1408,7 @@ func _enter_room_body(kind: String = "", zone_override: String = "") -> void:
 	_clear_scene()
 	_ensure_hero()
 	_tel = {"t": 0.0, "dmg0": hero.dmg_total}
+	hero.rel.on_room()
 	room_kind = kind if kind != "" else state.room_type()
 	_save_checkpoint(kind, zone_override)
 	_room_hits0 = hero.hits_taken
@@ -1794,6 +1804,9 @@ func _next_wave() -> void:
 		return
 	var w: Array = waves[wave_i]
 	hud.wave_text = "第 %d 波 / 共 %d 波" % [wave_i + 1, waves.size()]
+	for h: Node in get_tree().get_nodes_in_group("heroes"):
+		if h is Hero:
+			(h as Hero).rel.on_wave()   # 魂灯：每波收魂火
 	var aff_slot := _affix_slot(w)
 	if _trial != null:
 		_trial.begin(wave_i)
@@ -1930,6 +1943,10 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 	LoadProf.add("foe.spawn", _lp)
 	f.detect_mult = 1.6   # 波次刷的怪一出来就该找人，大房间里别在角落发呆
 	f.dropped.connect(_on_drop.bind(kind))
+	f.dropped.connect(func(dp: Vector3, _c: int, _j: int) -> void:
+		for h: Node in get_tree().get_nodes_in_group("heroes"):
+			if h is Hero and (h as Hero).alive:
+				(h as Hero).rel.on_kill(f, dp, _rng))   # 奇物、魂火：斩杀时触发
 	if not f.affixes.is_empty():
 		f.dropped.connect(func(_p: Vector3, _c: int, _j: int) -> void: ArpgAch.add("k_affix"))
 		if state != null and state.cycle > 0 and not f.no_loot:
@@ -2052,6 +2069,10 @@ func _room_cleared() -> void:
 			var dd := _say(sl)
 			dd.finished.connect(func() -> void: _offer_boons(4, "next"))
 			return
+		if state.room_reward() == "relic":
+			hud.banner("精英已斩", "奇物二选一", 1.6)
+			get_tree().create_timer(0.9).timeout.connect(func() -> void: _offer_relics(2, "next"))
+			return
 	var n_boons := 3 if room_kind != "elite" else 4
 	if room_kind == "trial" and _trial != null:
 		var rw := _trial.reward()
@@ -2086,6 +2107,9 @@ func _give_reward(k: String) -> bool:
 			var sc := String(state.run.node().get("school", ""))
 			hud.banner("清场", "心法 · %s" % sc, 1.6)
 			get_tree().create_timer(0.9).timeout.connect(func() -> void: _offer_boons(3, "next", sc))
+		"relic":
+			hud.banner("清场", "奇物二选一", 1.6)
+			get_tree().create_timer(0.9).timeout.connect(func() -> void: _offer_relics(2, "next"))
 		"coins":
 			var n := ArpgRewards.coins(state.gfloor())
 			hud.banner("清场", "得一袋铜钱", 1.6)
@@ -2699,7 +2723,7 @@ func _offer_boons(n: int, then_portal: String, school: String = "") -> void:
 	var items := []
 	for b: Dictionary in offer:
 		var have := state.boons.count(String(b["id"]))
-		items.append({"title": b["name"], "desc": b["desc"], "tag": _school_tag(String(b["school"])), "color": ArpgData.SCHOOL_COLORS.get(b["school"], ArpgMenu.TEAL),
+		items.append({"title": b["name"], "desc": ArpgData.boon_desc(b), "tag": _school_tag(String(b["school"])), "color": ArpgData.SCHOOL_COLORS.get(b["school"], ArpgMenu.TEAL),
 			"right": ("已有 %d" % have) if have > 0 else "", "glyph": String(b["name"]).substr(0, 1)})
 	var m := _open_menu("心法", "三选一，留在身上直到这一局结束", items, "cards", false)
 	hints.menu_tip("boons", m)
@@ -2713,20 +2737,34 @@ func _offer_boons(n: int, then_portal: String, school: String = "") -> void:
 
 ## 心法卡片上的流派标签：“血 心法 2/3”，凑够了写“已大成”
 func _school_tag(sc: String) -> String:
-	var n := int(ArpgData.school_counts(state.boons).get(sc, 0))
+	var n := int(ArpgData.school_counts(state.build_ids()).get(sc, 0))
 	if n >= ArpgData.SET_NEED:
 		return "%s · 已大成" % sc
 	return "%s 心法 %d/%d" % [sc, n, ArpgData.SET_NEED]
 
 
 func _take_boon(id: String) -> void:
-	var b := ArpgData.boon(id)
-	var sc := String(b.get("school", ""))
-	var before := int(ArpgData.school_counts(state.boons).get(sc, 0))
-	var duals0 := ArpgSkills.duals_of(state.boons)
-	state.boons.append(id)
+	_take_build(id, false)
+
+
+## 拿到一个奇物（标签算进流派件数）
+func _take_relic(id: String) -> void:
+	_take_build(id, true)
+
+
+## 心法、奇物共用：加进这一局，重算数值，凑成双修、流派大成时放横幅
+func _take_build(id: String, relic: bool) -> void:
+	var counts0 := ArpgData.school_counts(state.build_ids())
+	var duals0 := ArpgSkills.duals_of(state.build_ids())
+	if relic:
+		state.relics.append(id)
+	else:
+		state.boons.append(id)
 	hero.apply_stats(state.stats(), state.weapon)
-	for d: String in ArpgSkills.duals_of(state.boons):
+	for h: Node in get_tree().get_nodes_in_group("heroes"):
+		if h is Hero and h != hero:
+			(h as Hero).apply_stats(state.stats(), state.weapon)
+	for d: String in ArpgSkills.duals_of(state.build_ids()):
 		if not duals0.has(d):
 			# 双修：两色冲击环交错 + 横幅
 			var dd := ArpgSkills.dual(d)
@@ -2738,20 +2776,54 @@ func _take_boon(id: String) -> void:
 				for j in range(4):
 					vfx.shock_ring(hero.global_position, ca if j % 2 == 0 else cb, 0.3 + j * 0.1, 3.0 + j * 1.6, 0.5))
 			ArpgAch.unlock("dual_any")
-	if before == ArpgData.SET_NEED - 1 and ArpgData.SETS.has(sc):
-		# 流派大成：大横幅 + 本色冲击
-		var st: Dictionary = ArpgData.SETS[sc]
-		get_tree().create_timer(0.5).timeout.connect(func() -> void:
-			hud.banner("%s · 大成「%s」" % [sc, st["name"]], String(st["desc"]), 4.0)
-			Game.sfx("reward")
-			feel.screen_flash(Color(ArpgData.SCHOOL_COLORS.get(sc, Color.WHITE), 0.35), 2.0)
-			for j in range(3):
-				vfx.shock_ring(hero.global_position, ArpgData.SCHOOL_COLORS.get(sc, Color.WHITE), 0.35 + j * 0.15, 4.0 + j * 2.0, 0.5))
-		ArpgAch.unlock("set_any")
-		if String(st["id"]) in ["set_storm", "set_pyre"]:
-			ArpgAch.unlock(String(st["id"]))
+	var counts1 := ArpgData.school_counts(state.build_ids())
+	var delay := 0.5
+	for sc: String in counts1:
+		if int(counts0.get(sc, 0)) < ArpgData.SET_NEED and int(counts1[sc]) >= ArpgData.SET_NEED and ArpgData.SETS.has(sc):
+			# 流派大成：大横幅 + 本色冲击
+			var st: Dictionary = ArpgData.SETS[sc]
+			get_tree().create_timer(delay).timeout.connect(func() -> void:
+				hud.banner("%s · 大成「%s」" % [sc, st["name"]], String(st["desc"]), 4.0)
+				Game.sfx("reward")
+				feel.screen_flash(Color(ArpgData.SCHOOL_COLORS.get(sc, Color.WHITE), 0.35), 2.0)
+				for j in range(3):
+					vfx.shock_ring(hero.global_position, ArpgData.SCHOOL_COLORS.get(sc, Color.WHITE), 0.35 + j * 0.15, 4.0 + j * 2.0, 0.5))
+			delay += 1.2
+			ArpgAch.unlock("set_any")
+			if String(st["id"]) in ["set_storm", "set_pyre"]:
+				ArpgAch.unlock(String(st["id"]))
+	if relic:
+		var r := ArpgRelics.get_relic(id)
+		feel.callout(hero.head_top(), String(r.get("name", "")), ArpgRelics.COLOR, 1.3)
+		vfx.shock_ring(hero.global_position, ArpgRelics.COLOR, 0.3, 4.0, 0.5)
+		vfx.sheet("soul-rise", hero.global_position, 3.0, Color(1.0, 0.7, 0.4), 1.8)
+		Game.sfx("reward", -4.0)
+		return
+	var b := ArpgData.boon(id)
 	feel.callout(hero.head_top(), String(b.get("name", "")), ArpgData.SCHOOL_COLORS.get(b.get("school", ""), Color.WHITE), 1.2)
 	vfx.shock_ring(hero.global_position, ArpgData.SCHOOL_COLORS.get(b.get("school", ""), Color.WHITE), 0.3, 3.5, 0.45)
+
+
+## 奇物二选一（精英房、门上写“奇物”的战斗房）；池子空了就改给心法
+func _offer_relics(n: int, then_portal: String, then: Callable = Callable()) -> void:
+	if mode != "room":
+		return
+	var offer := ArpgRelics.roll(n, state.relics, _rng)
+	if offer.is_empty():
+		_offer_boons(3, then_portal)
+		return
+	var items := []
+	for r: Dictionary in offer:
+		items.append({"title": r["name"], "desc": ArpgRelics.card_desc(r), "tag": ArpgRelics.tag_text(r), "color": ArpgRelics.COLOR,
+			"glyph": String(r["name"]).substr(0, 1)})
+	var m := _open_menu("奇物", "%d 选一，会改变打法；标签也算流派件数" % offer.size(), items, "cards", false)
+	m.chosen.connect(func(i: int) -> void:
+		_take_relic(String(offer[i]["id"]))
+		_close_menu()
+		if then.is_valid():
+			then.call()
+		elif then_portal != "":
+			_open_portal(then_portal))
 
 
 # ---------- 悟道、技能分支、连携 ----------
@@ -2903,7 +2975,7 @@ func _open_shop(_n: ArpgNpc) -> void:
 		if it["kind"] == "whet" and state.whet > 0:
 			desc += "　已磨 %d 次（+%d%%）" % [state.whet, int(round(ArpgState.WHET_ATK * 100 * state.whet))]
 		items.append({"title": it["name"], "desc": desc, "right": "已售" if gone else "%d 铜钱" % pr, "enabled": en,
-			"tag": {"boon": "心法", "gear": "装备", "refill": "补给", "whet": "磨刀", "weapon": "兵器", "item": "道具"}.get(it["kind"], ""),
+			"tag": {"boon": "心法", "relic": "奇物", "gear": "装备", "refill": "补给", "whet": "磨刀", "weapon": "兵器", "item": "道具"}.get(it["kind"], ""),
 			"color": ArpgGear.color(it["item"]) if it["kind"] in ["gear", "weapon"] else Color(0.95, 0.92, 0.85)})
 	var m := _open_menu("游商", "“兵荒马乱的，什么都贵。”　　铜钱 %d" % state.coins, items, "list", true)
 	m.chosen.connect(func(i: int) -> void:
@@ -2915,6 +2987,8 @@ func _open_shop(_n: ArpgNpc) -> void:
 		match String(it["kind"]):
 			"boon":
 				_take_boon(String(it["id"]))
+			"relic":
+				_take_relic(String(it["id"]))
 			"gear":
 				_gain_gear(it["item"])
 			"weapon":
@@ -3021,7 +3095,7 @@ func _offer_boons_then(n: int) -> void:
 	var offer := state.roll_boons(3, _rng)
 	var items := []
 	for b: Dictionary in offer:
-		items.append({"title": b["name"], "desc": b["desc"], "tag": _school_tag(String(b["school"])), "color": ArpgData.SCHOOL_COLORS.get(b["school"], ArpgMenu.TEAL)})
+		items.append({"title": b["name"], "desc": ArpgData.boon_desc(b), "tag": _school_tag(String(b["school"])), "color": ArpgData.SCHOOL_COLORS.get(b["school"], ArpgMenu.TEAL)})
 	var m := _open_menu("心法", "三选一" + ("（还有 %d 次）" % (n - 1) if n > 1 else ""), items, "cards", false)
 	m.chosen.connect(func(i: int) -> void:
 		_take_boon(String(offer[i]["id"]))
@@ -3689,16 +3763,19 @@ func _open_run_info() -> void:
 		var gn := int(gsc[sid])
 		items.append({"title": "套装「%s」" % gs["name"], "right": "%d / 3" % mini(gn, 3), "desc": "两件 %s；三件 %s" % [gs["d2"], gs["d3"]],
 			"color": gs["color"], "enabled": gn >= 2, "tag": "套装"})
-	var sc := ArpgData.school_counts(state.boons)
+	for rid: String in state.relics:
+		var r := ArpgRelics.get_relic(rid)
+		items.append({"title": "奇物 · %s" % r.get("name", rid), "desc": ArpgRelics.card_desc(r).replace("\n", "　"), "tag": "·".join(r.get("tags", [])), "color": ArpgRelics.COLOR})
+	var sc := ArpgData.school_counts(state.build_ids())
 	for k: String in ArpgData.SETS:
 		var n := int(sc.get(k, 0))
 		var st: Dictionary = ArpgData.SETS[k]
 		items.append({"title": "%s「%s」" % [k, st["name"]], "right": "已大成" if n >= ArpgData.SET_NEED else "%d / %d" % [n, ArpgData.SET_NEED],
 			"desc": st["desc"], "color": ArpgData.SCHOOL_COLORS.get(k, ArpgMenu.TEAL), "enabled": n >= ArpgData.SET_NEED})
-	var ds := ArpgSkills.duals_of(state.boons)
+	var ds := ArpgSkills.duals_of(state.build_ids())
 	for d: Dictionary in ArpgSkills.DUALS:
 		var on := ds.has(String(d["id"]))
-		var sc2 := ArpgData.school_counts(state.boons)
+		var sc2 := ArpgData.school_counts(state.build_ids())
 		items.append({"tag": "双修", "title": "%s + %s「%s」" % [d["a"], d["b"], d["name"]], "desc": d["desc"],
 			"right": "已成" if on else "%d / %d" % [mini(int(sc2.get(d["a"], 0)), ArpgSkills.DUAL_NEED) + mini(int(sc2.get(d["b"], 0)), ArpgSkills.DUAL_NEED), ArpgSkills.DUAL_NEED * 2],
 			"color": ArpgData.SCHOOL_COLORS.get(d["a"], ArpgMenu.TEAL), "enabled": on})
@@ -3706,7 +3783,7 @@ func _open_run_info() -> void:
 		var got := state.links_done.has(String(l["id"]))
 		items.append({"tag": "连携", "title": String(l["name"]), "desc": l["desc"], "right": "这一局打出过" if got else "",
 			"color": l["color"], "enabled": got})
-	var m := _open_menu("这一局", "%s　第 %d 层　第 %d / %d 间　心法 %d 个" % [ArpgState.ACT_NAMES[state.act], state.gfloor() + 1, state.run.row + 1, state.run.rows.size(), state.boons.size()], items, "list", true)
+	var m := _open_menu("这一局", "%s　第 %d 层　第 %d / %d 间　心法 %d 个　奇物 %d 件" % [ArpgState.ACT_NAMES[state.act], state.gfloor() + 1, state.run.row + 1, state.run.rows.size(), state.boons.size(), state.relics.size()], items, "list", true)
 	m.extra_draw = func(c: Control, vs: Vector2) -> void: _draw_map(c, vs, [], vs.y - 150.0)   # 列表下面
 	m.chosen.connect(func(_i: int) -> void: _open_pause("run"))
 	m.cancelled.connect(func() -> void: _open_pause("run"), CONNECT_DEFERRED)

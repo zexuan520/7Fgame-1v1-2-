@@ -54,6 +54,7 @@ var secrets_done := {}                   # 已经打开过的隐藏房间（房�
 var squads := {}                         # 每间战斗房抽到的“阵”（"层号:房间坐标" → 阵 id，FoeSquads）
 var side_rooms := 0                      # 这一局拿完的侧室（藏宝 / 伏兵 / 灵泉 / 遗骸 / 小试炼）
 var boons: Array[String] = []
+var relics: Array[String] = []          # 奇物（ArpgRelics），标签和心法一起算流派件数
 var forged := 0            # 这一局在灯冢熔铜炉里铸过几层甲（每层生命 +FORGE_HP）
 var whet := 0               # 这一局在游商那里磨过几次刀（每次伤害 +6%，铜钱的长期去处）
 var revives := 0
@@ -270,6 +271,8 @@ func stat_parts() -> Array:
 		var bs := {}
 		ArpgData.add_stats(bs, bd.get("stats", {}), int(seen_b[b]))
 		add.call("心法", "心法·%s%s" % [bd.get("name", b), " ×%d" % seen_b[b] if int(seen_b[b]) > 1 else ""], bs)
+	for rid: String in relics:
+		add.call("奇物", "奇物·%s" % ArpgRelics.get_relic(rid).get("name", rid), ArpgRelics.stats_of(rid))
 	if whet > 0:
 		add.call("境况", "磨刀 ×%d" % whet, {"atk": WHET_ATK * whet})
 	if forged > 0:
@@ -288,7 +291,7 @@ func stat_parts() -> Array:
 		add.call("境况", "路上·%s" % "、".join(got), a3)
 	if not (flags.get("route_stats", {}) as Dictionary).is_empty():
 		add.call("境况", "支线所得", flags["route_stats"])   # 分岔支线尽头拿的加成（ArpgRoutes）
-	var sc := ArpgData.school_counts(boons)
+	var sc := ArpgData.school_counts(build_ids())
 	for k: String in sc:
 		if int(sc[k]) >= ArpgData.SET_NEED and ArpgData.SETS.has(k):
 			add.call("心法", "大成·%s" % ArpgData.SETS[k]["name"], {String(ArpgData.SETS[k]["id"]): 1.0})
@@ -298,7 +301,7 @@ func stat_parts() -> Array:
 	if not dr.is_empty():
 		add.call("境况", String(dr[0]), dr[1])
 	var ks := {}
-	ArpgSkills.add_stats(ks, skills, boons)
+	ArpgSkills.add_stats(ks, skills, build_ids())
 	add.call("技能", "技能分支与双修", ks)
 	if difficulty() == 0:
 		add.call("难度", "难度·游历", {"easy": EASY_TAKEN})
@@ -466,7 +469,10 @@ func shop_stock() -> Array:
 	rng.seed = seed_value + run.row * 31 + run.col * 7
 	var items := []
 	for b: Dictionary in roll_boons(2, rng):
-		items.append({"kind": "boon", "id": b["id"], "name": b["name"], "desc": b["desc"], "price": 45 + run.row * 3})
+		items.append({"kind": "boon", "id": b["id"], "name": b["name"], "desc": ArpgData.boon_desc(b).replace("\n", "　"), "price": 45 + run.row * 3})
+	# 奇物一件（贵）
+	for r: Dictionary in ArpgRelics.roll(1, relics, rng):
+		items.append({"kind": "relic", "id": r["id"], "name": r["name"], "desc": "奇物（%s）：%s" % ["·".join(r["tags"]), ArpgRelics.card_desc(r).replace("\n", "　")], "price": 95 + run.row * 5})
 	# 装备两件（四个部位里随机两个）、兵器一把、道具两样
 	var slots: Array = ArpgData.GEAR_SLOTS.duplicate()
 	for i in range(2):
@@ -490,6 +496,14 @@ func shop_stock() -> Array:
 	items.append({"kind": "whet", "id": "whet", "name": "磨刀", "desc": "这一局伤害 +6%（可以一直磨，越磨越贵）", "price": 0})
 	shop_cache[key] = items
 	return items
+
+
+## 算流派件数用：心法 + 奇物（奇物每个标签算一件）
+func build_ids() -> Array:
+	var out: Array = []
+	out.append_array(boons)
+	out.append_array(relics)
+	return out
 
 
 ## 这间房清完给什么（ArpgRewards）
