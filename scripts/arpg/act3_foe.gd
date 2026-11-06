@@ -2,7 +2,7 @@ class_name Act3Foe
 extends Foe
 ## 第三幕“出山”的敌人。第三幕里刷出来的怪都用这个类（没在 TYPES3 里的种类照旧走 Foe.TYPES）：
 ##   柳溪村：灯兵（被灰灯点起来的村民，倒下后有几成会再站起来一次）、稻草人（田里不动，走近才扑）、镇灯卫（盾 + 长枪）、纵火手（扔火罐）
-##   官道驿站：驿卒（快，刺完就退、会闪）、冲骑（长枪，远了就直线冲锋）、镇魂铃（摇铃，身边同伴几秒内减伤一半）
+##   官道驿站：驿卒（快，刺完就退、会闪）、冲骑（长枪，远了就直线冲锋）、镇魂铃 wardbell（摇铃，身边同伴几秒内减伤一半）
 ##   长明宫：金吾卫（金甲，先破韧，会跳劈）、提炉官（扔香炉）、宫灯魂（飘着，会瞬移到你身边施法）、续命司司主陆长庚（精英）
 ##   头目：火师焦明（火罐、火场一圈；半血整个村子烧起来、天上落火）、押灯将霍长风（三连刺、幽骑列阵冲锋；半血箭雨）、
 ##        长明帝（四盏护体灯：亮一盏少吃两成伤害、慢慢回血，砸灭一盏踉跄一下；金光扇、光柱、召金吾卫；半血宫人魂列阵）
@@ -19,7 +19,7 @@ const TYPES3 := {
 		"hp": 110.0, "speed": 3.5, "detect": 14.0, "range": 4.2, "dmg": 15.0, "windup": 0.6, "attack": "thrust", "poise": 20.0, "coins": 6,
 		"offhand": "shield_f", "olen": 26.0, "guard": 5.0, "hint": "镇灯卫 · 盾挡正面，枪长，绕后"},
 	"torcher": {"name": "纵火手", "model": "rogue", "weapon": "", "wlen": 0.0, "tint": Color(1.0, 0.68, 0.5), "mono": 0.8, "k": 0.95,
-		"hp": 55.0, "speed": 4.0, "detect": 16.0, "range": 12.0, "dmg": 8.0, "windup": 0.75, "attack": "lob", "poise": 0.0, "coins": 4, "keep": 8.0,
+		"hp": 55.0, "speed": 4.0, "detect": 16.0, "range": 12.0, "dmg": 8.0, "windup": 0.75, "attack": "lob", "poise": 0.0, "coins": 4, "keep": 8.0, "elem": "fire",
 		"hint": "纵火手 · 别站进橙圈"},
 	# ---------- 第八层 · 官道驿站 ----------
 	"courier": {"name": "驿卒", "model": "rogue", "weapon": "dagger", "wlen": 22.0, "tint": Color(0.82, 0.88, 1.0), "mono": 0.9, "k": 0.95,
@@ -28,7 +28,7 @@ const TYPES3 := {
 	"lancer": {"name": "冲骑", "model": "knight", "weapon": "spear", "wlen": 62.0, "tint": Color(0.85, 0.88, 1.05), "mono": 0.75, "k": 1.2,
 		"hp": 135.0, "speed": 3.4, "detect": 16.0, "range": 4.4, "dmg": 18.0, "windup": 0.6, "attack": "thrust", "poise": 30.0, "coins": 7,
 		"hint": "冲骑 · 隔远了会冲，引它撞墙"},
-	"bellmonk": {"name": "镇魂铃", "model": "mage", "weapon": "staff", "wlen": 34.0, "tint": Color(0.8, 0.9, 1.05), "mono": 0.7, "k": 1.0,
+	"wardbell": {"name": "镇魂铃", "model": "mage", "weapon": "staff", "wlen": 34.0, "tint": Color(0.8, 0.9, 1.05), "mono": 0.7, "k": 1.0,
 		"hp": 72.0, "speed": 3.4, "detect": 16.0, "range": 9.0, "dmg": 10.0, "windup": 0.8, "attack": "aura", "poise": 0.0, "coins": 6, "keep": 8.0,
 		"aura": "ward", "offhand": "lantern_h", "olen": 26.0, "hint": "镇魂铃 · 先杀它，铃一响旁边的减伤一半"},
 	"ghostrider": {"name": "幽骑", "model": "knight", "weapon": "spear", "wlen": 60.0, "tint": Color(0.7, 0.85, 1.35), "mono": 1.0, "phantom": true, "k": 1.15,
@@ -38,10 +38,10 @@ const TYPES3 := {
 		"hp": 165.0, "speed": 3.3, "detect": 14.0, "range": 2.8, "dmg": 20.0, "windup": 0.68, "attack": "heavy", "poise": 55.0, "coins": 9, "armor": 0.4,
 		"hint": "金吾卫 · 金甲挡刀，先打破韧"},
 	"censer": {"name": "提炉官", "model": "mage", "weapon": "lantern_h", "wlen": 30.0, "tint": Color(0.95, 0.55, 0.5), "mono": 0.7, "k": 1.0,
-		"hp": 70.0, "speed": 3.2, "detect": 16.0, "range": 12.0, "dmg": 9.0, "windup": 0.8, "attack": "lob", "poise": 0.0, "coins": 5, "keep": 8.5,
+		"hp": 70.0, "speed": 3.2, "detect": 16.0, "range": 12.0, "dmg": 9.0, "windup": 0.8, "attack": "lob", "poise": 0.0, "coins": 5, "keep": 8.5, "elem": "fire",
 		"hint": "提炉官 · 香炉落地就烧"},
 	"palaceghost": {"name": "宫灯魂", "model": "rogue", "weapon": "", "wlen": 0.0, "tint": Color(1.25, 0.95, 1.1), "mono": 1.0, "k": 0.9,
-		"hp": 48.0, "speed": 3.6, "detect": 18.0, "range": 10.0, "dmg": 13.0, "windup": 0.65, "attack": "rune", "poise": 0.0, "coins": 4, "keep": 7.0,
+		"hp": 48.0, "speed": 3.6, "detect": 18.0, "range": 10.0, "dmg": 13.0, "windup": 0.65, "attack": "rune", "poise": 0.0, "coins": 4, "keep": 7.0, "elem": "magic",
 		"offhand": "lantern_h", "olen": 26.0, "hint": "宫灯魂 · 会闪到你身边，看脚下"},
 	"courtghost": {"name": "宫人魂", "model": "rogue", "weapon": "sword", "wlen": 32.0, "tint": Color(1.4, 1.1, 0.75), "mono": 1.0, "phantom": true, "k": 1.0,
 		"hp": 9999.0, "speed": 3.0, "detect": 40.0, "range": 2.6, "dmg": 16.0, "windup": 0.8, "attack": "charge", "poise": 999.0, "coins": 0},
@@ -110,7 +110,7 @@ func _ready() -> void:
 			rig.set_rim(Color(1.0, 0.85, 0.4), 0.25)
 		"torcher":
 			rig.set_rim(Color(1.0, 0.55, 0.2), 0.5)
-		"bellmonk":
+		"wardbell":
 			rig.set_rim(Color(0.6, 0.85, 1.0), 0.6)
 		"palaceghost":
 			rig.set_rim(Color(1.0, 0.7, 0.85), 1.0)
@@ -315,7 +315,7 @@ func _windup_time() -> float:
 
 
 func _begin_attack(kind_: String) -> void:
-	if kind == "bellmonk" and kind_ == "aura":
+	if kind == "wardbell" and kind_ == "aura":
 		kind_ = "ward"
 	if not (kind_ in CUSTOM):
 		super._begin_attack(kind_)
@@ -332,14 +332,14 @@ func _begin_attack(kind_: String) -> void:
 		_atk_target = target.global_position
 		face_to(_atk_dir)
 	var wt := _windup_time()
-	var fire := Color(1.0, 0.5, 0.15, 0.6)
-	var gold := Color(1.0, 0.85, 0.35, 0.6)
+	var fire: Color = Vfx.DANGER["fire"]
+	var gold: Color = Vfx.DANGER["holy"]
 	_pts.clear()
 	var tp := target.global_position if target != null else global_position
 	tp.y = 0.0
 	match _atk:
 		"ward":
-			Vfx.I.ground(global_position, "magic_01", Color(0.5, 0.8, 1.0, 0.7), 0.5, AURA_R * 2.0, wt + 0.3)
+			Vfx.I.ground(global_position, "magic_01", Vfx.DANGER["summon"], 0.5, AURA_R * 2.0, wt + 0.3)
 			Feel.I.callout(head_top(), "铃——", Color(0.7, 0.9, 1.0), 0.8)
 		"f_lob":
 			# 三个火罐：一个砸主角脚下，两个落在旁边
@@ -368,7 +368,7 @@ func _begin_attack(kind_: String) -> void:
 				_pts.append(tp + Vector3(cos(a), 0, sin(a)) * randf_range(2.0, 6.5))
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "天火!", Color(1.0, 0.5, 0.2), 1.0)
 		"h_thrust":
-			Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * (float(data["range"]) + 1.0), 1.0, Color(1.0, 0.15, 0.1, 0.55), wt)
+			Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * (float(data["range"]) + 1.0), 1.0, Vfx.DANGER["melee"], wt)
 		"h_rank":
 			Vfx.I.ground(global_position, "magic_01", Color(0.5, 0.75, 1.0, 0.8), 0.5, 5.0, wt + 0.3)
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "幽骑——冲!", Color(0.65, 0.85, 1.0), 1.2)
@@ -378,7 +378,7 @@ func _begin_attack(kind_: String) -> void:
 				var a := TAU * i / 8.0 + randf() * 0.4
 				_pts.append(tp + Vector3(cos(a), 0, sin(a)) * randf_range(2.5, 6.0))
 			for q in _pts:
-				Vfx.I.telegraph_circle(Vector3(q.x, 0, q.z), 1.4, Color(1.0, 0.2, 0.15, 0.55), wt + 1.0)
+				Vfx.I.telegraph_circle(Vector3(q.x, 0, q.z), 1.4, Vfx.DANGER["shot"], wt + 1.0)
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "放箭!", Color(1.0, 0.45, 0.35), 1.0)
 		"e_pillar":
 			var n := 4 if _boss_phase == 0 else 6
@@ -500,7 +500,7 @@ func _st_attack(dt: float) -> void:
 						_atk_dir.y = 0
 						_atk_dir = _atk_dir.normalized() if _atk_dir.length() > 0.01 else facing
 						face_to(_atk_dir)
-					Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * (float(data["range"]) + 1.0), 0.9, Color(1.0, 0.15, 0.1, 0.5), 0.1)
+					Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * (float(data["range"]) + 1.0), 0.9, Vfx.DANGER["melee"], 0.1)
 					return
 				_end_attack()
 		"h_rank", "e_rank":
@@ -716,7 +716,7 @@ func _tick_lamp(delta: float) -> void:
 		Feel.I.callout(head_top() + Vector3(0, 1.4, 0), _hint_text(), Color(1.0, 0.9, 0.6), 2.4)
 	# 灯亮着：皇帝慢慢回血（每盏每秒 0.4%），金线连过去
 	if is_instance_valid(boss_ref) and boss_ref.alive:
-		boss_ref.hp = minf(boss_ref.max_hp, boss_ref.hp + boss_ref.max_hp * 0.004 * dt)
+		boss_ref.hp = minf(boss_ref.max_hp, boss_ref.hp + boss_ref.max_hp * 0.0015 * dt)
 		if int(_anim_t * 0.7) != int((_anim_t - dt) * 0.7):
 			var a := global_position + Vector3(0, 2.4, 0)
 			Vfx.I.streaks(a, (boss_ref.chest() - a).normalized(), Color(1.0, 0.85, 0.45), 1, a.distance_to(boss_ref.chest()), 0.3, 0.0, 0.08)
@@ -733,7 +733,7 @@ func take_hit(info: HitInfo) -> bool:
 		info.damage *= 0.5
 		Vfx.I.pop(chest() - info.dir * 0.4, "spark_05", Color(0.6, 0.85, 1.0), 0.35, 1.5, 0.12)
 	if kind == "boss9" and _lit > 0 and info.weight < HitInfo.Weight.ULT:
-		info.damage *= 1.0 - 0.2 * _lit
+		info.damage *= 1.0 - 0.15 * _lit
 		Vfx.I.pop(chest() - info.dir * 0.5, "spark_05", Color(1.0, 0.85, 0.45), 0.45, 1.8, 0.14)
 		var now := Time.get_ticks_msec() / 1000.0
 		if now - _lamp_said > 4.0:
@@ -760,6 +760,15 @@ func _on_rage() -> void:
 			_t2 = 2.5
 
 
+## 属性：火师的火罐、火圈、天火算火，长明帝的光柱算佛光
+func _atk_elem() -> String:
+	if _atk.begins_with("f_"):
+		return "fire"
+	if _atk == "e_pillar":
+		return "holy"
+	return super._atk_elem()
+
+
 func fx_color() -> Color:
 	match kind:
 		"boss7":
@@ -784,7 +793,7 @@ func die(impulse: Vector3) -> void:
 			Vfx.I.chips(p + Vector3(0, 1.5, 0), Vector3.UP, Color(1.0, 0.8, 0.4), 16, 6.0, 0.1)
 			if is_instance_valid(boss_ref):
 				boss_ref._lamp_out()
-		"bellmonk":
+		"wardbell":
 			if _auras == 0 and not no_loot:
 				ArpgAch.unlock("bell_cut")
 		"lampman":

@@ -9,7 +9,8 @@ const KINDS := ["cache", "ambush", "spring", "lore", "trial"]
 const WEIGHTS := [20, 28, 14, 20, 18]
 ## 第二幕三层各有一种独有的侧室：青井的许愿井（投钱换魂玉或心法）、灯冢的熔铜炉（淬刃 / 铸甲 / 熔装备）、
 ## 灰衣营的木笼（撬开放人，守卫扑上来，打完被救的人送一份谢礼）
-const UNIQUE := {"well": "wish", "vault": "forge", "camp": "cage"}
+## 第三幕：柳溪村的祠堂、驿站的马厩、长明宫的内库（内容在 Act3.side_content）
+const UNIQUE := {"well": "wish", "vault": "forge", "camp": "cage", "liuxi": "hall", "post": "stable", "palace": "treasury"}
 const UNIQUE_W := 26
 ## 每层一套名字：[名字, 门上小字]
 const NAMES := {
@@ -25,6 +26,12 @@ const NAMES := {
 		"lore": ["壁画廊", "墙上有画"], "trial": ["七灯阵", "灯一盏盏亮"], "forge": ["熔铜炉", "炉火还没熄"]},
 	"camp": {"cache": ["军需帐", "封条撕了一半"], "ambush": ["刑帐", "里面有人"], "spring": ["伙房", "锅还热着"],
 		"lore": ["文书帐", "桌上堆着信"], "trial": ["校场", "鼓声"], "cage": ["木笼", "里面有人在哭"]},
+	"liuxi": {"cache": ["米仓", "门闩断了"], "ambush": ["晒谷场", "稻草人在动"], "spring": ["溪边石井", "水声"],
+		"lore": ["空屋", "牌位还在"], "trial": ["打谷场", "连枷声"], "hall": ["祠堂", "香火没断"]},
+	"post": {"cache": ["驿仓", "封条湿了"], "ambush": ["车棚", "灯车的车辙"], "spring": ["驿井", "井口有灯"],
+		"lore": ["驿丞房", "铺盖还在"], "trial": ["马道", "蹄声"], "stable": ["马厩", "有马在刨地"]},
+	"palace": {"cache": ["偏库", "金漆剥了"], "ambush": ["值房", "甲叶在响"], "spring": ["御药房", "药香"],
+		"lore": ["画像殿", "满墙画像"], "trial": ["演武阶", "钟鼓齐鸣"], "treasury": ["内库", "门没上锁"]},
 }
 ## 遗骸 / 骨室 / 藏经阁里读到的旧事（每层几段，随机一段）
 const LORE := {
@@ -59,7 +66,8 @@ const LORE := {
 		[["", "床铺底下塞着一双小孩的草鞋，鞋底磨穿了。"], ["", "鞋里塞着一张纸，歪歪扭扭写着：“我叫小满，我不怕。”纸下面压着几枚魂玉。"]],
 	],
 }
-const ZONE_OF := {"forest": "forest", "sakura": "forest", "grave": "grave", "temple": "temple", "well": "well", "vault": "vault", "camp": "camp"}
+const ZONE_OF := {"forest": "forest", "sakura": "forest", "grave": "grave", "temple": "temple", "well": "well", "vault": "vault", "camp": "camp",
+	"liuxi": "liuxi", "post": "post", "palace": "palace"}
 ## 屋里的摆设（靠墙放）
 const PROPS := {
 	"forest": ["crates", "barrel", "sack", "lumber", "barrel_small", "table", "bench"],
@@ -68,10 +76,16 @@ const PROPS := {
 	"well": ["column", "candles", "shrine", "rubble", "skull_candle", "shelf", "pillar"],
 	"vault": ["crates", "coffin", "candles", "barrel", "rubble", "box", "column"],
 	"camp": ["crates", "barrel", "sack", "table", "bench", "sword_shield", "box"],
+	"liuxi": ["barrel", "sack", "lumber", "table", "bench", "crates", "barrel_small"],
+	"post": ["crates", "barrel", "sack", "table", "bench", "box", "lumber"],
+	"palace": ["shelf", "candles", "banner", "box", "lantern", "column", "candles"],
 }
-const WALL := {"forest": "wall", "grave": "wall_broken", "temple": "wall", "well": "wall_broken", "vault": "wall", "camp": "fence"}
-const LIGHT := {"forest": Color(1.0, 0.75, 0.45), "grave": Color(0.55, 1.0, 0.7), "temple": Color(1.0, 0.8, 0.5), "well": Color(0.5, 0.85, 1.0), "vault": Color(1.0, 0.6, 0.3), "camp": Color(1.0, 0.75, 0.5)}
-const TINT := {"forest": Color(1.3, 1.15, 1.0), "grave": Color(0.85, 0.95, 0.9), "temple": Color(0.62, 0.5, 0.48), "well": Color(0.8, 0.95, 1.1), "vault": Color(1.1, 0.85, 0.7), "camp": Color(1.15, 1.05, 0.95)}
+const WALL := {"forest": "wall", "grave": "wall_broken", "temple": "wall", "well": "wall_broken", "vault": "wall", "camp": "fence",
+	"liuxi": "wall", "post": "wall", "palace": "wall"}
+const LIGHT := {"forest": Color(1.0, 0.75, 0.45), "grave": Color(0.55, 1.0, 0.7), "temple": Color(1.0, 0.8, 0.5), "well": Color(0.5, 0.85, 1.0), "vault": Color(1.0, 0.6, 0.3), "camp": Color(1.0, 0.75, 0.5),
+	"liuxi": Color(1.0, 0.72, 0.45), "post": Color(1.0, 0.78, 0.5), "palace": Color(1.0, 0.82, 0.5)}
+const TINT := {"forest": Color(1.3, 1.15, 1.0), "grave": Color(0.85, 0.95, 0.9), "temple": Color(0.62, 0.5, 0.48), "well": Color(0.8, 0.95, 1.1), "vault": Color(1.1, 0.85, 0.7), "camp": Color(1.15, 1.05, 0.95),
+	"liuxi": Color(1.2, 1.08, 0.92), "post": Color(0.85, 0.92, 1.0), "palace": Color(1.0, 0.75, 0.7)}
 
 var main: ArpgMain
 var arena: Arena
@@ -319,7 +333,8 @@ func _dress() -> void:
 		arena.kit(id, spots[i], (0.0 if i < 3 else PI * 0.5) + _rng.randf_range(-0.2, 0.2), 1.0, true)
 	# 地上散几件小东西（不挡路）
 	var bits := {"forest": ["sack", "barrel_small", "lumber"], "grave": ["ribcage", "gravemarker", "candles"], "temple": ["candles", "candles", "sack"],
-		"well": ["rubble", "candles", "ribcage"], "vault": ["rubble", "candles", "sack"], "camp": ["sack", "barrel_small", "lumber"]}
+		"well": ["rubble", "candles", "ribcage"], "vault": ["rubble", "candles", "sack"], "camp": ["sack", "barrel_small", "lumber"],
+		"liuxi": ["sack", "barrel_small", "lumber"], "post": ["sack", "barrel_small", "lumber"], "palace": ["candles", "candles", "sack"]}
 	for i in range(3):
 		var p := at(_rng.randf_range(0.2, 0.8), _rng.randf_range(0.55, 0.85))
 		arena.kit(bits[zone][i], p, _rng.randf() * TAU, 0.8, false)
@@ -336,14 +351,16 @@ func _build_content() -> void:
 				var lp := at(_rng.randf_range(0.3, 0.9), _rng.randf_range(0.25, 0.75))
 				_coin_pile(lp)
 		"ambush":
-			arena.kit({"forest": "tree_dead", "grave": "crypt", "temple": "shrine", "well": "shrine", "vault": "coffin", "camp": "tent"}[zone], at(0.85, 0.5), -side * PI * 0.5, 0.9 if zone != "grave" else 0.6, true)
+			arena.kit({"forest": "tree_dead", "grave": "crypt", "temple": "shrine", "well": "shrine", "vault": "coffin", "camp": "tent",
+				"liuxi": "tent", "post": "tent", "palace": "shrine"}[zone], at(0.85, 0.5), -side * PI * 0.5, 0.9 if zone != "grave" else 0.6, true)
 		"spring":
 			var k: String = "shrine" if zone == "temple" else "well"
 			main._npc(display_name(), mid, {"kit": k, "scale": 1.3}, _use_spring)
 			if Vfx.I != null:
 				Vfx.I.ground(mid + Vector3(0, 0.02, 0), "magic_01", Color(0.5, 1.0, 0.8, 0.6), 2.2, 2.6, 1.0e6).reparent(self)
 		"lore":
-			var k2: String = {"forest": "grave_a", "grave": "coffin", "temple": "shelf", "well": "coffin", "vault": "shrine", "camp": "table"}[zone]
+			var k2: String = {"forest": "grave_a", "grave": "coffin", "temple": "shelf", "well": "coffin", "vault": "shrine", "camp": "table",
+				"liuxi": "shrine", "post": "table", "palace": "shelf"}[zone]
 			main._npc(display_name(), mid, {"kit": k2, "scale": 1.3}, _read_lore)
 		"wish":
 			_npc0 = main._npc(display_name(), mid, {"kit": "well", "scale": 1.3}, _use_wish)
@@ -377,8 +394,11 @@ func _build_content() -> void:
 				va.apply(Poses.hurt(0.6))
 				_prisoners.append(va)
 			_npc0 = main._npc("撬开木笼", at(0.5, 0.45), {"kit": "", "scale": 1.0}, _open_cage)
+		"hall", "stable", "treasury":
+			_npc0 = Act3.side_content(self, mid)
 		"trial":
-			var k3: String = {"forest": "gravestone", "grave": "skull_candle", "temple": "lantern", "well": "lantern", "vault": "candles", "camp": "banner"}[zone]
+			var k3: String = {"forest": "gravestone", "grave": "skull_candle", "temple": "lantern", "well": "lantern", "vault": "candles", "camp": "banner",
+				"liuxi": "lantern", "post": "banner", "palace": "lantern"}[zone]
 			main._npc(display_name(), mid, {"kit": k3, "scale": 1.6}, _start_trial)
 			arena.spirit_fire(mid + Vector3(0, 0.3, 0), Color(1.0, 0.6, 0.35) if zone != "grave" else Color(0.55, 1.0, 0.7), 1.1, 1.6, 6.0)
 
@@ -479,6 +499,15 @@ func _start_trial(n: ArpgNpc) -> void:
 	if zone == "camp":
 		_spawn(["greyblade", 4, "crawler", 4, "greyspear", 1])
 		return
+	if zone == "liuxi":
+		_spawn(["lampman", 6, "scarecrow", 2, "torcher", 1])
+		return
+	if zone == "post":
+		_spawn(["courier", 4, "lampman", 3, "lancer", 1])
+		return
+	if zone == "palace":
+		_spawn(["palaceghost", 3, "lampman", 4, "goldguard", 1])
+		return
 	_spawn([["crawler", 8, "skeleton", 2], ["crawler", 5, "rogue", 3, "mage", 1], ["skeleton", 3, "rogue", 3, "mage", 1]][mini(fl, 2)])
 
 
@@ -544,6 +573,10 @@ func _use_spring(n: ArpgNpc) -> void:
 
 ## 支线物件：幽林先找阿樱的风筝（一次一件），再找无名冢的名牌（幽林一个、无名冢两个，要先拿到守墓人的名单）
 func _story_finds(lines: Array) -> void:
+	# 第三幕 · 七村名录：三层的遗骸侧室里一次认一条（跨局）
+	if zone in ["liuxi", "post", "palace"]:
+		Act3.side_finds(lines)
+		return
 	# 第二幕支线 · 地藏的头：青井的遗骸侧室水底摸到
 	if zone == "well" and not bool(Game.save.get("arpg_jizo_head", false)):
 		Game.save["arpg_jizo_head"] = true
@@ -603,7 +636,7 @@ func _read_lore(n: ArpgNpc) -> void:
 	stage = "done"
 	_count()
 	Game.sfx("memory")
-	var pool: Array = LORE[zone]
+	var pool: Array = LORE[zone] if LORE.has(zone) else Act3.LORE[zone]
 	var lines: Array = (pool[_rng.randi() % pool.size()] as Array).duplicate()
 	var jade := 2 + main.state.floor_i()
 	lines.append(["", "（魂玉 +%d%s）" % [jade, "，经卷里悟出一门心法" if zone == "temple" else ""]])
@@ -627,7 +660,7 @@ func _mark_a2() -> void:
 		got.append(kind)
 		Game.save["arpg_side2"] = got
 		Game.write_save()
-	if got.size() >= UNIQUE.size():
+	if got.has("wish") and got.has("forge") and got.has("cage"):
 		ArpgAch.unlock("side_act2")
 
 
