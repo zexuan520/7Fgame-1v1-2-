@@ -51,18 +51,18 @@ const TYPES := {
 	"ronin": {"name": "阿七", "model": "barbarian", "weapon": "sword", "wlen": 34.0, "tint": Color(1.15, 0.85, 0.65), "k": 1.0,
 		"hp": 420.0, "speed": 4.8, "detect": 30.0, "range": 2.5, "dmg": 15.0, "windup": 0.42, "attack": "slash", "poise": 55.0, "coins": 25},
 	# 烛国甲士：一身铜甲，平时只吃三成伤害；打掉韧性（破韧）后甲片松开，几秒内伤害全吃
-	"armored": {"name": "烛国甲士", "model": "knight", "weapon": "axe2", "wlen": 44.0, "tint": Color(1.05, 0.8, 0.5), "k": 1.2,
+	"armored": {"name": "烛国甲士", "model": "knight", "weapon": "axe2", "wlen": 44.0, "tint": Color(1.25, 0.88, 0.5), "mono": 0.75, "k": 1.2,
 		"hp": 150.0, "speed": 2.9, "detect": 13.0, "range": 2.8, "dmg": 19.0, "windup": 0.7, "attack": "heavy", "poise": 55.0, "coins": 8, "armor": 0.35},
 	# 披火骨：浑身着火的骨兵，死了留下一滩火
 	"flameskel": {"name": "披火骨", "model": "skel_warrior", "weapon": "skel_blade", "wlen": 30.0, "tint": Color(1.35, 0.75, 0.45), "k": 1.0,
 		"hp": 60.0, "speed": 4.2, "detect": 14.0, "range": 2.2, "dmg": 12.0, "windup": 0.5, "attack": "slash", "poise": 0.0, "coins": 4, "fire": true},
 	# 不夜将军的亲兵（幻影）：列阵冲一趟就散
-	"phantom": {"name": "亲兵", "model": "knight", "weapon": "axe2", "wlen": 40.0, "tint": Color(1.3, 1.05, 0.6), "k": 1.15,
+	"phantom": {"name": "亲兵", "model": "knight", "weapon": "axe2", "wlen": 40.0, "tint": Color(1.5, 1.2, 0.7), "mono": 1.0, "k": 1.15,
 		"hp": 9999.0, "speed": 3.0, "detect": 40.0, "range": 2.6, "dmg": 16.0, "windup": 0.8, "attack": "charge", "poise": 999.0, "coins": 0},
 	# 续命司的挖掘队头领（灯冢里的精英战，第一次和活人交手）
 	"digger": {"name": "挖掘队头领", "model": "barbarian", "weapon": "axe2", "wlen": 40.0, "tint": Color(0.75, 0.78, 0.82), "k": 1.15,
 		"hp": 360.0, "speed": 4.0, "detect": 30.0, "range": 2.7, "dmg": 18.0, "windup": 0.55, "attack": "heavy", "poise": 60.0, "coins": 20},
-	"boss5": {"name": "不夜将军", "model": "knight", "weapon": "axe2", "wlen": 60.0, "tint": Color(1.1, 0.85, 0.55), "k": 2.0,
+	"boss5": {"name": "不夜将军", "model": "knight", "weapon": "axe2", "wlen": 60.0, "tint": Color(1.3, 0.9, 0.5), "mono": 0.55, "k": 2.0,
 		"hp": 1050.0, "speed": 3.2, "detect": 40.0, "range": 3.6, "dmg": 22.0, "windup": 0.62, "attack": "boss", "poise": 150.0, "coins": 90, "boss": true},
 	"boss4": {"name": "井中人·枯荣", "model": "skel_mage", "weapon": "skel_staff", "wlen": 48.0, "tint": Color(0.65, 0.88, 1.15), "k": 1.8,
 		"hp": 950.0, "speed": 3.0, "detect": 40.0, "range": 3.4, "dmg": 20.0, "windup": 0.6, "attack": "boss", "poise": 130.0, "coins": 80, "boss": true, "head": "skel_minion"},
@@ -160,6 +160,8 @@ func _ready() -> void:
 	rig.set_rim(Color(0.6, 0.85, 0.9) if not is_boss else Color(1.0, 0.6, 0.8), 0.3)
 	if data.has("head"):
 		rig.swap_head(String(data["head"]))
+	if data.has("mono"):
+		rig.mat.set_shader_parameter("mono", float(data["mono"]))
 	if data.has("offhand"):
 		rig.set_offhand(String(data["offhand"]), float(data.get("olen", 22.0)))
 	match kind:

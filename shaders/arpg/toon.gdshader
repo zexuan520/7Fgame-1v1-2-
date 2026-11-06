@@ -14,6 +14,7 @@ uniform float shadow_floor = 0.32;    // 最暗那一阶的亮度
 uniform float fade = 1.0;             // 前景遮挡时的半透明（用抖动镂空，不用排序）
 uniform bool swap_green = false;      // 把模型里偏绿的颜色（KayKit 游侠的兜帽）换成 swap_color，保留明暗
 uniform vec3 swap_color : source_color = vec3(0.2, 0.25, 0.4);
+uniform float mono = 0.0;             // 去色（铜像、石像：先变灰再乘 tint）
 
 void fragment() {
 	vec3 src = pow(COLOR.rgb, vec3(2.2));   // 顶点色按 sRGB 存，换成线性再算光照
@@ -24,6 +25,7 @@ void fragment() {
 			src = swap_color * lum * 2.2;
 		}
 	}
+	src = mix(src, vec3(dot(src, vec3(0.3, 0.55, 0.15))), mono);
 	vec3 base = src * tint;
 	ALBEDO = mix(base, flash_color, flash);
 	float ndv = clamp(dot(NORMAL, VIEW), 0.0, 1.0);

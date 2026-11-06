@@ -181,15 +181,15 @@ func _floor_color(x: float, z: float) -> Color:
 			var shade := 0.85 + 0.15 * sin(sx * 12.9898 + sz * 78.233)
 			var c := Color(0.25, 0.2, 0.17).lerp(Color(0.31, 0.25, 0.2), n * 0.5 + 0.5) * shade
 			if fposmod(x, 1.8) < FV * 0.8 or fposmod(z, 1.8) < FV * 0.8:
-				c = Color(0.42, 0.3, 0.16) if n2 > -0.2 else Color(0.12, 0.09, 0.07)
+				c = Color(0.3, 0.21, 0.12) if n2 > 0.25 else Color(0.11, 0.08, 0.06)
 			var ch := _vault_channel(x, z)
 			if ch > 0.0:
 				c = Color(0.12, 0.07, 0.05).lerp(Color(1.0, 0.55, 0.18), ch)
 			var r := Vector2(x, z).length()
-			if absf(r - 3.2) < 0.12 or absf(r - 4.4) < 0.08:
-				c = Color(0.55, 0.4, 0.2)
-			elif r < 3.2 and fposmod(atan2(z, x) * 7.0 / TAU, 1.0) < 0.06:
-				c = Color(0.45, 0.33, 0.18)
+			if absf(r - 3.2) < 0.1 or absf(r - 4.4) < 0.06:
+				c = Color(0.42, 0.3, 0.15)
+			elif r < 3.2 and fposmod(atan2(z, x) * 7.0 / TAU, 1.0) < 0.05:
+				c = Color(0.34, 0.25, 0.14)
 			return c * (1.15 + n2 * 0.1)
 		"temple":
 			var plank := int(floor(x / 0.6))
@@ -1507,7 +1507,8 @@ func _bronze_statue(p: Vector3, yaw: float) -> void:
 	add_child(a)
 	a.position = p + Vector3(0, 0.45, 0)
 	a.rotation.y = yaw
-	a.setup("knight", "sword", 36.0, Color(0.85, 0.58, 0.32), 1.15)
+	a.setup("knight", "sword", 36.0, Color(1.25, 0.85, 0.48), 1.15)
+	a.mat.set_shader_parameter("mono", 1.0)
 	a.apply(Poses.idle(0.0))
 	a.set_rim(Color(1.0, 0.7, 0.35), 0.35)
 
