@@ -56,52 +56,247 @@ func _ready() -> void:
 	load_save()
 	load_settings()
 	_setup_audio()
+	_cloud_start()
+
+
+# ---------- 存档（局外进度） ----------
+## 存档放在 user://save.cfg（网页版在浏览器 IndexedDB，另有一份在 localStorage），格式和容错见 SaveStore。
+## 发布在造化上时还会同步一份到造化云存档（Zaohua.storage，跟着玩家账号走，换设备、清缓存都还在）。
+##
+## 其他系统要存新东西：直接 Game.save["新键"] = 值，然后 Game.write_save()。读的时候用 Game.save.get("新键", 默认值)。
+## 只有改了已有键的结构（比如把数字改成字典）才需要：SAVE_VERSION +1，在 _migrate() 里加一步把旧格式转成新格式。
+const SAVE_VERSION := 2
+var save_rev := 0                  # 第几次写存档（几份存档里挑最新的用）
+var save_notice := ""              # 读档时出了状况（存档坏了、从备份恢复），山门里提示一次
+var _save_defaults := {}
 
 
 func load_save() -> void:
-	var cfg := ConfigFile.new()
-	if cfg.load(save_path) != OK:
+	if _save_defaults.is_empty():
+		_save_defaults = save.duplicate(true)
+	var r := SaveStore.read_best(save_path, "save")
+	if OS.has_feature("web") and not SaveStore.userfs_persistent():
+		save_notice = "浏览器不让游戏长期存文件（可能是无痕模式），进度另存在浏览器缓存里，清缓存会丢"
+	if not r["ok"]:
+		if r["broken"]:
+			save_notice = "存档读不出来，已另存为 save.cfg.broken，这次从头开始"
 		return
-	# 读出文件里所有键（不只默认表里的）：残页、结局、成就等后加的键也要读回来
-	if cfg.has_section("save"):
-		for k: String in cfg.get_section_keys("save"):
-			save[k] = cfg.get_value("save", k, save.get(k))
-	var old: Dictionary = cfg.get_value("save", "altar", {})
-	if not old.is_empty():
+	if r["broken"] or r["from"] in ["bak", "tmp"]:
+		save_notice = "存档文件损坏，已从备份恢复"
+	_apply_save_data(r["data"], int(r["v"]))
+	save_rev = int(r["rev"])
+	_save_t = int(r["t"])
+	print("读档：%s，第 %d 版，rev %d%s" % [r["from"], int(r["v"]), save_rev, "" if SaveStore.userfs_persistent() else "（user:// 不能长期保存）"])
+	if r["from"] != "file" or int(r["v"]) < SAVE_VERSION:
+		write_save()   # 从备份 / localStorage 恢复的、旧版本的：马上按新格式写回主文件
+
+
+## 把读到的数据放进 save：先迁移旧版本，再检查类型（坏掉的值换回默认值，免得后面一用就报错）
+func _apply_save_data(data: Dictionary, v: int) -> void:
+	_migrate(data, v)
+	for k: String in data:
+		var val = data[k]
+		if _save_defaults.has(k):
+			var def = _save_defaults[k]
+			if (def is int or def is float) and (val is int or val is float):
+				val = int(val) if def is int else float(val)
+			elif typeof(val) != typeof(def):
+				push_warning("存档里 %s 的类型不对（%s），换回默认值" % [k, type_string(typeof(val))])
+				val = def.duplicate(true) if (def is Dictionary or def is Array) else def
+		save[k] = val
+
+
+## 存档版本迁移：从 v 一步一步升到 SAVE_VERSION
+func _migrate(data: Dictionary, v: int) -> void:
+	if v < 2:
+		# 第 1 版（没有注释头的旧存档）→ 第 2 版：格式一样，只处理更早的供台
+		var old: Dictionary = data.get("altar", {}) if data.get("altar", {}) is Dictionary else {}
 		for id: String in old:
 			var costs: Array = OLD_ALTAR_COSTS.get(id, [])
 			for i in range(mini(int(old[id]), costs.size())):
-				save["jade"] = int(save["jade"]) + int(costs[i])
-		write_save()
+				data["jade"] = int(data.get("jade", 0)) + int(costs[i])
+		data.erase("altar")
+	# 以后：if v < 3: ...
+
+
+var _save_t := 0
 
 
 func write_save() -> void:
-	var cfg := ConfigFile.new()
-	for k: String in save.keys():
-		cfg.set_value("save", k, save[k])
-	cfg.save(save_path)
+	save_rev += 1
+	var text := SaveStore.encode("save", save, SAVE_VERSION, save_rev)
+	SaveStore.write_text(save_path, text)
+	_save_t = int(Time.get_unix_time_from_system())
+	_cloud_dirty = true
+
+
+## 删档重来（测试、以后设置里的“清除存档”用）
+func reset_save() -> void:
+	if _save_defaults.is_empty():
+		_save_defaults = save.duplicate(true)
+	save = _save_defaults.duplicate(true)
+	write_save()
+	clear_checkpoint()
+
+
+# ---------- 造化云存档 ----------
+## 开局先问一次云端：本地没有存档（换了设备、清了浏览器）或云端更新时，用云端的。
+## 之后每次写存档，最多每 CLOUD_GAP 秒往云端推一次；页面切到后台时马上推。
+## 云端没回话（不在造化上、没登录、出错）就只用本地，什么都不影响。
+signal cloud_settled
+const CLOUD_KEY := "save"
+const CLOUD_GAP := 4.0
+const CLOUD_WAIT := 4.0
+var cloud_pending := false         # 还在等云端的回话（这时不往云端写，免得空存档盖掉云端）
+var cloud_ok := false              # 云端回过话（能用）
+var _cloud_dirty := false
+var _cloud_t := 0.0
+var _cloud_wait_t := 0.0
+
+
+func _cloud_start() -> void:
+	var z := get_node_or_null("/root/Zaohua")
+	if z == null or not OS.has_feature("web") or OS.get_cmdline_user_args().has("--nocloud"):
+		return
+	if not ProjectSettings.get_setting("zaohua/capabilities/storage", false):
+		return
+	z.storage_value_received.connect(_on_cloud_value)
+	z.platform_error.connect(_on_cloud_error)
+	cloud_pending = true
+	_cloud_wait_t = CLOUD_WAIT
+	z.storage_get(CLOUD_KEY)
+
+
+func _on_cloud_value(key: String, value: Variant) -> void:
+	if key != CLOUD_KEY or not cloud_pending:
+		return
+	cloud_ok = true
+	if value is String and String(value) != "":
+		var d := SaveStore.decode(String(value), "save")
+		if d["ok"] and (_save_is_fresh() or int(d["t"]) > _save_t):
+			var keep_notice := save_notice
+			save = _save_defaults.duplicate(true)
+			_apply_save_data(d["data"], int(d["v"]))
+			save_rev = maxi(save_rev, int(d["rev"]))
+			save_notice = keep_notice
+			var text := SaveStore.encode("save", save, SAVE_VERSION, save_rev + 1)
+			save_rev += 1
+			SaveStore.write_text(save_path, text)
+			print("云存档比本地新，已换成云端的（rev %d）" % int(d["rev"]))
+	_cloud_finish()
+
+
+func _on_cloud_error(operation: String, message: String, _code: String, _reason: String) -> void:
+	if not operation.begins_with("storage"):
+		return
+	push_warning("造化云存档 %s 不可用：%s" % [operation, message])
+	if operation == "storage.get" and cloud_pending:
+		_cloud_finish()
+
+
+func _cloud_finish() -> void:
+	cloud_pending = false
+	_cloud_dirty = _cloud_dirty or (cloud_ok and not _save_is_fresh())   # 云端还没有或更旧：把本地的推上去
+	_cloud_t = CLOUD_GAP
+	cloud_settled.emit()
+
+
+## 本地存档是不是还没玩过（这时云端有就用云端的）
+func _save_is_fresh() -> bool:
+	return int(save.get("runs", 0)) == 0 and int(save.get("jade", 0)) == 0 and (save.get("ach", {}) as Dictionary).is_empty()
+
+
+func _cloud_push() -> void:
+	_cloud_dirty = false
+	_cloud_t = 0.0
+	var z := get_node_or_null("/root/Zaohua")
+	if z != null:
+		z.storage_set(CLOUD_KEY, SaveStore.encode("save", save, SAVE_VERSION, save_rev))
+
+
+## 等云端回话再继续（最多 CLOUD_WAIT 秒）。标题画面之后、决定进山门还是直接开打之前用
+func when_cloud_settled(cb: Callable) -> void:
+	if not cloud_pending:
+		cb.call()
+		return
+	cloud_settled.connect(cb, CONNECT_ONE_SHOT)
+
+
+func _process(dt: float) -> void:
+	if cloud_pending:
+		_cloud_wait_t -= dt
+		if _cloud_wait_t <= 0.0:
+			push_warning("造化云存档没有回话，先用本地存档")
+			_cloud_finish()
+		return
+	_cloud_t += dt
+	if _cloud_dirty and cloud_ok and _cloud_t >= CLOUD_GAP:
+		_cloud_push()
+
+
+func _notification(what: int) -> void:
+	# 切到后台 / 关页面：云端马上推一次
+	if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_WM_CLOSE_REQUEST]:
+		if _cloud_dirty and cloud_ok and not cloud_pending:
+			_cloud_push()
+
+
+# ---------- 局中断点（一局打到一半关掉，下次从这间房的入口接着打） ----------
+## 每进一间房存一次（arpg_main._save_checkpoint），局结束、回山门时删掉。只存在本机（不上云端）。
+const CHECKPOINT_VERSION := 1
+var run_path := "user://run.cfg"
+var _run_rev := 0
+
+
+func write_checkpoint(ck: Dictionary) -> void:
+	_run_rev += 1
+	ck["cv"] = CHECKPOINT_VERSION
+	SaveStore.write_text(run_path, SaveStore.encode("run", ck, CHECKPOINT_VERSION, _run_rev))
+
+
+func load_checkpoint() -> Dictionary:
+	var r := SaveStore.read_best(run_path, "run")
+	if not r["ok"]:
+		return {}
+	var ck: Dictionary = r["data"]
+	_run_rev = int(r["rev"])
+	if int(ck.get("cv", 0)) != CHECKPOINT_VERSION:
+		return {}
+	return ck
+
+
+func has_checkpoint() -> bool:
+	return not load_checkpoint().is_empty()
+
+
+func clear_checkpoint() -> void:
+	SaveStore.remove(run_path)
 
 
 # ---------- 设置 ----------
 
 func load_settings() -> void:
-	var cfg := ConfigFile.new()
-	if cfg.load(settings_path) == OK:
+	var r := SaveStore.read_best(settings_path, "settings")
+	if r["ok"]:
+		var d: Dictionary = r["data"]
 		for k: String in settings.keys():
-			settings[k] = cfg.get_value("settings", k, settings[k])
+			if d.has(k) and (typeof(d[k]) == typeof(settings[k]) or (settings[k] is float and d[k] is int) or (settings[k] is int and d[k] is float)):
+				settings[k] = d[k]
+		_settings_rev = int(r["rev"])
 	easy_mode = bool(settings["easy"])
 	voxel = bool(settings["voxel"])
 	for action: String in settings["keys"]:
 		rebind(action, settings["keys"][action], false)
 
 
+var _settings_rev := 0
+
+
 func write_settings() -> void:
 	settings["easy"] = easy_mode
 	settings["voxel"] = voxel
-	var cfg := ConfigFile.new()
-	for k: String in settings.keys():
-		cfg.set_value("settings", k, settings[k])
-	cfg.save(settings_path)
+	_settings_rev += 1
+	SaveStore.write_text(settings_path, SaveStore.encode("settings", settings, 1, _settings_rev))
 
 
 ## 改键：把这个动作的键盘按键换成 keys（手柄不动）

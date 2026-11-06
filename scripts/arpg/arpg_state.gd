@@ -326,3 +326,34 @@ func remember_act1() -> void:
 ## 第一幕某条线最近一次的选择（没走到过返回 ""）
 static func act1(group: String) -> String:
 	return String((Game.save.get("arpg_act1", {}) as Dictionary).get(group, ""))
+
+
+# ---------- 局中断点 ----------
+## 整个状态存成字典（ArpgState 和 Run 上所有 var 都自动存进去，以后新加的字段不用改这里）。
+## 存不进去的只有对象：Run.rng 另存种子和状态。
+func to_dict() -> Dictionary:
+	var d := SaveStore.dump_vars(self, ["run"])
+	d["run"] = SaveStore.dump_vars(run, ["rng"])
+	d["run_rng"] = [run.rng.seed, run.rng.state]
+	return d
+
+
+## 从字典恢复一局；数据不完整时返回 null
+static func from_dict(d: Dictionary) -> ArpgState:
+	if not (d.get("run") is Dictionary):
+		return null
+	var s := ArpgState.new()
+	s.run = Run.new()
+	SaveStore.load_vars(s, d, ["run"])
+	SaveStore.load_vars(s.run, d["run"], ["rng"])
+	var rr = d.get("run_rng", [])
+	if rr is Array and (rr as Array).size() == 2:
+		s.run.rng.seed = int(rr[0])
+		s.run.rng.state = int(rr[1])
+	var rows: Array = s.run.rows
+	if rows.is_empty() or s.run.row < 0 or s.run.row >= rows.size() or s.run.col < 0 or s.run.col >= (rows[s.run.row] as Array).size():
+		return null
+	if s.act < 1 or s.act > ACT_NAMES.size():
+		return null
+	cur = s
+	return s

@@ -514,7 +514,23 @@ func _enter_title() -> void:
 
 ## 标题之后：第一次玩直接上山开打（开场白在第一间房里说，按键在打的时候即时提示），以后回山门
 func _after_title() -> void:
+	Game.title_done = true
 	feel.screen_flash(Color(0, 0, 0, 1), 0.0)
+	# 发布在造化上：先等云存档回话（换了设备、清过缓存时用云端的进度），最多几秒
+	if Game.cloud_pending:
+		hud.visible = true
+		hud.banner("读取存档", "正在同步云存档……", 4.0)
+		Game.when_cloud_settled(_after_title_go)
+		return
+	_after_title_go()
+
+
+func _after_title_go() -> void:
+	# 上一局打到一半关掉了：问要不要接着打
+	var ck := Game.load_checkpoint()
+	if not ck.is_empty():
+		_offer_resume(ck)
+		return
 	if not bool(Game.save.get("arpg_intro", false)) and int(Game.save.get("runs", 0)) == 0:
 		Game.save["arpg_intro"] = true
 		Game.write_save()
@@ -549,6 +565,7 @@ var _hag_tag := 0   # 拾骨婆天赋标语这次用哪一句，每回山门换�
 
 func _enter_hub() -> void:
 	mode = "hub"
+	Game.clear_checkpoint()   # 回到山门，这一局就结束了
 	_hag_tag = randi() % ArpgStory.HAG_TAGS.size()
 	state = null
 	_clear_scene()
@@ -563,6 +580,12 @@ func _enter_hub() -> void:
 	hud.coins = 0
 	hud.jade = int(Game.save["jade"])
 	hud.banner("山门", "魂玉 %d　·　出发 %d 次　·　登顶 %d 次" % [int(Game.save["jade"]), int(Game.save.get("runs", 0)), int(Game.save.get("clears", 0))], 2.6)
+	if Game.save_notice != "":
+		var note := Game.save_notice
+		Game.save_notice = ""
+		get_tree().create_timer(2.8).timeout.connect(func() -> void:
+			if mode == "hub":
+				hud.banner("存档", note, 4.5))
 	feel.screen_flash(Color(0, 0, 0, 1), 1.4)
 	Game.music("hub")
 	var hz := HUB_SIZE.y * 0.5
@@ -871,6 +894,7 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	if hints != null:
 		hints.room_entered()
 	room_kind = kind if kind != "" else state.room_type()
+	_save_checkpoint(kind, zone_override)
 	_room_hits0 = hero.hits_taken
 	if room_kind != "tutorial":
 		ArpgAch.unlock("first_run")
@@ -2613,6 +2637,67 @@ func _close_menu() -> void:
 		hero.clear_buffer()
 
 
+# ---------- 局中断点（关掉游戏后接着打） ----------
+## 主角身上要跟着存的数值（新加的跨房间数值写进这里）
+const CKPT_HERO := ["hp", "gourds", "energy", "revives", "drinks", "hits_taken", "dmg_total"]
+
+
+## 每进一间房存一次：一局的全部状态 + 主角的血、药、气力。下次打开从这间房的入口重来
+func _save_checkpoint(kind: String, zone_override: String) -> void:
+	if state == null or room_kind == "tutorial" or (_args.has("demo") and not _args.has("ckpt")) or _args.has("storytest"):
+		return
+	var hd := {}
+	for k: String in CKPT_HERO:
+		hd[k] = hero.get(k)
+	Game.write_checkpoint({"state": state.to_dict(), "hero": hd, "kind": kind, "zone": zone_override,
+		"elapsed": _clock - _run_t0, "where": "%s　第 %d 层　第 %d / %d 间" % [ArpgState.ACT_NAMES.get(state.act, ""), state.gfloor() + 1, state.run.row + 1, state.run.rows.size()]})
+
+
+## 标题画面之后发现有没打完的一局：继续，或者放弃（按倒下结算）
+func _offer_resume(ck: Dictionary) -> void:
+	var s := ArpgState.from_dict(ck.get("state", {}) if ck.get("state") is Dictionary else {})
+	if s == null:
+		push_warning("局中断点读不出来，丢掉")
+		Game.clear_checkpoint()
+		_after_title_go()
+		return
+	var keep := int(floor(s.jade * (0.6 + ArpgData.stat(s.stats(), "keep"))))
+	var items := [{"title": "接着打", "desc": "回到上次那间房的入口重打这间，身上的心法、装备、铜钱、魂玉、生命和药都还在", "tag": "继续", "glyph": "续",
+			"color": Color(0.5, 1.0, 0.75)},
+		{"title": "不打了", "desc": "这一局按倒下算：魂玉 %d 带回 %d，回到山门" % [s.jade, keep], "glyph": "归", "color": Color(1.0, 0.6, 0.45)}]
+	var m := _open_menu("上一局还没打完", String(ck.get("where", "")), items, "cards", false)
+	if _args.has("resume"):
+		m.index = clampi(int(_args["resume"]), 0, 1)   # 测试：预先选好
+	m.chosen.connect(func(i: int) -> void:
+		_close_menu()
+		if i == 0:
+			_resume_run(s, ck)
+			return
+		state = s
+		var r := state.settle(false)
+		print("放弃上一局：魂玉 %d 带回 %d" % [r["jade"], r["kept"]])
+		ArpgAch.check_save()
+		Game.clear_checkpoint()
+		state = null
+		_enter_hub())
+
+
+func _resume_run(s: ArpgState, ck: Dictionary) -> void:
+	state = s
+	ArpgState.cur = s
+	_ensure_hero()
+	hero.reset_for_run()
+	hero.apply_stats(state.stats(), state.weapon, true)
+	var hd: Dictionary = ck.get("hero", {}) if ck.get("hero") is Dictionary else {}
+	SaveStore.load_vars(hero, hd)
+	hero.hp = clampf(hero.hp, 1.0, hero.max_hp)
+	hero.gourds = clampi(hero.gourds, 0, hero.max_gourds)
+	hero.energy = clampf(hero.energy, 0.0, hero.max_energy)
+	_run_t0 = _clock - float(ck.get("elapsed", 0.0))
+	print("接着上一局：%s　生命 %.0f/%.0f　药 %d　铜钱 %d　魂玉 %d　心法 %d" % [String(ck.get("where", "")), hero.hp, hero.max_hp, hero.gourds, state.coins, state.jade, state.boons.size()])
+	_enter_room(String(ck.get("kind", "")), String(ck.get("zone", "")))
+
+
 # ---------- 死亡、结算 ----------
 
 func _on_hero_died(_a: Actor) -> void:
@@ -2654,6 +2739,7 @@ func _game_over(won: bool, ending: String = "") -> void:
 	_tel_print("won" if won else "dead")
 	mode = "over"
 	var r := state.settle(won)
+	Game.clear_checkpoint()
 	ArpgAch.check_save()   # 首次身死、累计身死、登顶次数
 	if won:
 		if _clock - _run_t0 <= 20.0 * 60.0:
