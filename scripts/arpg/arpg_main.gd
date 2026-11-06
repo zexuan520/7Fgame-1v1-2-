@@ -80,6 +80,8 @@ func _ready() -> void:
 	if _args.has("cyclemax"):
 		Game.save["arpg_cycle_max"] = clampi(int(_args["cyclemax"]), 0, ArpgCycle.MAX)   # 测试：开出轮回到第几级
 		Game.save["arpg_cycle_told"] = _args.has("cycletold")
+	if _args.has("talents"):
+		_bench_talents(String(_args["talents"]))
 	if _args.has("storytest"):
 		_story_test_save(String(_args["storytest"]))
 	_setup_world()
@@ -1140,6 +1142,39 @@ func _start_run(fresh_hero: bool = true, act: int = 1) -> void:
 	hero.apply_stats(state.stats(), state.weapon, true)
 	hero.revives = state.revives
 	_run_t0 = _clock
+
+
+## 数值联调：--talents=half|full 模拟局外养成（只改这次，不写存档），
+## --quitend 一局结束（登顶或身死）打一行 RUN 汇总后退出；一间房卡住超过 BENCH_STALL 秒打 STALL 也退出。
+## tools/balance/run_matrix.sh 用这两个参数并行跑多局，tools/balance/report.py 汇总。
+const BENCH_STALL := 420.0
+
+
+func _bench_talents(kind: String) -> void:
+	var tl := {}
+	for t: Dictionary in ArpgData.TALENT_TREES:
+		var tiers: Array = t["tiers"]
+		for ti in range(tiers.size()):
+			for nd: Dictionary in tiers[ti]:
+				var mx := int(nd["max"])
+				if kind == "full":
+					tl[nd["id"]] = mx
+				elif ti < 2:
+					tl[nd["id"]] = int(ceil(mx * 0.5))   # half：前两层各点一半，第三层不点
+	Game.save["talents"] = tl
+
+
+func _bench_end(won: bool) -> void:
+	var gear := []
+	for slot: String in state.gear:
+		var it: Dictionary = state.gear[slot]
+		if not it.is_empty():
+			gear.append("%s:%s%d" % [slot, it.get("base", ""), int(it.get("rarity", 0))])
+	print("RUN won=%s act=%d weapon=%s cycle=%d diff=%d floor=%d row=%d rooms=%d kills=%d clk=%.0f lv=%d hits=%d dmg=%.0f drinks=%d maxhp=%.0f atk=%.2f taken=%.2f crit=%.2f boons=%s gear=%s skills=%s killer=%s" % [
+		won, state.act, state.weapon, state.cycle, ArpgState.difficulty(), state.floor_i() + 1, state.run.row, state.rooms, state.kills,
+		_clock - _run_t0, state.level, hero.hits_taken, hero.dmg_total, hero.drinks, hero.max_hp, hero.dmg_mult, hero.taken_mult,
+		hero.crit_bonus, ",".join(state.boons), ",".join(gear), str(state.skills).replace(" ", ""), "" if won else hero.last_hit_by])
+	get_tree().create_timer(0.5).timeout.connect(get_tree().quit)
 
 
 ## 数值调校用：--tel 时每间房打一行统计（耗时、挨打、剩血、药、铜钱）
@@ -3453,6 +3488,8 @@ func _game_over(won: bool, ending: String = "") -> void:
 	if mode == "over":
 		return
 	_tel_print("won" if won else "dead")
+	if _args.has("quitend"):
+		_bench_end(won)
 	mode = "over"
 	var r := state.settle(won)
 	Game.clear_checkpoint()
@@ -3492,6 +3529,10 @@ func _process(dt: float) -> void:
 				var a := f as Foe
 				out.append("%s hp%d %s %s" % [a.kind, int(a.hp), a.state, str(a.global_position.snapped(Vector3.ONE * 0.1))])
 			print("SLOW %s t=%d wi=%d/%d hold=%s hero=%s foes=%s" % [room_kind, int(_tel["t"]), wave_i, waves.size(), _hold_waves, str(hero.global_position.snapped(Vector3.ONE * 0.1)), out])
+		if _args.has("quitend") and not _room_done and float(_tel["t"]) > BENCH_STALL and mode == "room":
+			print("STALL %s act=%d floor=%d row=%d t=%d wi=%d/%d" % [room_kind, state.act, state.floor_i() + 1, state.run.row, int(_tel["t"]), wave_i, waves.size()])
+			_tel.clear()
+			get_tree().quit(3)
 	if arena != null and cam_rig.cam != null and is_instance_valid(hero):
 		arena.update_occluders(cam_rig.cam, [hero])
 	if state != null:
@@ -3555,6 +3596,7 @@ func _process(dt: float) -> void:
 					else:
 						var sk := String(sp.get_meta("kind", "secret"))   # secret 裂墙密室 / realm 秘境
 						_fade_then(func() -> void: _enter_room(sk))
+	_watch_stuck(dt)
 	if mode == "room" and not _room_done and not _hold_waves and is_instance_valid(hero) and hero.alive:
 		if get_tree().get_nodes_in_group("foes").is_empty():
 			_wave_delay -= dt
@@ -3568,6 +3610,52 @@ func _process(dt: float) -> void:
 			d.y = 0
 			if d.length() < 1.3:
 				_step_portal()
+
+
+## 防卡死：敌人没有寻路，偶尔会被障碍物、墙角卡住，主角也绕不过去，这一波就清不完、门永远不开。
+## 场上只剩三只以内、STUCK_SECS 秒里谁都没掉血也没打到主角时，把离主角远的挪到主角附近的刷怪点。
+const STUCK_SECS := 12.0
+var _stuck_t := 0.0
+var _stuck_sig := -1.0
+
+
+func _watch_stuck(dt: float) -> void:
+	if mode != "room" or _room_done or not is_instance_valid(hero) or not hero.alive or arena == null or is_instance_valid(_menu):
+		_stuck_t = 0.0
+		return
+	var foes := get_tree().get_nodes_in_group("foes")
+	if foes.is_empty() or foes.size() > 3:
+		_stuck_t = 0.0
+		return
+	var sig := float(hero.hits_taken) * 10000.0
+	for f: Node in foes:
+		sig += float((f as Actor).hp)
+	if absf(sig - _stuck_sig) > 0.01:
+		_stuck_sig = sig
+		_stuck_t = 0.0
+		return
+	_stuck_t += dt
+	if _stuck_t < STUCK_SECS:
+		return
+	_stuck_t = 0.0
+	var hp3 := hero.global_position
+	for f: Node in foes:
+		var a := f as Foe
+		if a == null or not a.alive or a.is_boss or a.state == "lurk" or a.global_position.distance_to(hp3) < 4.5:
+			continue
+		var best := Vector3.INF
+		for q: Vector3 in arena.spawn_points:
+			var d := q.distance_to(hp3)
+			if d >= 4.0 and (best == Vector3.INF or d < best.distance_to(hp3)):
+				best = q
+		if best == Vector3.INF:
+			continue
+		if _args.has("tel"):
+			print("UNSTICK %s %s -> %s" % [a.kind, str(a.global_position.snapped(Vector3.ONE * 0.1)), str(best.snapped(Vector3.ONE * 0.1))])
+		vfx.sheet("spawn-cast", a.global_position, 3.0, Color.WHITE, 1.2)
+		a.global_position = best
+		a.velocity = Vector3.ZERO
+		vfx.sheet("spawn-cast", best, 3.0, Color.WHITE, 1.2)
 
 
 # ---------- 测试：故事线（--storytest=hub / shadow / lore / souls / zen，会改写存档里的故事线进度，只在云端测试用） ----------

@@ -1815,8 +1815,9 @@ func _make_spawns() -> void:
 		if p.distance_to(entry_pos) < 7.0:
 			continue
 		var ok := true
+		# 离障碍物至少留 1.2 米：刷怪时还会再随手偏 0.6 米，贴着墙刷容易卡进去（敌人没有寻路，卡住就出不来）
 		for r: Rect2 in _solid:
-			if r.has_point(Vector2(p.x, p.z)):
+			if r.grow(1.2).has_point(Vector2(p.x, p.z)):
 				ok = false
 				break
 		if ok:

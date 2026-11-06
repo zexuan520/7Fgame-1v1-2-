@@ -111,8 +111,9 @@ func _physics_process(dt: float) -> void:
 	if near == null:
 		return
 	# 喝药：离得远或敌人收招时喝；血太低（< 25%）且没在挨刀的前摇里也喝（不然打头目时药一直不喝就死了）
-	if hero.hp < hero.max_hp * 0.4 and hero.gourds > 0 and _skill_t <= 0.0 \
-			and (nd > 3.0 or near.state == "recover" or (hero.hp < hero.max_hp * 0.25 and not danger)):
+	# （数值联调时改的：原来要“离得远或敌人收招”才喝，成群的时候几乎等不到，机器人常带着满葫芦死掉，测出来的难度偏高）
+	if hero.hp < hero.max_hp * 0.45 and hero.gourds > 0 and _skill_t <= 0.0 \
+			and (not danger or hero.hp < hero.max_hp * 0.2):
 		_skill_t = 1.0
 		_atk_t = 0.7   # 别马上又按攻击把喝药的输入盖掉
 		_tap("heal")

@@ -51,6 +51,10 @@ var hits_taken := 0           # 挨打次数（试炼“守”用）
 var drinks := 0               # 这一局喝了几口药葫芦（成就“滴药未沾”）
 var foot_ring: MeshInstance3D
 var invincible := false          # 调试：不掉血
+var _hp_peak := 0.0            # 这一局到过的最高生命上限（apply_stats 防来回换装刷血）
+var _hp_banked := 0.0          # 上限变低时溢出的血，上限回来时还回去
+var _gourd_peak := 0
+var last_hit_by := ""          # 统计用：最后一下是谁打的（数值联调看死因）
 var dmg_total := 0.0             # 统计用：这一局一共挨了多少伤害
 ## 加成（apply_stats 从天赋、兵器、护甲、护符、心法算出来）
 var crit_bonus := 0.0
@@ -130,6 +134,13 @@ const BASE_MOVE := 7.2
 const BASE_DASH_CD := 3.5
 const BASE_FINISH_CD := 5.0
 const BASE_IFRAMES := 0.26
+## 上限（数值联调时加的）：翻滚没有冷却，无敌时间一旦接近翻滚时长（0.4 秒），连着滚就是全程无敌；
+## 吸血按每个打中的敌人算，成群时叠太高会站着不死；移速太快镜头跟不上、也躲得太轻松
+const ROLL_IFRAMES_MAX := 0.32
+const LIFESTEAL_MAX := 0.08
+const MOVE_MAX := 1.45
+const ENERGY_MAX := 2.5         # 气力获取倍率上限：再高光束斩几刀一发，别的招都不用按了
+const GOURDS_MAX := 7           # 药葫芦上限（心法“药缘”能叠）
 
 
 ## 把一局的加成套到主角身上；fill_hp 时生命和药葫芦补满（开局用）
@@ -138,8 +149,20 @@ func apply_stats(st: Dictionary, wid: String, fill_hp: bool = false) -> void:
 	max_hp = BASE_HP + ArpgData.stat(st, "hp")
 	if fill_hp:
 		hp = max_hp
-	else:
-		hp = minf(hp + maxf(max_hp - old_max, 0.0), max_hp)
+		_hp_peak = max_hp
+		_hp_banked = 0.0
+	elif max_hp < old_max:
+		# 生命上限变低（换下带生命词条的兵器、脱装备）：溢出的血先记着，换回来再还
+		_hp_banked += maxf(hp - max_hp, 0.0)
+		hp = minf(hp, max_hp)
+	elif max_hp > old_max:
+		# 只有超过这一局到过的最高上限的那部分才白给血（壮骨、新装备）；
+		# 原来每次上限变高都加血，来回换兵器、穿脱装备就能无限回血
+		var back := minf(_hp_banked, max_hp - old_max)
+		_hp_banked -= back
+		var fresh := maxf(max_hp - maxf(old_max, _hp_peak), 0.0)
+		hp = minf(hp + back + fresh, max_hp)
+	_hp_peak = maxf(_hp_peak, max_hp)
 	var w := ArpgData.weapon(wid)
 	if wid != weapon_id or combo.is_empty():
 		weapon_id = wid
@@ -152,18 +175,18 @@ func apply_stats(st: Dictionary, wid: String, fill_hp: bool = false) -> void:
 	dmg_mult = (1.0 + ArpgData.stat(st, "atk")) * float(w["dmg"])
 	crit_bonus = ArpgData.stat(st, "crit")
 	crit_mult = 1.8 + ArpgData.stat(st, "crit_dmg")
-	energy_mult = 1.0 + ArpgData.stat(st, "energy")
+	energy_mult = minf(1.0 + ArpgData.stat(st, "energy"), ENERGY_MAX)
 	bleed_bonus = int(ArpgData.stat(st, "bleed"))
 	bleed_dmg = 1.0 + ArpgData.stat(st, "bleed_dmg")
-	lifesteal = ArpgData.stat(st, "lifesteal")
+	lifesteal = minf(ArpgData.stat(st, "lifesteal"), LIFESTEAL_MAX)
 	taken_mult = maxf(0.3, 1.0 + ArpgData.stat(st, "dmg_taken")) * (1.0 - ArpgData.stat(st, "easy"))   # 游历难度另乘
 	beam_mult = 1.0 + ArpgData.stat(st, "beam")
 	finish_mult = 1.0 + ArpgData.stat(st, "finish")
 	gourd_heal = 0.4 + ArpgData.stat(st, "gourd_heal")
-	move_speed = BASE_MOVE * (1.0 + ArpgData.stat(st, "move"))
+	move_speed = BASE_MOVE * minf(1.0 + ArpgData.stat(st, "move"), MOVE_MAX)
 	dash_cd = BASE_DASH_CD * maxf(0.3, 1.0 - ArpgData.stat(st, "dash_cd"))
 	finish_cd = BASE_FINISH_CD * maxf(0.3, 1.0 - ArpgData.stat(st, "finish_cd"))
-	roll_iframes = BASE_IFRAMES + ArpgData.stat(st, "iframes")
+	roll_iframes = minf(BASE_IFRAMES + ArpgData.stat(st, "iframes"), ROLL_IFRAMES_MAX)
 	roll_dist = BASE_ROLL_DIST * (1.0 + ArpgData.stat(st, "roll_far"))
 	thorns = ArpgData.stat(st, "thorns")
 	hurt_energy = ArpgData.stat(st, "hurt_energy")
@@ -175,11 +198,14 @@ func apply_stats(st: Dictionary, wid: String, fill_hp: bool = false) -> void:
 	set_iron = ArpgData.stat(st, "set_iron") > 0.0
 	set_oni = ArpgData.stat(st, "set_oni") > 0.0
 	set_thunder = ArpgData.stat(st, "set_thunder") > 0.0
-	var mg := 3 + int(ArpgData.stat(st, "gourds"))
+	var mg := clampi(3 + int(ArpgData.stat(st, "gourds")), 1, GOURDS_MAX)
 	if fill_hp:
 		gourds = mg
+		_gourd_peak = mg
 	else:
-		gourds += maxi(mg - max_gourds, 0)
+		# 同上：只有超过这一局到过的最多葫芦数才多给（原来摘下再戴玄龟甲就能一直加药）
+		gourds += maxi(mg - maxi(max_gourds, _gourd_peak), 0)
+		_gourd_peak = maxi(_gourd_peak, mg)
 	max_gourds = mg
 	if fill_hp:
 		revives = int(ArpgData.stat(st, "revive"))
@@ -1663,6 +1689,7 @@ func take_hit(info: HitInfo) -> bool:
 	if ok:
 		dmg_total += info.damage
 		hits_taken += 1
+		last_hit_by = String(info.attacker.get("kind")) if info.attacker != null and is_instance_valid(info.attacker) and info.attacker.get("kind") != null else "?"
 		_on_hurt(info)
 		if OS.get_cmdline_user_args().has("--hitlog"):
 			print("HIT %s %.1f hp=%.0f" % [info.attacker.get("kind") if info.attacker != null else "?", info.damage, hp])
