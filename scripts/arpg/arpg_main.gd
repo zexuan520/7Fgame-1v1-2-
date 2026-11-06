@@ -738,7 +738,7 @@ func _open_cycle(n: ArpgNpc, keep_index: int = -1) -> void:
 		var title := ArpgCycle.label(lv)
 		if lv > 0:
 			title += "「%s」　敌人 +%d%%　魂玉 +%d%%" % [ArpgCycle.RULES[lv][0], int(round(ArpgCycle.HP_PER * lv * 100.0)), int(round(ArpgCycle.JADE_PER * lv * 100.0))]
-			if not ArpgCycle.cleared(1, lv) or not ArpgCycle.cleared(2, lv):
+			if not ArpgCycle.cleared(1, lv) or not ArpgCycle.cleared(2, lv) or not ArpgCycle.cleared(3, lv):
 				desc += "（首通 +%d 魂玉）" % ArpgCycle.first_clear_jade(lv)
 		if not open:
 			desc = "在%s打通任一幕后开出：%s" % [ArpgCycle.label(lv - 1), desc]
@@ -757,10 +757,11 @@ func _open_cycle(n: ArpgNpc, keep_index: int = -1) -> void:
 				if c is Label3D:
 					(c as Label3D).text = "出发" + ("" if i == 0 else " · " + ArpgCycle.label(i))
 		for sp: Node3D in _extra_portals:
-			if is_instance_valid(sp) and String(sp.get_meta("kind", "")) == "act2":
+			var sk := String(sp.get_meta("kind", "")) if is_instance_valid(sp) else ""
+			if sk == "act2" or sk == "act3":
 				for c: Node in sp.get_children():
 					if c is Label3D:
-						(c as Label3D).text = "入井 · 第二幕" + ("" if i == 0 else " · " + ArpgCycle.label(i))
+						(c as Label3D).text = ("入井 · 第二幕" if sk == "act2" else "出山 · 第三幕") + ("" if i == 0 else " · " + ArpgCycle.label(i))
 		feel.callout(hero.head_top(), ArpgCycle.label(i), Color(0.85, 0.6, 1.0), 1.1)
 		_close_menu()
 		_open_cycle(n, i))
