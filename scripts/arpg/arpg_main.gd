@@ -406,7 +406,7 @@ func _clear_scene() -> void:
 		for n: Node in get_tree().get_nodes_in_group(g):
 			n.queue_free()
 	for n: Node in get_children():
-		if n is Loot or n is BossWave or n is TideRing or n is FirePool:
+		if n is Loot or n is BossWave or n is TideRing or n is FirePool or n is Follower:
 			n.queue_free()
 	if is_instance_valid(_portal):
 		_portal.queue_free()
@@ -580,7 +580,8 @@ func _enter_hub() -> void:
 		_make_secret_portal(wp, "act2", Color(0.45, 0.8, 1.0))
 	# 第二幕的支线人物：刀匠（第二幕走过一次后来）、地藏（头放回去以后）
 	if int(Game.save.get("arpg_act2_runs", 0)) > 0:
-		_npc("老刀匠 %d / %d" % [ArpgStory.smith_items().size(), ArpgStory.SMITH_ITEMS.size()], Vector3(9.0, 0, 2.5), {"model": "barbarian", "tint": Color(1.05, 0.8, 0.6)}, _talk_smith)
+		_npc("老刀匠 · 刀镡已成" if ArpgStory.smith_done() else "老刀匠 %d / %d" % [ArpgStory.smith_items().size(), ArpgStory.SMITH_ITEMS.size()], Vector3(9.0, 0, 2.5), {"model": "barbarian", "tint": Color(1.05, 0.8, 0.6)}, _talk_smith)
+		_npc("守灯僧 · 换物" if String(Game.save.get("arpg_monk_buy", "")) == "" else "守灯僧 · 已换过", Vector3(9.5, 0, -2.0), {"model": "mage", "tint": Color(0.8, 0.95, 0.8)}, _talk_monk)
 	if bool(Game.save.get("arpg_jizo_home", false)):
 		_npc("地藏 · 求保佑" if String(Game.save.get("arpg_bless", "")) == "" else "地藏 · 已求过", Vector3(-9.0, 0, 3.5), {"kit": "shrine", "scale": 1.1}, _pray_jizo)
 	# 第一次进山门：拾骨婆说开场白
@@ -824,6 +825,20 @@ func _start_run(fresh_hero: bool = true, act: int = 1) -> void:
 				if fx.has("coins"):
 					state.coins += int(fx["coins"])
 				state.flags["blessed"] = bl
+	# 守灯僧那儿换的东西（出发时生效一次）
+	var mb := String(Game.save.get("arpg_monk_buy", ""))
+	if mb != "":
+		Game.save.erase("arpg_monk_buy")
+		Game.write_save()
+		for w: Array in ArpgStory.MONK_WARES:
+			if w[0] == mb:
+				var fx2: Dictionary = w[3]
+				if fx2.has("boon_id"):
+					state.boons.append(String(fx2["boon_id"]))
+				if fx2.has("boon_rand"):
+					var rb := state.roll_boons(1, _rng)
+					if not rb.is_empty():
+						state.boons.append(String((rb[0] as Dictionary)["id"]))
 	hero.apply_stats(state.stats(), state.weapon, true)
 	hero.revives = state.revives
 	_run_t0 = _clock
@@ -904,6 +919,8 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	if room_kind != "tutorial":
 		hud.banner(title, sub, 2.4)
 	feel.screen_flash(Color(0, 0, 0, 1), 1.6)
+	if state.flags.has("xiaoman"):
+		_ensure_xiaoman()
 	match room_kind:
 		"boss":
 			Game.music(state.boss_music())
@@ -912,7 +929,7 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 		"shop", "rest", "event", "start", "story", "treasure", "tutorial":
 			Game.music("hub")
 		_:
-			Game.music({"temple": "bamboo", "grave": "secret", "well": "secret", "vault": "bamboo"}.get(zone_id, "village"))
+			Game.music({"temple": "bamboo", "grave": "secret", "well": "secret", "vault": "bamboo", "camp": "village"}.get(zone_id, "village"))
 	var mid := Vector3(-3.5, 0, -1.5)   # 摆在一边，别挡住去光门的路
 	if room_kind in ["fight", "elite", "trial"] and not state.secrets_done.has(state.run.room_id()):
 		var hint := state.flags.has("secret_hint")
@@ -1167,10 +1184,15 @@ const ACT2_POOLS := [
 	[["flameskel", 4, "crawler", 3], ["armored", 1, "skeleton", 3], ["flameskel", 3, "archer", 2],
 		["armored", 2, "flameskel", 2], ["armored", 1, "flameskel", 2, "mage", 1], ["shield", 2, "flameskel", 3, "archer", 1],
 		["armored", 2, "bomber", 2], ["charger", 2, "flameskel", 3], ["armored", 1, "summoner", 1, "crawler", 3]],
+	# 灰衣营：活人（刀手砍完就退、盾兵挡正面、弩手站远射）
+	[["greyblade", 4, "crawler", 2], ["greyguard", 2, "greyblade", 2], ["greyblade", 3, "greybow", 1],
+		["greyguard", 2, "greybow", 2], ["greyblade", 3, "greyguard", 1, "greybow", 1], ["armored", 1, "greyblade", 3],
+		["greyguard", 3, "greyblade", 2], ["greybow", 3, "greyblade", 2], ["greyblade", 4, "crawler", 3]],
 ]
 const ACT2_LATE := [
 	[["chainmonk", 1, "samurai", 1, "drowned", 2], ["chainmonk", 2, "archer", 2], ["samurai", 1, "drowned", 4]],
 	[["armored", 2, "samurai", 1], ["armored", 1, "flameskel", 3, "summoner", 1], ["samurai", 1, "armored", 1, "archer", 2]],
+	[["officer", 1, "greyblade", 2], ["greyguard", 2, "greybow", 1, "greyblade", 1], ["officer", 1, "greybow", 1]],
 ]
 ## 每层深处（第 4 排起）多加的精英波
 const LATE_WAVES := [
@@ -1212,6 +1234,8 @@ func _make_waves(kind: String, fl: int) -> Array:
 						hud.banner("铁伯的头盔", "守过门的盔，这一波骨头不敢上前", 2.2))
 			return w
 		"elite":
+			if state.act == 2 and state.zone() == "camp":
+				return [["greyguard", 2, "greyblade", 3], ["officer", 1, "greybow", 1, "greyblade", 1], ["officer", 1, "greyguard", 2, "greybow", 1]]
 			if state.act == 2 and state.zone() == "vault":
 				return [["armored", 2, "flameskel", 3], ["samurai", 1, "armored", 1, "archer", 2], ["armored", 2, "samurai", 1, "flameskel", 2]]
 			if state.act == 2:
@@ -1302,7 +1326,13 @@ func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
 	if f.is_boss:
 		hud.boss = f
 		var sub: String = {"boss": "守在樱树下的无名剑客", "boss3": "无名冢下，万骨之主", "boss2": "古寺深处，一盏不灭的灯",
-			"boss4": "井底四十年，灯链缠身的老僧", "boss5": "烛国亡了四百年，他的兵还在站岗"}.get(kind, "")
+			"boss4": "井底四十年，灯链缠身的老僧", "boss5": "烛国亡了四百年，他的兵还在站岗",
+			"boss6": "寂光大弟子，腰间挂着断刀的前半截"}.get(kind, "")
+		if kind == "boss6" and state.flags.has("roster"):
+			# 阿七把守台的人支开了：烬叫不来援兵，生命少一成
+			f.max_hp *= 0.9
+			f.hp = f.max_hp
+			f.set("_summon_t", 1.0e9)
 		hud.banner(f.display_name, sub, 2.6)
 		# 登场：镜头特写头目、上下黑边、脚下一圈本色冲击
 		cam_rig.close_up(f, 1.9, 0.6)
@@ -1317,7 +1347,7 @@ func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
 		state.kills += 1
 		ArpgAch.add("kills")
 		# 装备掉落：赤甲武士常掉，小怪偶尔掉
-		var chance := {"ronin": 0.6, "digger": 0.8, "armored": 0.12, "flameskel": 0.03, "chainmonk": 0.12, "drowned": 0.03, "samurai": 0.35, "charger": 0.15, "summoner": 0.1, "shield": 0.08, "mage": 0.06, "archer": 0.05,
+		var chance := {"ronin": 0.6, "digger": 0.8, "officer": 0.5, "greyguard": 0.06, "greyblade": 0.04, "greybow": 0.04, "armored": 0.12, "flameskel": 0.03, "chainmonk": 0.12, "drowned": 0.03, "samurai": 0.35, "charger": 0.15, "summoner": 0.1, "shield": 0.08, "mage": 0.06, "archer": 0.05,
 			"skeleton": 0.04, "rogue": 0.04, "crawler": 0.015}
 		if _rng.randf() < float(chance.get(kind, 0.0)):
 			_drop_gear(pos, -1, 0.1 if kind == "samurai" else 0.0)
@@ -1357,7 +1387,7 @@ func _room_cleared() -> void:
 			sr.unlock(true)
 	if room_kind == "boss":
 		var fl := state.floor_i()
-		if state.boss_kind() in ["boss4", "boss5"]:
+		if state.boss_kind() in ["boss4", "boss5", "boss6"]:
 			ArpgAch.unlock(state.boss_kind())
 		if state.act == 1 and fl == 0:
 			ArpgAch.unlock("boss1")
@@ -1375,12 +1405,12 @@ func _room_cleared() -> void:
 		_drop_gear(hero.global_position + hero.facing * 1.5, -1, 0.25)
 		# 支线 · 刀匠的三样东西：青井地宫的精英身上掉寒铁（要先在山门见过刀匠）
 		# 烛国灯冢的精英房：铸灯炉里的烛铜
-		var smith_id: String = {"well": "iron", "vault": "bronze"}.get(state.zone(), "")
+		var smith_id: String = {"well": "iron", "vault": "bronze", "camp": "seal"}.get(state.zone(), "")
 		if smith_id != "" and bool(Game.save.get("arpg_smith_met", false)) and not ArpgStory.smith_items().has(smith_id):
 			ArpgStory.smith_take(smith_id)
 			Game.sfx("memory")
 			vfx.sheet("soul-rise", hero.global_position, 3.0, Color(0.6, 0.85, 1.0) if smith_id == "iron" else Color(1.0, 0.7, 0.35), 1.6)
-			var sl: Array = (ArpgStory.SMITH_GOT_IRON if smith_id == "iron" else ArpgStory.SMITH_GOT_BRONZE).duplicate()
+			var sl: Array = ({"iron": ArpgStory.SMITH_GOT_IRON, "bronze": ArpgStory.SMITH_GOT_BRONZE, "seal": ArpgStory.SMITH_GOT_SEAL}[smith_id] as Array).duplicate()
 			var nm := ""
 			for it: Array in ArpgStory.SMITH_ITEMS:
 				if it[0] == smith_id:
@@ -1452,6 +1482,8 @@ func _boss_outro(fl: int) -> void:
 			d.finished.connect(_well_choice)
 		"boss5":
 			d.finished.connect(_vault_choice)
+		"boss6":
+			d.finished.connect(_act2_ending)
 
 
 ## 隐藏头目 · 残影 打赢以后：专属心法、成就，之后照常选心法
@@ -1656,6 +1688,84 @@ func _act2_tbc() -> void:
 		get_tree().create_timer(2.5).timeout.connect(func() -> void: _game_over(true, title)))
 
 
+## 灰衣营放出来的小满：跟着主角走到底（每进一间房重新放到主角身后）
+var _xiaoman: Follower
+
+
+func _ensure_xiaoman() -> void:
+	if is_instance_valid(_xiaoman) and not _xiaoman.is_queued_for_deletion():
+		return
+	_xiaoman = Follower.new()
+	add_child(_xiaoman)
+	_xiaoman.setup("rogue", Color(1.15, 0.95, 0.8), 0.62, "小满")
+	_xiaoman.hero = hero
+	_xiaoman.global_position = hero.global_position + Vector3(1.5, 0, 1.5)
+
+
+## 守灯僧：拿魂玉换下一局出发时的东西（一次换一样）
+func _talk_monk(n: ArpgNpc) -> void:
+	if not bool(Game.save.get("arpg_monk_met", false)):
+		Game.save["arpg_monk_met"] = true
+		Game.write_save()
+		var d := _say(ArpgStory.MONK_MEET)
+		d.finished.connect(func() -> void: _talk_monk(n))
+		return
+	if String(Game.save.get("arpg_monk_buy", "")) != "":
+		_say([["守灯僧", "东西替你收着了，出发时带上。", ArpgStory.C_MONK]])
+		return
+	var jade := int(Game.save["jade"])
+	var items := []
+	for w: Array in ArpgStory.MONK_WARES:
+		items.append({"title": "%s　%d 魂玉" % [w[0], int(w[1])], "desc": w[2], "color": ArpgStory.C_MONK, "enabled": jade >= int(w[1])})
+	var m := _open_menu("守灯僧 · 换物", "魂玉 %d　　一次换一样，下一局出发时生效" % jade, items, "list", true)
+	m.chosen.connect(func(i: int) -> void:
+		var w: Array = ArpgStory.MONK_WARES[i]
+		Game.save["jade"] = int(Game.save["jade"]) - int(w[1])
+		Game.save["arpg_monk_buy"] = String(w[0])
+		Game.write_save()
+		hud.jade = int(Game.save["jade"])
+		_close_menu()
+		n.display = "守灯僧 · 已换过"
+		Game.sfx("reward")
+		feel.callout(n.global_position + Vector3(0, 2.2, 0), "换得：%s" % w[0], Color(0.75, 1.0, 0.75), 1.4))
+
+
+## 第二幕结局：打倒烬以后。斩烬总能选；渡烬要放出小满或找到三封家书；合刃要五封家书 + 刀匠的刀镡
+func _act2_ending() -> void:
+	var du_ok := state.flags.has("xiaoman") or ArpgStory.letters() >= 3
+	var he_ok := ArpgStory.letters() >= ArpgStory.LETTERS.size() and ArpgStory.smith_done()
+	var opts := [["zhan", "斩烬", "一刀了断。替樱落村，替柳溪村，替师父", true],
+		["du", "渡烬", "收刀。让他自己去还" if du_ok else ArpgStory.DU_NEED, du_ok],
+		["he", "合刃", "（隐藏）把三截刀合在一起" if he_ok else ArpgStory.HE_NEED, he_ok]]
+	var items := []
+	for o: Array in opts:
+		items.append({"title": o[1], "desc": o[2], "enabled": o[3], "color": (Color(1.0, 0.85, 0.5) if o[0] == "he" else ArpgStory.C_JIN) if o[3] else Color(0.5, 0.5, 0.55)})
+	var m := _open_menu("烬", "师兄跪在灰灯前，等你的刀。", items, "list", false)
+	m.chosen.connect(func(i: int) -> void:
+		var id: String = opts[i][0]
+		_close_menu()
+		var e: Dictionary = ArpgStory.ENDINGS2[id]
+		var seen: Dictionary = Game.save.get("arpg_act2_endings", {})
+		seen[id] = true
+		Game.save["arpg_act2_endings"] = seen
+		var cl: Dictionary = Game.save.get("arpg_act2_clears", {})
+		cl["boss6"] = true
+		Game.save["arpg_act2_clears"] = cl
+		Game.write_save()
+		ArpgAch.unlock("end2_" + id)
+		state.add_jade(30 if id == "he" else 15)
+		var lines: Array = (e["lines"] as Array).duplicate()
+		if state.flags.has("xiaoman"):
+			lines.append(["小满", "哥哥，我们回家吗？", ArpgStory.C_XIAOMAN])
+			lines.append(["残刃", "……嗯。回家。", ArpgStory.C_HERO])
+		lines.append(["", "（第二幕 · 入山　完。第三幕“出山”还在路上）"])
+		var d := _say(lines)
+		d.finished.connect(func() -> void:
+			hud.banner(String(e["title"]), "第二幕 · 入山", 4.0)
+			Game.sfx("reward")
+			get_tree().create_timer(3.0).timeout.connect(func() -> void: _game_over(true, String(e["title"])))))
+
+
 ## 山门的老刀匠：第一次说来意，之后看三样东西找齐了几样
 func _talk_smith(_n: ArpgNpc) -> void:
 	if not bool(Game.save.get("arpg_smith_met", false)):
@@ -1668,8 +1778,14 @@ func _talk_smith(_n: ArpgNpc) -> void:
 	for it: Array in ArpgStory.SMITH_ITEMS:
 		var have := got.has(it[0])
 		lines.append(["%s %s" % ["✓" if have else "○", it[1]], (String(it[3]) if have else "在%s。" % it[2]), ArpgStory.C_SMITH if have else ArpgStory.C_GREY])
-	if got.size() >= ArpgStory.SMITH_ITEMS.size():
-		lines.append(["老刀匠", "齐了。……给我三天。", ArpgStory.C_SMITH])
+	if ArpgStory.smith_done():
+		lines = [["老刀匠", "刀镡在你身上了。剩下的半截刀，去找拿着它的人。", ArpgStory.C_SMITH]]
+	elif got.size() >= ArpgStory.SMITH_ITEMS.size():
+		# 三样齐了：打出刀镡（合刃结局要用）
+		Game.save["arpg_smith_done"] = true
+		Game.write_save()
+		ArpgAch.unlock("smith")
+		lines.append_array(ArpgStory.SMITH_DONE)
 	else:
 		lines.append(["老刀匠", "还差 %d 样。不急，刀等得起，人等不起。" % (ArpgStory.SMITH_ITEMS.size() - got.size()), ArpgStory.C_SMITH])
 	_say(lines)
@@ -1724,6 +1840,17 @@ func _story_effect(fx: Dictionary, n: ArpgNpc) -> void:
 		if fx["save"] == "arpg_jizo_home":
 			ArpgAch.unlock("jizo_home")
 			hud.banner("地藏归位", "回山门看看：以后每局出发前可以向它求一个保佑", 3.0)
+	if fx.has("letter") and ArpgStory.letters() < ArpgStory.LETTERS.size():
+		var li := ArpgStory.letters()
+		Game.save["arpg_letters"] = li + 1
+		Game.write_save()
+		if li + 1 >= ArpgStory.LETTERS.size():
+			ArpgAch.unlock("letters")
+		var ll: Array = (ArpgStory.LETTERS[li] as Array).duplicate()
+		ll.append(["", "（烬的家书 %d / %d）" % [li + 1, ArpgStory.LETTERS.size()]])
+		get_tree().create_timer(0.3).timeout.connect(func() -> void: _say(ll))
+	if fx.get("flag", "") == "xiaoman":
+		_ensure_xiaoman()
 	if fx.has("coins"):
 		state.coins += int(fx["coins"])
 	if fx.has("jade"):
@@ -2625,6 +2752,24 @@ func _story_test_save(c: String) -> void:
 		"jizo":
 			Game.save["arpg_jizo_head"] = true
 			Game.save["arpg_jizo_home"] = false
+		"campboss", "campend":
+			Game.save["arpg_endings"] = {"douse": true}
+			Game.save["arpg_last_end"] = "douse"
+			Game.save["arpg_act1"] = {"ronin": "ronin_saved"}
+			Game.save["arpg_smith_met"] = true
+			Game.save["arpg_smith"] = ["iron", "bronze", "seal"]
+			Game.save["arpg_smith_done"] = false
+			Game.save["arpg_letters"] = 4 if c == "campend" else 0
+			Game.save["arpg_enc_seen"] = []
+		"monk":
+			Game.save["arpg_intro"] = true
+			Game.save["arpg_mutter"] = 99
+			Game.save["arpg_hag_told"] = true
+			Game.save["arpg_endings"] = {"douse": true}
+			Game.save["arpg_act2_runs"] = 2
+			Game.save["arpg_monk_met"] = false
+			Game.save.erase("arpg_monk_buy")
+			Game.save["jade"] = maxi(int(Game.save.get("jade", 0)), 40)
 		"vaultboss", "vaultmold":
 			Game.save["arpg_endings"] = {"douse": true}
 			Game.save["arpg_last_end"] = "douse"
@@ -2686,6 +2831,45 @@ func _story_test(c: String) -> void:
 			get_tree().create_timer(4.0).timeout.connect(func() -> void:
 				_close_menu()
 				_boss_outro(0))
+		"campboss", "campend":
+			if _title != null:
+				_title.queue_free()
+				_title = null
+			_start_run(true, 2)
+			state.run.next_floor()
+			state.remap()
+			state.run.next_floor()
+			state.remap()
+			state.flags["ronin_forgiven"] = true
+			print("STORYTEST camp encounter %s" % String(ArpgStory.encounter_for(state.gfloor(), state.flags, state.seen).get("id", "-")))
+			print("STORYTEST camp fight waves %s" % str(_make_waves("fight", state.floor_i())))
+			print("STORYTEST camp elite waves %s" % str(_make_waves("elite", state.floor_i())))
+			if c == "campend":
+				# 刀匠：三样齐了，去山门找他打刀镡；小满放出来；找到第五封家书
+				_talk_smith(null)
+				state.flags["xiaoman"] = true
+				_story_effect({"letter": 1}, null)
+			_enter_room("boss")
+			get_tree().create_timer(4.0).timeout.connect(func() -> void:
+				_close_menu()
+				for f: Node in get_tree().get_nodes_in_group("foes"):
+					f.queue_free()
+				hero.invincible = true
+				print("STORYTEST xiaoman follower %s" % str(is_instance_valid(_xiaoman)))
+				if c == "campend":
+					_act2_ending()
+					var mm := _menu as ArpgMenu
+					print("STORYTEST ending enabled %s" % str(mm.items.map(func(it: Dictionary) -> bool: return bool(it.get("enabled", true)))))
+					mm.chosen.emit(2)
+				else:
+					_boss_outro(2))
+		"monk":
+			get_tree().create_timer(6.0).timeout.connect(func() -> void:
+				for n: ArpgNpc in _npcs:
+					if is_instance_valid(n) and n.display.begins_with("守灯僧"):
+						n.interacted.emit(n)
+				get_tree().create_timer(12.0).timeout.connect(func() -> void:
+					print("STORYTEST monk buy=%s jade=%d" % [String(Game.save.get("arpg_monk_buy", "")), int(Game.save["jade"])])))
 		"vaultboss", "vaultmold":
 			if _title != null:
 				_title.queue_free()

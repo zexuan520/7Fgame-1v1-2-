@@ -40,6 +40,8 @@ const ZONES := {
 		"sun": Color(0.7, 0.85, 1.0), "sun_e": 1.2, "spore": Color(0.5, 0.9, 1.0)},
 	"vault": {"bg": Color(0.06, 0.03, 0.02), "fog": Color(0.18, 0.09, 0.04), "fog_d": 0.55, "amb": Color(0.6, 0.47, 0.36), "amb_e": 1.35,
 		"sun": Color(1.0, 0.78, 0.55), "sun_e": 1.1, "spore": Color(1.0, 0.6, 0.25)},
+	"camp": {"bg": Color(0.05, 0.05, 0.07), "fog": Color(0.16, 0.14, 0.16), "fog_d": 0.6, "amb": Color(0.56, 0.52, 0.56), "amb_e": 1.3,
+		"sun": Color(1.0, 0.72, 0.5), "sun_e": 1.15, "spore": Color(1.0, 0.55, 0.3)},
 	"sakura": {"bg": Color(0.05, 0.04, 0.09), "fog": Color(0.12, 0.1, 0.2), "fog_d": 0.65, "amb": Color(0.45, 0.38, 0.6), "amb_e": 1.25,
 		"sun": Color(0.72, 0.76, 1.0), "sun_e": 1.2, "spore": Color(1.0, 0.6, 0.8)},
 }
@@ -79,6 +81,8 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 			_dress_well()
 		"vault":
 			_dress_vault()
+		"camp":
+			_dress_camp()
 	_atmosphere()
 	_clear_doorways()
 	_make_spawns()
@@ -191,6 +195,23 @@ func _floor_color(x: float, z: float) -> Color:
 			elif r < 3.2 and fposmod(atan2(z, x) * 7.0 / TAU, 1.0) < 0.05:
 				c = Color(0.34, 0.25, 0.14)
 			return c * (1.15 + n2 * 0.1)
+		"camp":
+			# 灰衣营：踩实的黄土 + 车辙泥坑 + 散落的稻草；中间一条木板道通到营门
+			var c := Color(0.27, 0.25, 0.22).lerp(Color(0.33, 0.3, 0.26), n * 0.5 + 0.5)
+			var mud := noise.get_noise_2d(x * 0.9 - 30.0, z * 0.9)
+			if mud > 0.25:
+				c = c.lerp(Color(0.14, 0.12, 0.11), clampf((mud - 0.25) * 4.0, 0.0, 0.8))
+			if n2 > 0.5:
+				c = c.lerp(Color(0.42, 0.37, 0.26), 0.35)
+			for rx: float in [-1.0, 1.0]:
+				if absf(x - rx * 3.4 - sin(z * 0.2) * 0.4) < 0.2:
+					c = c * 0.84
+			if absf(x) < 1.4:
+				var pl := int(floor(z / 0.5))
+				c = Color(0.36, 0.27, 0.19) * (0.88 + 0.12 * sin(pl * 12.9898))
+				if fposmod(z, 0.5) < FV * 0.8 or absf(absf(x) - 1.35) < FV:
+					c = Color(0.18, 0.13, 0.1)
+			return c * (1.12 + n2 * 0.1)
 		"temple":
 			var plank := int(floor(x / 0.6))
 			var seam := fposmod(x, 0.6) < FV * 0.6
@@ -1244,6 +1265,151 @@ func _chain(n: int) -> VoxelGrid:
 	var yb := 40 - n * 2
 	g.box(Vector3i(-2, yb - 3, -2), Vector3i(2, yb, 2), Color(0.25, 0.35, 0.4), 0.05)
 	g.cells[Vector3i(0, yb - 2, 3)] = Color(0.4, 0.8, 1.0)
+	return g
+
+
+## 灰衣营：后面一道削尖的木栅（营门在中间），两侧营帐和旗；场地里篝火、兵器架、粮草、关人的木笼；
+## 天上飘灰，靠镜头一排木桩剪影
+func _dress_camp() -> void:
+	var hx := size.x * 0.5
+	var hz := size.y * 0.5
+	var kx := _kx()
+	var kz := _kz()
+	var ka := _ka()
+	# 后墙：木栅（一根根削尖的原木），中间留营门，门两边两根旗杆
+	var nst := int((hx - 1.0) / 1.6)
+	for i in range(-nst, nst + 1):
+		var x := i * 1.6
+		if absf(x) < 2.0:
+			continue
+		voxel_piece(_cached("stake|%d" % (absi(i) % 3), _stake.bind(absi(i) % 3, Color(0.3, 0.22, 0.15))), Vector3(x, 0, -hz - 0.3), 0.12, null)
+	for sx: float in [-1.0, 1.0]:
+		kit("banner", Vector3(sx * 2.6, 0, -hz + 0.6), 0.0, 1.4, true)
+		kit("torch", Vector3(sx * 4.0, 0, -hz + 0.8), 0.0, 1.2, false)
+	# 两侧：营帐一排，帐前插旗
+	for side: float in [-1.0, 1.0]:
+		var nt := maxi(2, int(round(2.0 * kz)))
+		for j in range(nt):
+			var z := lerpf(-hz + 4.0, hz - 5.0, (j + 0.5) / float(nt))
+			kit("tent", Vector3(side * (hx - 2.6), 0, z), side * PI * 0.5 + PI, 1.25, true)
+			if j % 2 == 0:
+				kit("banner", Vector3(side * (hx - 5.0), 0, z + 1.8), 0.0, 1.0, true)
+	# 篝火：场地两三处，一圈石头 + 柴 + 火光
+	var fires := [Vector3(-6.5 * kx, 0, -2.0 * kz), Vector3(6.0 * kx, 0, 3.5 * kz)]
+	if ka > 1.5:
+		fires.append(Vector3(-5.0 * kx, 0, 6.0 * kz))
+	for fp: Vector3 in fires:
+		voxel_piece(_cached("campfire", _campfire), fp, 0.1, null, Vector3(1.4, 1, 1.4))
+		var l := OmniLight3D.new()
+		l.light_color = Color(1.0, 0.6, 0.3)
+		l.light_energy = 2.6
+		l.omni_range = 8.0
+		add_child(l)
+		l.position = fp + Vector3(0, 1.0, 0)
+		_flame(fp + Vector3(0, 0.3, 0))
+		spirit_fire(fp + Vector3(0, 0.05, 0), Color(1.0, 0.6, 0.25), 1.3, 0.0, 0.1)
+		_smoke_column(fp + Vector3(0, 1.2, 0))
+		kit("bench", fp + Vector3(0, 0, 1.8), 0.0, 0.9, true)
+	# 木笼（续命司抓来的人关在里面，空着门）
+	var cages := [Vector3(8.0 * kx, 0, -4.5 * kz), Vector3(-9.5 * kx, 0, 2.5 * kz)]
+	for cp: Vector3 in cages:
+		voxel_piece(_cached("cage", _cage), cp, 0.12, null, Vector3(1.8, 2, 1.8))
+	# 场地里：兵器架、粮草、木箱（障碍）
+	var spots := [Vector3(3.0 * kx, 0, -5.5 * kz), Vector3(-2.8 * kx, 0, 4.5 * kz)]
+	for i in range(int(round(3.0 * (ka - 1.0))) + 2):
+		var p0 := _free_spot(4.5)
+		if p0 != Vector3.INF:
+			spots.append(p0)
+	for s0: Vector3 in spots:
+		var r := rng.randf()
+		if r < 0.3:
+			kit("sword_shield", s0, rng.randf_range(-0.4, 0.4), 1.2, true)
+		elif r < 0.55:
+			kit("crates", s0, rng.randf() * TAU, 1.0, true)
+		elif r < 0.8:
+			kit("barrel", s0, rng.randf() * TAU, 1.0, true)
+		else:
+			kit("lumber", s0, rng.randf() * TAU, 1.0, true)
+	for i in range(int(6 * ka)):
+		var p := Vector3(rng.randf_range(-hx + 3, hx - 3), 0, rng.randf_range(-hz + 3, hz - 3))
+		if absf(p.x) > 2.2:
+			kit(["sack", "barrel_small", "box", "lumber"][rng.randi() % 4], p, rng.randf() * TAU, 0.8, false)
+	var tops := [Vector3(0, 4.5, -1.0), Vector3(-9 * kx, 4.5, 2.0 * kz), Vector3(9 * kx, 4.5, 2.0 * kz)]
+	for p: Vector3 in tops:
+		var wl := OmniLight3D.new()
+		wl.light_color = Color(1.0, 0.8, 0.65)
+		wl.light_energy = 1.5
+		wl.omni_range = 12.0
+		add_child(wl)
+		wl.position = p
+	_ash()
+	# 前景：靠镜头一排木桩剪影
+	for x0: float in _fg_xs():
+		voxel_piece(_cached("stake_fg", _stake.bind(1, Color(0.05, 0.04, 0.03))), Vector3(x0 + rng.randf_range(-1.0, 1.0), 0, hz + 1.2), 0.16, null, Vector3.ZERO, true)
+
+
+## 飘灰：灰白的小片慢慢往下落
+func _ash() -> void:
+	var pt := CPUParticles3D.new()
+	pt.amount = mini(int(60 * _ka()), 120) / (2 if lod == 0 else 1)
+	pt.lifetime = 8.0
+	pt.preprocess = 8.0
+	pt.mesh = _particle_quad(0.1)
+	pt.material_override = _fx_mat("light_01", Color(0.75, 0.72, 0.7), true, 1.0)
+	pt.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	pt.emission_box_extents = Vector3(size.x * 0.5, 0.5, size.y * 0.5)
+	pt.direction = Vector3(0.4, -0.3, 0.2)
+	pt.spread = 30.0
+	pt.initial_velocity_min = 0.2
+	pt.initial_velocity_max = 0.5
+	pt.gravity = Vector3(0.1, -0.2, 0.05)
+	add_child(pt)
+	pt.position = Vector3(0, 7.0, 0)
+
+
+## 木栅的一根原木：上头削尖，三种高矮
+func _stake(v: int, c: Color) -> VoxelGrid:
+	var g := VoxelGrid.new(200 + v)
+	var h := 26 + v * 4
+	for x in range(0, 12):
+		var lx := x % 4
+		var top := h + (2 - absi(lx - 1)) * 2 + (x / 4) % 2 * 2
+		for y in range(0, top):
+			for z in range(0, 3):
+				g.cells[Vector3i(x, y, z)] = c * (0.85 + 0.15 * float(lx == 1 or lx == 2)) * (0.9 + 0.1 * float((y / 5) % 2))
+	g.box(Vector3i(0, 8, 3), Vector3i(11, 9, 3), c * 0.6, 0.05)
+	g.box(Vector3i(0, h - 6, 3), Vector3i(11, h - 5, 3), c * 0.6, 0.05)
+	return g
+
+
+## 篝火：一圈石头，中间交叉的柴
+func _campfire() -> VoxelGrid:
+	var g := VoxelGrid.new(210)
+	for a in range(10):
+		var d := Vector2(cos(a * TAU / 10.0), sin(a * TAU / 10.0)) * 5.5
+		g.box(Vector3i(int(d.x) - 1, 0, int(d.y) - 1), Vector3i(int(d.x) + 1, 1, int(d.y) + 1), Color(0.35, 0.33, 0.32), 0.1)
+	for k in range(-4, 5):
+		g.cells[Vector3i(k, 1, k)] = Color(0.25, 0.16, 0.1)
+		g.cells[Vector3i(k, 1, -k)] = Color(0.22, 0.14, 0.09)
+	g.box(Vector3i(-2, 0, -2), Vector3i(2, 0, 2), Color(0.15, 0.1, 0.08), 0.0)
+	return g
+
+
+## 木笼：方框 + 竖栏，门开着
+func _cage() -> VoxelGrid:
+	var g := VoxelGrid.new(220)
+	var w := Color(0.28, 0.2, 0.13)
+	g.box(Vector3i(-7, 0, -7), Vector3i(7, 0, 7), w * 0.8, 0.05)
+	g.box(Vector3i(-7, 17, -7), Vector3i(7, 17, 7), w * 0.8, 0.05)
+	for i in range(-7, 8, 2):
+		for y in range(1, 17):
+			g.cells[Vector3i(i, y, -7)] = w
+			g.cells[Vector3i(-7, y, i)] = w
+			g.cells[Vector3i(7, y, i)] = w
+			if i < -1 or i > 3:
+				g.cells[Vector3i(i, y, 7)] = w
+	for y in range(1, 17):
+		g.cells[Vector3i(5, y, 9)] = w * 0.9   # 推开的门
 	return g
 
 

@@ -16,7 +16,7 @@ const BOSS_TITLES := ["夜樱广场", "无名冢 · 万骨坑", "古寺 · 寂�
 const BOSS_MUSIC := ["boss", "boss2", "boss", "boss2", "boss", "boss2"]
 const LAST_FLOOR := 2
 ## 第二幕已经做好的层数（分阶段做：先只有青井地宫，打完头目算这一章暂时通关）
-const ACT2_READY := 2
+const ACT2_READY := 3
 const ACT_NAMES := {1: "第一幕 · 归乡", 2: "第二幕 · 入山"}
 const CN_NUM := ["一", "二", "三", "四", "五", "六", "七", "八", "九"]
 const TYPE_NAMES := {"start": "林口", "fight": "战", "elite": "精英", "shop": "商人", "rest": "歇脚", "event": "奇遇", "boss": "头目",
