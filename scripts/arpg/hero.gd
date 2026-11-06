@@ -304,6 +304,7 @@ func apply_skin(id: String) -> void:
 		rig = VoxActor.new()
 		add_child(rig)
 		rig.setup(String(sk["model"]), "", 34.0, Color(1, 1, 1), float(sk.get("k", 1.0)))
+		rig.mat.next_pass = VoxActor.hero_outline_material()
 		if trail != null:
 			trail.rig = rig
 		_equip_model()

@@ -34,23 +34,24 @@ var layout_spawns: Array = []      # 模板指定的刷怪区：[中心, 半径]
 static var lod := 2
 
 const ZONES := {
-	"forest": {"bg": Color(0.03, 0.07, 0.08), "fog": Color(0.07, 0.2, 0.21), "fog_d": 0.75, "amb": Color(0.3, 0.55, 0.58), "amb_e": 1.15,
-		"sun": Color(0.55, 0.85, 0.95), "sun_e": 1.25, "spore": Color(0.55, 1.0, 0.85)},
-	"temple": {"bg": Color(0.03, 0.04, 0.06), "fog": Color(0.06, 0.14, 0.18), "fog_d": 0.7, "amb": Color(0.4, 0.42, 0.55), "amb_e": 1.35,
-		"sun": Color(0.6, 0.72, 1.0), "sun_e": 1.1, "spore": Color(0.7, 0.9, 1.0)},
-	"grave": {"bg": Color(0.03, 0.05, 0.05), "fog": Color(0.1, 0.16, 0.14), "fog_d": 0.85, "amb": Color(0.38, 0.5, 0.45), "amb_e": 1.2,
-		"sun": Color(0.62, 0.8, 0.75), "sun_e": 1.15, "spore": Color(0.6, 1.0, 0.6)},
+	# 第一幕是评委、新人最先看到的：雾压轻、灯提亮，地面和角色拉开（原来雾 0.75、环境 1.15、日光 1.25，整片发青发灰）
+	"forest": {"bg": Color(0.03, 0.07, 0.08), "fog": Color(0.05, 0.14, 0.15), "fog_d": 0.42, "amb": Color(0.34, 0.55, 0.56), "amb_e": 1.4,
+		"sun": Color(0.75, 0.92, 0.95), "sun_e": 1.5, "spore": Color(0.55, 1.0, 0.85)},
+	"temple": {"bg": Color(0.03, 0.04, 0.06), "fog": Color(0.06, 0.14, 0.18), "fog_d": 0.55, "amb": Color(0.4, 0.42, 0.55), "amb_e": 1.4,
+		"sun": Color(0.6, 0.72, 1.0), "sun_e": 1.2, "spore": Color(0.7, 0.9, 1.0), "foe_rim": Color(0.55, 0.9, 1.0)},
+	"grave": {"bg": Color(0.03, 0.05, 0.05), "fog": Color(0.07, 0.11, 0.1), "fog_d": 0.5, "amb": Color(0.42, 0.5, 0.46), "amb_e": 1.4,
+		"sun": Color(0.8, 0.88, 0.8), "sun_e": 1.4, "spore": Color(0.6, 1.0, 0.6)},
 	"well": {"bg": Color(0.02, 0.04, 0.07), "fog": Color(0.05, 0.14, 0.2), "fog_d": 0.6, "amb": Color(0.48, 0.52, 0.58), "amb_e": 1.45,
 		"sun": Color(0.7, 0.85, 1.0), "sun_e": 1.2, "spore": Color(0.5, 0.9, 1.0)},
 	"vault": {"bg": Color(0.06, 0.03, 0.02), "fog": Color(0.18, 0.09, 0.04), "fog_d": 0.55, "amb": Color(0.6, 0.47, 0.36), "amb_e": 1.35,
-		"sun": Color(1.0, 0.78, 0.55), "sun_e": 1.1, "spore": Color(1.0, 0.6, 0.25)},
+		"sun": Color(1.0, 0.78, 0.55), "sun_e": 1.1, "spore": Color(1.0, 0.6, 0.25), "foe_rim": Color(0.55, 0.9, 1.0)},
 	"camp": {"bg": Color(0.05, 0.05, 0.07), "fog": Color(0.16, 0.14, 0.16), "fog_d": 0.6, "amb": Color(0.56, 0.52, 0.56), "amb_e": 1.3,
-		"sun": Color(1.0, 0.72, 0.5), "sun_e": 1.15, "spore": Color(1.0, 0.55, 0.3)},
+		"sun": Color(1.0, 0.72, 0.5), "sun_e": 1.15, "spore": Color(1.0, 0.55, 0.3), "foe_rim": Color(0.55, 0.9, 1.0)},
 	# 终章 · 无光殿（灯冢最深处，烛王坐的地方）：摆设和灯冢一样，光压得很暗、发红
 	"abyss": {"bg": Color(0.015, 0.008, 0.006), "fog": Color(0.12, 0.03, 0.02), "fog_d": 0.85, "amb": Color(0.42, 0.3, 0.26), "amb_e": 1.05,
-		"sun": Color(0.95, 0.5, 0.3), "sun_e": 0.7, "spore": Color(1.0, 0.45, 0.2)},
-	"sakura": {"bg": Color(0.05, 0.04, 0.09), "fog": Color(0.12, 0.1, 0.2), "fog_d": 0.65, "amb": Color(0.45, 0.38, 0.6), "amb_e": 1.25,
-		"sun": Color(0.72, 0.76, 1.0), "sun_e": 1.2, "spore": Color(1.0, 0.6, 0.8)},
+		"sun": Color(0.95, 0.5, 0.3), "sun_e": 0.7, "spore": Color(1.0, 0.45, 0.2), "foe_rim": Color(0.55, 0.9, 1.0)},
+	"sakura": {"bg": Color(0.05, 0.04, 0.09), "fog": Color(0.09, 0.07, 0.15), "fog_d": 0.42, "amb": Color(0.5, 0.42, 0.6), "amb_e": 1.45,
+		"sun": Color(0.85, 0.82, 1.0), "sun_e": 1.45, "spore": Color(1.0, 0.6, 0.8)},
 }
 
 
@@ -322,6 +323,38 @@ func _floor_color(x: float, z: float) -> Color:
 				if absf(absf(x) - 2.0) < FV:
 					c = Color(0.45, 0.34, 0.15)
 			return c * (1.15 + n * 0.12)
+		"sakura":
+			# 夜樱广场：苔地上落满樱瓣，正中一圈石板“决斗台”，入口一条石板路通过来（原来满地 1.4 米方砖缝，像空网格）
+			var c := Color(0.15, 0.14, 0.19).lerp(Color(0.21, 0.19, 0.25), n * 0.5 + 0.5)
+			var pet := noise.get_noise_2d(x * 0.55 + 50.0, z * 0.55)
+			var near_tree := clampf(1.0 - Vector2(x, z + size.y * 0.5 - 4.5).length() / 10.0, 0.0, 1.0)
+			var pk := clampf((pet - 0.05) * 3.0, 0.0, 0.8) + near_tree * 0.6
+			if rng.randf() < pk * 0.28:
+				c = Color(0.56, 0.32, 0.44).lerp(Color(0.72, 0.44, 0.56), rng.randf())
+			elif pk > 0.15:
+				c = c.lerp(Color(0.34, 0.22, 0.3), pk * 0.6)
+			var r := Vector2(x, z).length()
+			var dr := maxf(5.0, minf(size.x, size.y) * 0.2)
+			if r < dr + 0.9:
+				var ring := r > dr
+				var a := atan2(z, x)
+				var cell := int(floor(a * (dr * 1.1) / 1.4)) if ring else int(floor(x / 1.3)) + int(floor(z / 1.3)) * 7
+				var sh := 0.88 + 0.12 * sin(cell * 12.9898)
+				var stone := (Color(0.36, 0.33, 0.38) if ring else Color(0.3, 0.28, 0.33)) * sh
+				var seam := (fposmod(a * (dr * 1.1), 1.4) < 0.06 or absf(r - dr) < FV) if ring else (fposmod(x, 1.3) < FV * 0.6 or fposmod(z, 1.3) < FV * 0.6)
+				if seam:
+					stone = stone * 0.72
+				if rng.randf() < 0.03 + near_tree * 0.08:
+					stone = Color(0.66, 0.38, 0.5)
+				c = stone
+			elif absf(x) < 1.5 and z > dr:
+				var slab := int(floor(z / 1.1))
+				c = Color(0.32, 0.3, 0.35) * (0.88 + 0.12 * sin(slab * 7.13))
+				if fposmod(z, 1.1) < FV * 0.7 or absf(absf(x) - 1.45) < FV:
+					c = c * 0.72
+				elif rng.randf() < 0.04:
+					c = Color(0.66, 0.38, 0.5)
+			return c * (1.05 + n2 * 0.1)
 		_:
 			var tile := fposmod(x, 1.4) < FV * 0.7 or fposmod(z, 1.4) < FV * 0.7
 			var c := Color(0.3, 0.28, 0.34).lerp(Color(0.37, 0.35, 0.41), n * 0.5 + 0.5)

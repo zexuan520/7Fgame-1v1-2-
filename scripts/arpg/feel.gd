@@ -16,11 +16,14 @@ const STOP_ULT := 0.15
 const STOP_KILL := 0.08        # 斩杀至少按强击顿
 const FLASH_T := 0.08          # 受击闪白
 const NUM_LIFE := 0.7
+## 同时最多几张大字（“4段!”“破韧!”“连携·残月”）、几个伤害数字：多了互相压着反而读不出来
+const CALLOUT_MAX := 3
+const NUMBER_MAX := 22
 
 var world_pause := 0.0
 var font: Font
 var post: ShaderMaterial          # 后期材质（闪屏、受伤泛红）
-var _nums: Array = []             # [Label, 世界坐标, 屏幕偏移速度, 已过时间, 是否暴击, 基础缩放]
+var _nums: Array = []             # [Label, 世界坐标, 屏幕偏移速度, 已过时间, 是否暴击, 基础缩放, 固定屏幕偏移, 大字文本（伤害数字是 ""）]
 var _flash := Color(0, 0, 0, 0)
 var _flash_decay := 4.0
 var _hurt := 0.0
@@ -349,7 +352,25 @@ func number(world_pos: Vector3, text: String, col: Color, scale: float = 1.0, cr
 	l.visible = false
 	add_child(l)
 	var vel := Vector2(randf_range(-60, 60), randf_range(-150, -110))
-	_nums.append([l, world_pos + Vector3(randf_range(-0.25, 0.25), 0.2, 0), vel, 0.0, crit, 1.0])
+	_nums.append([l, world_pos + Vector3(randf_range(-0.25, 0.25), 0.2, 0), vel, 0.0, crit, 1.0, Vector2.ZERO, ""])
+	_trim_nums()
+
+
+## 伤害数字太多时先收掉最老的
+func _trim_nums() -> void:
+	var n := 0
+	for e: Array in _nums:
+		if String(e[7]) == "":
+			n += 1
+	var i := 0
+	while n > NUMBER_MAX and i < _nums.size():
+		var e: Array = _nums[i]
+		if String(e[7]) == "":
+			(e[0] as Label).queue_free()
+			_nums.remove_at(i)
+			n -= 1
+		else:
+			i += 1
 
 
 ## 屏幕中间偏上的大字（连段“1段!”、技能名）
@@ -362,8 +383,20 @@ func callout(world_pos: Vector3, text: String, col: Color, scale: float = 1.0) -
 	l.add_theme_color_override("font_outline_color", Color(0.02, 0.06, 0.07))
 	l.add_theme_constant_override("outline_size", 8)
 	l.visible = false  # 第一帧算出屏幕位置前先藏着，不然会在左上角闪一下
+	# 同一句大字 0.35 秒内又来：刷新旧的，不再叠一张
+	for e: Array in _nums:
+		if String(e[7]) == text and float(e[3]) < 0.35:
+			e[3] = 0.0
+			l.free()
+			return
+	# 大字往上错开排队，最多同时 3 张（太多就先收掉最老的）
+	var calls: Array = _nums.filter(func(e: Array) -> bool: return String(e[7]) != "")
+	while calls.size() >= CALLOUT_MAX:
+		var old: Array = calls.pop_front()
+		(old[0] as Label).queue_free()
+		_nums.erase(old)
 	add_child(l)
-	_nums.append([l, world_pos, Vector2(0, -50), 0.0, true, 1.0])
+	_nums.append([l, world_pos, Vector2(0, -50), 0.0, true, 1.0, Vector2(0, -36.0 * calls.size() * scale), text])
 
 
 ## 全屏闪：c 的 alpha 是强度
@@ -414,7 +447,7 @@ func _process_body(dt: float) -> void:
 			var sp := cam.unproject_position(wp)
 			var v: Vector2 = e[2]
 			var off := v * t + Vector2(0, 160.0) * t * t
-			l.position = sp + off - l.size * 0.5
+			l.position = sp + off - l.size * 0.5 + (e[6] as Vector2)
 			l.pivot_offset = l.size * 0.5
 			l.visible = true
 		# 暴击：先放大弹一下再回落

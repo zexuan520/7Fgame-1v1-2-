@@ -125,7 +125,30 @@ func _migrate(data: Dictionary, v: int) -> void:
 var _save_t := 0
 
 
+## 章节试玩：用一份临时存档玩，什么都不写盘、不上云、不碰局中断点；结束时换回真存档
+var sandbox := false
+var _real_save := {}
+
+
+func begin_sandbox() -> void:
+	if sandbox:
+		return
+	_real_save = save
+	save = save.duplicate(true)
+	sandbox = true
+
+
+func end_sandbox() -> void:
+	if not sandbox:
+		return
+	save = _real_save
+	_real_save = {}
+	sandbox = false
+
+
 func write_save() -> void:
+	if sandbox:
+		return
 	save_rev += 1
 	var text := SaveStore.encode("save", save, SAVE_VERSION, save_rev)
 	SaveStore.write_text(save_path, text)
@@ -210,6 +233,8 @@ func _save_is_fresh() -> bool:
 
 
 func _cloud_push() -> void:
+	if sandbox:
+		return   # 试玩用的临时存档不上云（真存档该推的等试玩结束再推）
 	_cloud_dirty = false
 	_cloud_t = 0.0
 	var z := get_node_or_null("/root/Zaohua")
@@ -252,6 +277,8 @@ var _run_rev := 0
 
 
 func write_checkpoint(ck: Dictionary) -> void:
+	if sandbox:
+		return
 	_run_rev += 1
 	ck["cv"] = CHECKPOINT_VERSION
 	SaveStore.write_text(run_path, SaveStore.encode("run", ck, CHECKPOINT_VERSION, _run_rev))
@@ -273,6 +300,8 @@ func has_checkpoint() -> bool:
 
 
 func clear_checkpoint() -> void:
+	if sandbox:
+		return   # 试玩结束回标题时别把真存档那一局的断点删了
 	SaveStore.remove(run_path)
 
 

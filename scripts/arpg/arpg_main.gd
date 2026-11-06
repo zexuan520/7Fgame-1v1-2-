@@ -638,6 +638,7 @@ func _apply_zone_env(info: Dictionary) -> void:
 	env.fog_depth_curve = 1.3
 	sun.light_color = info["sun"]
 	sun.light_energy = info["sun_e"]
+	Foe.zone_rim = info.get("foe_rim", Color(1.0, 0.55, 0.35))
 
 
 ## 战斗房 / 精英房挑一个布局模板（RoomLayouts），最近四间用过的不挑
@@ -772,8 +773,16 @@ func _enter_title_body() -> void:
 	_clear_scene()
 	_build_arena("sakura", 7, Vector2(30, 22))
 	_ensure_hero()
-	_place_hero(Vector3(0, 0, 2.0), Vector3(0, 0, 1))
-	hero.visible = false
+	# 标题镜头：压低俯角、拉近，主角背对镜头站在发光大樱树前（原来是从正上方看一片空地砖）
+	_place_hero(Vector3(1.2, 0, -3.0), Vector3(-0.25, 0, -1))
+	hero.visible = true
+	_title_focus = Node3D.new()
+	add_child(_title_focus)
+	_title_focus.global_position = Vector3(-4.2, 0, -4.6)
+	cam_rig.target = _title_focus
+	cam_rig.pitch_deg = TITLE_PITCH
+	cam_rig.distance = TITLE_DIST
+	cam_rig.snap()
 	hud.visible = false
 	Game.music("hub")
 	_title = TitleCard.new()
@@ -781,11 +790,97 @@ func _enter_title_body() -> void:
 	_title.started.connect(func() -> void:
 		_title.queue_free()
 		_title = null
+		_title_cam_reset()
 		Game.sfx("door")
 		if not Game.save.has("arpg_diff"):
 			_pick_difficulty(_after_title)
 		else:
 			_after_title())
+	_title.chapters.connect(_open_chapters)
+
+
+## 章节试玩：标题按 K 选第二幕或第三幕，用临时存档、带一套预设构筑直接开打；回山门时换回真存档、回标题
+func _open_chapters() -> void:
+	if _title == null or _menu != null:
+		return
+	_title.paused_input = true
+	var items := [
+		{"title": "第二幕 · 入山", "desc": "青井地宫 → 烛国灯冢 → 灰衣营。当作已经打完第一幕", "tag": "三层", "color": Color(0.55, 0.85, 1.0), "glyph": "入"},
+		{"title": "第三幕 · 出山", "desc": "柳溪村 → 官道驿站 → 长明宫。当作已经打完第二幕", "tag": "三层", "color": Color(1.0, 0.75, 0.45), "glyph": "出"},
+	]
+	var m := _open_menu("章节试玩", "临时存档，不影响你的进度 · 游历难度 · 天赋点一半 · 送两门心法一件奇物", items, "cards", true)
+	m.chosen.connect(func(i: int) -> void:
+		_close_menu()
+		if _title != null:
+			_title.queue_free()
+			_title = null
+		_title_cam_reset()
+		Game.title_done = true
+		Game.sfx("door")
+		_start_chapter(2 + i))
+	m.cancelled.connect(func() -> void:
+		_close_menu()
+		if _title != null:
+			_title.paused_input = false)
+
+
+func _start_chapter(act: int) -> void:
+	Game.begin_sandbox()
+	var s := Game.save
+	s["arpg_diff"] = 0
+	_bench_talents("half")
+	s["arpg_intro"] = true
+	s["runs"] = maxi(int(s.get("runs", 0)), 1)
+	s["arpg_guide"] = "done"
+	if not s.has("arpg_act1"):
+		s["arpg_act1"] = {"ronin": "ronin_saved", "monk": "monk_told", "sakura": "sakura_rest"}
+	if (s.get("arpg_endings", {}) as Dictionary).is_empty():
+		s["arpg_endings"] = {"douse": true}
+		s["arpg_last_end"] = "douse"
+	if act >= 3 and (s.get("arpg_act2_endings", {}) as Dictionary).is_empty():
+		s["arpg_act2_endings"] = {"zhan": true}
+		s["arpg_last_end2"] = "zhan"
+	s.erase("arpg_bless")
+	s.erase("arpg_monk_buy")
+	_start_run(true, act)
+	state.flags["chapter"] = true
+	for b: Dictionary in state.roll_boons(2, _rng):
+		state.boons.append(String(b["id"]))
+	var rl := ArpgRelics.roll(6, state.relics, _rng).filter(func(r: Dictionary) -> bool: return String(r.get("cost", "")) == "")
+	if not rl.is_empty():
+		state.relics.append(String((rl[0] as Dictionary)["id"]))
+	hero.apply_stats(state.stats(), state.weapon, true)
+	hud.visible = true
+	_enter_room()
+	get_tree().create_timer(1.2).timeout.connect(func() -> void:
+		if is_instance_valid(hud):
+			hud.banner("章节试玩 · 第%s幕" % ["", "一", "二", "三"][act], "临时存档：这一局什么都不记，结束后回到标题", 3.5))
+	if _args.has("chapterend"):
+		# 测试：开打几秒后直接算倒下，选“回山门”，应回到标题、存档不变
+		get_tree().create_timer(3.0).timeout.connect(func() -> void:
+			_game_over(false)
+			get_tree().create_timer(1.5).timeout.connect(func() -> void:
+				if _menu != null:
+					_menu.chosen.emit(0)))
+
+
+## 头目生命倍率（按本幕第几层）：目标机器人打第一、二个头目 30~45 秒，最终头目 50 秒以上
+const BOSS_HP_K := [1.8, 1.5, 1.15]
+const TITLE_PITCH := 33.0
+const TITLE_DIST := 17.0
+var _title_focus: Node3D
+
+
+## 标题镜头还原成平时的斜俯视（俯角 50、距离 14.5、对着主角）
+func _title_cam_reset() -> void:
+	cam_rig.pitch_deg = 50.0 if not _args.has("cam_pitch") else float(_args["cam_pitch"])
+	cam_rig.distance = 14.5 if not _args.has("cam_dist") else float(_args["cam_dist"])
+	cam_rig.yaw_deg = 0.0 if not _args.has("cam_yaw") else float(_args["cam_yaw"])
+	if is_instance_valid(_title_focus):
+		_title_focus.queue_free()
+	_title_focus = null
+	if is_instance_valid(hero):
+		cam_rig.target = hero
 
 
 ## 标题之后：第一次玩直接上山开打（开场白在第一间房里说，按键在打的时候即时提示），以后回山门
@@ -854,6 +949,16 @@ func _enter_hub() -> void:
 
 
 func _enter_hub_body() -> void:
+	if Game.sandbox:
+		# 章节试玩结束（身死、通关、暂停菜单回山门）：换回真存档，回标题
+		Game.end_sandbox()
+		state = null
+		_enter_title_body()
+		hero.reset_for_run()
+		hero.kit = null
+		_hub_stats()
+		print("CHAPTER_END back to title, runs=%d jade=%d" % [int(Game.save.get("runs", 0)), int(Game.save.get("jade", 0))])
+		return
 	mode = "hub"
 	_warm_hub()
 	Game.clear_checkpoint()   # 回到山门，这一局就结束了
@@ -1963,6 +2068,9 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 	if state != null and state.act >= 2 and fl == 2 and not kind.begins_with("boss"):
 		ah *= 1.12
 		ad *= 1.08
+	# 头目加血：全量试玩里夜樱 11~17 秒就倒，登场和半血变身演出都来不及看；每幕前两个头目多加一些，最终头目少加
+	if kind.begins_with("boss") and kind != "boss10" and not _args.has("oldboss"):
+		ah *= BOSS_HP_K[clampi(fl, 0, BOSS_HP_K.size() - 1)]
 	f.setup_kind(kind, (1.0 + fl * 0.35 + rk * 0.04) * om_hp * ah, (1.0 + fl * 0.18 + rk * 0.03) * om_dmg * ad)
 	if state != null and room_kind != "tutorial" and not f.data.has("phantom"):
 		ArpgCycle.scale_foe(f, state.cycle)   # 轮回：敌人更硬、更疼
@@ -2801,8 +2909,11 @@ func _take_build(id: String, relic: bool) -> void:
 	var duals0 := ArpgSkills.duals_of(state.build_ids())
 	if relic:
 		state.relics.append(id)
+		hints.show("relic")
 	else:
 		state.boons.append(id)
+	if int(ArpgData.school_counts(state.build_ids()).get("魂", 0)) > 0:
+		hints.show("soul")
 	hero.apply_stats(state.stats(), state.weapon)
 	for h: Node in get_tree().get_nodes_in_group("heroes"):
 		if h is Hero and h != hero:
@@ -2860,6 +2971,7 @@ func _offer_relics(n: int, then_portal: String, then: Callable = Callable()) -> 
 		items.append({"title": r["name"], "desc": ArpgRelics.card_desc(r), "tag": ArpgRelics.tag_text(r), "color": ArpgRelics.COLOR,
 			"glyph": String(r["name"]).substr(0, 1)})
 	var m := _open_menu("奇物", "%d 选一，会改变打法；标签也算流派件数" % offer.size(), items, "cards", false)
+	hints.menu_tip("relic_pick", m)
 	m.chosen.connect(func(i: int) -> void:
 		_take_relic(String(offer[i]["id"]))
 		_close_menu()
@@ -3279,6 +3391,7 @@ func _add_curses(ids: Array) -> void:
 		return
 	hero.apply_stats(state.stats(), state.weapon)
 	hud.banner("诅咒", "、".join(names), 2.6)
+	hints.show("curse")
 	feel.screen_flash(Color(0.4, 0.0, 0.25, 0.5), 1.5)
 	vfx.shock_ring(hero.global_position, ArpgEvents.CURSE_COLOR, 0.3, 4.0, 0.5)
 	Game.sfx("ghost", -4.0)
@@ -4226,7 +4339,10 @@ func _test_go() -> void:
 	if VoxelWarm.I != null and LoadProf.on:
 		print("loadprof: 预拼已完成 %d 件，队里还有 %d 件" % [VoxelWarm.I.done_n, VoxelWarm.I._queue.size()])
 	LoadProf.report("预拼（%s）" % mode)
-	if mode == "title" and _title != null:
+	if mode == "title" and _title != null and _args.has("chapter"):
+		_open_chapters()   # 测试：--chapter=2|3 走章节试玩
+		_menu.chosen.emit(clampi(int(_args["chapter"]), 2, 3) - 2)
+	elif mode == "title" and _title != null:
 		_title.started.emit()
 	elif mode == "hub":
 		_portal_kind = "run"

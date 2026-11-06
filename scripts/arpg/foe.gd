@@ -15,6 +15,10 @@ signal dropped(pos: Vector3, coins: int, jade: int)
 
 const MAX_TOKENS := 2
 static var tokens := 0
+## 这一区的小怪边缘光颜色（ArpgMain._apply_zone_env 按区域冷暖设）
+static var zone_rim := Color(1.0, 0.55, 0.35)
+static var _base_shader: Shader
+var _base_ring: MeshInstance3D
 
 const TYPES := {
 	"crawler": {"name": "腐骨虫", "model": "skel_minion", "weapon": "", "wlen": 0.0, "tint": Color(0.85, 0.95, 0.8), "k": 0.72,
@@ -239,7 +243,9 @@ func _ready() -> void:
 	rig.setup(String(data["model"]), String(data["weapon"]), float(data["wlen"]), data["tint"], k)
 	if Arena.lod == 0 and not is_boss:
 		rig.mat.next_pass = null   # 低画质：小怪不描边（描边是整个人偶再画一遍，成群时绘制调用翻倍）
-	rig.set_rim(Color(0.6, 0.85, 0.9) if not is_boss else Color(1.0, 0.6, 0.8), 0.3)
+	# 边缘光跟着区域走：冷色地面（幽林、墓园、樱林、地宫、驿站）用暖色，暖色地面用冷色，怎么都跟地面拉开
+	rig.set_rim(zone_rim if not is_boss else Color(1.0, 0.6, 0.8), 0.45 if not is_boss else 0.35)
+	_make_base_ring(k)
 	if data.has("head"):
 		rig.swap_head(String(data["head"]))
 	if data.has("mono"):
@@ -313,6 +319,30 @@ func _ready() -> void:
 	Vfx.I.ground(global_position, "magic_01", Color(0.4, 0.9, 1.0, 0.8) if not is_boss else Color(1.0, 0.4, 0.6, 0.9), 0.5, 2.5 * k, 0.6)
 	# pixelfx 法阵光柱：小怪青色、头目樱粉
 	Vfx.I.sheet("rune-cast" if is_boss else "spawn-cast", global_position, 3.4 * maxf(k, 0.8), Color(1, 1, 1, 0.9), 1.5, false, 0.0, 1.6 if is_boss else 2.6)
+
+
+## 脚下底圈（foe_base.gdshader）：小怪红、精英金、头目粉
+func _make_base_ring(k: float) -> void:
+	if _base_shader == null:
+		_base_shader = load("res://shaders/arpg/foe_base.gdshader")
+	_base_ring = MeshInstance3D.new()
+	var q := QuadMesh.new()
+	var r := 1.5 * k * (1.25 if is_boss else 1.0)
+	q.size = Vector2(r, r)
+	_base_ring.mesh = q
+	var m := ShaderMaterial.new()
+	m.shader = _base_shader
+	var c := Color(1.0, 0.28, 0.2)
+	if is_boss:
+		c = Color(1.0, 0.45, 0.7)
+	elif max_poise > 0.0:
+		c = Color(1.0, 0.75, 0.3)
+	m.set_shader_parameter("ring_color", Vector3(c.r, c.g, c.b))
+	_base_ring.material_override = m
+	_base_ring.rotation.x = -PI / 2
+	_base_ring.position.y = 0.03
+	_base_ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(_base_ring)
 
 
 func _physics_process(delta: float) -> void:
@@ -414,6 +444,8 @@ func _pick_target() -> Hero:
 func _set_state(s: String) -> void:
 	state = s
 	st_t = 0.0
+	if _base_ring != null:
+		_base_ring.visible = s != "lurk" and alive
 	if _trail != null:
 		_trail.active = s == "attack"
 	_pose_prev = _pose
@@ -1859,6 +1891,8 @@ func fx_color() -> Color:
 
 func die(impulse: Vector3) -> void:
 	super.die(impulse)
+	if _base_ring != null:
+		_base_ring.visible = false
 	_release()
 	remove_from_group("foes")
 	if _trail != null:

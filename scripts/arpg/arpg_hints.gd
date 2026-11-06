@@ -20,7 +20,7 @@ var _rooms := 0            # 这一局进过几间房（逐步解锁按这个排
 var _queue: Array = []     # 等着弹的提示 id
 var _queued_at := {}       # id → 排进来的时刻；看情况弹的提示等太久、或者已经换了房间就作废（下次碰到再排）
 var _queued_room := {}
-const STICKY := ["dash", "beam", "finish", "hub", "gear", "level"]   # 这些不作废
+const STICKY := ["dash", "beam", "finish", "hub", "gear", "level", "relic", "curse", "soul"]   # 这些不作废
 var _card: Card
 var _layer: CanvasLayer
 var _npc_t := 0.0
@@ -70,6 +70,13 @@ const HINTS := {
 	"npc_tut": ["山门", "试刀 · 教学", "一步一步练一遍全部按键，随时可以来"],
 	"npc_ach": ["山门", "功业碑", "成就都记在这里，存档永久保留"],
 	"npc_cycle": ["山门", "轮回盘", "通关后才有：点一级，敌人更凶、魂玉更多。级数叠加，每级第一次打通还有一笔魂玉"],
+	"npc_roster": ["山门", "名册 · 选角色", "打倒头目会解锁新角色，各有招牌兵器、开局心法和天生被动。走过去按 {interact} 换人"],
+	"npc_codex": ["山门", "奇物谱", "所有奇物和解锁条件都在这里。没解锁的奇物要达成成就或花魂玉，才会出现在掉落里"],
+	"npc_daily": ["山门", "告示牌 · 每日挑战", "每天一张固定的图和一条规矩，谁来打都一样。也能输入种子，重打同一局"],
+	"relic_pick": ["奇物", "二选一，会改变打法", "奇物这一局一直有效，多半带一个特别的效果；标签也算流派件数，能帮你凑大成。精英房和门上写着“奇物”的房间给奇物"],
+	"relic": ["奇物", "拿到奇物了", "这一局一直有效。{stats} 打开属性面板，奇物给的加成都标着“奇物”"],
+	"curse": ["诅咒", "身上带了诅咒", "诅咒一直削弱你，直到找游方郎中或在土地庙“清心”解掉。拿诅咒换来的好处通常更大"],
+	"soul": ["魂", "魂火绕身", "魂派心法和奇物攒魂火（头顶的小火球），它们会自己飞去烧敌人。魂派凑齐三件大成“百鬼”"],
 }
 
 ## 触屏按键的字（和 TouchPad 上画的一致）
@@ -78,7 +85,8 @@ const TOUCH := {"move": "左下摇杆", "attack": "「斩」", "roll": "「滚�
 	"bag": "右上「囊」", "stats": "右上「属」", "quit": "右上「Ⅱ」"}
 const TOKENS := ["move", "attack", "roll", "dash", "beam", "finish", "heal", "art", "interact", "swap", "item_next", "item", "bag", "stats", "quit"]
 ## 山门里的人：名字开头 → 提示 id
-const NPC_HINTS := [["拾骨婆", "npc_hag"], ["兵器架", "npc_rack"], ["衣箱", "npc_skin"], ["试刀", "npc_tut"], ["功业碑", "npc_ach"], ["轮回盘", "npc_cycle"]]
+const NPC_HINTS := [["拾骨婆", "npc_hag"], ["兵器架", "npc_rack"], ["衣箱", "npc_skin"], ["试刀", "npc_tut"], ["功业碑", "npc_ach"], ["轮回盘", "npc_cycle"],
+	["名册", "npc_roster"], ["奇物谱", "npc_codex"], ["告示牌", "npc_daily"]]
 
 
 func _ready() -> void:
@@ -233,6 +241,9 @@ func _pop() -> void:
 	if _queue.is_empty() or _card.busy() or _gap > 0.0:
 		return
 	if is_instance_valid(main._menu) or not main._no_dialog():
+		return
+	# 屏幕中间的横幅（天象、诅咒、流派大成……）还亮着：等它收了再弹，两张卡不叠在一起
+	if main.hud != null and main.hud._banner_t > 0.3:
 		return
 	var id := String(_queue.pop_front())
 	if is_seen(id):

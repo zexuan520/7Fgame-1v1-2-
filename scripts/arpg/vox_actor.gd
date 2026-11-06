@@ -50,6 +50,19 @@ static func outline_material() -> ShaderMaterial:
 	return _outline_mat
 
 
+## 主角专用的浅色描边：俯视时兜帽一团深色，深色描边在暗地面上等于没有；浅描边一眼找得到自己
+static var _hero_outline_mat: ShaderMaterial
+
+
+static func hero_outline_material() -> ShaderMaterial:
+	if _hero_outline_mat == null:
+		_hero_outline_mat = ShaderMaterial.new()
+		_hero_outline_mat.shader = load("res://shaders/arpg/outline.gdshader")
+		_hero_outline_mat.set_shader_parameter("width", 0.6)
+		_hero_outline_mat.set_shader_parameter("outline_color", Vector3(0.93, 0.88, 0.74))
+	return _hero_outline_mat
+
+
 ## model_id：assets/voxel 下的模型名；weapon_id：assets/voxel/weapon 下的武器名（"" 不拿武器）
 func setup(model_id: String, weapon_id: String = "", wlen: float = 30.0, tint: Color = Color.WHITE, k: float = 1.0) -> void:
 	scale_k = k
