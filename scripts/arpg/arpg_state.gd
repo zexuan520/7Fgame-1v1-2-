@@ -463,5 +463,30 @@ static func from_dict(d: Dictionary) -> ArpgState:
 		return null
 	if s.act < 1 or s.act > ACT_NAMES.size():
 		return null
+	s.fix_kit()
 	cur = s
 	return s
+
+
+## 旧断点（加兵器多重化、新装备部位之前存的）补齐：缺的部位补空、主手按 weapon 补上、坏掉的道具丢掉
+func fix_kit() -> void:
+	for slot: String in ["armor", "helm", "boots", "charm", "charm2"]:
+		if not (gear.get(slot) is Dictionary):
+			gear[slot] = {}
+	if not ArpgData.WEAPONS.has(weapon):
+		weapon = "sword"
+	if arms.size() != 2:
+		arms = [{}, {}]
+	for i in range(2):
+		if not (arms[i] is Dictionary):
+			arms[i] = {}
+		elif not (arms[i] as Dictionary).is_empty() and not ArpgData.WEAPONS.has(String(arms[i].get("base", ""))):
+			arms[i] = {}
+	if (arms[0] as Dictionary).is_empty() or String(arms[0]["base"]) != weapon:
+		arms[0] = ArpgGear.weapon_item(weapon)
+	var ok := []
+	for it in props:
+		if it is Dictionary and ArpgArms.ITEMS.has(String(it.get("id", ""))) and int(it.get("n", 0)) > 0:
+			ok.append(it)
+	props = ok
+	prop_sel = clampi(prop_sel, 0, maxi(props.size() - 1, 0))

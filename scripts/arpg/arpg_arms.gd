@@ -96,13 +96,13 @@ static func weapon_stats(id: String) -> Dictionary:
 const GEAR_SETS := {
 	"iron": {"name": "不动", "pieces": "铁盔、锁子甲、铁靴", "color": Color(0.6, 0.75, 1.0),
 		"d2": "生命 +25", "s2": {"hp": 25.0},
-		"d3": "挨打时震开一圈反震（伤害 25，把身边的敌人推开），每秒最多一次", "s3": {"set_iron": 1.0}},
+		"d3": "挨打时震开一圈反震（伤害 25）", "s3": {"set_iron": 1.0}},
 	"oni": {"name": "鬼面", "pieces": "鬼面、鬼面铠、鬼纹胫甲", "color": Color(1.0, 0.4, 0.35),
 		"d2": "伤害 +10%", "s2": {"atk": 0.1},
-		"d3": "生命低于 40% 时伤害 +30%、吸血 +4%", "s3": {"set_oni": 1.0}},
+		"d3": "残血（低于 40%）伤害 +30%、吸血 +4%", "s3": {"set_oni": 1.0}},
 	"thunder": {"name": "雷殛", "pieces": "雷纹冠、灵纹袍、雷纹靴、雷符坠", "color": Color(0.6, 0.85, 1.0),
 		"d2": "会心率 +6%", "s2": {"crit": 0.06},
-		"d3": "每第 5 次命中引一道落雷（伤害 30，麻痹 0.6 秒）", "s3": {"set_thunder": 1.0}},
+		"d3": "每 5 次命中引一道落雷（伤害 30）", "s3": {"set_thunder": 1.0}},
 }
 
 
@@ -295,7 +295,7 @@ const SKINS := [
 	{"id": "knight", "name": "铁甲骑士", "desc": "从柳江远那里学来的板甲", "model": "knight", "rim": Color(1.0, 0.85, 0.5), "unlock": {"clears": 1}},
 	{"id": "barbarian", "name": "北地蛮勇", "desc": "一身兽皮，砍过一千个敌人才穿得上", "model": "barbarian", "rim": Color(1.0, 0.55, 0.35), "unlock": {"kills": 1000}},
 	{"id": "mage", "name": "云游术士", "desc": "宽袍大袖，打起来却不含糊", "model": "mage", "k": 1.3, "rim": Color(0.72, 0.6, 1.0), "unlock": {"jade": 60}},
-	{"id": "jin", "name": "金身", "desc": "第二幕走到底的人，才有这一身金", "model": "rogue", "swap": Color(0.86, 0.66, 0.2), "rim": Color(1.0, 0.85, 0.4), "glow": Color(0.12, 0.08, 0.0), "unlock": {"act2": true}},
+	{"id": "jin", "name": "金身", "desc": "第二幕走到底的人，才有这一身金", "model": "rogue", "swap": Color(1.0, 0.6, 0.14), "rim": Color(1.0, 0.85, 0.4), "glow": Color(0.08, 0.05, 0.0), "unlock": {"act2": true}},
 ]
 
 

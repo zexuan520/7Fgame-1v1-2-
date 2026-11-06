@@ -668,7 +668,7 @@ func _enter_hub() -> void:
 	var hz := HUB_SIZE.y * 0.5
 	_npc("拾骨婆 · 天赋", Vector3(-4.0, 0, 1.0), {"model": "skel_mage", "weapon": "skel_staff", "tint": Color(1.1, 0.95, 0.8)}, _open_talents)
 	_npc("兵器架", Vector3(4.0, 0, 1.0), {"kit": "sword_shield", "scale": 1.3}, _open_weapons)
-	_npc("衣箱 · 皮肤", Vector3(6.5, 0, 3.8), {"kit": "crates", "scale": 0.9}, _open_skins)
+	_npc("衣箱 · 皮肤", Vector3(-6.5, 0, 4.0), {"kit": "crates", "scale": 0.9}, _open_skins)
 	_make_portal(Vector3(0, 0, -hz + 2.5), "run", Color(1.0, 0.8, 0.45))
 	_npc("试刀 · 教学", Vector3(-4.5, 0, -3.5), {"kit": "sword_shield", "scale": 1.1}, func(_n: ArpgNpc) -> void: _start_tutorial())
 	_npc("功业碑 · 成就 %d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], Vector3(4.5, 0, -3.5), {"kit": "shrine", "scale": 1.1}, func(_n: ArpgNpc) -> void: _open_achievements())
@@ -967,7 +967,7 @@ func _open_weapons(_n: ArpgNpc, keep_index: int = -1) -> void:
 		var w: Dictionary = ArpgData.WEAPONS[id]
 		var have := owned.has(id)
 		var right := "主手" if id == cur else ("副手" if spare and id == cur2 else ("换上" if have else "%d 魂玉" % int(w["price"])))
-		items.append({"title": w["name"], "desc": String(w["desc"]) + "。" + String(w["trait"]), "right": right,
+		items.append({"title": w["name"], "desc": String(w["style"]) + "　" + String(w["trait"]), "right": right,
 			"enabled": id != cur and (have or jade >= int(w["price"])), "tag": "兵器", "color": ArpgArms.trail(id)[1].lerp(Color(0.95, 0.92, 0.85), 0.5)})
 		acts.append(["main", id])
 	# 备刃：出发时副手带第二把；双佩：第二个护符槽
@@ -3031,7 +3031,7 @@ func _open_bag(keep_index: int = -1) -> void:
 	for sid: String in sc:
 		var gs: Dictionary = ArpgArms.GEAR_SETS[sid]
 		var n := int(sc[sid])
-		var d := "两件：%s；三件：%s（%s）" % [gs["d2"], gs["d3"], gs["pieces"]]
+		var d := "两件 %s；三件 %s" % [gs["d2"], gs["d3"]]
 		items.append({"tag": "套装", "tag_color": gs["color"], "title": "%s %d / 3" % [gs["name"], mini(n, 3)], "desc": d, "color": gs["color"], "enabled": false})
 		acts.append(["none", 0])
 	# 道具
@@ -3196,7 +3196,7 @@ func _open_run_info() -> void:
 	for sid: String in gsc:
 		var gs: Dictionary = ArpgArms.GEAR_SETS[sid]
 		var gn := int(gsc[sid])
-		items.append({"title": "套装「%s」" % gs["name"], "right": "%d / 3" % mini(gn, 3), "desc": "两件：%s；三件：%s" % [gs["d2"], gs["d3"]],
+		items.append({"title": "套装「%s」" % gs["name"], "right": "%d / 3" % mini(gn, 3), "desc": "两件 %s；三件 %s" % [gs["d2"], gs["d3"]],
 			"color": gs["color"], "enabled": gn >= 2, "tag": "套装"})
 	var sc := ArpgData.school_counts(state.boons)
 	for k: String in ArpgData.SETS:
@@ -3287,6 +3287,7 @@ func _resume_run(s: ArpgState, ck: Dictionary) -> void:
 	ArpgState.cur = s
 	_ensure_hero()
 	hero.reset_for_run()
+	hero.kit = state
 	hero.apply_stats(state.stats(), state.weapon, true)
 	var hd: Dictionary = ck.get("hero", {}) if ck.get("hero") is Dictionary else {}
 	SaveStore.load_vars(hero, hd)

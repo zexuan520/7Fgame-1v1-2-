@@ -11,15 +11,15 @@ extends RefCounted
 ## 兵器：每种兵器有自己的一套连招（ArpgArms.combo）、专属特性（trait，ArpgArms.TRAITS 说明）和人偶手里的模型。
 ## dmg 乘到所有招式上（突进、光束、终结技也算），连招本身的伤害写在连招里。trail 是刀光颜色。
 const WEAPONS := {
-	"sword": {"name": "游侠剑", "desc": "四段连招，快慢适中。第四段回旋斩叠出血", "trait": "均衡：突进斩冷却 -10%", "model": "sword", "len": 34.0, "dmg": 1.0, "price": 0},
-	"greatsword": {"name": "斩马大剑", "desc": "三段，慢而重，范围大；第三段跳劈震地", "trait": "霸体：出刀时挨打不会被打断、受伤 -15%", "model": "sword2", "len": 46.0, "dmg": 1.1, "price": 30},
-	"dagger": {"name": "双刃短匕", "desc": "五段，极快，攻击范围小；收势影刺叠两层出血", "trait": "背刺：从背后砍必定会心，出血 +1", "model": "dagger", "len": 22.0, "dmg": 0.9, "price": 25},
-	"axe": {"name": "裂骨斧", "desc": "三段，第三段下劈震地", "trait": "碎骨：会心伤害 +50%", "model": "axe2", "len": 38.0, "dmg": 1.0, "price": 25},
-	"spear": {"name": "破阵枪", "desc": "四段，前两段直刺够得远，第三段横扫，收势一枪扎穿一整排", "trait": "枪尖：2.4 米外的敌人伤害 +25%", "model": "spear", "len": 52.0, "dmg": 1.0, "price": 35},
-	"staff": {"name": "齐眉棍", "desc": "五段，大开大合，把敌人打飞；收势扫堂把一圈人扫晕", "trait": "棍扫：每一棍多回 3 点气力，击退更远", "model": "staff", "len": 44.0, "dmg": 1.0, "price": 30},
-	"twin": {"name": "鸳鸯双刀", "desc": "六段，两手轮着砍，最后两段旋身连斩", "trait": "刀势：连续砍中叠刀势，每层伤害 +4%（最多 10 层，1.5 秒没砍中就散）", "model": "twin_blade", "offhand": "twin_blade", "len": 28.0, "dmg": 0.95, "price": 40},
-	"hammer": {"name": "镇岳锤", "desc": "三段，最慢最重；后两锤砸地，第三锤震出三圈地波", "trait": "震荡：被砸中的敌人晕得更久（×1.8）", "model": "hammer", "len": 44.0, "dmg": 1.1, "price": 45},
-	"crossbow": {"name": "连弩", "desc": "远程：三发连射，第四段扇形连珠五箭；射击时略往后退", "trait": "游射：翻滚后的第一箭必定会心，弩箭穿透一个敌人", "model": "crossbow", "len": 30.0, "dmg": 1.0, "price": 45, "ranged": true},
+	"sword": {"style": "四段，快慢适中", "name": "游侠剑", "desc": "四段连招，快慢适中。第四段回旋斩叠出血", "trait": "均衡：突进斩冷却 -10%", "model": "sword", "len": 34.0, "dmg": 1.0, "price": 0},
+	"greatsword": {"style": "三段，慢而重，跳劈震地", "name": "斩马大剑", "desc": "三段，慢而重，范围大；第三段跳劈震地", "trait": "霸体：出刀时不会被打断，受伤 -15%", "model": "sword2", "len": 46.0, "dmg": 1.1, "price": 30},
+	"dagger": {"style": "五段，极快", "name": "双刃短匕", "desc": "五段，极快，攻击范围小；收势影刺叠两层出血", "trait": "背刺：从背后砍必定会心，出血 +1", "model": "dagger", "len": 22.0, "dmg": 0.9, "price": 25},
+	"axe": {"style": "三段，下劈震地", "name": "裂骨斧", "desc": "三段，第三段下劈震地", "trait": "碎骨：会心伤害 +50%", "model": "axe2", "len": 38.0, "dmg": 1.0, "price": 25},
+	"spear": {"style": "四段，直刺够得远", "name": "破阵枪", "desc": "四段，前两段直刺够得远，第三段横扫，收势一枪扎穿一整排", "trait": "枪尖：2.4 米外的敌人伤害 +25%", "model": "spear", "len": 52.0, "dmg": 1.0, "price": 35},
+	"staff": {"style": "五段，大开大合", "name": "齐眉棍", "desc": "五段，大开大合，把敌人打飞；收势扫堂把一圈人扫晕", "trait": "棍扫：每一棍多回 3 点气力，击退更远", "model": "staff", "len": 44.0, "dmg": 1.0, "price": 30},
+	"twin": {"style": "六段，双手轮着砍", "name": "鸳鸯双刀", "desc": "六段，两手轮着砍，最后两段旋身连斩", "trait": "刀势：砍中叠层，每层伤害 +4%（最多 10 层）", "model": "twin_blade", "offhand": "twin_blade", "len": 28.0, "dmg": 0.95, "price": 40},
+	"hammer": {"style": "三段，最慢最重", "name": "镇岳锤", "desc": "三段，最慢最重；后两锤砸地，第三锤震出三圈地波", "trait": "震荡：被砸中的敌人晕得更久（×1.8）", "model": "hammer", "len": 44.0, "dmg": 1.1, "price": 45},
+	"crossbow": {"style": "远程，四段连射", "name": "连弩", "desc": "远程：三发连射，第四段扇形连珠五箭；射击时略往后退", "trait": "游射：翻滚后的第一箭必定会心，弩箭穿透一个敌人", "model": "crossbow", "len": 30.0, "dmg": 1.0, "price": 45, "ranged": true},
 }
 
 ## 装备部位：护甲、头冠、靴子、护符（护符可以戴两件，第二件要在兵器架解锁“双佩”）。
