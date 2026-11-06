@@ -21,6 +21,8 @@ const TYPES := {
 		"hp": 26.0, "speed": 5.4, "detect": 13.0, "range": 2.2, "dmg": 7.0, "windup": 0.42, "attack": "lunge", "poise": 0.0, "coins": 1},
 	"skeleton": {"name": "骷髅兵", "model": "skel_warrior", "weapon": "skel_blade", "wlen": 30.0, "tint": Color(0.95, 0.95, 0.9), "k": 1.0,
 		"hp": 55.0, "speed": 3.8, "detect": 12.0, "range": 2.1, "dmg": 11.0, "windup": 0.55, "attack": "slash", "poise": 0.0, "coins": 3},
+	"shadow": {"name": "残影", "model": "rogue", "weapon": "sword", "wlen": 34.0, "tint": Color(0.45, 0.55, 0.95), "k": 0.82,
+		"hp": 520.0, "speed": 5.4, "detect": 30.0, "range": 2.4, "dmg": 15.0, "windup": 0.4, "attack": "slash", "poise": 60.0, "coins": 30},
 	"samurai": {"name": "赤甲武士", "model": "knight", "weapon": "axe2", "wlen": 44.0, "tint": Color(1.25, 0.5, 0.45), "k": 1.25,
 		"hp": 190.0, "speed": 3.2, "detect": 14.0, "range": 2.8, "dmg": 22.0, "windup": 0.75, "attack": "heavy", "poise": 45.0, "coins": 9},
 	"mage": {"name": "幽魂术士", "model": "skel_mage", "weapon": "skel_staff", "wlen": 34.0, "tint": Color(0.85, 0.7, 1.15), "k": 1.0,
@@ -86,7 +88,7 @@ var _aim: Array[Vector3] = []        # 骨弩手这一轮射哪几个方向
 ## 每种新敌人第一次出现时头上冒一句提示（一次游戏里只冒一次）
 static var _seen := {}
 const HINTS := {"archer": "骨弩手 · 躲开红线", "charger": "冲阵骨 · 引它撞墙", "bomber": "爆骨鬼 · 先下手",
-	"shield": "盾骷髅 · 绕后或连砍破盾", "summoner": "招魂巫 · 先杀它"}
+	"shield": "盾骷髅 · 绕后或连砍破盾", "summoner": "招魂巫 · 先杀它", "shadow": "残影 · 他用的是你的刀法"}
 var _trail: BladeTrail
 var dmg_scale := 1.0
 
@@ -416,6 +418,8 @@ func _choose_attack(_dist: float) -> String:
 			return "lunge"
 		"samurai":
 			return "heavy"
+		"shadow":
+			return "lunge" if randf() < 0.45 else "slash"
 		"rogue":
 			return "lunge"
 		"charger":

@@ -14,6 +14,7 @@ const C_RONIN := Color(1.0, 0.7, 0.4)
 const C_MONK := Color(0.7, 0.85, 0.7)
 const C_BONE := Color(0.8, 0.95, 0.7)
 const C_KEEPER := Color(0.75, 0.75, 0.85)
+const C_SHADOW := Color(0.55, 0.65, 1.0)
 
 ## 第一次进山门
 const INTRO := [
@@ -150,6 +151,115 @@ static func next_mutter() -> int:
 	return heard
 
 
+## 隐藏结局“众生”：同一局里这几件事都做了，最后选灯时多一项“问问他们”
+const ALL_SOULS_NEED := ["ronin_saved", "jizo_paid", "sakura_rest", "graves_named", "monk_told"]
+
+
+static func all_souls(flags: Dictionary) -> bool:
+	for f: String in ALL_SOULS_NEED:
+		if not flags.has(f):
+			return false
+	return true
+
+
+## 支线 · 阿樱的风筝：幽林的遗骸侧室里，一次找一件（存档 arpg_kite 记找到几件）
+const KITE := [
+	[["", "白骨脚边压着一截竹骨，削得很细，一头还缠着褪色的红线。"],
+		["残刃", "……这是我削的。那年给阿樱扎风筝，削坏了三根。", C_HERO]],
+	[["", "墙缝里塞着一张油纸，上面画着一只歪歪扭扭的燕子。"],
+		["残刃", "燕子是她画的。她说画得丑，才飞得高。", C_HERO]],
+	[["", "桌子底下滚出一个木线轴，线还剩大半，一扯就响。"],
+		["残刃", "……都齐了。回山门扎起来吧。", C_HERO]],
+]
+
+
+static func kite() -> int:
+	return int(Game.save.get("arpg_kite", 0))
+
+
+## 支线 · 无名冢的名字：替他们立碑后，守墓人给一张名单；名牌散在幽林、无名冢的遗骸侧室里
+const NAME_LIST_GIVEN := [
+	["", "你刚要走，守墓人一瘸一拐地追上来，往你手里塞了一张发黄的纸。"],
+	["守墓人", "这是我这些年一个一个问出来的。十二个名字，坟里的人对不上号。你路上要是见着名牌，替他们认回来。", C_KEEPER],
+	["", "（得到名单。去幽林、无名冢的遗骸侧室里找名牌，山门会立起一块无名碑）"],
+]
+const NAMES := [
+	["铁伯", "守村门的。那夜他一个人挡在门口，挡到天亮。"],
+	["周二嫂", "村口豆腐坊的，每回都给你多留一块。"],
+	["宋先生", "私塾先生，教你写过自己的名字。"],
+	["石头", "猎户，力气最大，一个人能扛一头鹿。"],
+	["老卢", "铁匠。你那把入门刀，是他打的坯。"],
+	["小桃", "卖糖的丫头，比你小两岁，总跟在阿樱后面。"],
+	["陈三", "木匠，樱树下那张长凳是他钉的。"],
+	["柳婆婆", "接生婆。村里一半的孩子都是她接的，你也是。"],
+	["狗儿", "放牛的，跑得比牛还快，那夜没跑过火。"],
+	["阿满", "渔家的媳妇，河边唱歌的就是她。"],
+	["樱家阿婆", "阿樱的奶奶。她说樱花开两次，是要出事。"],
+	["孙瞎子", "算命的，算了一辈子，没算到自己。"],
+]
+const NAMES_DONE := [
+	["", "十二个名字都认回来了。你把名单翻过来，背面还有一行，墨迹被水洇过。"],
+	["", "第十三个名字：残刃。"],
+	["", "村里人以为你也死在那夜了。无名冢里，有一座你自己的空坟。"],
+	["残刃", "……我得去看看。", C_HERO],
+]
+
+
+static func names() -> Array:
+	return Game.save.get("arpg_names", [])
+
+
+static func has_name_list() -> bool:
+	return bool(Game.save.get("arpg_name_list", false))
+
+
+static func names_done() -> bool:
+	return names().size() >= NAMES.size()
+
+
+## 下一个还没认回的名字（-1 表示全齐了）
+static func next_name() -> int:
+	var got := names()
+	for i in range(NAMES.size()):
+		if not got.has(i):
+			return i
+	return -1
+
+
+static func take_name(i: int) -> void:
+	var got: Array = names().duplicate()
+	if not got.has(i):
+		got.append(i)
+	Game.save["arpg_names"] = got
+	Game.write_save()
+
+
+## 存档条件（剧情遭遇的 save_need）
+static func save_cond(id: String) -> bool:
+	match id:
+		"shadow_ready":
+			return names_done() and not bool(Game.save.get("arpg_shadow", false))
+	return false
+
+
+## 隐藏头目 · 残影 打赢以后
+const SHADOW_POST := [
+	["", "孩子手里的刀落在地上，断成两截。断口和你那半截一模一样。"],
+	["残影", "你长这么高了啊。", C_SHADOW],
+	["残影", "我替你死在那里，你替我回来。……说好了。", C_SHADOW],
+	["", "他像一阵青烟，散进你的刀里。（得到专属心法“残影”，以后的心法里也会出现它）"],
+]
+
+## 师父的禅房：看过真结局后，古寺的密室变成禅房，第六页残页（不算进真结局的条件）
+const ZEN_ROOM := [
+	["", "墙后是一间小禅房。蒲团上落满了灰，墙上挂着两把木刀，一长一短。"],
+	["", "案上一盏油灯，从来没点过。灯下压着一页纸，是师父的字。"],
+	["寂光的残页 · 其六", "「两个徒弟，大的怕黑，小的怕冷。我应该早点告诉烬，灯不是用来照亮的。」", C_MASTER],
+	["残刃", "……烬。师兄的名字叫烬。", C_HERO],
+]
+const PAGE6 := "「两个徒弟，大的怕黑，小的怕冷。我应该早点告诉烬，灯不是用来照亮的。」"
+
+
 ## 结局
 const ENDINGS := {
 	"douse": {"title": "结局 · 灯灭", "lines": [
@@ -170,6 +280,17 @@ const ENDINGS := {
 		["", "灯灭了，死者安眠。师父的灰落了一地，像一场很小的雪。"],
 		["残刃", "我回来了。这次，是真的回来了。", C_HERO],
 		["", "山下，有人抬起了头。"]]},
+	"souls": {"title": "隐藏结局 · 众生", "lines": [
+		["", "你没有拔刀，也没有伸手。你对着灯问：你们想怎么样？"],
+		["", "灯焰晃了一下，大殿里忽然站满了人。阿樱、铁伯、无名冢里的人，一个挨一个，都不说话。"],
+		["", "阿七一瘸一拐地从殿门挤进来，站在最后面。"],
+		["阿樱", "我们早就想走了。只是十年来，没人问过我们。", C_SAKURA],
+		["铁伯", "门我守够了。孩子，记住我们的名字就行。", C_BONE],
+		["守灯僧", "师父，弟子替您念最后一遍经。", C_MONK],
+		["寂光", "……原来他们自己会选。是我一直替他们选了。", C_MASTER],
+		["", "魂一个接一个走进灯里，灯一点一点暗下去。没有人回头。"],
+		["残刃", "我记住了。每一个名字。", C_HERO],
+		["", "山下，有人抬起了头。"]]},
 }
 
 ## 分支剧情遭遇：剧情房里碰到，按层出现；need / not 是一局里的条件（flags）
@@ -187,9 +308,18 @@ const ENCOUNTERS := [
 	{"id": "jizo", "floor": 0, "name": "无头地藏", "kit": "shrine", "lines": [
 		["", "路边一尊石地藏，头不知被谁砍掉了，脚下却还压着几枚新铜钱。"]],
 		"options": [
-			["放上 10 铜钱", "求个平安：生命上限 +15", {"coins": -10, "boon_id": "vigor"}],
+			["放上 10 铜钱", "求个平安：生命上限 +15", {"coins": -10, "boon_id": "vigor", "flag": "jizo_paid"}],
 			["拿走铜钱", "铜钱 +25，但这一局受到的伤害 +10%", {"coins": 25, "curse": 1}],
 			["合掌离开", "", {}]]},
+	{"id": "shadow", "floor": 1, "save_need": "shadow_ready", "name": "第十三座坟", "kit": "grave_a", "lines": [
+		["", "无名冢最深处，有一座谁都没提过的坟。碑上刻着两个字：残刃。"],
+		["", "坟是空的。坟前蹲着一个孩子，怀里抱着一把整刀，刀上一个缺口都没有。"],
+		["残影", "你是谁？我在等师父下山来接我。", C_SHADOW],
+		["残影", "……你手里那半截刀，是我的。", C_SHADOW],
+		["残刃", "那夜死在村口的，是你。", C_HERO]],
+		"options": [
+			["拔刀", "他用的是你的刀法（隐藏头目，打赢得专属心法“残影”）", {"fight": "shadow", "solo": 1, "flag": "shadow_fight"}],
+			["转身离开", "", {}]]},
 	{"id": "sakura_grave", "floor": 1, "need": "sakura_rest", "name": "樱树下的小坟", "kit": "grave_b", "lines": [
 		["", "一座新坟，坟头插着一枝樱花。土没有翻开过，这是无名冢里唯一一座安静的坟。"],
 		["", "风吹过来，花瓣落在你的伤口上，有点暖。"]],
@@ -268,6 +398,8 @@ static func encounter_for(floor_i: int, flags: Dictionary, seen: Dictionary) -> 
 		if int(e["floor"]) != floor_i or seen.has(e["id"]):
 			continue
 		if e.has("need") and not flags.has(e["need"]):
+			continue
+		if e.has("save_need") and not save_cond(String(e["save_need"])):
 			continue
 		return e
 	return {}

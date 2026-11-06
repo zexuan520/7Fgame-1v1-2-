@@ -448,6 +448,32 @@ func _use_spring(n: ArpgNpc) -> void:
 	_update_label()
 
 
+## 支线物件：幽林先找阿樱的风筝（一次一件），再找无名冢的名牌（幽林一个、无名冢两个，要先拿到守墓人的名单）
+func _story_finds(lines: Array) -> void:
+	if zone == "forest" and ArpgStory.kite() < ArpgStory.KITE.size():
+		var k := ArpgStory.kite()
+		lines.append_array(ArpgStory.KITE[k])
+		Game.save["arpg_kite"] = k + 1
+		Game.write_save()
+		lines.append(["", "（阿樱的风筝 %d / %d%s）" % [k + 1, ArpgStory.KITE.size(), "：回山门看看" if k + 1 >= ArpgStory.KITE.size() else ""]])
+		if k + 1 >= ArpgStory.KITE.size():
+			ArpgAch.unlock("kite")
+		return
+	if not (zone in ["forest", "grave"]) or not ArpgStory.has_name_list() or ArpgStory.names_done():
+		return
+	for _i in range(1 if zone == "forest" else 2):
+		var ni := ArpgStory.next_name()
+		if ni < 0:
+			break
+		ArpgStory.take_name(ni)
+		lines.append(["", "骨头旁边有一块烧黑的木名牌：%s。" % String(ArpgStory.NAMES[ni][0])])
+		lines.append(["守墓人的名单", String(ArpgStory.NAMES[ni][1]), ArpgStory.C_KEEPER])
+	lines.append(["", "（无名冢的名字 %d / %d）" % [ArpgStory.names().size(), ArpgStory.NAMES.size()]])
+	if ArpgStory.names_done():
+		lines.append_array(ArpgStory.NAMES_DONE)
+		ArpgAch.unlock("names")
+
+
 func _read_lore(n: ArpgNpc) -> void:
 	if n.used:
 		return
@@ -459,6 +485,7 @@ func _read_lore(n: ArpgNpc) -> void:
 	var lines: Array = (pool[_rng.randi() % pool.size()] as Array).duplicate()
 	var jade := 2 + main.state.floor_i()
 	lines.append(["", "（魂玉 +%d%s）" % [jade, "，经卷里悟出一门心法" if zone == "temple" else ""]])
+	_story_finds(lines)
 	var box := main._say(lines)
 	for i in range(jade):
 		main._loot(n.global_position + Vector3(0, 0, 1.0), "jade", 1)

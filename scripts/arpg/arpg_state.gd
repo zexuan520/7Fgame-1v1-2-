@@ -185,7 +185,10 @@ func price(base: int) -> int:
 
 ## 随机抽 n 个心法（不重复）
 func roll_boons(n: int, rng: RandomNumberGenerator) -> Array:
-	var pool := ArpgData.BOONS.duplicate()
+	var pool := []
+	for b: Dictionary in ArpgData.BOONS:
+		if not b.get("hidden", false) or bool(Game.save.get("arpg_shadow", false)):
+			pool.append(b)
 	var out := []
 	while out.size() < n and not pool.is_empty():
 		var i := rng.randi_range(0, pool.size() - 1)

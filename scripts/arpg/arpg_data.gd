@@ -47,6 +47,8 @@ const BOONS := [
 	{"id": "leech", "name": "饮血", "desc": "命中回复伤害的 2% 生命", "stats": {"lifesteal": 0.02}, "school": "血"},
 	{"id": "finisher_cd", "name": "断念", "desc": "终结技冷却 -25%", "stats": {"finish_cd": 0.25}, "school": "血"},
 	{"id": "gourd", "name": "药缘", "desc": "药葫芦 +1", "stats": {"gourds": 1}, "school": "守"},
+	# 专属心法：打赢隐藏头目残影才会出现（hidden，见 ArpgState.roll_boons）
+	{"id": "afterimage", "name": "残影", "desc": "伤害 +10%、会心率 +5%、移速 +5%", "stats": {"atk": 0.1, "crit": 0.05, "move": 0.05}, "school": "风", "hidden": true},
 ]
 
 ## 流派大成：同一流派的心法拿够 SET_NEED 个（同一个叠两次也算），触发一个质变效果

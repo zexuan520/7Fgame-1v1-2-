@@ -560,6 +560,11 @@ func _enter_hub() -> void:
 	_make_portal(Vector3(0, 0, -hz + 2.5), "run", Color(1.0, 0.8, 0.45))
 	_npc("试刀 · 教学", Vector3(-4.5, 0, -3.5), {"kit": "sword_shield", "scale": 1.1}, func(_n: ArpgNpc) -> void: _start_tutorial())
 	_npc("功业碑 · 成就 %d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], Vector3(4.5, 0, -3.5), {"kit": "shrine", "scale": 1.1}, func(_n: ArpgNpc) -> void: _open_achievements())
+	# 支线：无名碑（拿到守墓人的名单后立起来）、阿樱的风筝（凑齐三件后飘在山门上空）
+	if ArpgStory.has_name_list():
+		_npc("无名碑 %d / %d" % [ArpgStory.names().size(), ArpgStory.NAMES.size()], Vector3(-8.5, 0, -0.5), {"kit": "gravestone", "scale": 1.4}, _read_names)
+	if ArpgStory.kite() >= ArpgStory.KITE.size():
+		_hub_kite(Vector3(7.0, 0, -2.0))
 	# 残页石：看已经找到的寂光残页（隐藏剧情）
 	if not ArpgStory.pages().is_empty():
 		_npc("残页 %d / %d" % [ArpgStory.pages().size(), ArpgStory.PAGES.size()], Vector3(0, 0, 2.5), {"kit": "gravestone", "scale": 1.2}, _read_pages)
@@ -642,9 +647,77 @@ func _read_pages(_n: ArpgNpc) -> void:
 	var lines := [["", "你找到了寂光写下的几页残页。"]]
 	for i: int in ArpgStory.pages():
 		lines.append(["寂光的残页 · 其%s" % ["一", "二", "三", "四", "五"][i], ArpgStory.PAGES[i], ArpgStory.C_MASTER])
+	if bool(Game.save.get("arpg_page6", false)):
+		lines.append(["寂光的残页 · 其六", ArpgStory.PAGE6, ArpgStory.C_MASTER])
 	if ArpgStory.has_all_pages():
 		lines.append(["", "五页都齐了。打倒寂光之后，也许能换一个结局。"])
 	_say(lines)
+
+
+func _read_names(_n: ArpgNpc) -> void:
+	var got := ArpgStory.names()
+	var lines := [["", "守墓人的名单。认回来的名字，你一个一个刻在了碑上。"]]
+	for i: int in got:
+		lines.append([String(ArpgStory.NAMES[i][0]), String(ArpgStory.NAMES[i][1]), ArpgStory.C_KEEPER])
+	if ArpgStory.names_done():
+		lines.append(["", "碑的最下面空着一行。名单上的第十三个名字，你还没刻上去：残刃。"])
+	else:
+		lines.append(["", "（还差 %d 个。名牌在幽林、无名冢的遗骸侧室里）" % (ArpgStory.NAMES.size() - got.size())])
+	_say(lines)
+
+
+## 阿樱的风筝：山门上空一只纸鸢，一根线拴在地上的木桩上，跟着风慢慢晃
+func _hub_kite(base: Vector3) -> void:
+	var root := Node3D.new()
+	arena.add_child(root)
+	root.global_position = base
+	var post := MeshInstance3D.new()
+	var pb := BoxMesh.new()
+	pb.size = Vector3(0.18, 0.7, 0.18)
+	post.mesh = pb
+	post.position.y = 0.35
+	var pm := StandardMaterial3D.new()
+	pm.albedo_color = Color(0.45, 0.32, 0.22)
+	post.material_override = pm
+	root.add_child(post)
+	var kite := Node3D.new()
+	kite.position = Vector3(1.5, 7.5, -2.5)
+	root.add_child(kite)
+	var face := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(1.3, 1.3)
+	face.mesh = q
+	face.rotation = Vector3(-0.5, 0.0, PI * 0.25)
+	var fm := StandardMaterial3D.new()
+	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fm.cull_mode = BaseMaterial3D.CULL_DISABLED
+	fm.albedo_color = Color(1.0, 0.55, 0.65) * 1.2
+	face.material_override = fm
+	kite.add_child(face)
+	# 线：从木桩顶拉到风筝
+	var line := MeshInstance3D.new()
+	var im := ImmediateMesh.new()
+	im.surface_begin(Mesh.PRIMITIVE_LINES)
+	im.surface_add_vertex(Vector3(0, 0.7, 0))
+	im.surface_add_vertex(kite.position)
+	im.surface_end()
+	line.mesh = im
+	var lm := StandardMaterial3D.new()
+	lm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	lm.albedo_color = Color(0.95, 0.9, 0.8)
+	line.material_override = lm
+	root.add_child(line)
+	var tw := kite.create_tween().set_loops()
+	tw.tween_property(kite, "rotation:z", 0.25, 1.8).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(kite, "rotation:z", -0.25, 1.8).set_trans(Tween.TRANS_SINE)
+	var lb := Label3D.new()
+	lb.text = "阿樱的风筝"
+	lb.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	lb.font_size = 40
+	lb.pixel_size = 0.01
+	lb.modulate = ArpgStory.C_SAKURA
+	lb.position = Vector3(0, 1.3, 0)
+	root.add_child(lb)
 
 
 func _open_weapons(_n: ArpgNpc) -> void:
@@ -800,11 +873,23 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 			_open_portal()
 		"secret":
 			var pg := ArpgStory.next_page()
+			var zen := pg < 0 and zone_id == "temple" and (Game.save.get("arpg_endings", {}) as Dictionary).has("true") and not bool(Game.save.get("arpg_page6", false))
 			if pg >= 0:
 				_npc("刻字石碑", mid, {"kit": "gravestone", "scale": 1.3}, func(n: ArpgNpc) -> void: _take_page(n, pg))
+			elif zen:
+				# 隐藏剧情 · 师父的禅房（看过真结局后）
+				_npc("两把木刀", mid, {"kit": "sword_shield", "scale": 1.2}, func(n: ArpgNpc) -> void:
+					if n.used:
+						return
+					n.used = true
+					Game.save["arpg_page6"] = true
+					Game.write_save()
+					Game.sfx("memory")
+					vfx.sheet("soul-rise", n.global_position, 3.5, Color(0.9, 0.8, 1.0), 1.8)
+					_say(ArpgStory.ZEN_ROOM))
 			_npc("宝箱", Vector3(3.5, 0, -1.5), {"kit": "box", "scale": 1.4}, func(n: ArpgNpc) -> void: _open_chest(n, 2))
 			arena.spirit_fire(Vector3(0, 0.6, -2.5), Color(0.8, 0.6, 1.0), 1.6, 2.4, 9.0)
-			hud.banner("密室", "裂墙后面藏着的房间", 2.4)
+			hud.banner("禅房" if zen else "密室", "师父住过的屋子" if zen else "裂墙后面藏着的房间", 2.4)
 			_open_portal()
 		"boss":
 			# 头目先说话，说完再出手
@@ -1174,6 +1259,10 @@ func _room_cleared() -> void:
 			ArpgAch.unlock("boss_clean")
 		get_tree().create_timer(1.6).timeout.connect(_boss_outro.bind(state.floor_i()))
 		return
+	if state != null and state.flags.has("shadow_fight"):
+		state.flags.erase("shadow_fight")
+		get_tree().create_timer(1.2).timeout.connect(_shadow_outro)
+		return
 	if room_kind == "elite":
 		_drop_gear(hero.global_position + hero.facing * 1.5, -1, 0.25)
 	var n_boons := 3 if room_kind != "elite" else 4
@@ -1209,6 +1298,8 @@ func _boss_intro(fl: int) -> void:
 	for f: String in extra:
 		if state.flags.has(f):
 			lines.append_array(extra[f])
+	if key == "boss" and ArpgStory.kite() >= ArpgStory.KITE.size():
+		lines.append(["夜樱剑鬼", "……你还留着那只风筝。", ArpgStory.C_SAKURA])
 	var om: Dictionary = ArpgStory.BOSS_PRE_OMEN.get(key, {})
 	if om.has(state.omen):
 		lines.append_array(om[state.omen])
@@ -1232,6 +1323,23 @@ func _boss_outro(fl: int) -> void:
 		d.finished.connect(_grave_choice)
 	else:
 		d.finished.connect(_ending_choice)
+
+
+## 隐藏头目 · 残影 打赢以后：专属心法、成就，之后照常选心法
+func _shadow_outro() -> void:
+	if mode != "room":
+		return
+	var d := _say(ArpgStory.SHADOW_POST)
+	d.finished.connect(func() -> void:
+		Game.save["arpg_shadow"] = true
+		Game.write_save()
+		ArpgAch.unlock("shadow")
+		_take_boon("afterimage")
+		Game.sfx("reward")
+		vfx.shock_ring(hero.global_position, ArpgStory.C_SHADOW, 0.4, 6.0, 0.6)
+		hud.banner("残影", "专属心法：%s" % String(ArpgData.boon("afterimage").get("desc", "")), 3.0)
+		_drop_gear(hero.global_position + hero.facing * 1.5, 3, 0.0)
+		get_tree().create_timer(1.6).timeout.connect(func() -> void: _offer_boons(3, "next")))
 
 
 func _sakura_choice() -> void:
@@ -1268,18 +1376,28 @@ func _grave_choice() -> void:
 			hero.hp = hero.max_hp
 			hero.gourds = hero.max_gourds
 			feel.callout(hero.head_top(), "生命、药葫芦补满", Color(0.6, 1.0, 0.6), 1.2)
-		hud.banner("第二层 · 完", "山顶就是寂光寺，最后一层", 3.0)
-		state.add_jade(6)
-		_offer_boons(3, "floor"))
+		var go := func() -> void:
+			hud.banner("第二层 · 完", "山顶就是寂光寺，最后一层", 3.0)
+			state.add_jade(6)
+			_offer_boons(3, "floor")
+		# 支线 · 无名冢的名字：第一次立碑，守墓人给名单
+		if fx["flag"] == "graves_named" and not ArpgStory.has_name_list():
+			Game.save["arpg_name_list"] = true
+			Game.write_save()
+			_say(ArpgStory.NAME_LIST_GIVEN).finished.connect(go)
+		else:
+			go.call())
 
 
 func _ending_choice() -> void:
 	var opts := [["douse", "熄灭残灯", "让死者安息。师父也会跟着灯一起走"], ["keep", "接过残灯", "像师父一样守着它"]]
 	if ArpgStory.has_all_pages():
 		opts.append(["true", "把五页残页交给师父", "（隐藏）你找齐了他写下的每一页"])
+	if ArpgStory.all_souls(state.flags):
+		opts.append(["souls", "问问他们", "（隐藏）你这一路帮过的人，都在灯前等你"])
 	var items := []
 	for o: Array in opts:
-		items.append({"title": o[1], "desc": o[2], "color": Color(1.0, 0.85, 0.5) if o[0] == "true" else ArpgStory.C_MASTER})
+		items.append({"title": o[1], "desc": o[2], "color": Color(1.0, 0.85, 0.5) if o[0] in ["true", "souls"] else ArpgStory.C_MASTER})
 	var m := _open_menu("残灯", "灯就悬在你面前。", items, "list", false)
 	m.chosen.connect(func(i: int) -> void:
 		var id: String = opts[i][0]
@@ -1292,6 +1410,9 @@ func _ending_choice() -> void:
 		ArpgAch.check_save()
 		if id == "true":
 			state.add_jade(30)
+		elif id == "souls":
+			state.add_jade(30)
+			ArpgAch.unlock("end_souls")
 		var d := _say(e["lines"])
 		d.finished.connect(func() -> void:
 			hud.banner(String(e["title"]), "残刃归途", 4.0)
@@ -1344,7 +1465,7 @@ func _story_effect(fx: Dictionary, n: ArpgNpc) -> void:
 	if fx.has("fight"):
 		hud.banner(n.display, "动手了", 1.6)
 		_room_done = false
-		waves = [[String(fx["fight"]), 1, "skeleton", 2]]
+		waves = [[String(fx["fight"]), 1]] if fx.has("solo") else [[String(fx["fight"]), 1, "skeleton", 2]]
 		wave_i = -1
 		_wave_delay = 0.6
 		room_kind = "elite"

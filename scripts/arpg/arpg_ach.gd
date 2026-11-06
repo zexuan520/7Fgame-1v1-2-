@@ -37,6 +37,10 @@ const LIST := [
 	["pages", "五页残卷", "集齐寂光的五页残页", true],
 	["end_true", "师父的字", "看到真结局", true],
 	["end_all", "灯明灯灭", "三种结局都看过", true],
+	["kite", "纸鸢", "凑齐阿樱的风筝", true],
+	["names", "十二个名字", "替无名冢的人认回全部名字", true],
+	["shadow", "替我回来", "打倒隐藏头目残影", true],
+	["end_souls", "众生", "看到隐藏结局 · 众生", true],
 	["weapons_all", "兵器满架", "兵器架上的兵器全部收齐", false],
 ]
 
@@ -136,6 +140,14 @@ static func check_save(quiet: bool = false) -> void:
 		unlock("end_true", quiet)
 	if ends.has("douse") and ends.has("keep") and ends.has("true"):
 		unlock("end_all", quiet)
+	if ends.has("souls"):
+		unlock("end_souls", quiet)
+	if ArpgStory.kite() >= ArpgStory.KITE.size():
+		unlock("kite", quiet)
+	if ArpgStory.names_done():
+		unlock("names", quiet)
+	if bool(Game.save.get("arpg_shadow", false)):
+		unlock("shadow", quiet)
 	var owned: Array = Game.save.get("arpg_weapons", [])
 	var all := true
 	for w: String in ArpgData.WEAPONS:
