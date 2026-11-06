@@ -119,7 +119,11 @@ func _physics_process(dt: float) -> void:
 		_roll_t = 0.9
 		_tap("roll")
 		return
-	if hero.energy >= hero.max_energy and foes.size() >= 3 and _skill_t <= 0.0:
+	if hero.art_id() != "" and hero.cd["art"] <= 0.0 and nd < 4.5 and _skill_t <= 0.0:
+		_skill_t = 0.6
+		_tap("art")
+		return
+	if hero.energy >= hero.beam_cost and foes.size() >= 3 and _skill_t <= 0.0:
 		_skill_t = 0.5
 		_tap("beam")
 		return

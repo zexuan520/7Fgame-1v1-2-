@@ -152,6 +152,22 @@ func _ready() -> void:
 		# 测试：开局塞几个心法（看流派大成）
 		for id: String in String(_args["boons"]).split(","):
 			_take_boon(id)
+	if _args.has("skills") and state != null:
+		# 测试：开局点好技能分支，--skills=wave:3,thunder:2；--level=N 直接到第 N 重（多出的天赋点留着）
+		for kv: String in String(_args["skills"]).split(","):
+			var pr := kv.split(":")
+			state.skills[pr[0]] = int(pr[1]) if pr.size() > 1 else 1
+		hero.apply_stats(state.stats(), state.weapon)
+	if _args.has("level") and state != null:
+		var lv := int(_args["level"])
+		state.points += lv - state.level
+		state.level = lv
+	if _args.has("skillmenu") and state != null:
+		get_tree().create_timer(1.2).timeout.connect(func() -> void:
+			if _args["skillmenu"] == "1":
+				_open_skills()
+			else:
+				_open_branch(int(_args["skillmenu"]), false))
 	if _args.has("givegear") and state != null:
 		# 测试：往行囊里塞几件装备，过一会儿打开行囊
 		for i in range(int(_args["givegear"])):
@@ -487,6 +503,7 @@ func _ensure_hero() -> void:
 	hero.name = "Hero"
 	add_child(hero)
 	hero.died.connect(_on_hero_died)
+	hero.link_fired.connect(_on_link)
 	cam_rig.target = hero
 	hud.hero = hero
 	touch.hero = hero
@@ -975,8 +992,8 @@ var _tel := {}
 func _tel_print(what: String) -> void:
 	if not _args.has("tel") or state == null or not is_instance_valid(hero) or _tel.is_empty():
 		return
-	print("TEL %s %s clk=%.0f fl=%d row=%d secs=%.1f dmg=%.0f hp=%.0f/%.0f gourd=%d coins=%d kills=%d" % [what, room_kind, _clock, state.floor_i(), state.run.row,
-		float(_tel["t"]), hero.dmg_total - float(_tel["dmg0"]), hero.hp, hero.max_hp, hero.gourds, state.coins, state.kills])
+	print("TEL %s %s clk=%.0f fl=%d row=%d secs=%.1f dmg=%.0f hp=%.0f/%.0f gourd=%d coins=%d kills=%d lv=%d pts=%d sk=%s" % [what, room_kind, _clock, state.floor_i(), state.run.row,
+		float(_tel["t"]), hero.dmg_total - float(_tel["dmg0"]), hero.hp, hero.max_hp, hero.gourds, state.coins, state.kills, state.level, state.points, str(state.skills)])
 
 
 ## 进当前房间（kind 为空时按地图上的房间类型）
@@ -1532,6 +1549,10 @@ func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
 			"skeleton": 0.04, "rogue": 0.04, "crawler": 0.015}
 		if _rng.randf() < float(chance.get(kind, 0.0)):
 			_drop_gear(pos, -1, 0.1 if kind == "samurai" else 0.0)
+	if state != null and kind != "" and c > 0 and mode == "room":
+		var ups := state.gain_xp(c)
+		if ups > 0:
+			_on_level_up(ups)
 	for i in range(mini(c, 12)):
 		_loot(pos, "coin", maxi(1, c / mini(c, 12)))
 	for i in range(j):
@@ -2181,7 +2202,9 @@ func _offer_boons(n: int, then_portal: String) -> void:
 	m.chosen.connect(func(i: int) -> void:
 		_take_boon(String(offer[i]["id"]))
 		_close_menu()
-		_open_portal(then_portal))
+		_open_portal(then_portal)
+		if ArpgSkills.any_open(state.skills, state.points):
+			_open_skills())
 
 
 ## 心法卡片上的流派标签：“血 心法 2/3”，凑够了写“已大成”
@@ -2196,8 +2219,21 @@ func _take_boon(id: String) -> void:
 	var b := ArpgData.boon(id)
 	var sc := String(b.get("school", ""))
 	var before := int(ArpgData.school_counts(state.boons).get(sc, 0))
+	var duals0 := ArpgSkills.duals_of(state.boons)
 	state.boons.append(id)
 	hero.apply_stats(state.stats(), state.weapon)
+	for d: String in ArpgSkills.duals_of(state.boons):
+		if not duals0.has(d):
+			# 双修：两色冲击环交错 + 横幅
+			var dd := ArpgSkills.dual(d)
+			var ca: Color = ArpgData.SCHOOL_COLORS.get(dd["a"], Color.WHITE)
+			var cb: Color = ArpgData.SCHOOL_COLORS.get(dd["b"], Color.WHITE)
+			get_tree().create_timer(0.3).timeout.connect(func() -> void:
+				hud.banner("双修 · %s" % dd["name"], "%s + %s：%s" % [dd["a"], dd["b"], dd["desc"]], 3.2)
+				Game.sfx("reward")
+				for j in range(4):
+					vfx.shock_ring(hero.global_position, ca if j % 2 == 0 else cb, 0.3 + j * 0.1, 3.0 + j * 1.6, 0.5))
+			ArpgAch.unlock("dual_any")
 	if before == ArpgData.SET_NEED - 1 and ArpgData.SETS.has(sc):
 		# 流派大成：大横幅 + 本色冲击
 		var st: Dictionary = ArpgData.SETS[sc]
@@ -2210,6 +2246,132 @@ func _take_boon(id: String) -> void:
 		ArpgAch.unlock("set_any")
 	feel.callout(hero.head_top(), String(b.get("name", "")), ArpgData.SCHOOL_COLORS.get(b.get("school", ""), Color.WHITE), 1.2)
 	vfx.shock_ring(hero.global_position, ArpgData.SCHOOL_COLORS.get(b.get("school", ""), Color.WHITE), 0.3, 3.5, 0.45)
+
+
+# ---------- 悟道、技能分支、连携 ----------
+
+## 升重：金色光柱从天落下、脚下金环、魂火升起；回一点血。天赋点在清房后（或暂停菜单）分配
+func _on_level_up(ups: int) -> void:
+	if not is_instance_valid(hero):
+		return
+	var p := hero.global_position
+	SkillFx.pillar(p, 14.0, 1.8, 0.6)
+	vfx.sheet("soul-rise", p, 3.6, Color(1.0, 0.85, 0.45), 2.2)
+	for j in range(3):
+		vfx.shock_ring(p, Color(1.0, 0.85, 0.45), 0.3 + j * 0.2, 3.0 + j * 1.8, 0.45 + j * 0.1)
+	feel.callout(hero.head_top() + Vector3(0, 0.5, 0), "悟道 · %s重" % Hud3D._cn(state.level), Color(1.0, 0.88, 0.5), 1.5)
+	feel.number(hero.head_top() + Vector3(0.8, 0.1, 0), "天赋点 +%d" % ups, Color(1.0, 0.85, 0.45), 0.9)
+	feel.screen_flash(Color(1.0, 0.85, 0.45, 0.2), 3.0)
+	Game.sfx("reward", -3.0)
+	hero.hp = minf(hero.hp + hero.max_hp * 0.08 * ups, hero.max_hp)
+	if state.level >= 10:
+		ArpgAch.unlock("lv_10")
+	_tel_print("level%d" % state.level)
+
+
+func _on_link(id: String) -> void:
+	if state == null:
+		return
+	state.links_done[id] = true
+	var seen: Array = Game.save.get("arpg_links", [])
+	if not seen.has(id):
+		seen.append(id)
+		Game.save["arpg_links"] = seen
+		Game.write_save()
+	ArpgAch.unlock("link_1")
+	if seen.size() >= ArpgSkills.LINKS.size():
+		ArpgAch.unlock("link_all")
+	if _args.has("tel"):
+		print("LINK %s" % id)
+
+
+## 技能分支：五招各两支，同一招只能走一支，每支三级。先选招（列表），再在两支里选（卡片）。
+## from_pause 时返回回到暂停菜单
+func _open_skills(keep_index: int = -1, from_pause: bool = false) -> void:
+	var items := []
+	for s: Dictionary in ArpgSkills.SKILLS:
+		var parts := []
+		var open := false
+		for b: Dictionary in s["branches"]:
+			var bid := String(b["id"])
+			var r := int(state.skills.get(bid, 0))
+			var n := (b["ranks"] as Array).size()
+			var why := ArpgSkills.why_not(state.skills, state.points, bid)
+			open = open or why == ""
+			parts.append("%s %s%s" % [b["name"], "●".repeat(r) + "○".repeat(n - r), "（锁）" if why.begins_with("已走") else ""])
+		var cb := ArpgSkills.chosen_branch(state.skills, String(s["id"]))
+		if (s["branches"] as Array).size() > 2:
+			# 秘技四选一：学了只写学的那一种，没学写“四选一”
+			parts = parts.filter(func(t: String) -> bool: return cb == "" or t.begins_with(String(ArpgSkills.branch(cb)["name"])))
+			if cb == "":
+				parts = ["旋风 · 飞轮 · 震岳 · 分身，四选一"]
+		items.append({"tag": String(s["glyph"]), "tag_color": s["color"], "title": String(s["full"]) + ("　新" if s.get("new", false) and cb == "" else ""),
+			"desc": "　　".join(parts), "right": "可点" if open else "", "color": s["color"], "enabled": open or from_pause})
+	var sub := "悟道 %s重　　天赋点 %d　　每招两支，只能走一支" % [Hud3D._cn(state.level), state.points]
+	var m := _open_menu("技能分支", sub, items, "list", true)
+	if keep_index >= 0:
+		m.index = keep_index
+	m.chosen.connect(func(i: int) -> void: _open_branch(i, from_pause))
+	m.cancelled.connect(func() -> void:
+		if from_pause:
+			_open_pause(8), CONNECT_DEFERRED)
+
+
+## 一招的两支：卡片 + 下面列出三级的效果
+func _open_branch(si: int, from_pause: bool) -> void:
+	var s: Dictionary = ArpgSkills.SKILLS[si]
+	var brs: Array = s["branches"]
+	var items := []
+	for b: Dictionary in brs:
+		var bid := String(b["id"])
+		var r := int(state.skills.get(bid, 0))
+		var n := (b["ranks"] as Array).size()
+		var why := ArpgSkills.why_not(state.skills, state.points, bid)
+		items.append({"title": String(b["name"]), "desc": String(b["brief"]), "tag": "%s · %s" % [s["full"], "已选这一支" if r > 0 else "分支"],
+			"color": s["color"] if not why.begins_with("已走") else Color(0.45, 0.45, 0.45), "glyph": String(b["name"]).substr(0, 1),
+			"right": "%s　%s" % ["●".repeat(r) + "○".repeat(n - r), why if why != "" else "点一级"], "enabled": why == ""})
+	var m := _open_menu(String(s["full"]), "天赋点 %d　　先点的那一支锁定，另一支这一局就不能点了" % state.points, items, "cards", true)
+	var pick := 0
+	for i in range(brs.size()):
+		if ArpgSkills.why_not(state.skills, state.points, String(brs[i]["id"])) == "":
+			pick = i
+			break
+	m.index = pick
+	m.extra_draw = func(c: Control, vs: Vector2) -> void:
+		var b: Dictionary = brs[clampi(m.index, 0, brs.size() - 1)]
+		var r := int(state.skills.get(String(b["id"]), 0))
+		var ranks: Array = b["ranks"]
+		var y := vs.y * 0.5 + 214.0
+		for k in range(ranks.size()):
+			var col := Color(1.0, 0.85, 0.45) if k < r else (Color(0.9, 0.95, 0.95) if k == r else Color(0.55, 0.6, 0.6))
+			var mark := "●" if k < r else ("▶" if k == r else "○")
+			c.draw_string(c.get("font"), Vector2(0, y + k * 24), "%s %s级　%s" % [mark, Hud3D._cn(k + 1), ranks[k]], HORIZONTAL_ALIGNMENT_CENTER, vs.x, 17, col)
+	m.chosen.connect(func(i: int) -> void:
+		var bid := String(brs[i]["id"])
+		if not state.learn(bid):
+			return
+		hero.apply_stats(state.stats(), state.weapon)
+		var b := ArpgSkills.branch(bid)
+		var c: Color = b["color"]
+		vfx.shock_ring(hero.global_position, c, 0.3, 3.6, 0.45)
+		vfx.sheet("rune-cast", hero.global_position, 3.0, c, 2.0, true, 0.0, 1.5)
+		feel.callout(hero.head_top(), "%s · %s %s级" % [b["skill_name"], b["name"], Hud3D._cn(int(state.skills[bid]))], c, 1.2)
+		Game.sfx("reward", -4.0)
+		if int(state.skills.get(bid, 0)) >= (b["ranks"] as Array).size():
+			ArpgAch.unlock("branch_max")
+		if b["skill"] == "art" and int(state.skills[bid]) == 1:
+			var arts: Array = Game.save.get("arpg_arts", [])
+			if not arts.has(bid):
+				arts.append(bid)
+				Game.save["arpg_arts"] = arts
+				Game.write_save()
+			if arts.size() >= 4:
+				ArpgAch.unlock("art_all")
+			hud.banner("秘技 · %s" % b["name"], "按 %s 施展" % TouchPad.hint(ArpgInput.key_name(0, "art"), "右下角“秘”"), 2.4)
+		_close_menu()
+		if ArpgSkills.any_open(state.skills, state.points) or from_pause:
+			_open_skills(si, from_pause))
+	m.cancelled.connect(func() -> void: _open_skills(si, from_pause), CONNECT_DEFERRED)
 
 
 # ---------- 商人、歇脚、奇遇 ----------
@@ -2681,8 +2843,10 @@ func _open_pause(sel: int = 0) -> void:
 		{"title": "难度", "right": ArpgState.DIFF_NAMES[ArpgState.difficulty()], "desc": ArpgState.DIFF_DESC[ArpgState.difficulty()]}]
 	items.append({"title": "成就", "right": "%d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], "desc": "看看做到了哪些"})
 	if mode == "room":
-		items.append({"title": "这一局", "desc": "路线图、天象、心法和流派进度"})
+		items.append({"title": "这一局", "desc": "路线图、天象、心法、流派、双修和连携"})
 		items.append({"title": "放弃这一局", "desc": "回到山门，魂玉带回六成"})
+		items.append({"title": "技能分支", "right": "天赋点 %d" % state.points if state.points > 0 else "悟道 %s重" % Hud3D._cn(state.level),
+			"desc": "斩敌悟道，每升一重得 1 个天赋点，用来点招式的分支"})
 	var m := _open_menu("暂停", "", items, "list", true)
 	m.index = sel
 	m.chosen.connect(_on_pause_chosen)
@@ -2725,6 +2889,8 @@ func _on_pause_chosen(i: int) -> void:
 		7:
 			_close_menu()
 			_game_over(false)
+		8:
+			_open_skills(-1, true)
 		_:
 			_close_menu()
 
@@ -2743,6 +2909,17 @@ func _open_run_info() -> void:
 		var st: Dictionary = ArpgData.SETS[k]
 		items.append({"title": "%s「%s」" % [k, st["name"]], "right": "已大成" if n >= ArpgData.SET_NEED else "%d / %d" % [n, ArpgData.SET_NEED],
 			"desc": st["desc"], "color": ArpgData.SCHOOL_COLORS.get(k, ArpgMenu.TEAL), "enabled": n >= ArpgData.SET_NEED})
+	var ds := ArpgSkills.duals_of(state.boons)
+	for d: Dictionary in ArpgSkills.DUALS:
+		var on := ds.has(String(d["id"]))
+		var sc2 := ArpgData.school_counts(state.boons)
+		items.append({"tag": "双修", "title": "%s + %s「%s」" % [d["a"], d["b"], d["name"]], "desc": d["desc"],
+			"right": "已成" if on else "%d / %d" % [mini(int(sc2.get(d["a"], 0)), ArpgSkills.DUAL_NEED) + mini(int(sc2.get(d["b"], 0)), ArpgSkills.DUAL_NEED), ArpgSkills.DUAL_NEED * 2],
+			"color": ArpgData.SCHOOL_COLORS.get(d["a"], ArpgMenu.TEAL), "enabled": on})
+	for l: Dictionary in ArpgSkills.LINKS:
+		var got := state.links_done.has(String(l["id"]))
+		items.append({"tag": "连携", "title": String(l["name"]), "desc": l["desc"], "right": "这一局打出过" if got else "",
+			"color": l["color"], "enabled": got})
 	var m := _open_menu("这一局", "%s　第 %d 层　第 %d / %d 间　心法 %d 个" % [ArpgState.ACT_NAMES[state.act], state.gfloor() + 1, state.run.row + 1, state.run.rows.size(), state.boons.size()], items, "list", true)
 	m.extra_draw = func(c: Control, vs: Vector2) -> void: _draw_map(c, vs, [], vs.y - 150.0)   # 列表下面
 	m.chosen.connect(func(_i: int) -> void: _open_pause(6))
@@ -2909,6 +3086,9 @@ func _process(dt: float) -> void:
 	if state != null:
 		hud.coins = state.coins
 		hud.jade = state.jade
+		hud.level = state.level if mode == "room" else 0
+		hud.xp_k = float(state.xp) / ArpgSkills.need(state.level) if state.level < ArpgSkills.MAX_LEVEL else 1.0
+		hud.points = state.points if ArpgSkills.any_open(state.skills, state.points) else 0
 		if state.coins >= 300:
 			ArpgAch.unlock("rich")
 	if feel.combo >= 25:

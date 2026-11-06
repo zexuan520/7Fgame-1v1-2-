@@ -70,6 +70,8 @@ func _buttons(vs: Vector2) -> Array:
 		["finish", "终", a + Vector2(44, -164), 40.0, Color(1.0, 0.35, 0.35)],
 		["heal", "药", a + Vector2(-236, 52), 32.0, Color(0.4, 1.0, 0.6)],
 	]
+	if _hero_ok() and hero.art_id() != "":
+		out.append(["art", "秘", a + Vector2(-206, -160), 38.0, Color(1.0, 0.7, 0.35)])
 	if _npc_near():
 		out.append(["interact", "互", a + Vector2(-250, -60), 40.0, Color(1.0, 0.95, 0.8)])
 	return out
@@ -271,11 +273,13 @@ func _ready_k(n: String) -> float:
 		return 1.0
 	match n:
 		"dash":
-			return 1.0 - float(hero.cd["dash"]) / hero.dash_cd
+			return 1.0 if hero._echo_t > 0.0 else 1.0 - float(hero.cd["dash"]) / hero.dash_cd
 		"finish":
 			return 1.0 - float(hero.cd["finish"]) / hero.finish_cd
+		"art":
+			return 1.0 - float(hero.cd["art"]) / hero.art_cd
 		"beam":
-			return hero.energy / hero.max_energy
+			return minf(hero.energy / hero.beam_cost, 1.0)
 		"heal":
 			return 1.0 if hero.gourds > 0 else 0.0
 	return 1.0
@@ -296,6 +300,10 @@ func _draw_button(b: Array, k: float, down: bool) -> void:
 		draw_colored_polygon(pts, Color(0, 0, 0, 0.5))
 	draw_arc(c, r, -PI / 2, -PI / 2 + TAU * clampf(k, 0.0, 1.0), 48, Color(col, 0.95 if ready else 0.55), 3.0 if ready else 2.0, true)
 	draw_arc(c, r + 4, 0, TAU, 48, Color(GOLD, 0.25), 1.0, true)
+	if _hero_ok():
+		var lg := hero.link_glow(String(b[0]))   # 现在按能接连携：外圈亮本色
+		if lg.a > 0.0:
+			draw_arc(c, r + 6, 0, TAU, 48, Color(lg, 0.7 + 0.3 * sin(_t * 18.0)), 4.0, true)
 	var fs := int(r * 0.78)
 	draw_string(font, c + Vector2(-r, fs * 0.36), String(b[1]), HORIZONTAL_ALIGNMENT_CENTER, r * 2, fs, col if ready else Color(0.55, 0.6, 0.6))
 	if String(b[0]) == "heal" and _hero_ok():

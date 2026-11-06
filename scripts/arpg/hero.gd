@@ -4,6 +4,7 @@ extends Actor
 ## 技能：突进斩（青色预警框 → 瞬移穿过路径）、光束斩（斜贯屏幕的光柱，全屏停顿，要满气）、终结技（引爆附近敌人的出血层数）、药葫芦。
 
 signal energy_changed
+signal link_fired(id: String)
 
 @export var move_speed := 7.2
 @export var accel := 60.0
@@ -39,7 +40,7 @@ var _step_snd := 0.0
 var _lunge_dir := Vector3.ZERO
 var energy := 0.0
 var max_energy := 100.0
-var cd := {"dash": 0.0, "finish": 0.0}
+var cd := {"dash": 0.0, "finish": 0.0, "art": 0.0}
 var gourds := 3
 var max_gourds := 3
 var dmg_mult := 1.0
@@ -73,6 +74,31 @@ var _wind_t := 0.0               # 御风：翻滚后必会心的剩余时间
 var _guard_t := 0.0              # 金身：凝金光的计时
 var golden := false              # 金身：现在有一层金光
 const GUARD_EVERY := 10.0
+## 技能分支（ArpgSkills.SKILLS）：分支 id → 级数；双修：id → true。都从 stats 表的 sk_ / duo_ 键读
+var sk := {}
+var duo := {}
+var _link_from := ""             # 连携：上一招（dash / roll / beam / combo / finish）
+var _link_age := 99.0            # 上一招放完过了多久
+var _link_now := ""              # 这一招触发了哪个连携（放完清掉）
+var _decoy_cd := 0.0             # 影遁：每 1.5 秒最多留一次影子
+var _echo_t := 0.0               # 连闪：还能不等冷却再闪的剩余时间
+var _echo_live := false          # 这一闪是连闪
+var _dash_hits: Array = []       # 上一次突进斩斩到的敌人（瞬狱）
+var _beam_hits: Array = []       # 上一次光束照到的敌人（焚血）
+var _roll_cut := {}              # 这一次翻滚划过的敌人（踏风、血影）
+var _mirror_t := 0.0             # 明镜：光束斩后受伤减免的剩余时间
+var _dash_len_k := 1.0
+var _beam_fast := false          # 天落：这次光束出手快一倍
+var _rim_gold := false           # 不动明王生效时描边变金
+## 秘技（新技能，ArpgSkills 里 id "art" 的四个分支）
+var art_cd := 8.0
+var art_hits: Array = []         # 这一次秘技打中的敌人（归一）
+var _art_k := 1.0                # 风雷：秘技伤害 +50%
+var _whirl_tick := 0.0
+var _clone_t := 0.0              # 分身剩余时间
+var _clone_atk := 0.0
+var _clone_pos := Vector3.ZERO
+var _clone_ghost := 0.0
 var weapon_id := "sword"
 var trail: BladeTrail
 const BASE_HP := 120.0
@@ -126,6 +152,39 @@ func apply_stats(st: Dictionary, wid: String, fill_hp: bool = false) -> void:
 	set_guard = ArpgData.stat(st, "set_guard") > 0.0
 	if not set_guard:
 		golden = false
+	sk.clear()
+	duo.clear()
+	for k: String in st:
+		if k.begins_with("sk_"):
+			sk[k.substr(3)] = int(st[k])
+		elif k.begins_with("duo_"):
+			duo[k.substr(4)] = true
+	# 分支改冷却和消耗
+	var ec := skr("echo")
+	if ec >= 2:
+		dash_cd *= 0.85 if ec == 2 else 0.7
+	finish_cd *= 1.0 - 0.1 * skr("drink")
+	if skr("lotus") >= 3:
+		finish_cd *= 0.85
+	beam_cost = 85.0 if skr("split") >= 3 else 100.0
+	art_cd = float(ArpgSkills.ART_CD.get(art_id(), 8.0))
+
+
+## 学的是哪一种秘技（没学返回 ""）
+func art_id() -> String:
+	return ArpgSkills.chosen_branch(sk, "art")
+
+
+## 技能分支级数
+func skr(id: String) -> int:
+	return int(sk.get(id, 0))
+
+
+## 出手伤害倍率：兵器、心法之外，双修“不动明王”血多时再 +20%
+func power() -> float:
+	if duo.has("budong") and hp > max_hp * 0.7:
+		return dmg_mult * 1.2
+	return dmg_mult
 
 
 ## 兵器决定连招：伤害倍率在 dmg_mult 里，这里改快慢和攻击范围
@@ -169,6 +228,12 @@ func reset_for_run() -> void:
 	golden = false
 	_guard_t = 0.0
 	_wind_t = 0.0
+	_link_from = ""
+	_link_age = 99.0
+	_echo_t = 0.0
+	_mirror_t = 0.0
+	_decoy_cd = 0.0
+	_clone_t = 0.0
 	knock = Vector3.ZERO
 	for k: String in cd:
 		cd[k] = 0.0
@@ -254,6 +319,7 @@ func _physics_process(delta: float) -> void:
 	if not alive:
 		return
 	_tick_sets(dt)
+	_tick_skills(dt)
 	_read_buffer(delta)
 	if dt <= 0.0:
 		move_with_knock(Vector3.ZERO, 0.0)
@@ -280,11 +346,17 @@ func _physics_process(delta: float) -> void:
 			_st_finish(dt)
 		"heal":
 			_st_heal(dt)
+		"whirl":
+			_st_whirl(dt)
+		"quake":
+			_st_quake(dt)
+		"art_cast":
+			_st_art_cast(dt)
 	_apply_pose(dt)
 
 
 func _read_buffer(delta: float) -> void:
-	for a: String in ["attack", "roll", "dash", "beam", "finish", "heal"]:
+	for a: String in ["attack", "roll", "dash", "beam", "finish", "heal", "art"]:
 		if _pressed(a):
 			_buf_action = a
 			_buf_t = buffer_time
@@ -304,6 +376,10 @@ func _take_buffer(allowed: Array) -> String:
 
 
 func _set_state(s: String) -> void:
+	if state == "whirl" and rig != null:
+		rig.rotation.y = 0.0     # 旋风转着被打断：人偶转回来
+	if state == "quake" and rig != null:
+		rig.position.y = 0.0
 	state = s
 	st_t = 0.0
 	if trail != null:
@@ -331,10 +407,15 @@ func _try_actions(allowed: Array) -> bool:
 			return true
 		"dash":
 			if cd["dash"] <= 0.0:
+				_echo_live = false
+				_start_dash()
+				return true
+			if _echo_t > 0.0 and skr("echo") > 0:
+				_echo_live = true
 				_start_dash()
 				return true
 		"beam":
-			if energy >= beam_cost:
+			if energy >= beam_cost - 0.01:
 				_start_beam()
 				return true
 			Feel.I.callout(head_top(), "气力不足", Color(0.6, 0.8, 0.85), 0.7)
@@ -345,6 +426,12 @@ func _try_actions(allowed: Array) -> bool:
 		"heal":
 			if gourds > 0 and hp < max_hp:
 				_set_state("heal")
+				return true
+		"art":
+			if art_id() == "":
+				Feel.I.callout(head_top(), "还没学秘技（技能分支里点）", Color(0.85, 0.75, 0.6), 0.7)
+			elif cd["art"] <= 0.0:
+				_start_art()
 				return true
 	return false
 
@@ -357,7 +444,7 @@ func _leech(dmg: float) -> void:
 
 
 func _st_move(dt: float) -> void:
-	if _try_actions(["attack", "roll", "dash", "beam", "finish", "heal"]):
+	if _try_actions(["attack", "roll", "dash", "beam", "finish", "heal", "art"]):
 		return
 	var d := input_dir()
 	var want := d * move_speed
@@ -450,6 +537,8 @@ func _st_attack(dt: float) -> void:
 		_spawn_slash(s)
 		if s.heavy:
 			CamRig.I.punch_zoom(0.25, 0.08)
+		if step_i == combo.size() - 1:
+			_combo_branch()
 	if t >= s.startup and t <= s.startup + s.active + dt:
 		_do_hits(s)
 	# 取消：翻滚随时可以；过了 cancel_at 可以接下一段或放技能
@@ -457,7 +546,7 @@ func _st_attack(dt: float) -> void:
 		_start_roll()
 		return
 	if t >= s.cancel_at:
-		if _try_actions(["attack", "dash", "beam", "finish"]):
+		if _try_actions(["attack", "dash", "beam", "finish", "art"]):
 			return
 	if t >= s.total():
 		step_i = step_i if step_i < combo.size() - 1 else -1
@@ -517,11 +606,11 @@ func _do_hits(s: AttackStep) -> void:
 				continue
 		_hit_set[a] = true
 		var crit := randf() < s.crit_chance + crit_bonus or _wind_t > 0.0
-		var dmg := s.damage * dmg_mult * (crit_mult if crit else 1.0) * randf_range(0.92, 1.08)
+		var dmg := s.damage * power() * (crit_mult if crit else 1.0) * randf_range(0.92, 1.08)
 		var info := HitInfo.make(self, a, dmg, HitInfo.Weight.HEAVY if s.heavy else HitInfo.Weight.LIGHT)
 		info.crit = crit
 		info.knock = s.knock
-		info.bleed = s.bleed + (bleed_bonus if s.bleed > 0 else 0)
+		info.bleed = s.bleed + (bleed_bonus if s.bleed > 0 else 0) + (2 if crit and duo.has("xueren") else 0)
 		info.bleed_mult = bleed_dmg
 		info.stun = 0.35 if s.heavy else 0.25
 		info.gain = 6.0 if not s.heavy else 9.0
@@ -533,6 +622,8 @@ func _do_hits(s: AttackStep) -> void:
 			_check_blood(a)
 	if landed:
 		_wind_t = 0.0
+		if step_i == combo.size() - 1:
+			_link_mark("combo")
 	if landed and not _called:
 		_called = true
 		Feel.I.callout(head_top() + Vector3(0.6, 0.3, 0), s.label, Color(0.75, 1.0, 1.0), 0.9 if step_i < 3 else 1.2)
@@ -587,6 +678,564 @@ func _tick_sets(dt: float) -> void:
 			Feel.I.callout(head_top(), "金身", Color(1.0, 0.85, 0.45), 0.8)
 
 
+# ---------- 技能分支、连携、双修（ArpgSkills） ----------
+
+## 去掉已经删掉或倒下的
+func _alive(arr: Array) -> Array:
+	var out := []
+	for x: Variant in arr:
+		if is_instance_valid(x) and (x as Actor).alive:
+			out.append(x)
+	return out
+
+
+func _tick_skills(dt: float) -> void:
+	_link_age += dt
+	_decoy_cd = maxf(_decoy_cd - dt, 0.0)
+	_echo_t = maxf(_echo_t - dt, 0.0)
+	_mirror_t = maxf(_mirror_t - dt, 0.0)
+	if _clone_t > 0.0:
+		_tick_clone(dt)
+	# 不动明王：血多时描边变金
+	var g := duo.has("budong") and hp > max_hp * 0.7
+	if g != _rim_gold and rig != null:
+		_rim_gold = g
+		rig.set_rim(Color(1.0, 0.82, 0.4) if g else Color(0.45, 0.95, 1.0), 0.9 if g else 0.6)
+
+
+## 放完一招：记下来，下一招在窗口内接上就是连携
+func _link_mark(skill: String) -> void:
+	_link_from = skill
+	_link_age = 0.0
+
+
+## 现在放 to 能不能连携（不消耗），返回 LINKS 里那一条或空
+func _link_peek(to: String) -> Dictionary:
+	if _link_from == "":
+		return {}
+	for l: Dictionary in ArpgSkills.LINKS:
+		if l["from"] == _link_from and l["to"] == to and _link_age <= float(l["win"]):
+			return l
+	return {}
+
+
+## HUD 用：这一招现在接上去会触发连携吗（返回颜色，不会时 a = 0）
+func link_glow(to: String) -> Color:
+	var l := _link_peek(to)
+	if l.is_empty():
+		return Color(0, 0, 0, 0)
+	if to == "dash" and cd["dash"] > 0.0 and _echo_t <= 0.0:
+		return Color(0, 0, 0, 0)
+	if to == "finish" and cd["finish"] > 0.0:
+		return Color(0, 0, 0, 0)
+	if to == "beam" and energy < beam_cost - 0.01:
+		return Color(0, 0, 0, 0)
+	return l["color"]
+
+
+func _link_take(l: Dictionary) -> void:
+	_link_from = ""
+	_link_now = String(l["id"])
+	var c: Color = l["color"]
+	# 连携：金字横条 + 本色闪屏 + 一小下停顿，脚下两圈本色冲击
+	Feel.I.pause_world(0.06)
+	Feel.I.screen_flash(Color(c, 0.3), 3.0)
+	Feel.I.callout(head_top() + Vector3(0, 0.6, 0), "连携 · " + String(l["name"]), c.lightened(0.25), 1.5)
+	Vfx.I.shock_ring(global_position, c, 0.4, 4.5, 0.4)
+	Vfx.I.shock_ring(global_position, Color(1, 0.95, 0.8), 0.2, 2.6, 0.3)
+	Vfx.I.sheet("rune-cast", global_position, 3.4, c, 2.0, true, 0.0, 1.6)
+	if Hud3D.I != null:
+		Hud3D.I.link_flash(String(l["name"]), String(l["desc"]).get_slice("：", 0), c)
+	Game.sfx("crit", -2.0)
+	link_fired.emit(_link_now)
+
+
+## 突进斩的颜色：连闪紫、血步红、雷切金、平时青
+func _dash_color() -> Color:
+	if _link_now == "xuebu":
+		return SkillFx.BLOOD
+	if _echo_live or _link_now == "canyue":
+		return SkillFx.SHADOW
+	if skr("thunder") > 0:
+		return SkillFx.THUNDER
+	return Color(0.35, 0.95, 1.0)
+
+
+## 连招第四段：破风（飞行剑气）/ 回风（卷人）
+func _combo_branch() -> void:
+	var wr := skr("wave")
+	if wr > 0:
+		var w := HeroWave.new()
+		w.hero = self
+		w.dir = facing
+		w.range_m = 7.0 + 2.0 * wr
+		w.damage = (10.0 + 8.0 * wr) * power()
+		w.bleed = 2 if wr >= 3 else 0
+		get_parent().add_child(w)
+		w.global_position = global_position + facing * 0.8
+		Vfx.I.streaks(chest() + facing * 0.6, facing, Color(0.6, 1.0, 1.0), 6, 3.0, 0.2, 0.2, 0.14)
+		Game.sfx("art", -6.0, 0.1, 1.2)
+	var vr := skr("vortex")
+	if vr > 0:
+		var rr := 3.5 + vr
+		var c := Color(0.45, 1.0, 0.85)
+		SkillFx.ring_in(global_position, c, rr)
+		var pulled := 0
+		for f: Node in get_tree().get_nodes_in_group("foes"):
+			var a := f as Foe
+			if a == null or not a.alive:
+				continue
+			var to := global_position + facing * 1.2 - a.global_position
+			to.y = 0
+			var d := to.length()
+			if d > rr + a.radius or d < 0.2:
+				continue
+			var info := HitInfo.make(self, a, (4.0 + 4.0 * vr) * power(), HitInfo.Weight.LIGHT)
+			info.attacker = null
+			info.dir = to.normalized()
+			info.knock = 0.0 if a.is_boss else clampf(d - 0.8, 0.0, 6.0) * 10.0   # 击退衰减很快，速度 ≈ 距离 × 10 正好拉到面前
+			info.hitstop = 0.03
+			Vfx.I.streaks(a.chest(), to, c, 3, d * 0.8, 0.22, 0.15, 0.1)
+			if Feel.I.on_hit(info):
+				pulled += 1
+		if pulled > 0:
+			Feel.I.callout(head_top() + Vector3(0.6, 0.2, 0), "回风", c, 1.0)
+			if vr >= 3:
+				gain_energy(10.0)
+		Game.sfx("dodge", -2.0, 0.1, 0.7)
+
+
+## 影遁：翻滚起点留一道紫色影子，0.5 秒后炸开
+func _leave_decoy() -> void:
+	var r := skr("decoy")
+	_decoy_cd = 1.5
+	var p := global_position
+	Vfx.I.ghost(rig, SkillFx.SHADOW, 0.55)
+	Vfx.I.ground(p, "lm_circle_a", Color(SkillFx.SHADOW, 0.7), 1.0, 2.0 + 0.4 * r, 0.5, true, 0.2)
+	var tw := get_tree().create_timer(0.5, false)
+	tw.timeout.connect(func() -> void:
+		if not is_inside_tree() or Vfx.I == null:
+			return
+		var rad := 2.2 + 0.4 * r
+		Vfx.I.sheet("dark-explosion", p, 2.6 + 0.4 * r, Color(0.85, 0.6, 1.0), 2.2, false, 0.0, 1.5)
+		Vfx.I.shock_ring(p, SkillFx.SHADOW, 0.4, rad * 2.0, 0.35)
+		Vfx.I.streaks(p + Vector3(0, 0.8, 0), Vector3.UP, SkillFx.SHADOW, 6, 2.0, 0.22, PI, 0.14)
+		Game.sfx("boom", -10.0, 0.1, 1.3)
+		for f: Node in get_tree().get_nodes_in_group("foes"):
+			var a := f as Foe
+			if a == null or not a.alive or a.global_position.distance_to(p) > rad + a.radius:
+				continue
+			var info := HitInfo.make(self, a, (8.0 + 6.0 * r) * power(), HitInfo.Weight.HEAVY)
+			info.attacker = null
+			info.dir = (a.global_position - p).normalized()
+			info.knock = 6.0
+			if Feel.I.on_hit(info):
+				on_skill_hit(a, info)
+				if r >= 3:
+					a.freeze(0.6 if not a.is_boss else 0.15))
+
+
+## 踏风 / 血影：翻滚穿过的敌人
+func _roll_through() -> void:
+	var r := skr("slice")
+	for f: Node in get_tree().get_nodes_in_group("foes"):
+		var a := f as Actor
+		if a == null or not a.alive or _roll_cut.has(a):
+			continue
+		var d := a.global_position - global_position
+		d.y = 0
+		if d.length() > radius + a.radius + 0.5:
+			continue
+		_roll_cut[a] = true
+		var bl := 2 if duo.has("xueying") else 0
+		if r > 0:
+			var info := HitInfo.make(self, a, (4.0 + 4.0 * r) * power(), HitInfo.Weight.LIGHT)
+			info.attacker = null
+			info.dir = _roll_dir
+			info.knock = 2.0
+			info.bleed = 1 + bl
+			info.bleed_mult = bleed_dmg
+			info.hitstop = 0.03
+			Vfx.I.cut_line(a.chest(), _roll_dir + Vector3(0, 0.5, 0), 2.4, Color(1, 1, 1), 0.18, 0.16, Color(0.45, 1.0, 0.85))
+			if Feel.I.on_hit(info):
+				on_skill_hit(a, info)
+				if r >= 3:
+					gain_energy(6.0)
+		elif bl > 0:
+			a.add_bleed(bl, bleed_dmg)
+			Vfx.I.streaks(a.chest(), _roll_dir, SkillFx.BLOOD, 3, 1.4, 0.18, 0.4, 0.1)
+			Feel.I.callout(a.head_top(), "血影", SkillFx.BLOOD, 0.6)
+
+
+## 突进斩之后：雷切落雷、连闪开窗、残月满月、记连携
+func _after_dash(seg: Vector3) -> void:
+	var from := _dash_from
+	var to := _dash_to
+	if _link_now == "canyue":
+		var rad := 3.2
+		SkillFx.full_moon(to, rad)
+		for f: Node in get_tree().get_nodes_in_group("foes"):
+			var a := f as Actor
+			if a == null or not a.alive or a.global_position.distance_to(to) > rad + a.radius:
+				continue
+			var info := HitInfo.make(self, a, 20.0 * power(), HitInfo.Weight.HEAVY)
+			info.attacker = null
+			info.dir = (a.global_position - to).normalized()
+			info.knock = 8.0
+			info.bleed = 1
+			if Feel.I.on_hit(info):
+				on_skill_hit(a, info)
+	if _link_now == "xuebu":
+		var mid := (from + to) * 0.5 + Vector3(0, 0.9, 0)
+		Vfx.I.cut_line(mid, seg, seg.length() + 3.0, Color(1, 0.85, 0.85), 0.45, 0.4, SkillFx.BLOOD)
+		for i in range(4):
+			Vfx.I.pop(from.lerp(to, randf()) + Vector3(0, 0.9, 0), "magic_05", Color(1.0, 0.15, 0.2), 0.6, 2.2, 0.4)
+	var tr := skr("thunder")
+	if tr > 0:
+		var dmg := 22.0 * power() * (0.25 + 0.25 * tr)
+		get_tree().create_timer(0.45, false).timeout.connect(func() -> void:
+			if not is_inside_tree() or Vfx.I == null:
+				return
+			var n := maxi(int(seg.length() / 2.2), 2)
+			for i in range(n + 1):
+				SkillFx.bolt(from.lerp(to, float(i) / n))
+			CamRig.I.shake(1, 1.0)
+			Game.sfx("boom", -4.0, 0.1, 1.4)
+			var s2 := to - from
+			for f: Node in get_tree().get_nodes_in_group("foes"):
+				var a := f as Foe
+				if a == null or not a.alive:
+					continue
+				var k := clampf((a.global_position - from).dot(s2) / maxf(s2.length_squared(), 0.001), 0.0, 1.0)
+				if (a.global_position - (from + s2 * k)).length() > 1.3 + a.radius:
+					continue
+				var info := HitInfo.make(self, a, dmg * randf_range(0.95, 1.1), HitInfo.Weight.HEAVY)
+				info.attacker = null
+				info.dir = Vector3.UP.cross(s2).normalized()
+				info.knock = 3.0
+				if Feel.I.on_hit(info):
+					on_skill_hit(a, info)
+					if tr >= 3:
+						a.freeze(1.0 if not a.is_boss else 0.3)
+						Vfx.I.sheet("stunned", a.head_top(), 1.0, SkillFx.THUNDER, 2.0, false, 1.0)
+			Feel.I.callout(to + Vector3(0, 2.6, 0), "雷切", SkillFx.THUNDER, 1.0))
+	if skr("echo") > 0 and not _echo_live:
+		_echo_t = 1.5
+		Vfx.I.ghost(rig, SkillFx.SHADOW, 0.8)
+	_echo_live = false
+	_link_mark("dash")
+
+
+## 光束斩分支：裂空（两侧再斩两道）/ 长明（地上留光痕）；天落的天降光柱
+func _beam_branch(dir: Vector3, gp: Vector3, bk: float) -> void:
+	var sr := skr("split")
+	if sr > 0:
+		for sgn: float in [-1.0, 1.0]:
+			var d2 := dir.rotated(Vector3.UP, sgn * 0.4)
+			var f2 := global_position - d2 * 1.0 + Vector3(0, 1.0, 0)
+			var t2 := global_position + d2 * 17.0 + Vector3(0, 0.3, 0)
+			Vfx.I.beam(f2, t2, 1.5, 0.5)
+			Vfx.I.shock_ring(gp + d2 * 15.0, SkillFx.LIGHT, 0.4, 3.5, 0.4)
+			_beam_line(f2, t2, 1.1, 60.0 * power() * beam_mult * bk * (0.3 + 0.15 * sr))
+	var br := skr("burn")
+	if br > 0:
+		var b := HeroBurn.new()
+		b.hero = self
+		b.from = gp + dir * 0.5
+		b.to = gp + dir * 18.0
+		b.life = 2.0 + br
+		b.damage = (3.0 + 3.0 * br) * power()
+		b.bleed = 1 if br >= 3 else 0
+		get_parent().add_child(b)
+		b.global_position = gp
+	if _beam_fast:
+		for i in range(5):
+			var p := gp + dir * (3.0 + i * 3.6)
+			get_tree().create_timer(0.05 * i, false).timeout.connect(func() -> void:
+				if is_inside_tree():
+					SkillFx.pillar(p, 12.0, 1.6, 0.45))
+
+
+## 血爆每炸一个敌人：连携的额外特效
+func _finish_link_fx(a: Actor) -> void:
+	if _link_now == "shunyu":
+		var c := a.chest()
+		Vfx.I.cut_line(c, Vector3(1, 0.7, 0.3), 4.5, Color(1, 0.9, 0.9), 0.35, 0.3, SkillFx.BLOOD)
+		Vfx.I.cut_line(c, Vector3(-1, 0.7, -0.3), 4.5, Color(1, 0.9, 0.9), 0.35, 0.3, SkillFx.BLOOD)
+	elif _link_now == "fenxue" or _link_now == "guiyi":
+		Vfx.I.sheet("spirit-flame", a.global_position, 2.4, Color(1.0, 0.65, 0.25), 2.4, false, 1.0)
+		Vfx.I.streaks(a.chest(), Vector3.UP, Color(1.0, 0.75, 0.3), 5, 2.6, 0.3, 0.5, 0.14)
+
+
+## 血爆之后：血莲溅血 / 饮血回血；瞬狱在突进路上补一道大斩线
+func _finish_branch(blasted: Array, stacks: int) -> void:
+	if _link_now == "shunyu":
+		var seg := _dash_to - _dash_from
+		if seg.length() > 0.5:
+			Vfx.I.cut_line((_dash_from + _dash_to) * 0.5 + Vector3(0, 0.9, 0), seg, seg.length() + 4.0, Color(1, 0.85, 0.85), 0.5, 0.45, SkillFx.BLOOD)
+	var lr := skr("lotus")
+	if lr > 0 and not blasted.is_empty():
+		var spread := 0
+		for b: Actor in _alive(blasted):
+			SkillFx.lotus(b.chest(), 1.8 + 0.2 * lr)
+			for f: Node in get_tree().get_nodes_in_group("foes"):
+				var a := f as Actor
+				if a == null or not a.alive or blasted.has(a) or a.global_position.distance_to(b.global_position) > 3.5:
+					continue
+				a.add_bleed(1 + lr, bleed_dmg)
+				Vfx.I.streaks(b.chest(), a.chest() - b.chest(), SkillFx.BLOOD, 2, a.global_position.distance_to(b.global_position), 0.25, 0.1, 0.12)
+				spread += 1
+		if spread > 0:
+			Feel.I.callout(head_top() + Vector3(-0.6, 0.2, 0), "血莲 ×%d" % spread, SkillFx.BLOOD, 1.0)
+	var dr := skr("drink")
+	if dr > 0 and stacks > 0:
+		var heal := minf(stacks * (0.5 + 0.5 * dr), max_hp * 0.25)
+		for b: Variant in blasted:
+			if is_instance_valid(b):
+				SkillFx.drain((b as Actor).chest(), self, Color(1.0, 0.25, 0.3), 3)
+		get_tree().create_timer(0.4, false).timeout.connect(func() -> void:
+			if not is_inside_tree() or not alive:
+				return
+			hp = minf(hp + heal, max_hp)
+			Feel.I.number(head_top(), "+%d" % int(heal), Color(1.0, 0.5, 0.55), 1.0)
+			Vfx.I.pop(chest(), "magic_03", Color(1.0, 0.3, 0.35), 0.5, 2.2, 0.4))
+
+
+## 技能命中之后的通用处理：吸血、修罗场、血涌
+func on_skill_hit(a: Actor, info: HitInfo) -> void:
+	_leech(info.damage)
+	if info.crit and set_shura:
+		_shura_splash(a, info.damage)
+	_check_blood(a)
+
+
+# ---------- 秘技 ----------
+
+func _start_art() -> void:
+	cd["art"] = art_cd
+	_link_now = ""
+	var lk := _link_peek("art")
+	if not lk.is_empty():
+		_link_take(lk)
+	_art_k = 1.5 if _link_now == "fenglei" else 1.0
+	art_hits.clear()
+	var d := input_dir()
+	var tgt := _auto_target(d if d != Vector3.ZERO else facing, 9.0)
+	if tgt != null:
+		face_to(tgt.global_position - global_position)
+	elif d != Vector3.ZERO:
+		face_to(d)
+	if _link_now == "fenglei":
+		# 风雷：身边劈下三道雷
+		for i in range(3):
+			var a := TAU * i / 3.0 + randf()
+			var p := global_position + Vector3(cos(a), 0, sin(a)) * randf_range(1.5, 3.0)
+			SkillFx.bolt(p)
+			_aoe(p, 1.8, 15.0 * power(), 4.0, HitInfo.Weight.HEAVY)
+	var r := skr(art_id())
+	match art_id():
+		"whirl":
+			_whirl_tick = 0.0
+			_set_state("whirl")
+			Game.sfx("dodge", 0.0, 0.1, 0.6)
+			Vfx.I.shock_ring(global_position, Color(1.0, 0.75, 0.4), 0.3, 4.0, 0.3)
+		"disc":
+			var n := 2 if r >= 3 else 1
+			for i in range(n):
+				var dk := HeroDisc.new()
+				dk.hero = self
+				dk.dir = facing.rotated(Vector3.UP, 0.0 if n == 1 else (0.28 if i == 0 else -0.28))
+				dk.range_m = 9.0 + (2.0 if r >= 2 else 0.0)
+				dk.damage = (10.0 + 6.0 * r) * power() * _art_k
+				get_parent().add_child(dk)
+				dk.global_position = global_position + facing * 0.6
+			Game.sfx("slash_heavy", -2.0, 0.1, 1.3)
+			Vfx.I.streaks(chest() + facing * 0.5, facing, Color(1.0, 0.8, 0.45), 5, 2.4, 0.2, 0.25, 0.12)
+			_set_state("art_cast")
+			_link_mark("art")
+		"quake":
+			iframes = maxf(iframes, 0.4)
+			_set_state("quake")
+			Game.sfx("art", -2.0)
+		"clone":
+			_clone_t = 4.0 + 2.0 * r
+			_clone_atk = 0.3
+			_clone_pos = global_position - facing * 1.4 + facing.cross(Vector3.UP) * 1.2
+			Vfx.I.sheet("spawn-cast", _clone_pos, 3.4, Color(0.75, 0.55, 1.0), 2.0)
+			Vfx.I.shock_ring(_clone_pos, SkillFx.SHADOW, 0.3, 3.0, 0.4)
+			Feel.I.callout(head_top(), "分身", SkillFx.SHADOW, 1.0)
+			Game.sfx("art", -4.0, 0.1, 1.2)
+			_set_state("art_cast")
+			_link_mark("art")
+
+
+## 一圈范围伤害（秘技用），打中的记进 art_hits
+func _aoe(p: Vector3, rad: float, dmg: float, kn: float, w: int, bleed_n: int = 0) -> int:
+	var n := 0
+	for f: Node in get_tree().get_nodes_in_group("foes"):
+		var a := f as Actor
+		if a == null or not a.alive:
+			continue
+		var d := a.global_position - p
+		d.y = 0
+		if d.length() > rad + a.radius:
+			continue
+		var info := HitInfo.make(self, a, dmg * randf_range(0.95, 1.08), w)
+		info.attacker = null
+		info.dir = d.normalized() if d.length() > 0.1 else facing
+		info.knock = kn
+		info.bleed = bleed_n
+		info.bleed_mult = bleed_dmg
+		if w == HitInfo.Weight.LIGHT:
+			info.hitstop = 0.03
+		if Feel.I.on_hit(info):
+			on_skill_hit(a, info)
+			if not art_hits.has(a):
+				art_hits.append(a)
+			n += 1
+	return n
+
+
+## 旋风：边转边走，每 0.2 秒砍一圈
+func _st_whirl(dt: float) -> void:
+	var r := skr("whirl")
+	var dur := 1.1 + 0.3 * r
+	var d := input_dir()
+	move_with_knock(d * move_speed * 0.65, dt)
+	if rig != null:
+		rig.rotation.y += dt * 22.0
+	_target_pose(Poses.swing("spin", 1.0, 0.5, 0.0))
+	_whirl_tick -= dt
+	if _whirl_tick <= 0.0:
+		_whirl_tick = 0.2
+		var rad := 2.8
+		var xf := Transform3D(Basis(Vector3.UP, randf() * TAU), global_position + Vector3(0, 0.8, 0))
+		Vfx.I.slash(xf, rad, 0.0, -TAU * 0.8, 0.2, Color(1, 1, 1), Color(1.0, 0.72, 0.35), 3.2, 0.6)
+		Vfx.I.dust(global_position, 1.4, Color(0.6, 0.55, 0.45, 0.35))
+		if r >= 3:
+			for f: Node in get_tree().get_nodes_in_group("foes"):
+				var a := f as Foe
+				if a != null and a.alive and not a.is_boss and a.global_position.distance_to(global_position) < 5.0:
+					var to := global_position - a.global_position
+					to.y = 0
+					a.knock = to.normalized() * 6.0
+		_aoe(global_position, rad, (4.0 + 2.0 * r) * power() * _art_k, 1.5, HitInfo.Weight.LIGHT)
+		Game.sfx("slash", -8.0, 0.15, 1.2)
+	if _take_buffer(["roll"]) == "roll":
+		_link_mark("art")
+		_start_roll()
+		return
+	if st_t >= dur:
+		_link_mark("art")
+		_set_state("move")
+
+
+## 震岳：跃起 0.3 秒后砸地
+func _st_quake(dt: float) -> void:
+	move_with_knock(facing * 3.0 if st_t < 0.3 else Vector3.ZERO, dt)
+	var k := st_t / 0.6
+	if rig != null:
+		rig.position.y = sin(clampf(st_t / 0.3, 0.0, 1.0) * PI * 0.5) * 1.6 if st_t < 0.3 else 0.0
+	_target_pose(Poses.swing("v_down", clampf(k / 0.5, 0, 1), clampf((k - 0.5) / 0.2, 0, 1), clampf((k - 0.7) / 0.3, 0, 1)))
+	if st_t >= 0.3 and st_t - dt < 0.3:
+		_slam()
+	if st_t >= 0.6:
+		_set_state("move")
+
+
+func _slam() -> void:
+	var r := skr("quake")
+	var rad := 3.5 + 0.5 * r
+	var p := global_position
+	if rig != null:
+		rig.position.y = 0.0
+	Vfx.I.sheet("ground-slam", p, rad * 1.1, Color(1.0, 0.85, 0.6), 2.0, true)
+	Vfx.I.shock_ring(p, Color(1.0, 0.75, 0.4), 0.5, rad * 2.2, 0.4)
+	Vfx.I.shock_ring(p, Color(1, 1, 1), 0.3, rad * 1.4, 0.25)
+	Vfx.I.dust(p, rad * 0.8, Color(0.55, 0.5, 0.42, 0.6))
+	for i in range(8):
+		var a := TAU * i / 8.0
+		Vfx.I.scar(p + Vector3(cos(a), 0, sin(a)) * rad * 0.55, Vector3(cos(a), 0, sin(a)), 1.8, 2.0)
+	Vfx.I.chips(p + Vector3(0, 0.3, 0), Vector3.UP, Color(0.45, 0.4, 0.35), 18, 9.0, 0.14)
+	CamRig.I.shake(2, 1.3)
+	CamRig.I.punch_zoom(0.4, 0.2)
+	Game.sfx("boom", 0.0, 0.1, 0.8)
+	var n := _aoe(p, rad, (10.0 + 10.0 * r) * power() * _art_k, 11.0, HitInfo.Weight.ULT)
+	for a: Actor in _alive(art_hits):
+		var fo := a as Foe
+		if fo != null:
+			fo.freeze(0.8 if not fo.is_boss else 0.2)
+	if n > 0:
+		Feel.I.slowmo(0.35, 0.25)
+		Feel.I.callout(head_top() + Vector3(0.6, 0.3, 0), "震岳!", Color(1.0, 0.8, 0.45), 1.3)
+	if r >= 3:
+		# 火缝：四道裂开的火光
+		for i in range(4):
+			var a := TAU * i / 4.0 + PI / 4
+			var dir := Vector3(cos(a), 0, sin(a))
+			var b := HeroBurn.new()
+			b.hero = self
+			b.from = p + dir * 0.8
+			b.to = p + dir * (rad + 1.0)
+			b.life = 2.5
+			b.damage = 5.0 * power()
+			b.tint = Color(1.0, 0.5, 0.2)
+			get_parent().add_child(b)
+			b.global_position = p
+	_link_mark("art")
+
+
+func _st_art_cast(dt: float) -> void:
+	move_with_knock(Vector3.ZERO, dt)
+	_target_pose(Poses.cast(clampf(st_t / 0.15, 0, 1), st_t))
+	if st_t > 0.12 and _try_actions(["attack", "roll", "dash", "beam", "finish"]):
+		return
+	if st_t >= 0.25:
+		_set_state("move")
+
+
+## 分身：一道紫色影子跟在身边（拷贝主角当下的样子），隔一会儿瞬到最近的敌人身边砍一刀
+func _tick_clone(dt: float) -> void:
+	_clone_t -= dt
+	var r := skr("clone")
+	var home := global_position - facing * 1.4 + facing.cross(Vector3.UP) * 1.2
+	_clone_pos = _clone_pos.lerp(home, 1.0 - exp(-4.0 * dt))
+	_clone_ghost -= dt
+	if _clone_ghost <= 0.0:
+		_clone_ghost = 0.07 if Vfx.I.lod > 0 else 0.14
+		SkillFx.ghost_at(rig, _clone_pos - global_position, SkillFx.SHADOW, 0.16)
+	_clone_atk -= dt
+	if _clone_atk <= 0.0:
+		_clone_atk = 0.65
+		var best: Actor = null
+		var bd := 7.0
+		for f: Node in get_tree().get_nodes_in_group("foes"):
+			var a := f as Actor
+			if a != null and a.alive and a.global_position.distance_to(_clone_pos) < bd:
+				bd = a.global_position.distance_to(_clone_pos)
+				best = a
+		if best != null:
+			var to := best.global_position - _clone_pos
+			to.y = 0
+			var from := _clone_pos
+			_clone_pos = best.global_position - to.normalized() * 1.0
+			Vfx.I.cut_line((from + _clone_pos) * 0.5 + Vector3(0, 0.9, 0), to, to.length() + 1.0, Color(1, 0.95, 1), 0.2, 0.16, SkillFx.SHADOW)
+			var xf := Transform3D(Basis(Vector3.UP, atan2(to.x, to.z) + PI), _clone_pos + Vector3(0, 0.9, 0))
+			Vfx.I.slash(xf, 2.2, deg_to_rad(-100), deg_to_rad(100), 0.18, Color(1, 1, 1), SkillFx.SHADOW, 3.0)
+			var info := HitInfo.make(self, best, (5.0 + 3.0 * r) * power() * randf_range(0.95, 1.08), HitInfo.Weight.LIGHT)
+			info.attacker = null
+			info.dir = to.normalized()
+			info.knock = 3.0
+			info.bleed = 1 if r >= 3 else 0
+			info.bleed_mult = bleed_dmg
+			if Feel.I.on_hit(info):
+				on_skill_hit(best, info)
+				if not art_hits.has(best):
+					art_hits.append(best)
+	if _clone_t <= 0.0:
+		Vfx.I.sheet("dark-explosion", _clone_pos, 2.2, Color(0.8, 0.6, 1.0), 1.8)
+
+
 # ---------- 翻滚 ----------
 
 func _start_roll() -> void:
@@ -600,6 +1249,13 @@ func _start_roll() -> void:
 	iframes = roll_iframes
 	_ghost_t = 0.0
 	step_i = -1
+	_roll_cut.clear()
+	_link_mark("roll")
+	if duo.has("liuguang"):
+		gain_energy(6.0)
+		Vfx.I.streaks(chest(), Vector3.UP, SkillFx.LIGHT, 3, 1.2, 0.2, 0.5, 0.1)
+	if skr("decoy") > 0 and _decoy_cd <= 0.0:
+		_leave_decoy()
 	Game.sfx("dodge", -3.0)
 	Vfx.I.dust(global_position, 0.8, Color(0.5, 0.6, 0.6, 0.35))
 
@@ -612,8 +1268,10 @@ func _st_roll(dt: float) -> void:
 	_ghost_t -= dt
 	if _ghost_t <= 0.0 and k < 0.8:
 		_ghost_t = 0.05
-		Vfx.I.ghost(rig, Color(0.3, 0.85, 1.0), 0.28)
-	if k > 0.7 and _try_actions(["attack", "dash"]):
+		Vfx.I.ghost(rig, Color(0.3, 0.85, 1.0) if skr("slice") == 0 else Color(0.45, 1.0, 0.85), 0.28)
+	if skr("slice") > 0 or duo.has("xueying"):
+		_roll_through()
+	if k > 0.7 and _try_actions(["attack", "dash", "art"]):
 		return
 	if k >= 1.0:
 		if set_wind:
@@ -628,6 +1286,8 @@ func _st_roll(dt: float) -> void:
 
 func take_hit(info: HitInfo) -> bool:
 	info.damage *= taken_mult
+	if _mirror_t > 0.0:
+		info.damage *= 0.6   # 双修·明镜
 	if invincible:
 		info.damage = 0.0
 	if state == "dash":
@@ -698,18 +1358,29 @@ func _start_dash() -> void:
 	d.y = 0
 	face_to(d)
 	_dash_from = global_position
+	# 连携：翻滚 → 突进斩（残月，远四成）；血爆 → 突进斩（血步）
+	_link_now = ""
+	var lk := _link_peek("dash")
+	if not lk.is_empty():
+		_link_take(lk)
+	_dash_len_k = 1.4 if _link_now == "canyue" else 1.0
 	# 路径碰到墙就提前停
-	var len := dash_len
+	var len := dash_len * _dash_len_k
 	var space := get_world_3d().direct_space_state
-	var q := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, 0.6, 0), global_position + Vector3(0, 0.6, 0) + facing * dash_len, 1)
+	var q := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, 0.6, 0), global_position + Vector3(0, 0.6, 0) + facing * len, 1)
 	var hit := space.intersect_ray(q)
 	if not hit.is_empty():
 		len = maxf((hit["position"] as Vector3 - (global_position + Vector3(0, 0.6, 0))).length() - radius - 0.2, 0.5)
 	_dash_to = global_position + facing * len
 	_set_state("dash_ready")
 	_blend = 0.5
-	cd["dash"] = dash_cd
-	Vfx.I.telegraph_rect(_dash_from, _dash_to, 1.6, Color(0.3, 0.95, 1.0, 0.55), dash_warn + 0.05)
+	if _echo_live:
+		_echo_t = 0.0      # 连闪这一下不进冷却
+	else:
+		cd["dash"] = dash_cd
+	if _link_now == "xuebu":
+		cd["dash"] = dash_cd * 0.5
+	Vfx.I.telegraph_rect(_dash_from, _dash_to, 1.6, Color(_dash_color(), 0.55), dash_warn + 0.05)
 	Game.sfx("art", -4.0)
 
 
@@ -727,10 +1398,16 @@ func _do_dash() -> void:
 		var p := _dash_from.lerp(_dash_to, float(i) / steps)
 		global_position = p
 		_apply_pose(0.0)
-		Vfx.I.ghost(rig, Color(0.35, 0.95, 1.0), 0.18 + 0.03 * i)
+		Vfx.I.ghost(rig, _dash_color(), 0.18 + 0.03 * i)
 	global_position = _dash_to
 	var seg := _dash_to - _dash_from
 	var n := 0
+	_dash_hits.clear()
+	var dk := 1.0
+	if _link_now == "xuebu":
+		dk = 1.5
+	if _echo_live and skr("echo") >= 3:
+		dk *= 1.4
 	for f: Node in get_tree().get_nodes_in_group("foes"):
 		var a := f as Actor
 		if a == null or not a.alive:
@@ -738,18 +1415,20 @@ func _do_dash() -> void:
 		var t := clampf((a.global_position - _dash_from).dot(seg) / maxf(seg.length_squared(), 0.001), 0.0, 1.0)
 		var closest := _dash_from + seg * t
 		if (a.global_position - closest).length() <= 0.8 + a.radius:
-			var info := HitInfo.make(self, a, 22.0 * dmg_mult * randf_range(0.95, 1.1), HitInfo.Weight.HEAVY)
+			# 会心原来只是看着亮（伤害没乘），现在和连招一样吃会心率和会心伤害
+			var crit := randf() < 0.2 + crit_bonus or _wind_t > 0.0
+			var info := HitInfo.make(self, a, 22.0 * power() * dk * (crit_mult if crit else 1.0) * randf_range(0.95, 1.1), HitInfo.Weight.HEAVY)
 			info.dir = (a.global_position - closest).normalized() if (a.global_position - closest).length() > 0.1 else facing
 			info.knock = 7.0
-			info.bleed = 2 + bleed_bonus
+			info.bleed = 2 + bleed_bonus + (3 if _link_now == "xuebu" else 0) + (2 if crit and duo.has("xueren") else 0)
 			info.bleed_mult = bleed_dmg
 			info.gain = 8.0
-			info.crit = randf() < 0.2
+			info.crit = crit
 			info.attacker = null    # 瞬移后主角不停顿，只让敌人停
 			if Feel.I.on_hit(info):
 				gain_energy(8.0)
-				_leech(info.damage)
-				_check_blood(a)
+				on_skill_hit(a, info)
+			_dash_hits.append(a)
 			n += 1
 	Game.sfx("slash_heavy", 0.0)
 	var base := Transform3D(Basis(Vector3.UP, rotation.y), global_position + Vector3(0, 0.9, 0))
@@ -765,7 +1444,9 @@ func _do_dash() -> void:
 	CamRig.I.kick(facing, 0.22)
 	if n > 0:
 		Feel.I.slowmo(0.35, 0.22)
-		Feel.I.callout(head_top() + Vector3(0.6, 0.3, 0), "突进斩!", Color(0.55, 1.0, 1.0), 1.1)
+		Feel.I.callout(head_top() + Vector3(0.6, 0.3, 0), "连闪!" if _echo_live else "突进斩!", _dash_color().lightened(0.3), 1.1)
+	_wind_t = 0.0
+	_after_dash(seg)
 	_set_state("dash")
 	_blend = 1.0
 
@@ -773,7 +1454,7 @@ func _do_dash() -> void:
 func _st_dash(dt: float) -> void:
 	move_with_knock(Vector3.ZERO, dt)
 	_target_pose(Poses.swing("h_rl", 1.0, 1.0, clampf(st_t / 0.3, 0, 1)))
-	if st_t > 0.12 and _try_actions(["attack", "roll", "finish", "beam"]):
+	if st_t > 0.12 and _try_actions(["attack", "roll", "finish", "beam", "art"]):
 		return
 	if st_t >= 0.3:
 		_set_state("move")
@@ -782,8 +1463,13 @@ func _st_dash(dt: float) -> void:
 # ---------- 光束斩 ----------
 
 func _start_beam() -> void:
-	energy = max_energy * 0.4 if set_light else 0.0   # 天光：返还 40%
+	energy = clampf(energy - beam_cost + (max_energy * 0.4 if set_light else 0.0), 0.0, max_energy)   # 天光：返还 40%
 	energy_changed.emit()
+	_link_now = ""
+	var lk := _link_peek("beam")
+	if not lk.is_empty():
+		_link_take(lk)
+	_beam_fast = _link_now == "tianluo"
 	var tgt := _auto_target(input_dir() if input_dir() != Vector3.ZERO else facing, 14.0)
 	if tgt != null:
 		face_to(tgt.global_position - global_position)
@@ -797,7 +1483,7 @@ func _start_beam() -> void:
 
 func _st_beam(dt: float) -> void:
 	move_with_knock(Vector3.ZERO, dt)
-	var dur := 0.75
+	var dur := 0.75 if not _beam_fast else 0.38
 	var k := st_t / dur
 	_target_pose(Poses.beam_cast(k))
 	if k >= 0.6 and (st_t - dt) / dur < 0.6:
@@ -813,7 +1499,8 @@ func _fire_beam() -> void:
 	var to := global_position + dir * 20.0 + Vector3(0, 0.3, 0)
 	Feel.I.pause_world(0.15)
 	Feel.I.screen_flash(Color(0.85, 1.0, 1.0, 0.75), 3.0)
-	Vfx.I.beam(from, to, 2.4, 0.6)
+	var wide := 1.6 if _beam_fast else 1.0
+	Vfx.I.beam(from, to, 2.4 * wide, 0.6)
 	Vfx.I.impact_flash(global_position + Vector3(0, 1, 0), 4.0, Color(0.6, 1, 1))
 	CamRig.I.shake(2, 1.2)
 	CamRig.I.kick(-dir, 0.35, 0.02)       # 后坐：镜头往身后一顿
@@ -826,38 +1513,66 @@ func _fire_beam() -> void:
 		Vfx.I.ground(q, "lm_circle_a", Color(0.4, 0.95, 1.0, 0.7), 1.2, 3.0, 0.45, true)
 	Vfx.I.shock_ring(gp + dir * 18.0, Color(0.5, 1.0, 1.0), 0.5, 5.0, 0.45)
 	Vfx.I.streaks(global_position + Vector3(0, 1, 0) + dir * 2.0, dir, Color(0.6, 1.0, 1.0), 8, 4.0, 0.3, 0.25, 0.25)
+	_beam_hits.clear()
+	var bk := 1.3 if _beam_fast else 1.0
+	_beam_line(from, to, 1.5 * wide, 60.0 * power() * beam_mult * bk)
+	_beam_branch(dir, gp, bk)
+	_link_mark("beam")
+	if duo.has("mingjing"):
+		_mirror_t = 4.0
+		Vfx.I.shock_ring(gp, Color(0.7, 1.0, 0.9), 0.4, 3.6, 0.45)
+		Feel.I.callout(head_top(), "明镜", Color(0.7, 1.0, 0.9), 0.8)
+	Feel.I.callout(head_top() + Vector3(0.6, 0.5, 0), "光束斩!", Color(0.85, 1.0, 1.0), 1.4)
+
+
+## 一道光束的判定：from → to 的线段，半宽 half_w
+func _beam_line(from: Vector3, to: Vector3, half_w: float, dmg: float) -> void:
+	var dir := (to - from).normalized()
 	var seg := to - from
 	seg.y = 0
 	var f2 := Vector3(from.x, 0, from.z)
 	for f: Node in get_tree().get_nodes_in_group("foes"):
 		var a := f as Actor
-		if a == null or not a.alive:
+		if a == null or not a.alive or _beam_hits.has(a):
 			continue
 		var t := clampf((a.global_position - f2).dot(seg) / seg.length_squared(), 0.0, 1.0)
 		var closest := f2 + seg * t
-		if (a.global_position - closest).length() <= 1.5 + a.radius:
-			var info := HitInfo.make(self, a, 60.0 * dmg_mult * beam_mult * randf_range(0.95, 1.1), HitInfo.Weight.ULT)
-			info.dir = dir
+		if (a.global_position - closest).length() <= half_w + a.radius:
+			var info := HitInfo.make(self, a, dmg * randf_range(0.95, 1.1), HitInfo.Weight.ULT)
+			info.dir = Vector3(dir.x, 0, dir.z).normalized()
 			info.knock = 12.0
 			info.bleed = 3 if set_light else 1
 			info.crit = true
 			info.attacker = null
+			_beam_hits.append(a)
 			if Feel.I.on_hit(info):
 				_check_blood(a)
-	Feel.I.callout(head_top() + Vector3(0.6, 0.5, 0), "光束斩!", Color(0.85, 1.0, 1.0), 1.4)
 
 
 # ---------- 终结技 ----------
 
 func _start_finish() -> void:
+	var lk := _link_peek("finish")
+	var r := _finish_r(String(lk.get("id", "")))
 	var any := false
 	for f: Node in get_tree().get_nodes_in_group("foes"):
 		var a := f as Actor
-		if a != null and a.alive and a.bleed > 0 and a.global_position.distance_to(global_position) < 7.5:
+		if a != null and a.alive and a.bleed > 0 and a.global_position.distance_to(global_position) < r:
+			any = true
+	# 瞬狱 / 焚血：突进斩斩过的、光束照到的敌人不出血也能炸
+	var lid := String(lk.get("id", ""))
+	var pre := _alive(_dash_hits if lid == "shunyu" else (_beam_hits if lid == "fenxue" else (art_hits if lid == "guiyi" else [])))
+	for a: Actor in pre:
+		if a.global_position.distance_to(global_position) < r:
 			any = true
 	if not any:
 		Feel.I.callout(head_top(), "没有出血的敌人", Color(0.85, 0.6, 0.6), 0.7)
 		return
+	_link_now = ""
+	if not lk.is_empty():
+		_link_take(lk)
+		for a: Actor in pre:
+			a.add_bleed(4 if lid == "guiyi" else 3, bleed_dmg)
 	cd["finish"] = finish_cd
 	_set_state("finish")
 	_blend = 0.5
@@ -874,17 +1589,28 @@ func _st_finish(dt: float) -> void:
 		_set_state("move")
 
 
+## 血爆的范围（瞬狱大四成）
+func _finish_r(link_id: String) -> float:
+	return 10.5 if link_id == "shunyu" else 7.5
+
+
 func _detonate() -> void:
 	var n := 0
+	var total := 0
+	var r := _finish_r(_link_now)
+	var blasted := []
 	for f: Node in get_tree().get_nodes_in_group("foes"):
 		var a := f as Actor
 		if a == null or not a.alive or a.bleed <= 0:
 			continue
-		if a.global_position.distance_to(global_position) > 7.5:
+		if a.global_position.distance_to(global_position) > r:
 			continue
 		var stacks := a.bleed
 		a.bleed = 0
-		var info := HitInfo.make(self, a, (14.0 + 16.0 * stacks) * dmg_mult * finish_mult, HitInfo.Weight.ULT)
+		total += stacks
+		blasted.append(a)
+		_finish_link_fx(a)
+		var info := HitInfo.make(self, a, (14.0 + 16.0 * stacks) * power() * finish_mult, HitInfo.Weight.ULT)
 		info.crit = stacks >= 3
 		info.knock = 8.0
 		info.attacker = null
@@ -900,6 +1626,10 @@ func _detonate() -> void:
 	Feel.I.screen_flash(Color(0.9, 0.1, 0.1, 0.35), 3.0)
 	if n > 0:
 		Feel.I.slowmo(0.3, 0.35)
+	_finish_branch(blasted, total)
+	if n > 0:
+		_link_mark("finish")
+	_link_now = ""
 	if n >= 5:
 		ArpgAch.unlock("burst_5")
 	Game.sfx("execute", 0.0)
@@ -946,4 +1676,4 @@ func _update_ring() -> void:
 	var m: ShaderMaterial = foot_ring.material_override
 	m.set_shader_parameter("dash", 1.0 - float(cd["dash"]) / dash_cd)
 	m.set_shader_parameter("finish", 1.0 - float(cd["finish"]) / finish_cd)
-	m.set_shader_parameter("energy", energy / max_energy)
+	m.set_shader_parameter("energy", minf(energy / beam_cost, 1.0))

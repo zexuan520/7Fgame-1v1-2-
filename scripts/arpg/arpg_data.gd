@@ -5,6 +5,7 @@ extends RefCounted
 ##   atk 伤害倍率加成  crit 会心率  crit_dmg 会心伤害  hp 生命上限  gourds 药葫芦  gourd_heal 回复量
 ##   dash_cd / finish_cd 冷却缩短比例  energy 气力获取  bleed 出血额外层数  bleed_dmg 出血伤害
 ##   lifesteal 吸血  move 移速  dmg_taken 受伤倍率  iframes 翻滚无敌加时  beam 光束斩伤害  finish 终结技伤害
+##   insight 开局天赋点  xp 悟道获取加成  sk_<分支> 技能分支级数  duo_<id> 双修（见 ArpgSkills）
 ##   coin 铜钱加成  jade 魂玉加成  discount 商人折扣  keep 死亡魂玉带回加成  start_coins 开局铜钱  revive 倒下再起
 
 ## 兵器：换的是连招手感（伤害、快慢、攻击范围）和人偶手里的模型
@@ -80,7 +81,7 @@ const SCHOOL_COLORS := {"修罗": Color(1.0, 0.45, 0.35), "血": Color(0.95, 0.2
 const TALENT_TREES := [
 	{"id": "shura", "name": "修罗", "role": "攻", "color": Color(0.88, 0.35, 0.28), "tiers": [
 		[{"id": "t_sharpen", "name": "磨刃", "desc": "伤害 +5%", "max": 3, "stats": {"atk": 0.05}},
-		 {"id": "t_keen", "name": "锐眼", "desc": "会心率 +3%", "max": 3, "stats": {"crit": 0.03}}],
+		 {"id": "t_keen", "name": "鹰目", "desc": "会心率 +3%", "max": 3, "stats": {"crit": 0.03}}],
 		[{"id": "t_bleed", "name": "血契", "desc": "出血伤害 +15%", "max": 2, "stats": {"bleed_dmg": 0.15}},
 		 {"id": "t_vital", "name": "会心", "desc": "会心伤害 +25%", "max": 2, "stats": {"crit_dmg": 0.25}}],
 		[{"id": "t_asura", "name": "修罗道", "desc": "终结技伤害 +50%", "max": 1, "stats": {"finish": 0.5}}],
@@ -96,7 +97,8 @@ const TALENT_TREES := [
 		[{"id": "t_purse", "name": "盘缠", "desc": "开局铜钱 +15", "max": 3, "stats": {"start_coins": 15}},
 		 {"id": "t_stride", "name": "疾行", "desc": "移速 +4%、突进冷却 -5%", "max": 2, "stats": {"move": 0.04, "dash_cd": 0.05}}],
 		[{"id": "t_haggle", "name": "识货", "desc": "商人价格 -10%", "max": 2, "stats": {"discount": 0.1}},
-		 {"id": "t_spirit", "name": "聚灵", "desc": "魂玉获取 +15%", "max": 2, "stats": {"jade": 0.15}}],
+		 {"id": "t_spirit", "name": "聚灵", "desc": "魂玉获取 +15%", "max": 2, "stats": {"jade": 0.15}},
+		 {"id": "t_insight", "name": "慧根", "desc": "每局出发就有 1 个天赋点、悟道 +10%", "max": 2, "stats": {"insight": 1, "xp": 0.1}}],
 		[{"id": "t_homeward", "name": "归途", "desc": "身死时魂玉带回 60% → 85%", "max": 1, "stats": {"keep": 0.25}}],
 	]},
 ]

@@ -46,6 +46,11 @@ var boons: Array[String] = []
 var forged := 0            # 这一局在灯冢熔铜炉里铸过几层甲（每层生命 +FORGE_HP）
 var whet := 0               # 这一局在游商那里磨过几次刀（每次伤害 +6%，铜钱的长期去处）
 var revives := 0
+var xp := 0                 # 悟道：这一重攒了多少悟（ArpgSkills.need）
+var level := 1              # 悟道第几重
+var points := 0             # 还没用的天赋点
+var skills := {}            # 技能分支：分支 id → 级数
+var links_done := {}        # 这一局打出过的连携
 var omen := ""              # 这一局的天象（OMENS 的键）
 var boss_retry := {}        # 游历难度：这一层头目已经重打过（层号 → true）
 var seed_value := 0
@@ -64,6 +69,7 @@ static func start_new(act_: int = 1) -> ArpgState:
 	var st := ArpgData.talent_stats()
 	s.coins = int(ArpgData.stat(st, "start_coins"))
 	s.revives = int(ArpgData.stat(st, "revive"))
+	s.points = int(ArpgData.stat(st, "insight"))   # 天赋“慧根”：开局就有天赋点
 	var ks := OMENS.keys()
 	s.omen = String(ks[randi() % ks.size()])
 	for a: String in OS.get_cmdline_user_args():
@@ -201,6 +207,7 @@ func stats() -> Dictionary:
 			st[String(ArpgData.SETS[k]["id"])] = 1.0
 	if cycle > 0:
 		ArpgData.add_stats(st, ArpgCycle.hero_stats(cycle))
+	ArpgSkills.add_stats(st, skills, boons)
 	if difficulty() == 0:
 		ArpgData.add_stats(st, {"easy": EASY_TAKEN})
 	else:
@@ -226,6 +233,31 @@ const FORGE_HP := 20.0
 ## 磨刀一次的价钱：越磨越贵（第三层铜钱多了也有地方花）
 func whet_price() -> int:
 	return 60 + 35 * whet
+
+
+## 悟道：加悟，返回升了几重（每重 1 个天赋点）
+func gain_xp(n: int) -> int:
+	if level >= ArpgSkills.MAX_LEVEL:
+		return 0
+	xp += int(round(n * (1.0 + ArpgData.stat(ArpgData.talent_stats(), "xp"))))
+	var ups := 0
+	while level < ArpgSkills.MAX_LEVEL and xp >= ArpgSkills.need(level):
+		xp -= ArpgSkills.need(level)
+		level += 1
+		points += 1
+		ups += 1
+	if level >= ArpgSkills.MAX_LEVEL:
+		xp = 0
+	return ups
+
+
+## 点一级技能分支
+func learn(bid: String) -> bool:
+	if ArpgSkills.why_not(skills, points, bid) != "":
+		return false
+	skills[bid] = int(skills.get(bid, 0)) + 1
+	points -= 1
+	return true
 
 
 func add_coins(n: int) -> int:
