@@ -164,6 +164,19 @@ func _ready() -> void:
 			t2.pressed = true
 			t2.position = Vector2(vs.x - 118, vs.y - 112)
 			send.call(t2))
+	if _args.has("hero_at") and is_instance_valid(hero):
+		var xz := String(_args["hero_at"]).split(",")
+		_place_hero(Vector3(float(xz[0]), 0, float(xz[1])))
+	if _args.has("dumptall"):
+		get_tree().create_timer(1.0).timeout.connect(func() -> void:
+			var tall := {}
+			for n: Node in find_children("*", "VisualInstance3D", true, false):
+				var vi := n as VisualInstance3D
+				var ab := vi.global_transform * vi.get_aabb()
+				if ab.end.y > 4.0:
+					var key := "%s %s %s %s" % [vi.get_class(), (vi as MeshInstance3D).mesh.get_class() if vi is MeshInstance3D and (vi as MeshInstance3D).mesh else "", str(ab.end.y).pad_decimals(1), str(ab.get_center().snapped(Vector3.ONE))]
+					tall[key] = int(tall.get(key, 0)) + 1
+			print("TALL ", tall))
 	if _args.has("pathtest") and state != null:
 		# 测试：直接打开分岔路菜单（看路线图）
 		get_tree().create_timer(1.2).timeout.connect(func() -> void:

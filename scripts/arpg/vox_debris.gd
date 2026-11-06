@@ -12,9 +12,17 @@ var _t := 0.0
 var _s0 := Vector3.ONE
 
 
+## 碎片最快多少（米/秒）、最高飞多高：死亡冲量很大时（光束斩、爆骨鬼）碎块会飞到镜头跟前糊满屏幕
+const MAX_H_SPEED := 10.0
+const MAX_UP_SPEED := 8.0
+const MAX_HEIGHT := 3.2
+
+
 func _ready() -> void:
 	if is_instance_valid(target):
 		_s0 = target.scale
+	var h := Vector2(vel.x, vel.z).limit_length(MAX_H_SPEED)
+	vel = Vector3(h.x, minf(vel.y, MAX_UP_SPEED), h.y)
 
 
 func _process(dt: float) -> void:
@@ -24,6 +32,9 @@ func _process(dt: float) -> void:
 	_t += dt
 	vel.y -= 22.0 * dt
 	var p := target.global_position + vel * dt
+	if p.y > floor_y + MAX_HEIGHT:
+		p.y = floor_y + MAX_HEIGHT
+		vel.y = minf(vel.y, 0.0)
 	if p.y < floor_y + 0.05 and vel.y < 0.0:
 		p.y = floor_y + 0.05
 		vel.y = -vel.y * 0.35

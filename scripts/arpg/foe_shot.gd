@@ -25,6 +25,8 @@ func _ready() -> void:
 		var m := VoxActor.toon_material()
 		m.set_shader_parameter("glow", Vector3(color.r, color.g, color.b) * 0.6)
 		mi.material_override = m
+		# 网格单位是体素格，要乘 PX 才是米（漏乘时箭有 30 米长，满屏橙色大块）
+		mi.scale = Vector3.ONE * VoxActor.PX
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		# 箭的网格沿 -y（握把在原点），转到沿 -z（往前飞的方向）；往后挪一点让箭头在节点前面
 		mi.rotation.x = PI / 2
