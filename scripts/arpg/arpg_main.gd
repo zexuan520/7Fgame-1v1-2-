@@ -583,9 +583,7 @@ func _enter_hub() -> void:
 	if Game.save_notice != "":
 		var note := Game.save_notice
 		Game.save_notice = ""
-		get_tree().create_timer(2.8).timeout.connect(func() -> void:
-			if mode == "hub":
-				hud.banner("存档", note, 4.5))
+		_show_save_notice(note, 2.8)
 	feel.screen_flash(Color(0, 0, 0, 1), 1.4)
 	Game.music("hub")
 	var hz := HUB_SIZE.y * 0.5
@@ -647,6 +645,17 @@ func _enter_hub() -> void:
 			if mi == ArpgStory.MUTTERS.size() - 1:
 				ml.append(["", "她说完，像什么都没说过一样，接着数。"])
 			_say(ml))
+
+
+## 存档出过状况（从备份恢复等）：等对话、菜单都关了再在山门横幅提示
+func _show_save_notice(note: String, delay: float) -> void:
+	get_tree().create_timer(delay).timeout.connect(func() -> void:
+		if mode != "hub":
+			return
+		if _menu != null or not _no_dialog():
+			_show_save_notice(note, 1.0)
+			return
+		hud.banner("存档", note, 5.0))
 
 
 func _npc(label: String, p: Vector3, spec: Dictionary, cb: Callable) -> ArpgNpc:

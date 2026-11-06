@@ -7,7 +7,7 @@ import pathlib, re, urllib.parse, urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 chars = set("✕▲▼Ⅱ“”‘’—…　▸「」0123456789+-×x!！?？%/:：.·,，、()（）[]【】 ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
-for f in (ROOT / "scripts" / "arpg").glob("*.gd"):
+for f in list((ROOT / "scripts" / "arpg").glob("*.gd")) + [ROOT / "scripts" / "game.gd"]:   # game.gd：存档提示
     for s in re.findall(r'"([^"\n]*)"', f.read_text(encoding="utf-8")):
         chars.update(c for c in s if ord(c) > 0x2E80)
 text = "".join(sorted(chars))
