@@ -13,7 +13,7 @@
 输出 JSON：joints（各关节静止位置）、parts（每块的起点、长度、体素列表 [x,y,z,r,g,b,...]）。
 右手边（持刀手）算“前”（z+，靠镜头），左手边算“后”。
 """
-import argparse, json, math
+import gzip, argparse, json, math
 import numpy as np
 import trimesh
 from PIL import Image
@@ -232,7 +232,7 @@ def main():
     # res：游戏里角色身高固定按 50 格算，身高给得越高体素切得越细（100 → 一格切成 2×2×2）
     out = {"source": ARGS.source, "license": ARGS.license, "height": ARGS.height, "res": round(ARGS.height / 50.0, 3),
            "joints": {k: [round(float(x), 2) for x in joints[k]] for k in keep if k in joints}, "parts": parts}
-    with open(ARGS.out, "w") as f:
+    with gzip.open(ARGS.out + ".gz", "wt", compresslevel=9) as f:   # 存成 <out>.gz，游戏读 .json.gz（VoxelModel.read_data）
         json.dump(out, f, separators=(",", ":"))
 
 

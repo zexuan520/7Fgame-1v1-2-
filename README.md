@@ -315,7 +315,7 @@
 - **野狗**（`voxel_dog.gd`）：四条腿的体素模型，压低、扑咬拉长、张嘴、跑步摆腿、倒地都照 Dog 的状态来。弓手手里有弓，盾兵手里有盾。
 - **天色**：荒村的黄昏、月夜、乱坟岗、雾田、竹林、山贼营，断水河畔（月夜、河面、芦苇），破庙（大殿），第二层的晨雾、暮钟、寺夜，各有一套天空、环境光、雾、主光、逆光和中景（茅草屋、坟包、竹丛、帐篷和篝火、河、破庙大殿），夕阳或月亮。
 - **手感**（参考用户给的动作视频）：人物平时侧身朝镜头转一点（3/4 侧面），挥刀时身子跟着刀拧过去；每次挥刀自动拖出月牙形的发光刀光（`voxel_trail.gd`，记下刀根和刀尖、按角度补点，顿帧时一起定住；敌人危招是红色，头目后面阶段是气的颜色）；挨刀的人往后一仰、压扁再弹回；砍中跳伤害数字（`Game.show_damage`）。
-- **开源模型**（`tools/voxelize/`、`scripts/voxel/voxel_model.gd`、`assets/voxel/*.json`）：主角和人形敌人换成了 KayKit 角色包（Kay Lousberg，CC0）体素化后的模型。`voxelize_char.py` 读带骨骼的 .glb：每个顶点按权重最大的骨头分到头、躯干、胯、上臂、前臂、大腿、小腿，转到游戏坐标（脚底 y=0、面朝 +x），每块按 1 格 = 1 像素体素化，颜色从贴图取，只存表面方块，写成 json。游戏里 `VoxelRig` 看 `look.model`：有模型就用模型的块，躯干、手臂方向照 Puppet 的姿势，骨头长度用模型自己的，腿用两节 IK 让脚踩在 Puppet 的脚位上，所以原来的招式、弹簧滞后、刀光都不用改。模型是大头 Q 版，平时侧身多转一点（0.7 弧度）让脸朝镜头。对应关系：主角 = 兜帽游侠；浪人 = 骷髅战士；弓手、忍者 = 骷髅游侠；盾兵、僧兵 = 骷髅小兵；破戒僧 = 骷髅法师；柳江远 = 骑士；寂光 = 野蛮人。重新生成：`python tools/voxelize/voxelize_char.py 模型.glb assets/voxel/名字.json --skip 不要的网格,逗号分隔 --source "出处"`（要 trimesh、numpy、pillow、scipy、pygltflib）。
+- **开源模型**（`tools/voxelize/`、`scripts/voxel/voxel_model.gd`、`assets/voxel/*.json`）：主角和人形敌人换成了 KayKit 角色包（Kay Lousberg，CC0）体素化后的模型。`voxelize_char.py` 读带骨骼的 .glb：每个顶点按权重最大的骨头分到头、躯干、胯、上臂、前臂、大腿、小腿，转到游戏坐标（脚底 y=0、面朝 +x），每块按 1 格 = 1 像素体素化，颜色从贴图取，只存表面方块，写成 gzip 压缩的 json（`<名>.json.gz`，比原文小六倍，`VoxelModel.read_data` 读；没压过的 `.json` 也认）。游戏里 `VoxelRig` 看 `look.model`：有模型就用模型的块，躯干、手臂方向照 Puppet 的姿势，骨头长度用模型自己的，腿用两节 IK 让脚踩在 Puppet 的脚位上，所以原来的招式、弹簧滞后、刀光都不用改。模型是大头 Q 版，平时侧身多转一点（0.7 弧度）让脸朝镜头。对应关系：主角 = 兜帽游侠；浪人 = 骷髅战士；弓手、忍者 = 骷髅游侠；盾兵、僧兵 = 骷髅小兵；破戒僧 = 骷髅法师；柳江远 = 骑士；寂光 = 野蛮人。重新生成：`python tools/voxelize/voxelize_char.py 模型.glb assets/voxel/名字.json（实际写出 名字.json.gz） --skip 不要的网格,逗号分隔 --source "出处"`（要 trimesh、numpy、pillow、scipy、pygltflib）。
 - **开源场景件**（`tools/voxelize/voxelize_prop.py`、`kit_list.txt`、`scripts/voxel/voxel_kit.gd`、`assets/voxel/kit/`）：KayKit 地牢、万圣节、中世纪六边形三个包（CC0）里挑了约 50 件，按 2 像素一格体素化。中景换成了中世纪房屋、酒馆、风车、教堂、塔楼、树林、枯树、墓碑、地穴、拱门、帐篷；不能站的小摆设（灯笼、石灯笼、柴堆、木桶、坟、碎石、稻草人）换成对应的件。能站的结构（木箱、板车、木楼等）高度要和 2D 平台对齐，暂时还是自己画的。会发光的件在 `VoxelKit.LIGHTS` 里配灯。重新生成：`python tools/voxelize/voxelize_prop.py --batch 清单 assets/voxel/kit`（清单里的 DUNGEON/HALLOWEEN/MEDIEVAL 换成各包 Assets/gltf 的路径）。
 - **还没做的**：第二层专门的场景（目前借用竹林和月夜）。
 - **演示**：`tools/voxel_demo/` 搭一间荒村小道让主角打浪人，按时间表自动按键。截图：`xvfb-run godot --path . res://tools/voxel_demo/voxel_demo.tscn -- shots`（`-- tour` 沿着荒村小道拍机关，`-- gallery` 每种天色拍一张，`-- boss` 断水河畔看柳江远登场和三个阶段，`-- lineup` 所有人形角色排一排拍特写，加 `oldmodel` 换回自己拼的人偶做对比）；录像：加上 `--fixed-fps 30 --write-movie /tmp/f.png`。
@@ -380,7 +380,7 @@ NPC 和训练场的稻草木桩还用 `scripts/puppet.gd` 的骨骼小人画（`
 
 ## 声音
 
-音效和背景音乐都是 `tools/gen_audio.py` 用程序合成的占位声音（`python3 tools/gen_audio.py` 重新生成），放在 `assets/sfx/`（38 个）和 `assets/music/`（破庙、荒村、竹林古寺、头目四首，循环；轻快的大调和弦进行，木琴琶音、主旋律、贝斯和轻鼓组，头目战用小调，每首有 A、B 两段）。换正式素材时直接覆盖同名 wav。
+音效和背景音乐都是 `tools/gen_audio.py` 用程序合成的占位声音（`python3 tools/gen_audio.py` 重新生成），放在 `assets/sfx/`（38 个）和 `assets/music/`（破庙、荒村、竹林古寺、头目四首，循环；轻快的大调和弦进行，木琴琶音、主旋律、贝斯和轻鼓组，头目战用小调，每首有 A、B 两段）。换正式素材时直接覆盖同名 wav。现在正式的音效和配乐由 `tools/audio/build_audio.py` 从 CC0 素材生成（音效 `assets/sfx/<名>/N.ogg`，配乐 `assets/music/*.ogg`，配乐统一 libvorbis q0、音效 q3，控制网页包大小）；`tools/audio/music_listen.html` 用浏览器直接打开就能逐首试听、标记要不要换。
 
 代码里放声音：`Game.sfx("parry")` 放音效（同一个音效隔不到 0.035 秒的跳过，每次音高随机一点点），`Game.music("hub")` 换背景音乐（淡出淡入）。弹反、格挡、挨打、处决、架势崩溃、危字招式、刀风、跳、闪身、喝药、招式、副武器、铜钱魂玉、开箱、砸罐子、换房间、三选一、记忆碎片、头目登场都有声音。音量（总音量、音乐、音效）在设置里调，存在 `user://settings.cfg`。
 

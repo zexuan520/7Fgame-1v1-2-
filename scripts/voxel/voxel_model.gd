@@ -13,6 +13,23 @@ static var off := false      # true 时一律不用开源模型（演示工具�
 static var coarse := false   # 低画质：精细体素（res 2）的部件缩成一半分辨率再合网格，三角形少四倍左右，手机上看不出差别
 
 
+## 体素数据文件：仓库里存的是 gzip 压缩过的 <名>.json.gz（体素 JSON 压缩后小六倍，网页包少十几 MB）；
+## 工具刚生成、还没压的 <名>.json 也认。path 写 .json 结尾的那个名字
+static func data_exists(path: String) -> bool:
+	return FileAccess.file_exists(path + ".gz") or FileAccess.file_exists(path)
+
+
+static func read_data(path: String) -> Dictionary:
+	var txt := ""
+	if FileAccess.file_exists(path + ".gz"):
+		var raw := FileAccess.get_file_as_bytes(path + ".gz")
+		txt = raw.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP).get_string_from_utf8()
+	elif FileAccess.file_exists(path):
+		txt = FileAccess.get_file_as_string(path)
+	var d: Variant = JSON.parse_string(txt) if txt != "" else null
+	return d if d is Dictionary else {}
+
+
 static func load_model(id: String) -> VoxelModel:
 	if off:
 		return null
@@ -20,11 +37,11 @@ static func load_model(id: String) -> VoxelModel:
 	if _cache.has(ck):
 		return _cache[ck]
 	var path := "res://assets/voxel/%s.json" % id
-	if not FileAccess.file_exists(path):
+	if not data_exists(path):
 		push_warning("没有体素模型 " + path)
 		_cache[ck] = null
 		return null
-	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var d := read_data(path)
 	var m := VoxelModel.new()
 	m.source = String(d.get("source", ""))
 	# res：精细体素（2 表示一格切成 2×2×2 的小格）。关节、长度都换回原来的格子单位，网格按小格画，
@@ -67,10 +84,10 @@ static func weapon_mesh(id: String, length: float) -> ArrayMesh:
 	if _weapons.has(key):
 		return _weapons[key]
 	var path := "res://assets/voxel/weapon/%s.json" % id
-	if id == "" or not FileAccess.file_exists(path):
+	if id == "" or not data_exists(path):
 		_weapons[key] = null
 		return null
-	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var d := read_data(path)
 	var g := VoxelGrid.new(1)
 	var v: Array = d["vox"]
 	for i in range(0, v.size(), 6):

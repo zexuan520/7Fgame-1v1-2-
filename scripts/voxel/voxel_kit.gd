@@ -27,10 +27,10 @@ static func get_piece(id: String) -> Dictionary:
 	if _cache.has(ck):
 		return _cache[ck]
 	var path := DIR % id
-	if not FileAccess.file_exists(path):
+	if not VoxelModel.data_exists(path):
 		_cache[ck] = {}
 		return {}
-	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	var d := VoxelModel.read_data(path)
 	var vs := float(d.get("vs", 2.0))
 	var g := VoxelGrid.new(1)
 	var v: Array = d["vox"]

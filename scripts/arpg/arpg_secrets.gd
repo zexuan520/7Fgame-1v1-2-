@@ -542,22 +542,59 @@ func _build_gate(zone: String) -> void:
 	_gate.add_child(slab)
 	_gate.set_meta("slab", slab)
 	var have := shards(zone)
+	# 斜俯视镜头下石板正面被压扁、颜色又和墙差不多，远看只是一块灰石头：
+	# 石板四周描一圈本层颜色的细光边，凹槽空着也亮一点暗光（看得出“这里缺三样东西”），
+	# 门楣顶上（朝天的面，镜头看得最清楚）再摆一排三个，门前地上一圈光环
+	var edge_m := StandardMaterial3D.new()
+	edge_m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	edge_m.albedo_color = col * 0.9
+	for spec: Array in [[Vector3(0, 1.4, 0.21), Vector3(2.3, 0.07, 0.03)], [Vector3(0, -1.4, 0.21), Vector3(2.3, 0.07, 0.03)],
+			[Vector3(-1.13, 0, 0.21), Vector3(0.07, 2.85, 0.03)], [Vector3(1.13, 0, 0.21), Vector3(0.07, 2.85, 0.03)]]:
+		var e := MeshInstance3D.new()
+		var eb := BoxMesh.new()
+		eb.size = spec[1]
+		e.mesh = eb
+		e.material_override = edge_m
+		e.position = spec[0]
+		slab.add_child(e)
 	for i in range(NEED):
-		var s := MeshInstance3D.new()
-		var sb := BoxMesh.new()
-		sb.size = Vector3(0.42, 0.42, 0.12)
-		s.mesh = sb
+		var lit := i < have
 		var m := StandardMaterial3D.new()
 		m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		m.albedo_color = col * 1.7 if i < have else Color(0.08, 0.07, 0.07)
+		m.albedo_color = col * 1.8 if lit else col * 0.28
+		var s := MeshInstance3D.new()
+		var sb := BoxMesh.new()
+		sb.size = Vector3(0.5, 0.5, 0.12)
+		s.mesh = sb
 		s.material_override = m
-		s.position = Vector3((i - 1) * 0.65, 1.75, 0.22)
+		s.position = Vector3((i - 1) * 0.68, 0.35, 0.22)
 		slab.add_child(s)
+		var top := MeshInstance3D.new()
+		var tb2 := BoxMesh.new()
+		tb2.size = Vector3(0.42, 0.14, 0.42) if lit else Vector3(0.36, 0.06, 0.36)
+		top.mesh = tb2
+		top.material_override = m
+		top.position = Vector3((i - 1) * 0.95, 3.45 + tb2.size.y * 0.5, 0)
+		_gate.add_child(top)
+	var ring := MeshInstance3D.new()
+	var rq := QuadMesh.new()
+	rq.size = Vector2(4.2, 4.2)
+	ring.mesh = rq
+	var rm := ShaderMaterial.new()
+	rm.shader = load("res://shaders/arpg/fx_add.gdshader")
+	rm.set_shader_parameter("tex", load("res://assets/fx/lm_ring_b.png"))
+	rm.set_shader_parameter("color", Color(col.r, col.g, col.b, 0.35 + 0.15 * have))
+	rm.set_shader_parameter("energy", 1.4)
+	ring.material_override = rm
+	ring.rotation.x = -PI / 2
+	ring.position = Vector3(0, 0.05, 1.7)
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_gate.add_child(ring)
 	var l := OmniLight3D.new()
 	l.light_color = col
-	l.light_energy = 0.6 + 0.5 * have
-	l.omni_range = 4.0
-	l.position = Vector3(0, 1.6, 1.0)
+	l.light_energy = 1.0 + 0.5 * have
+	l.omni_range = 5.0
+	l.position = Vector3(0, 2.0, 1.4)
 	_gate.add_child(l)
 	var is_open := have >= NEED
 	var label := "%s · %s" % [g["gate"], "嵌上%s" % g["piece"] if is_open else "%d / %d" % [have, NEED]]

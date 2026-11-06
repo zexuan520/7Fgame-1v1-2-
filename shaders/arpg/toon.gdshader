@@ -15,14 +15,18 @@ uniform float fade = 1.0;             // 前景遮挡时的半透明（用抖动
 uniform bool swap_green = false;      // 把模型里偏绿的颜色（KayKit 游侠的兜帽）换成 swap_color，保留明暗
 uniform vec3 swap_color : source_color = vec3(0.2, 0.25, 0.4);
 uniform float mono = 0.0;             // 去色（铜像、石像：先变灰再乘 tint）
+uniform float swap_glow = 0.0;        // 换色那块自己亮一点（金身：不管什么颜色的灯照着都保住金色）
+uniform float light_neutral = 0.0;    // 灯光去色 0~1：彩色灯照上来按亮度算，不染色（金身在青光下不发绿）
 
 void fragment() {
 	vec3 src = pow(COLOR.rgb, vec3(2.2));   // 顶点色按 sRGB 存，换成线性再算光照
+	vec3 swap_emit = vec3(0.0);
 	if (swap_green) {
 		float g = src.g - max(src.r, src.b);
 		if (g > 0.05) {
 			float lum = dot(src, vec3(0.3, 0.59, 0.11));
 			src = swap_color * lum * 2.2;
+			swap_emit = src * swap_glow;
 		}
 	}
 	src = mix(src, vec3(dot(src, vec3(0.3, 0.55, 0.15))), mono);
@@ -30,7 +34,7 @@ void fragment() {
 	ALBEDO = mix(base, flash_color, flash);
 	float ndv = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
 	float rim = pow(1.0 - ndv, rim_power);
-	EMISSION = glow + rim_color * rim * rim_strength + flash_color * flash * 1.6;
+	EMISSION = glow + swap_emit + rim_color * rim * rim_strength + flash_color * flash * 1.6;
 	if (fade < 0.999) {
 		// 屏幕空间 4x4 抖动：不用透明排序也能“半透明”
 		int x = int(FRAGCOORD.x) % 4;
@@ -48,5 +52,6 @@ void light() {
 	float band = mix(shadow_floor, 0.68, smoothstep(-0.02, 0.04, ndl));
 	band = mix(band, 1.0, smoothstep(0.45, 0.5, ndl));
 	float sh = smoothstep(0.3, 0.6, ATTENUATION);
-	DIFFUSE_LIGHT += LIGHT_COLOR * mix(shadow_floor, band, sh) / 3.14159;
+	vec3 lc = mix(LIGHT_COLOR, vec3(dot(LIGHT_COLOR, vec3(0.3, 0.59, 0.11))), light_neutral);
+	DIFFUSE_LIGHT += lc * mix(shadow_floor, band, sh) / 3.14159;
 }

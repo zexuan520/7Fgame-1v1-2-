@@ -305,6 +305,8 @@ func apply_skin(id: String) -> void:
 	if sk.has("swap"):
 		var sc: Color = sk["swap"]
 		rig.mat.set_shader_parameter("swap_color", Vector3(sc.r, sc.g, sc.b))
+	rig.mat.set_shader_parameter("light_neutral", float(sk.get("neutral", 0.0)))
+	rig.mat.set_shader_parameter("swap_glow", float(sk.get("swap_glow", 0.0)))
 	var gl: Color = sk.get("glow", Color(0, 0, 0))
 	rig.set_glow(gl)
 	rig.apply(_pose if not _pose.is_empty() else Poses.idle(0.0))

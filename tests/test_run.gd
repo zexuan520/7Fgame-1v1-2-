@@ -1485,11 +1485,11 @@ func test_audio() -> void:
 		used[k] = true
 	var missing := []
 	for k: String in used:
-		if Game._load_sound("res://assets/sfx/%s.wav" % k) == null:
+		if Game._sfx_stream(k) == null:   # 变体目录 assets/sfx/<名>/N.ogg 优先，没有才用 <名>.wav
 			missing.append(k)
 	_check(used.size() >= 25 and missing.is_empty(), "用到的 %d 个音效都能加载 %s" % [used.size(), str(missing)])
 	for k: String in ["hub", "village", "bamboo", "boss"]:
-		_check(Game._load_sound("res://assets/music/%s.wav" % k) != null, "音乐 %s" % k)
+		_check(Game._load_sound("res://assets/music/%s.ogg" % k) != null or Game._load_sound("res://assets/music/%s.wav" % k) != null, "音乐 %s" % k)
 	_check(Game.music_name() == "hub", "破庙放破庙的曲子")
 	main.interact(_find("door", "action", "start_run"), _p())
 	await _wait_fade()

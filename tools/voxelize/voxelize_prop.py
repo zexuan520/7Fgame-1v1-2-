@@ -11,7 +11,7 @@
 输出 JSON：{"vs": 格子像素, "size": [宽, 高, 深]（格）, "vox": [x, y, z, r, g, b, ...]}，只存表面方块。
 清单每行：输出名 模型路径 [ppu 或 h=像素高]，# 开头是注释。
 """
-import argparse, json, os, sys
+import gzip, argparse, json, os, sys
 import numpy as np
 import trimesh
 from PIL import Image
@@ -128,7 +128,7 @@ def main():
     for src, out, ppu, fit, source in jobs:
         d = voxelize(src, ppu, a.vs, fit or None, a.grip)
         d["source"] = source
-        with open(out, "w") as f:
+        with gzip.open(out + ".gz", "wt", compresslevel=9) as f:   # 存成 <out>.gz，游戏读 .json.gz（VoxelModel.read_data）
             json.dump(d, f, separators=(",", ":"))
         print(os.path.basename(out), "size", d["size"], "voxels", len(d["vox"]) // 6)
 

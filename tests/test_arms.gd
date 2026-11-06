@@ -26,7 +26,7 @@ func _run() -> void:
 	for id: String in ArpgData.WEAPONS:
 		var c := ArpgArms.combo(id)
 		var w := ArpgData.weapon(id)
-		var ok := c.size() >= 3 and FileAccess.file_exists("res://assets/voxel/weapon/%s.json" % String(w["model"])) and String(w.get("trait", "")) != ""
+		var ok := c.size() >= 3 and VoxelModel.data_exists("res://assets/voxel/weapon/%s.json" % String(w["model"])) and String(w.get("trait", "")) != ""
 		for s: AttackStep in c:
 			ok = ok and s.startup > 0.0 and s.cancel_at <= s.total() and s.damage > 0.0
 		_check(ok, "%s：%d 段连招、模型、特性" % [w["name"], c.size()])
@@ -115,7 +115,7 @@ func _run() -> void:
 
 	print("皮肤")
 	for sk: Dictionary in ArpgArms.SKINS:
-		_check(FileAccess.file_exists("res://assets/voxel/%s.json" % String(sk["model"])), "%s：模型 %s，条件「%s」" % [sk["name"], sk["model"], ArpgArms.skin_why_not(String(sk["id"])) if ArpgArms.skin_why_not(String(sk["id"])) != "" else "已有"])
+		_check(VoxelModel.data_exists("res://assets/voxel/%s.json" % String(sk["model"])), "%s：模型 %s，条件「%s」" % [sk["name"], sk["model"], ArpgArms.skin_why_not(String(sk["id"])) if ArpgArms.skin_why_not(String(sk["id"])) != "" else "已有"])
 
 	Game.run_path = real_run
 	Game.save = keep
