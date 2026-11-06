@@ -10,6 +10,7 @@ var damage := 6.0
 var bleed := 0
 var width := 1.3
 var tint := Color(0.45, 1.0, 1.0)   # 长明青白；震岳火缝橙红
+var blob := 1.0                      # 地上光斑大小（火缝要细一点）
 var _t := 0.0
 var _tick := 0.2
 var _spark := 0.0
@@ -17,11 +18,14 @@ var _spark := 0.0
 
 func _ready() -> void:
 	var seg := to - from
-	var n := maxi(int(seg.length() / 1.6), 2)
+	var n := maxi(int(seg.length() / (1.6 * blob)), 2)
 	for i in range(n + 1):
 		var p := from.lerp(to, float(i) / n)
-		Vfx.I.ground(p, "lm_circle_a", Color(tint, 0.75), 1.9, 2.3, life, true, 0.1)
-		Vfx.I.ground(p, "magic_03", Color(tint.lightened(0.3), 0.5), 1.4, 1.8, life * 0.9, true, 0.15)
+		Vfx.I.ground(p, "lm_circle_a", Color(tint, 0.75), 1.9 * blob, 2.3 * blob, life, true, 0.1)
+		if blob >= 1.0:
+			Vfx.I.ground(p, "magic_03", Color(tint.lightened(0.3), 0.5), 1.4, 1.8, life * 0.9, true, 0.15)
+		else:
+			Vfx.I.ground(p, "scorch_01", Color(0.08, 0.04, 0.02, 0.7), 1.2 * blob, 1.4 * blob, life + 0.5, false)
 	var l := OmniLight3D.new()
 	l.light_color = tint
 	l.light_energy = 1.4

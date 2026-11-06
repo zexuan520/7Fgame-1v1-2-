@@ -1180,6 +1180,8 @@ func _slam() -> void:
 			b.life = 2.5
 			b.damage = 5.0 * power()
 			b.tint = Color(1.0, 0.5, 0.2)
+			b.blob = 0.55
+			b.width = 0.9
 			get_parent().add_child(b)
 			b.global_position = p
 	_link_mark("art")
