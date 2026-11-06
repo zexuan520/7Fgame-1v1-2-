@@ -2330,7 +2330,7 @@ func _open_branch(si: int, from_pause: bool) -> void:
 		items.append({"title": String(b["name"]), "desc": String(b["brief"]), "tag": "%s · %s" % [s["full"], "已选这一支" if r > 0 else "分支"],
 			"color": s["color"] if not why.begins_with("已走") else Color(0.45, 0.45, 0.45), "glyph": String(b["name"]).substr(0, 1),
 			"right": "%s　%s" % ["●".repeat(r) + "○".repeat(n - r), why if why != "" else "点一级"], "enabled": why == ""})
-	var m := _open_menu(String(s["full"]), "天赋点 %d　　先点的那一支锁定，另一支这一局就不能点了" % state.points, items, "cards", true)
+	var m := _open_menu(String(s["full"]), "天赋点 %d　　%s" % [state.points, "四选一，学了一种这一局就不能换" if brs.size() > 2 else "先点的那一支锁定，另一支这一局就不能点了"], items, "cards", true)
 	var pick := 0
 	for i in range(brs.size()):
 		if ArpgSkills.why_not(state.skills, state.points, String(brs[i]["id"])) == "":
