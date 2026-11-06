@@ -41,6 +41,7 @@ var curse := 0                           # 拿了地藏的钱：受伤 +10% 每�
 var secrets_done := {}                   # 已经打开过的隐藏房间（房间坐标）
 var side_rooms := 0                      # 这一局拿完的侧室（藏宝 / 伏兵 / 灵泉 / 遗骸 / 小试炼）
 var boons: Array[String] = []
+var forged := 0            # 这一局在灯冢熔铜炉里铸过几层甲（每层生命 +FORGE_HP）
 var whet := 0               # 这一局在游商那里磨过几次刀（每次伤害 +6%，铜钱的长期去处）
 var revives := 0
 var omen := ""              # 这一局的天象（OMENS 的键）
@@ -187,6 +188,8 @@ func stats() -> Dictionary:
 		ArpgData.add_stats(st, ArpgData.boon(b).get("stats", {}))
 	if whet > 0:
 		ArpgData.add_stats(st, {"atk": WHET_ATK * whet})
+	if forged > 0:
+		ArpgData.add_stats(st, {"hp": FORGE_HP * forged})
 	if omen != "" and OMENS.has(omen):
 		ArpgData.add_stats(st, OMENS[omen].get("stats", {}))
 	var sc := ArpgData.school_counts(boons)
@@ -212,6 +215,7 @@ static func difficulty() -> int:
 
 
 const WHET_ATK := 0.06
+const FORGE_HP := 20.0
 
 
 ## 磨刀一次的价钱：越磨越贵（第三层铜钱多了也有地方花）

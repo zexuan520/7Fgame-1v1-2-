@@ -14,6 +14,10 @@ const HUB_SIZE := Vector2(30, 22)
 const ROOM_SIZE := Vector2(44, 32)
 const SMALL_ROOM := Vector2(30, 22)
 const BOSS_ROOM := Vector2(40, 30)
+## 第二幕的地图板块再大一圈（地宫、灯冢、营地本来就该比山脚开阔；新小怪里有站远了打的、水底跟人的，得有地方跑）
+const ACT2_ROOM := Vector2(52, 38)
+const ACT2_SMALL := Vector2(34, 26)
+const ACT2_BOSS := Vector2(46, 34)
 
 var world_env: WorldEnvironment
 var sun: DirectionalLight3D
@@ -133,7 +137,10 @@ func _ready() -> void:
 			f.face_to(Vector3(0, 0, 1))
 			f.set_physics_process(false)
 			f.rig.scale = Vector3.ONE
-			f.rig.apply(f._aim_pose(1.0) if ks[i] == "archer" else Poses.idle(0.0))
+			f.rig.visible = true
+			var pz: Dictionary = f._aim_pose(1.0) if ks[i] in ["archer", "greyspear"] else Poses.idle(0.0)
+			f._pose = pz
+			f._apply_pose(1.0)
 		hero.visible = false
 	if _args.has("outro"):
 		# 测试：直接当作头目已经打倒
@@ -873,12 +880,13 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 		zone_id = state.boss_zone()
 	if zone_override != "":
 		zone_id = zone_override
-	var sz := ROOM_SIZE
+	var a2 := state.act == 2 and room_kind != "tutorial"
+	var sz := ACT2_ROOM if a2 else ROOM_SIZE
 	if room_kind in ["shop", "rest", "event", "start", "story", "treasure", "secret", "tutorial"]:
-		sz = SMALL_ROOM
+		sz = ACT2_SMALL if a2 else SMALL_ROOM
 	elif room_kind == "boss":
-		sz = BOSS_ROOM
-	var plans := [] if _args.has("noside") else SideRoom.plan(room_kind, sz, _rng, String(_args.get("side", "")) if _args.get("side", "1") != "1" else "")
+		sz = ACT2_BOSS if a2 else BOSS_ROOM
+	var plans := [] if _args.has("noside") else SideRoom.plan(room_kind, sz, _rng, String(_args.get("side", "")) if _args.get("side", "1") != "1" else "", zone_id)
 	_build_arena(zone_id, state.seed_value + fl * 1000 + state.run.row * 37 + state.run.col * 7 + (500 if room_kind == "secret" else 0), sz, plans)
 	_place_hero(arena.entry_pos)
 	state.rooms += 1
@@ -1175,24 +1183,27 @@ const FIGHT_POOLS := [
 		["shield", 3, "archer", 3], ["charger", 2, "crawler", 4], ["summoner", 2, "skeleton", 3],
 		["mage", 2, "archer", 2, "shield", 2], ["rogue", 3, "charger", 1, "bomber", 2]],
 ]
-## 第二幕：青井地宫（水骨从水里偷袭、灯奴僧甩链子）；后两层先占位
+## 第二幕：青井地宫（水骨从水里偷袭、灯奴僧甩链子、引魂灯童躲在后面给同伴回血、井鳗骨在水底跟着人）
 const ACT2_POOLS := [
-	[["drowned", 5, "crawler", 3], ["skeleton", 3, "drowned", 3], ["drowned", 4, "archer", 2],
-		["chainmonk", 1, "drowned", 4], ["chainmonk", 1, "skeleton", 2, "archer", 2], ["shield", 2, "drowned", 3, "mage", 1],
-		["chainmonk", 2, "crawler", 4], ["rogue", 2, "drowned", 3, "bomber", 2]],
-	# 烛国灯冢：烛国甲士（披甲，先破架势）、披火骨（死了留一摊火）
-	[["flameskel", 4, "crawler", 3], ["armored", 1, "skeleton", 3], ["flameskel", 3, "archer", 2],
-		["armored", 2, "flameskel", 2], ["armored", 1, "flameskel", 2, "mage", 1], ["shield", 2, "flameskel", 3, "archer", 1],
-		["armored", 2, "bomber", 2], ["charger", 2, "flameskel", 3], ["armored", 1, "summoner", 1, "crawler", 3]],
-	# 灰衣营：活人（刀手砍完就退、盾兵挡正面、弩手站远射）
-	[["greyblade", 4, "crawler", 2], ["greyguard", 2, "greyblade", 2], ["greyblade", 3, "greybow", 1],
+	[["drowned", 5, "crawler", 3], ["skeleton", 3, "drowned", 3], ["eel", 3, "crawler", 3],
+		["chainmonk", 1, "drowned", 4], ["chainmonk", 1, "skeleton", 2, "archer", 2], ["shield", 2, "drowned", 3, "lampkid", 1],
+		["chainmonk", 2, "crawler", 4], ["rogue", 2, "drowned", 3, "bomber", 2], ["eel", 3, "skeleton", 2, "lampkid", 1],
+		["chainmonk", 1, "eel", 2, "lampkid", 1, "archer", 1], ["eel", 4, "drowned", 2]],
+	# 烛国灯冢：烛国甲士（披甲，先破架势）、披火骨（死了留一摊火）、泼油俑（扔油罐）、殉灯俑（成对，要一起打死）
+	[["flameskel", 4, "crawler", 3], ["armored", 1, "skeleton", 3], ["twin", 2, "crawler", 3],
+		["armored", 2, "flameskel", 2], ["armored", 1, "flameskel", 2, "oiler", 1], ["shield", 2, "flameskel", 3, "archer", 1],
+		["armored", 2, "bomber", 2], ["charger", 2, "flameskel", 3], ["armored", 1, "summoner", 1, "crawler", 3],
+		["twin", 4, "oiler", 1], ["oiler", 2, "armored", 1, "twin", 2], ["twin", 2, "flameskel", 2, "oiler", 1]],
+	# 灰衣营：活人（刀手砍完就退、盾兵挡正面、弩手站远射、枪兵隔着几步扎、旗手一举旗旁边的发狠）
+	[["greyblade", 4, "crawler", 2], ["greyguard", 2, "greyblade", 2], ["greyspear", 2, "greyblade", 2],
 		["greyguard", 2, "greybow", 2], ["greyblade", 3, "greyguard", 1, "greybow", 1], ["armored", 1, "greyblade", 3],
-		["greyguard", 3, "greyblade", 2], ["greybow", 3, "greyblade", 2], ["greyblade", 4, "crawler", 3]],
+		["greyguard", 3, "greyblade", 2], ["greybow", 3, "greyblade", 2], ["greyblade", 4, "crawler", 3],
+		["greyflag", 1, "greyblade", 3, "greyspear", 1], ["greyspear", 3, "greybow", 1], ["greyflag", 1, "greyguard", 2, "greyspear", 2]],
 ]
 const ACT2_LATE := [
-	[["chainmonk", 1, "samurai", 1, "drowned", 2], ["chainmonk", 2, "archer", 2], ["samurai", 1, "drowned", 4]],
-	[["armored", 2, "samurai", 1], ["armored", 1, "flameskel", 3, "summoner", 1], ["samurai", 1, "armored", 1, "archer", 2]],
-	[["officer", 1, "greyblade", 2], ["greyguard", 2, "greybow", 1, "greyblade", 1], ["officer", 1, "greybow", 1]],
+	[["chainmonk", 1, "samurai", 1, "drowned", 2], ["chainmonk", 2, "archer", 2, "lampkid", 1], ["samurai", 1, "eel", 3, "lampkid", 1]],
+	[["armored", 2, "samurai", 1], ["armored", 1, "flameskel", 3, "summoner", 1], ["samurai", 1, "armored", 1, "oiler", 2], ["twin", 4, "armored", 1]],
+	[["officer", 1, "greyblade", 2], ["greyguard", 2, "greybow", 1, "greyflag", 1], ["officer", 1, "greyspear", 2, "greyflag", 1]],
 ]
 ## 每层深处（第 4 排起）多加的精英波
 const LATE_WAVES := [
@@ -1235,11 +1246,11 @@ func _make_waves(kind: String, fl: int) -> Array:
 			return w
 		"elite":
 			if state.act == 2 and state.zone() == "camp":
-				return [["greyguard", 2, "greyblade", 3], ["officer", 1, "greybow", 1, "greyblade", 1], ["officer", 1, "greyguard", 2, "greybow", 1]]
+				return [["greyguard", 2, "greyblade", 3], ["officer", 1, "greybow", 1, "greyspear", 2], ["officer", 1, "greyguard", 2, "greyflag", 1, "greybow", 1]]
 			if state.act == 2 and state.zone() == "vault":
-				return [["armored", 2, "flameskel", 3], ["samurai", 1, "armored", 1, "archer", 2], ["armored", 2, "samurai", 1, "flameskel", 2]]
+				return [["armored", 2, "flameskel", 3], ["samurai", 1, "armored", 1, "oiler", 2], ["armored", 2, "samurai", 1, "twin", 2]]
 			if state.act == 2:
-				return [["chainmonk", 2, "drowned", 3], ["samurai", 1, "chainmonk", 1, "archer", 2], ["samurai", 2, "drowned", 4]]
+				return [["chainmonk", 2, "drowned", 3], ["samurai", 1, "chainmonk", 1, "lampkid", 1, "archer", 2], ["samurai", 2, "eel", 3, "lampkid", 1]]
 			if fl >= 2:
 				return [["shield", 3, "archer", 3], ["samurai", 2, "bomber", 3], ["samurai", 2, "summoner", 1, "charger", 1]]
 			if fl >= 1:
@@ -1346,8 +1357,9 @@ func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
 	if state != null and kind != "":
 		state.kills += 1
 		ArpgAch.add("kills")
+		ArpgAch.killed(kind)
 		# 装备掉落：赤甲武士常掉，小怪偶尔掉
-		var chance := {"ronin": 0.6, "digger": 0.8, "officer": 0.5, "greyguard": 0.06, "greyblade": 0.04, "greybow": 0.04, "armored": 0.12, "flameskel": 0.03, "chainmonk": 0.12, "drowned": 0.03, "samurai": 0.35, "charger": 0.15, "summoner": 0.1, "shield": 0.08, "mage": 0.06, "archer": 0.05,
+		var chance := {"ronin": 0.6, "digger": 0.8, "officer": 0.5, "greyguard": 0.06, "greyspear": 0.05, "greyflag": 0.08, "oiler": 0.06, "twin": 0.03, "eel": 0.04, "lampkid": 0.06, "greyblade": 0.04, "greybow": 0.04, "armored": 0.12, "flameskel": 0.03, "chainmonk": 0.12, "drowned": 0.03, "samurai": 0.35, "charger": 0.15, "summoner": 0.1, "shield": 0.08, "mage": 0.06, "archer": 0.05,
 			"skeleton": 0.04, "rogue": 0.04, "crawler": 0.015}
 		if _rng.randf() < float(chance.get(kind, 0.0)):
 			_drop_gear(pos, -1, 0.1 if kind == "samurai" else 0.0)
@@ -2477,6 +2489,11 @@ func _open_menu(title: String, sub: String, items: Array, layout: String, cancel
 	_menu = m
 	hud.visible = false
 	hero.clear_buffer()
+	if _args.has("pick"):
+		# 测试：菜单开了一会儿自动选第 N 项
+		get_tree().create_timer(1.5).timeout.connect(func() -> void:
+			if is_instance_valid(m) and _menu == m:
+				m.chosen.emit(mini(int(_args["pick"]), items.size() - 1)))
 	return m
 
 

@@ -7,6 +7,10 @@ extends Node3D
 
 const KINDS := ["cache", "ambush", "spring", "lore", "trial"]
 const WEIGHTS := [20, 28, 14, 20, 18]
+## 第二幕三层各有一种独有的侧室：青井的许愿井（投钱换魂玉或心法）、灯冢的熔铜炉（淬刃 / 铸甲 / 熔装备）、
+## 灰衣营的木笼（撬开放人，守卫扑上来，打完被救的人送一份谢礼）
+const UNIQUE := {"well": "wish", "vault": "forge", "camp": "cage"}
+const UNIQUE_W := 26
 ## 每层一套名字：[名字, 门上小字]
 const NAMES := {
 	"forest": {"cache": ["猎户木屋", "门没锁"], "ambush": ["藤下伏兵", "里面有动静"], "spring": ["林间灵泉", "水声"],
@@ -16,11 +20,11 @@ const NAMES := {
 	"temple": {"cache": ["香积库", "香火味"], "ambush": ["罗汉堂", "有人在等"], "spring": ["禅房", "很静"],
 		"lore": ["藏经阁", "满架经卷"], "trial": ["铜铃阵", "铃在自己响"]},
 	"well": {"cache": ["沉经库", "水底有光"], "ambush": ["水牢", "铁链在晃"], "spring": ["青泉", "水是温的"],
-		"lore": ["刻经僧遗骸", "满墙刻字"], "trial": ["链阵", "七根灯链"]},
+		"lore": ["刻经僧遗骸", "满墙刻字"], "trial": ["链阵", "七根灯链"], "wish": ["许愿井", "井底一层铜钱"]},
 	"vault": {"cache": ["陪葬铜库", "铜锈味"], "ambush": ["甲士俑坑", "甲片在响"], "spring": ["灯油池", "油是凉的"],
-		"lore": ["壁画廊", "墙上有画"], "trial": ["七灯阵", "灯一盏盏亮"]},
+		"lore": ["壁画廊", "墙上有画"], "trial": ["七灯阵", "灯一盏盏亮"], "forge": ["熔铜炉", "炉火还没熄"]},
 	"camp": {"cache": ["军需帐", "封条撕了一半"], "ambush": ["刑帐", "里面有人"], "spring": ["伙房", "锅还热着"],
-		"lore": ["文书帐", "桌上堆着信"], "trial": ["校场", "鼓声"]},
+		"lore": ["文书帐", "桌上堆着信"], "trial": ["校场", "鼓声"], "cage": ["木笼", "里面有人在哭"]},
 }
 ## 遗骸 / 骨室 / 藏经阁里读到的旧事（每层几段，随机一段）
 const LORE := {
@@ -86,10 +90,13 @@ var _t := 0.0
 var _fight_t := 0.0
 var _trial_left := 0.0
 var _rng := RandomNumberGenerator.new()
+var _prisoners: Array[VoxActor] = []
+var _npc0: ArpgNpc
 
 
 ## 这间房要开的侧室：返回 [{side, z, w, kind, room}]，交给 Arena.doors 和 SideRoom.build
-static func plan(room_kind: String, sz: Vector2, rng: RandomNumberGenerator, force_kind: String = "") -> Array:
+static func plan(room_kind: String, sz: Vector2, rng: RandomNumberGenerator, force_kind: String = "", zone_id: String = "") -> Array:
+	var z := String(ZONE_OF.get(zone_id, "forest"))
 	var n := 0
 	if room_kind in ["fight", "elite", "trial"]:
 		n = 1 + (1 if rng.randf() < 0.4 else 0)
@@ -100,24 +107,33 @@ static func plan(room_kind: String, sz: Vector2, rng: RandomNumberGenerator, for
 	var out := []
 	var first_side := -1.0 if rng.randf() < 0.5 else 1.0
 	var big := sz.x >= 40.0
+	var huge := sz.x >= 50.0     # 第二幕的大房间：侧室也大一圈
 	for i in range(n):
-		var k := force_kind if force_kind != "" else _pick_kind(rng, out)
-		var r := Vector2(16, 12) if (big and k in ["ambush", "trial"]) else (Vector2(12, 10) if big else Vector2(10, 9))
+		var k := force_kind if force_kind != "" else _pick_kind(rng, out, z)
+		var fightk: bool = k in ["ambush", "trial", "cage"]
+		var r := Vector2(16, 12) if (big and fightk) else (Vector2(12, 10) if big else Vector2(10, 9))
+		if huge:
+			r = Vector2(19, 14) if fightk else Vector2(14, 11)
 		var hz := sz.y * 0.5
 		out.append({"side": first_side * (1.0 if i == 0 else -1.0), "z": rng.randf_range(-hz + 6.0, hz - 6.0), "w": 3.0, "kind": k, "room": r})
 	return out
 
 
-static func _pick_kind(rng: RandomNumberGenerator, taken: Array) -> String:
+static func _pick_kind(rng: RandomNumberGenerator, taken: Array, z: String = "") -> String:
+	var kinds: Array = KINDS.duplicate()
+	var weights: Array = WEIGHTS.duplicate()
+	if UNIQUE.has(z):
+		kinds.append(UNIQUE[z])
+		weights.append(UNIQUE_W)
 	for _t in range(8):
 		var total := 0
-		for w: int in WEIGHTS:
+		for w: int in weights:
 			total += w
 		var r := rng.randi() % total
-		for i in range(KINDS.size()):
-			r -= int(WEIGHTS[i])
+		for i in range(kinds.size()):
+			r -= int(weights[i])
 			if r < 0:
-				var k: String = KINDS[i]
+				var k: String = kinds[i]
 				var dup := false
 				for p: Dictionary in taken:
 					if p["kind"] == k:
@@ -149,6 +165,12 @@ func build(plan_: Dictionary) -> void:
 	_build_door()
 	_dress()
 	_build_content()
+	if OS.get_cmdline_user_args().has("--useside") and _npc0 != null:
+		# 测试：门开后自动用一下侧室里的东西（配 --inside、--pick=N）
+		main.get_tree().create_timer(2.5).timeout.connect(func() -> void:
+			if is_instance_valid(_npc0):
+				unlock(false)
+				_npc0.interacted.emit(_npc0))
 
 
 func center() -> Vector3:
@@ -323,6 +345,38 @@ func _build_content() -> void:
 		"lore":
 			var k2: String = {"forest": "grave_a", "grave": "coffin", "temple": "shelf", "well": "coffin", "vault": "shrine", "camp": "table"}[zone]
 			main._npc(display_name(), mid, {"kit": k2, "scale": 1.3}, _read_lore)
+		"wish":
+			_npc0 = main._npc(display_name(), mid, {"kit": "well", "scale": 1.3}, _use_wish)
+			if Vfx.I != null:
+				Vfx.I.ground(mid + Vector3(0, 0.02, 0), "magic_01", Color(1.0, 0.85, 0.45, 0.45), 2.4, 2.8, 1.0e6).reparent(self)
+			for i in range(4):
+				arena.kit("candles", mid + Vector3(cos(TAU * i / 4.0 + 0.4), 0, sin(TAU * i / 4.0 + 0.4)) * 2.0, _rng.randf() * TAU, 0.8, false)
+		"forge":
+			var fu: Array = arena._cached("furnace", arena._furnace)
+			var fp := at(0.86, 0.45)
+			arena.voxel_piece(fu[0], fp, 0.12, fu[1], Vector3(1.8, 2, 2.2), false, -side * PI * 0.5)
+			arena._flame(fp + Vector3(-side * 1.0, 0.6, 0))
+			arena._smoke_column(fp + Vector3(0, 2.6, 0))
+			var fl := OmniLight3D.new()
+			fl.light_color = Color(1.0, 0.5, 0.2)
+			fl.light_energy = 2.6
+			fl.omni_range = 7.0
+			add_child(fl)
+			fl.global_position = fp + Vector3(-side * 1.2, 1.0, 0)
+			_npc0 = main._npc(display_name(), at(0.6, 0.45), {"kit": "box", "scale": 0.9}, _use_forge)
+		"cage":
+			var cp := at(0.72, 0.45)
+			arena.voxel_piece(arena._cached("cage", arena._cage), cp, 0.12, null, Vector3(1.8, 2, 1.8), false, -side * PI * 0.5)
+			for i in range(2):
+				var va := VoxActor.new()
+				add_child(va)
+				va.setup(["rogue", "barbarian"][i], "", 30.0, Color(0.85, 0.78, 0.7), 0.9)
+				va.mat.set_shader_parameter("mono", 0.5)
+				va.global_position = cp + Vector3(0, 0, -0.5 + i * 1.0)
+				va.rotation.y = -side * PI * 0.5
+				va.apply(Poses.hurt(0.6))
+				_prisoners.append(va)
+			_npc0 = main._npc("撬开木笼", at(0.5, 0.45), {"kit": "", "scale": 1.0}, _open_cage)
 		"trial":
 			var k3: String = {"forest": "gravestone", "grave": "skull_candle", "temple": "lantern", "well": "lantern", "vault": "candles", "camp": "banner"}[zone]
 			main._npc(display_name(), mid, {"kit": k3, "scale": 1.6}, _start_trial)
@@ -385,11 +439,11 @@ func _start_ambush() -> void:
 	var fl := main.state.floor_i()
 	var w: Array = [["crawler", 4, "skeleton", 2], ["rogue", 2, "skeleton", 2, "mage", 1], ["skeleton", 2, "rogue", 2, "mage", 1]][mini(fl, 2)]
 	if zone == "well":
-		w = ["drowned", 4, "chainmonk", 1]
+		w = ["drowned", 3, "eel", 2, "chainmonk", 1, "lampkid", 1]
 	elif zone == "vault":
-		w = ["armored", 2, "flameskel", 3]
+		w = ["armored", 2, "twin", 2, "oiler", 1]
 	elif zone == "camp":
-		w = ["greyblade", 3, "greybow", 2]
+		w = ["greyblade", 3, "greyspear", 1, "greyflag", 1]
 	if main.state.run.row >= 2 or fl >= 1:
 		w = w + ["samurai", 1]
 	_spawn(w)
@@ -419,13 +473,13 @@ func _start_trial(n: ArpgNpc) -> void:
 	main.hud.banner(display_name(), "22 秒内斩尽来敌", 1.8)
 	var fl := main.state.floor_i()
 	if zone == "well":
-		_spawn(["crawler", 6, "drowned", 4])
+		_spawn(["crawler", 6, "drowned", 3, "eel", 2])
 		return
 	if zone == "vault":
-		_spawn(["crawler", 6, "flameskel", 4])
+		_spawn(["crawler", 6, "flameskel", 3, "twin", 2])
 		return
 	if zone == "camp":
-		_spawn(["greyblade", 4, "crawler", 4])
+		_spawn(["greyblade", 4, "crawler", 4, "greyspear", 1])
 		return
 	_spawn([["crawler", 8, "skeleton", 2], ["crawler", 5, "rogue", 3, "mage", 1], ["skeleton", 3, "rogue", 3, "mage", 1]][mini(fl, 2)])
 
@@ -437,7 +491,9 @@ func _end_fight(won: bool) -> void:
 	_seal_off()
 	main.hud.wave_text = "清场"
 	_count()
-	if kind == "ambush":
+	if kind == "cage":
+		_cage_thanks()
+	elif kind == "ambush":
 		ArpgAch.unlock("side_ambush")
 		main.hud.banner("伏兵尽灭", "箱子里的东西归你了", 1.8)
 		Game.sfx("door")
@@ -562,3 +618,189 @@ func _read_lore(n: ArpgNpc) -> void:
 			if is_instance_valid(main) and main.mode == "room":
 				main._offer_boons_then(1))
 	_update_label()
+
+
+# ---------- 第二幕独有的侧室 ----------
+
+## 记下第二幕三种独有侧室各去过哪种（三种都去过：成就）
+func _mark_a2() -> void:
+	var got: Array = Game.save.get("arpg_side2", [])
+	if not got.has(kind):
+		got.append(kind)
+		Game.save["arpg_side2"] = got
+		Game.write_save()
+	if got.size() >= UNIQUE.size():
+		ArpgAch.unlock("side_act2")
+
+
+## 许愿井：井底铺满刻着名字的铜钱。投小钱听个响（多半还回几枚魂玉），投大钱许个大愿（一个心法）
+func _use_wish(n: ArpgNpc) -> void:
+	if n.used:
+		return
+	var st := main.state
+	var small := st.price(15)
+	var big := st.price(50)
+	var items := [
+		{"title": "投 %d 文" % small, "desc": "听个响。井里多半会还回点什么", "enabled": st.coins >= small},
+		{"title": "投 %d 文" % big, "desc": "许个大愿：得一个心法", "enabled": st.coins >= big},
+		{"title": "不投", "desc": "走了"},
+	]
+	var m := main._open_menu(display_name(), "井底铺了一层铜钱，每一枚上都刻着一个名字。", items, "list", true)
+	m.chosen.connect(func(i: int) -> void:
+		main._close_menu()
+		if i == 2 or st.coins < (small if i == 0 else big):
+			return
+		n.used = true
+		stage = "done"
+		_count()
+		_mark_a2()
+		ArpgAch.unlock("wish")
+		Game.sfx("coin", -2.0)
+		main.vfx.chips(n.global_position + Vector3(0, 1.0, 0), Vector3.DOWN, Color(1.0, 0.8, 0.35), 8, 3.0, 0.08)
+		if i == 0:
+			st.coins -= small
+			if _rng.randf() < 0.6:
+				var jade := 2 + st.floor_i()
+				for j in range(jade):
+					main._loot(n.global_position + Vector3(0, 0, 1.0), "jade", 1)
+				main.hud.banner("咚——", "井里浮上来几枚魂玉", 1.6)
+				main.vfx.sheet("soul-rise", n.global_position, 3.0, Color(0.6, 0.95, 1.0), 1.6)
+			else:
+				main.hud.banner("咚。", "什么也没浮上来", 1.6)
+		else:
+			st.coins -= big
+			main.hud.banner("井水亮了一下", "选一个心法", 1.4)
+			main.vfx.sheet("soul-rise", n.global_position, 3.5, Color(1.0, 0.9, 0.55), 1.8)
+			main.get_tree().create_timer(0.6).timeout.connect(func() -> void:
+				if main._menu == null:
+					main._offer_boons_then(1))
+		_update_label())
+
+
+## 熔铜炉：烛国铸灯的炉子还烧着。淬一次刀（伤害 +6%，同磨刀）、铸一层甲（这一局生命 +20），或者把行囊里一件装备熔了换魂玉
+func _use_forge(n: ArpgNpc) -> void:
+	if n.used:
+		return
+	var st := main.state
+	var cost := st.price(40)
+	var items := [
+		{"title": "淬刃（%d 文）" % cost, "desc": "这一局伤害 +%d%%（和磨刀叠加）" % int(round(ArpgState.WHET_ATK * 100)), "enabled": st.coins >= cost},
+		{"title": "铸甲（%d 文）" % cost, "desc": "这一局生命上限 +%d，并回满这部分" % int(ArpgState.FORGE_HP), "enabled": st.coins >= cost},
+		{"title": "熔掉一件装备", "desc": "行囊里品级最低的一件熔成铜水，换 魂玉 +%d" % (3 + st.floor_i()), "enabled": not st.bag.is_empty()},
+		{"title": "离开", "desc": ""},
+	]
+	var m := main._open_menu(display_name(), "烛国铸灯的炉子，炉膛里的火四百年没熄过。", items, "list", true)
+	m.chosen.connect(func(i: int) -> void:
+		main._close_menu()
+		if i == 3 or (i < 2 and st.coins < cost) or (i == 2 and st.bag.is_empty()):
+			return
+		n.used = true
+		stage = "done"
+		_count()
+		_mark_a2()
+		ArpgAch.unlock("forge")
+		var h := main.hero
+		match i:
+			0:
+				st.coins -= cost
+				st.whet += 1
+				h.apply_stats(st.stats(), st.weapon)
+				main.feel.callout(h.head_top(), "淬刃 · 伤害 +%d%%" % int(round(ArpgState.WHET_ATK * 100 * st.whet)), Color(1.0, 0.75, 0.4), 1.1)
+			1:
+				st.coins -= cost
+				st.forged += 1
+				h.apply_stats(st.stats(), st.weapon)
+				h.hp = minf(h.max_hp, h.hp + ArpgState.FORGE_HP)
+				main.feel.callout(h.head_top(), "铸甲 · 生命 +%d" % int(ArpgState.FORGE_HP), Color(1.0, 0.75, 0.4), 1.1)
+			2:
+				var worst := 0
+				for j in range(st.bag.size()):
+					if int(st.bag[j].get("rarity", 0)) < int(st.bag[worst].get("rarity", 0)):
+						worst = j
+				var it: Dictionary = st.bag[worst]
+				st.bag.remove_at(worst)
+				for j in range(3 + st.floor_i()):
+					main._loot(n.global_position + Vector3(0, 0, 1.0), "jade", 1)
+				main.hud.banner("熔了", "%s化成了一炉铜水" % String(it.get("name", "装备")), 1.6)
+		Game.sfx("slash_heavy", -4.0, 0.0, 0.6)
+		main.vfx.shock_ring(n.global_position, Color(1.0, 0.6, 0.25), 0.4, 4.0, 0.5)
+		main.vfx.chips(n.global_position + Vector3(0, 1.0, 0), Vector3.UP, Color(1.0, 0.6, 0.2), 14, 6.0, 0.08)
+		_update_label())
+
+
+## 木笼：撬开就有人喊，守卫从帐后扑出来；打完被救的人道谢、送一份东西
+func _open_cage(n: ArpgNpc) -> void:
+	if n.used or stage != "open":
+		return
+	n.used = true
+	n.visible = false
+	stage = "fight"
+	_fight_t = 0.0
+	_seal_on()
+	Game.sfx("danger", -2.0)
+	main.hud.banner(display_name(), "有人喊：笼子开了——！", 1.8)
+	main.cam_rig.punch_zoom(0.3, 0.6)
+	var w := ["greyblade", 2, "greyflag", 1, "greyspear", 1]
+	if main.state.run.row >= 2:
+		w = w + ["greyguard", 1]
+	_spawn(w)
+
+
+## 被救的人：哪个村的、说一句、送一样（回血补药 / 魂玉 / 一件装备）
+const PRISONERS := [
+	["柳溪村的货郎", "“他们说抓人去点灯……我不想变成灯油。恩人，这包药你拿着。”", "heal"],
+	["石门村的猎户", "“我认得那盏灯的样子，跟我家祠堂里供的一模一样。这几枚东西是在营里捡的。”", "jade"],
+	["樱落村的阿婆", "“我孙子也被带走了，叫小满……你要是见着他……”她把一件旧护身塞进你手里。", "gear"],
+	["续命司的逃兵", "“我也是被抓来当兵的。花名册上我的名字早就画了叉。”他把藏着的铜钱都给了你。", "coins"],
+	["没说名字的人", "他只是一直磕头。你把他扶起来的时候，他往你手里塞了一样东西。", "jade"],
+]
+
+
+func _cage_thanks() -> void:
+	var saved := 2
+	ArpgAch.add("freed", saved)
+	_mark_a2()
+	var pr: Array = PRISONERS[_rng.randi() % PRISONERS.size()]
+	main.hud.banner("木笼开了", "被关着的人爬了出来", 1.6)
+	Game.sfx("door")
+	for va in _prisoners:
+		if is_instance_valid(va):
+			va.apply(Poses.idle(0.0))
+			main.vfx.sheet("soul-rise", va.global_position, 2.4, Color(1.0, 0.9, 0.7, 0.7), 1.4, false, 0.0, 1.6)
+	var lines := [["", "笼子里的人互相搀着爬出来。"], [String(pr[0]), String(pr[1])]]
+	var gift := String(pr[2])
+	match gift:
+		"heal":
+			lines.append(["", "（回复 35% 生命，药葫芦 +1）"])
+		"jade":
+			lines.append(["", "（魂玉 +%d）" % (3 + main.state.floor_i())])
+		"gear":
+			lines.append(["", "（得到一件装备）"])
+		"coins":
+			lines.append(["", "（铜钱 +40）"])
+	lines.append(["", "（这一路放出的人：%d）" % ArpgAch.stat("freed")])
+	var box := main._say(lines)
+	var at_p := at(0.6, 0.45)
+	var give := func() -> void:
+		if not is_instance_valid(main) or main.mode != "room":
+			return
+		match gift:
+			"heal":
+				main._heal(0.35)
+				if main.hero.gourds < main.hero.max_gourds:
+					main.hero.gourds += 1
+			"jade":
+				for j in range(3 + main.state.floor_i()):
+					main._loot(at_p, "jade", 1)
+			"gear":
+				main._drop_gear(at_p, 1)
+			"coins":
+				for j in range(8):
+					main._loot(at_p, "coin", 5)
+		for va in _prisoners:
+			if is_instance_valid(va):
+				va.queue_free()
+	if box != null:
+		box.finished.connect(give)
+	else:
+		give.call()

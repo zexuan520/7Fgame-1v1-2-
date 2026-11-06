@@ -54,12 +54,28 @@ const LIST := [
 	["end2_zhan", "斩烬", "第二幕结局：斩烬", false],
 	["end2_du", "渡烬", "第二幕结局：渡烬", true],
 	["end2_he", "合刃", "第二幕真结局：合刃", true],
+	# 第二幕 · 扩充（新小怪、独有侧室）
+	["a2_foes", "山中百态", "引魂灯童、井鳗骨、泼油俑、殉灯俑、灰衣枪兵、灰衣旗手都斩过", false],
+	["lampkid_10", "吹灯", "累计打灭 10 个引魂灯童", false],
+	["eel_15", "截流", "累计斩 15 条井鳗骨", false],
+	["twin_pair", "同穴", "一秒之内打倒两只殉灯俑", false],
+	["flag_cut", "斩旗", "灰衣旗手还没举过旗就把他斩了", false],
+	["wish", "投钱问井", "在青井的许愿井里投一次钱", false],
+	["forge", "回炉", "在灯冢的熔铜炉里淬刃、铸甲或熔一件装备", false],
+	["cage_10", "破笼", "累计从灰衣营的木笼里放出 10 个人", false],
+	["side_act2", "山中别室", "许愿井、熔铜炉、木笼三种侧室都进过", false],
 ]
+
+## 第二幕扩充的新小怪（全都斩过：山中百态）
+const A2_FOES := ["lampkid", "eel", "oiler", "twin", "greyspear", "greyflag"]
 
 ## 累计数到了就解锁：统计键 → [[数量, 成就id], ...]
 const STAT_GOALS := {
 	"kills": [[100, "kills_100"], [1000, "kills_1000"]],
 	"side_rooms": [[20, "side_20"]],
+	"freed": [[10, "cage_10"]],
+	"k_lampkid": [[10, "lampkid_10"]],
+	"k_eel": [[15, "eel_15"]],
 }
 
 static var on_unlock: Callable      # func(id: String, name: String, desc: String)
@@ -118,6 +134,18 @@ static func add(key: String, n: int = 1) -> void:
 	for g: Array in STAT_GOALS.get(key, []):
 		if v >= int(g[0]):
 			unlock(String(g[1]))
+
+
+## 斩了一只敌人：第二幕新小怪记种类、记数
+static func killed(kind: String) -> void:
+	if not enabled or not A2_FOES.has(kind):
+		return
+	add("k_" + kind)
+	var st: Dictionary = Game.save.get("ach_stat", {})
+	for k: String in A2_FOES:
+		if int(st.get("k_" + k, 0)) <= 0:
+			return
+	unlock("a2_foes")
 
 
 ## 打的连击数（每次连击 +1 时调）

@@ -76,6 +76,26 @@ const TYPES := {
 	# 灰衣军官：精英，重劈 + 突刺，会喊人
 	"officer": {"name": "灰衣军官", "model": "barbarian", "weapon": "axe2", "wlen": 42.0, "tint": Color(0.75, 0.78, 0.84), "mono": 0.8, "k": 1.2,
 		"hp": 380.0, "speed": 4.0, "detect": 30.0, "range": 2.7, "dmg": 19.0, "windup": 0.5, "attack": "heavy", "poise": 60.0, "coins": 22, "dodge": 0.2},
+	# ---------- 第二幕 · 扩充：每层两类新小怪 ----------
+	# 引魂灯童（青井）：提着纸灯的小骸骨，不打人，躲在后面；隔一阵灯一亮，身边的怪都回血
+	"lampkid": {"name": "引魂灯童", "model": "skel_minion", "weapon": "", "wlen": 0.0, "tint": Color(0.82, 0.92, 1.05), "k": 0.72,
+		"hp": 34.0, "speed": 4.4, "detect": 16.0, "range": 9.0, "dmg": 0.0, "windup": 0.8, "attack": "aura", "poise": 0.0, "coins": 4, "keep": 8.5,
+		"offhand": "lantern_h", "olen": 30.0, "aura": "heal"},
+	# 井鳗骨（青井）：在积水底下游着跟你，冒头咬一口又潜下去（潜着时打不着）
+	"eel": {"name": "井鳗骨", "model": "skel_rogue", "weapon": "dagger", "wlen": 20.0, "tint": Color(0.5, 0.95, 1.0), "mono": 0.65, "k": 0.95,
+		"hp": 48.0, "speed": 5.0, "detect": 16.0, "range": 2.6, "dmg": 13.0, "windup": 0.34, "attack": "lunge", "poise": 0.0, "coins": 4, "lurk": true, "dive": true},
+	# 泼油俑（灯冢）：铜俑抱着灯油罐，站远了往你脚下扔，落地烧一摊火
+	"oiler": {"name": "泼油俑", "model": "knight", "weapon": "", "wlen": 0.0, "tint": Color(1.2, 0.84, 0.5), "mono": 0.7, "k": 1.05,
+		"hp": 70.0, "speed": 3.0, "detect": 16.0, "range": 12.0, "dmg": 7.0, "windup": 0.8, "attack": "lob", "poise": 0.0, "coins": 5, "keep": 8.0},
+	# 殉灯俑（灯冢）：成对殉葬的铜俑，倒下一个，只要另一个还站着，几秒后又爬起来
+	"twin": {"name": "殉灯俑", "model": "skel_warrior", "weapon": "sword", "wlen": 30.0, "tint": Color(1.2, 0.9, 0.55), "mono": 0.6, "k": 1.0,
+		"hp": 62.0, "speed": 3.9, "detect": 14.0, "range": 2.3, "dmg": 13.0, "windup": 0.5, "attack": "slash", "poise": 0.0, "coins": 4, "twin": true},
+	# 灰衣枪兵（灰衣营）：长枪，隔着四五步就扎过来，扎完退开
+	"greyspear": {"name": "灰衣枪兵", "model": "knight", "weapon": "spear", "wlen": 60.0, "tint": Color(0.8, 0.82, 0.87), "mono": 0.9, "k": 1.05,
+		"hp": 80.0, "speed": 3.8, "detect": 15.0, "range": 4.6, "dmg": 15.0, "windup": 0.6, "attack": "thrust", "poise": 0.0, "coins": 5, "hitrun": true, "dodge": 0.15},
+	# 灰衣旗手（灰衣营）：扛旗的，躲在后面，旗一举，身边的灰衣人发狠（出手更快、更疼）
+	"greyflag": {"name": "灰衣旗手", "model": "barbarian", "weapon": "flag", "wlen": 54.0, "tint": Color(0.8, 0.82, 0.86), "mono": 0.75, "k": 1.0,
+		"hp": 75.0, "speed": 3.8, "detect": 16.0, "range": 9.0, "dmg": 10.0, "windup": 0.8, "attack": "aura", "poise": 0.0, "coins": 6, "keep": 7.5, "aura": "rally"},
 	# 烬的残影（燃烬时）：灰烬凝成的人影，排开冲过来，打不着
 	"ashghost": {"name": "烬影", "model": "rogue", "weapon": "sword", "wlen": 34.0, "tint": Color(1.4, 0.9, 0.7), "mono": 1.0, "k": 1.0,
 		"hp": 9999.0, "speed": 3.0, "detect": 40.0, "range": 2.6, "dmg": 15.0, "windup": 0.7, "attack": "charge", "poise": 999.0, "coins": 0, "phantom": true},
@@ -136,6 +156,13 @@ var _aim: Array[Vector3] = []        # 骨弩手这一轮射哪几个方向
 var _lurk_t := 0.0                   # 水骨在水里埋了多久
 var _tide_t := 8.0                   # 枯荣：二阶段多久推一次水波
 var _armor_down := 0.0               # 烛国甲士：破甲剩余时间
+var _aura_cd := 2.5                  # 引魂灯童、灰衣旗手：多久亮一次灯 / 举一次旗
+var _auras := 0                      # 亮过几次灯、举过几次旗（旗手没举过旗就被斩：成就）
+var _rally := 0.0                    # 被旗手激励：剩余时间（出手更快、更疼，描边发红）
+var _rim0 := []                      # 激励前的描边（结束后还原）
+var _up_t := 0.0                     # 井鳗骨：冒出水面多久了（久了就潜回去）
+static var _twin_dead_t := -100.0    # 殉灯俑：上一只倒下的时间（一秒内打死一对 → 成就）
+const AURA_R := 7.0                  # 灯童回血、旗手激励的半径
 var charge_dir := Vector3.ZERO       # 亲兵：列阵冲锋的方向（定好了就不跟着主角转）
 var _rank_t := 9.0                   # 不夜将军：多久号令一次亲兵
 var _fire_t := 6.0                   # 不夜将军二阶段：多久点一次灯油
@@ -145,7 +172,9 @@ const HINTS := {"archer": "骨弩手 · 躲开红线", "charger": "冲阵骨 · 
 	"shield": "盾骷髅 · 绕后或连砍破盾", "summoner": "招魂巫 · 先杀它", "shadow": "残影 · 他用的是你的刀法",
 	"drowned": "水骨 · 小心脚下的水", "chainmonk": "灯奴僧 · 链子扫一圈，翻滚躲开", "ronin": "阿七 · 续命司的刀法",
 	"armored": "烛国甲士 · 铜甲挡刀，先打破韧", "flameskel": "披火骨 · 死后留火，别站进去", "digger": "续命司 · 活人",
-	"greyblade": "灰衣刀手 · 砍完就退，会闪", "greyguard": "灰衣盾兵 · 绕后或连砍破盾", "greybow": "灰衣弩手 · 贴上去", "officer": "灰衣军官 · 精英"}
+	"greyblade": "灰衣刀手 · 砍完就退，会闪", "greyguard": "灰衣盾兵 · 绕后或连砍破盾", "greybow": "灰衣弩手 · 贴上去", "officer": "灰衣军官 · 精英",
+	"lampkid": "引魂灯童 · 先打它，灯一亮旁边的回血", "eel": "井鳗骨 · 水下跟着你，冒头就砍", "oiler": "泼油俑 · 别站进橙圈",
+	"twin": "殉灯俑 · 成对的，要一起打死", "greyspear": "灰衣枪兵 · 枪长，侧闪或贴身", "greyflag": "灰衣旗手 · 先砍旗，旗一举旁边的发狠"}
 var _trail: BladeTrail
 var dmg_scale := 1.0
 
@@ -203,6 +232,22 @@ func _ready() -> void:
 			rig.set_glow(Color(0.25, 0.08, 0.02))
 		"armored":
 			rig.set_rim(Color(1.0, 0.75, 0.4), 0.35)
+		"lampkid":
+			rig.set_rim(Color(1.0, 0.85, 0.5), 0.6)
+			var ll := OmniLight3D.new()
+			ll.light_color = Color(1.0, 0.8, 0.5)
+			ll.light_energy = 1.3
+			ll.omni_range = 4.5
+			ll.position = Vector3(0.4, 1.1, 0.3)
+			add_child(ll)
+		"eel":
+			rig.set_rim(Color(0.5, 0.9, 1.0), 0.5)
+		"oiler":
+			rig.set_rim(Color(1.0, 0.55, 0.2), 0.45)
+		"twin":
+			rig.set_rim(Color(1.0, 0.8, 0.4), 0.4)
+		"greyflag":
+			rig.set_rim(Color(1.0, 0.45, 0.35), 0.35)
 	# 精英和头目出刀带拖尾（颜色同时也是“危险”提示）
 	if max_poise > 0.0 and rig.weapon != null:
 		_trail = BladeTrail.new()
@@ -242,7 +287,14 @@ func _physics_process(delta: float) -> void:
 		return
 	st_t += dt
 	_anim_t += dt
-	_cool = maxf(_cool - dt, 0.0)
+	_cool = maxf(_cool - dt * (1.7 if _rally > 0.0 else 1.0), 0.0)
+	if _rally > 0.0:
+		_rally -= dt
+		if _rally <= 0.0 and _rim0.size() == 2:
+			rig.mat.set_shader_parameter("rim_color", _rim0[0])
+			rig.mat.set_shader_parameter("rim_strength", _rim0[1])
+	if state != "lurk" and data.has("dive"):
+		_up_t += dt
 	if max_poise > 0.0 and state != "stagger":
 		poise = minf(poise + max_poise * 0.12 * dt, max_poise)
 	target = _pick_target()
@@ -287,7 +339,10 @@ func _physics_process(delta: float) -> void:
 			move_with_knock(Vector3.ZERO, dt)
 			if st_t >= _recover_time():
 				_release()
-				_set_state("chase")
+				if data.has("dive") and randf() < 0.75:
+					_submerge()
+				else:
+					_set_state("chase")
 		"stagger":
 			move_with_knock(Vector3.ZERO, dt)
 			_pose = Poses.hurt(st_t / maxf(hit_stun, 0.2))
@@ -340,6 +395,10 @@ func _recover_time() -> float:
 			return 0.6 if _boss_phase == 0 else 0.4
 		"charge":
 			return 0.6
+		"aura", "lob":
+			return 0.5
+		"thrust":
+			return 0.6
 	return 0.55
 
 
@@ -384,11 +443,20 @@ func _walk(v: Vector3, dt: float) -> void:
 
 ## 水骨埋在水里：隔一会儿冒一圈涟漪；主角走近（或者等太久）就破水而出，直接扑过去
 func _st_lurk(dt: float) -> void:
-	move_with_knock(Vector3.ZERO, dt)
 	_lurk_t += dt
-	if int(_lurk_t * 0.8) != int((_lurk_t - dt) * 0.8):
-		Vfx.I.ground(global_position, "lm_ring_b", Color(0.5, 0.85, 1.0, 0.5), 0.4, 2.2, 1.1)
-	var near := target != null and _dist_to_target() < 5.5
+	var dive := data.has("dive")
+	if dive and target != null and _lurk_t > 0.4:
+		# 井鳗骨在水底下游着跟过来：只看得见一串涟漪
+		var to := target.global_position - global_position
+		to.y = 0
+		move_with_knock(to.normalized() * float(data["speed"]) * 0.7 if to.length() > 0.5 else Vector3.ZERO, dt)
+		if int(_lurk_t * 2.5) != int((_lurk_t - dt) * 2.5):
+			Vfx.I.ground(global_position, "lm_ring_b", Color(0.5, 0.85, 1.0, 0.45), 0.3, 1.6, 0.8)
+	else:
+		move_with_knock(Vector3.ZERO, dt)
+		if int(_lurk_t * 0.8) != int((_lurk_t - dt) * 0.8):
+			Vfx.I.ground(global_position, "lm_ring_b", Color(0.5, 0.85, 1.0, 0.5), 0.4, 2.2, 1.1)
+	var near := target != null and _dist_to_target() < (3.4 if dive else 5.5) and (not dive or _lurk_t > 1.0)
 	if near or _lurk_t > 9.0:
 		rig.visible = true
 		_restore_layer()
@@ -405,6 +473,20 @@ func _st_lurk(dt: float) -> void:
 
 
 var _layer0 := -1
+
+
+## 井鳗骨潜回水里：溅一圈水花，身子看不见、打不着，接着在水底跟人
+func _submerge() -> void:
+	_release()
+	_up_t = 0.0
+	_lurk_t = 0.0
+	rig.visible = false
+	if _layer0 < 0:
+		_layer0 = collision_layer
+	collision_layer = 0
+	Vfx.I.chips(global_position + Vector3(0, 0.3, 0), Vector3.UP, Color(0.55, 0.85, 1.0), 10, 5.0, 0.09)
+	Vfx.I.shock_ring(global_position, Color(0.5, 0.85, 1.0), 0.3, 2.2, 0.3)
+	_set_state("lurk")
 
 
 func _restore_layer() -> void:
@@ -443,6 +525,9 @@ func _st_chase(dt: float) -> void:
 	var speed := float(data["speed"])
 	var rng := float(data["range"])
 	var v := Vector3.ZERO
+	if data.has("dive") and _up_t > 4.0 and not _has_token:
+		_submerge()
+		return
 	if kind == "boss3":
 		_summon_t -= dt
 		if _summon_t <= 0.0 and _cool <= 0.0 and get_tree().get_nodes_in_group("foes").size() < 7:
@@ -514,9 +599,21 @@ func _st_chase(dt: float) -> void:
 			v = dir * speed
 		else:
 			v = dir.cross(Vector3.UP) * _strafe * speed * 0.5
-		if _cool <= 0.0 and dist < rng and _get_token():
+		if data.has("aura"):
+			# 灯童、旗手：身边有同伴（灯童要有带伤的）就亮灯 / 举旗；旗手被贴脸了也会拿旗杆抡一下
+			_aura_cd -= dt
+			if kind == "greyflag" and dist < 2.6 and _cool <= 0.0 and _get_token():
+				_begin_attack("slash")
+				return
+			if _aura_cd <= 0.0 and _cool <= 0.0 and _aura_allies() > 0:
+				_aura_cd = randf_range(5.5, 7.0)
+				_begin_attack("aura")
+				return
+		elif _cool <= 0.0 and dist < rng and _get_token():
 			if data["attack"] == "shot":
 				_begin_attack("volley" if randf() < 0.3 else "shot")
+			elif data["attack"] == "lob":
+				_begin_attack("lob")
 			else:
 				_begin_attack("rune")
 			return
@@ -615,6 +712,8 @@ func _choose_attack(_dist: float) -> String:
 			return "lunge" if randf() < 0.3 else "boss_combo"
 		"officer":
 			return "lunge" if randf() < 0.3 else "heavy"
+		"greyspear":
+			return "thrust"
 		"digger":
 			return "heavy" if randf() < 0.5 else "slash"
 		"boss3":
@@ -741,6 +840,16 @@ func _begin_attack(kind_: String) -> void:
 		"boss_fire":
 			Vfx.I.ground(global_position, "magic_01", Color(1.0, 0.5, 0.15, 0.8), 0.5, 5.0, wt + 0.3)
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "点灯!", Color(1.0, 0.6, 0.25), 1.0)
+		"thrust":
+			Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * (float(data["range"]) + 0.8), 0.9, red, wt)
+		"lob":
+			_atk_target = target.global_position + target.velocity * 0.3 if target != null else global_position
+			_atk_target.y = 0.0
+			Vfx.I.telegraph_circle(_atk_target, 1.8, Color(1.0, 0.55, 0.15, 0.6), wt + FoeLob.FLIGHT)
+		"aura":
+			var heal := String(data.get("aura", "")) == "heal"
+			Vfx.I.ground(global_position, "magic_01", Color(0.5, 1.0, 0.75, 0.7) if heal else Color(1.0, 0.35, 0.25, 0.7), 0.5, AURA_R * 2.0, wt + 0.3)
+			Feel.I.callout(head_top(), "灯亮了" if heal else "举旗!", Color(0.7, 1.0, 0.8) if heal else Color(1.0, 0.5, 0.35), 0.8)
 		"boss_tide":
 			Vfx.I.ground(global_position, "magic_01", Color(0.4, 0.8, 1.0, 0.8), 0.5, 6.0, wt + 0.3)
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "水来了——翻滚!", Color(0.6, 0.9, 1.0), 1.2)
@@ -753,8 +862,18 @@ func _st_windup(dt: float) -> void:
 	move_with_knock(Vector3.ZERO, dt)
 	# 红色预警：身上越来越红地闪
 	var pulse := 0.5 + 0.5 * sin(st_t * (28.0 if _atk != "blast" else 20.0 + 50.0 * k))
-	rig.set_glow((Color(1.0, 0.1, 0.05) if _atk != "blast" else Color(1.0, 0.55, 0.1) * 1.6) * (0.25 + 0.6 * k) * pulse)
+	var gc := Color(1.0, 0.1, 0.05) if _atk != "blast" else Color(1.0, 0.55, 0.1) * 1.6
+	if _atk == "aura":
+		gc = Color(0.4, 1.0, 0.6) if String(data.get("aura", "")) == "heal" else Color(1.0, 0.4, 0.2)
+	rig.set_glow(gc * (0.25 + 0.6 * k) * pulse)
 	match _atk:
+		"aura":
+			_pose = Poses.cast(k, _anim_t)
+		"lob":
+			_pose = Poses.windup("enemy_v", k, st_t)
+		"thrust":
+			_pose = _aim_pose(k * 0.5)
+			_pose["lean"] = -0.15 * k
 		"rune", "boss_summon", "summon_s":
 			_pose = Poses.cast(k, _anim_t)
 		"shot", "volley":
@@ -792,7 +911,7 @@ func _st_windup(dt: float) -> void:
 		_leap_from = global_position
 		_set_state("attack")
 		_blend = 1.0
-		if _atk in ["slash", "heavy", "boss_combo", "lunge", "bash"]:
+		if _atk in ["slash", "heavy", "boss_combo", "lunge", "bash", "thrust"]:
 			Game.sfx("slash_heavy" if _atk == "heavy" else "slash", -4.0, 0.1)
 		elif _atk in ["shot", "volley"]:
 			Game.sfx("bow", -4.0, 0.1)
@@ -1019,6 +1138,53 @@ func _st_attack(dt: float) -> void:
 				_end_attack()
 		"chain", "boss_chain":
 			_st_chain(dt)
+		"thrust":
+			# 灰衣枪兵：往前一送，一条直线上都扎得到
+			var dur := 0.26
+			var k := st_t / dur
+			_pose = _aim_pose(1.0)
+			_pose["lean"] = 0.35
+			move_with_knock(_atk_dir * (7.0 * (1.0 - k)), dt)
+			if not _did_hit and k >= 0.2:
+				_did_hit = true
+				var reach := float(data["range"]) + 0.4
+				Vfx.I.streaks(global_position + _atk_dir * 0.8 + Vector3(0, 1.0, 0), _atk_dir, Color(1.0, 0.88, 0.78), 3, reach, 0.14, 0.05, 0.12)
+				Vfx.I.pop(global_position + _atk_dir * reach + Vector3(0, 1.0, 0), "spark_05", Color(1.0, 0.8, 0.6), 0.3, 1.4, 0.12)
+				for h: Node in get_tree().get_nodes_in_group("heroes"):
+					var hh := h as Hero
+					if hh == null or not hh.alive:
+						continue
+					var to := hh.global_position - global_position
+					to.y = 0
+					var t := to.dot(_atk_dir)
+					if t > -0.3 and t < reach + hh.radius and (to - _atk_dir * t).length() < 0.55 + hh.radius:
+						_hit_target(hh, float(data["dmg"]), HitInfo.Weight.LIGHT)
+			if k >= 1.0:
+				_end_attack()
+		"lob":
+			# 泼油俑：把灯油罐抡出去（罐子自己飞，落地点着）
+			var k := st_t / 0.3
+			_pose = Poses.swing("enemy_v", 1.0, clampf(k / 0.4, 0, 1), clampf((k - 0.4) / 0.6, 0, 1))
+			move_with_knock(Vector3.ZERO, dt)
+			if not _did_hit:
+				_did_hit = true
+				var j := FoeLob.new()
+				j.from = global_position + _atk_dir * 0.5 + Vector3(0, 1.7 * float(data["k"]), 0)
+				j.to = _atk_target
+				j.damage = float(data["dmg"]) * dmg_scale
+				get_parent().add_child(j)
+				Game.sfx("slash", -8.0, 0.1, 0.6)
+			if k >= 1.0:
+				_end_attack()
+		"aura":
+			var k := st_t / 0.45
+			_pose = Poses.cast(1.0, _anim_t)
+			move_with_knock(Vector3.ZERO, dt)
+			if not _did_hit:
+				_did_hit = true
+				_do_aura()
+			if k >= 1.0:
+				_end_attack()
 		"boss_tide":
 			_st_tide(dt)
 		"boss_rank":
@@ -1160,6 +1326,96 @@ func _st_fire(dt: float) -> void:
 		_end_attack()
 
 
+## 灯童、旗手身边有几个能照顾到的同伴（灯童只算带伤的）
+func _aura_allies() -> int:
+	var heal := String(data.get("aura", "")) == "heal"
+	var n := 0
+	for f: Node in get_tree().get_nodes_in_group("foes"):
+		var ff := f as Foe
+		if ff == null or ff == self or not ff.alive or ff.data.has("phantom") or ff.data.has("aura") or ff.state == "lurk":
+			continue
+		if ff.global_position.distance_to(global_position) > AURA_R:
+			continue
+		if heal and ff.hp > ff.max_hp * 0.9:
+			continue
+		n += 1
+	return n
+
+
+## 灯一亮：身边的怪回一截血；旗一举：身边的灰衣人发狠几秒（头目不吃）
+func _do_aura() -> void:
+	_auras += 1
+	var heal := String(data.get("aura", "")) == "heal"
+	var col := Color(0.55, 1.0, 0.75) if heal else Color(1.0, 0.35, 0.2)
+	Vfx.I.shock_ring(global_position, col, 0.5, AURA_R * 2.0, 0.5)
+	Vfx.I.sheet("soul-rise" if heal else "spawn-cast", global_position, 2.6, Color(col, 0.9), 1.6, false, 0.0, 1.6)
+	Game.sfx("heal" if heal else "danger", -6.0)
+	for f: Node in get_tree().get_nodes_in_group("foes"):
+		var ff := f as Foe
+		if ff == null or ff == self or not ff.alive or ff.data.has("phantom") or ff.data.has("aura") or ff.state == "lurk":
+			continue
+		if ff.global_position.distance_to(global_position) > AURA_R:
+			continue
+		Vfx.I.streaks(chest(), (ff.chest() - chest()).normalized(), col, 1, ff.chest().distance_to(chest()), 0.25, 0.0, 0.1)
+		if heal:
+			var v := ff.max_hp * 0.18
+			ff.hp = minf(ff.max_hp, ff.hp + v)
+			Feel.I.number(ff.chest(), "+%d" % int(v), Color(0.5, 1.0, 0.65), 0.8)
+			ff.rig.flash(0.15, Color(0.6, 1.0, 0.7))
+		elif not ff.is_boss:
+			ff.rally(5.0)
+
+
+## 被旗手激励：几秒内出手更快、更疼，描边发红
+func rally(t: float) -> void:
+	if _rally <= 0.0:
+		_rim0 = [rig.mat.get_shader_parameter("rim_color"), rig.mat.get_shader_parameter("rim_strength")]
+	_rally = t
+	rig.set_rim(Color(1.0, 0.3, 0.2), 1.0)
+	Feel.I.callout(head_top(), "狠", Color(1.0, 0.45, 0.3), 0.6)
+
+
+## 殉灯俑倒下：另一只还站着，就在原地留一圈灯光，几秒后爬起来（复活的那只不会再起来、不掉钱）
+func _twin_died() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now - _twin_dead_t < 1.0:
+		ArpgAch.unlock("twin_pair")
+	_twin_dead_t = now
+	if has_meta("revived") or not _twin_alive(get_tree()):
+		return
+	var main := get_parent()
+	var ar: Variant = main.get("arena")
+	var p := global_position
+	var hs := max_hp / float(data["hp"])
+	var ds := dmg_scale
+	Vfx.I.ground(p, "magic_01", Color(1.0, 0.75, 0.35, 0.7), 1.5, 2.2, 4.0)
+	Feel.I.callout(p + Vector3(0, 1.8, 0), "还会起来", Color(1.0, 0.8, 0.45), 1.2)
+	get_tree().create_timer(4.0).timeout.connect(func() -> void: Foe._revive_twin(main, ar, p, hs, ds))
+
+
+static func _twin_alive(tree: SceneTree) -> bool:
+	for f: Node in tree.get_nodes_in_group("foes"):
+		if f is Foe and (f as Foe).alive and (f as Foe).data.has("twin"):
+			return true
+	return false
+
+
+static func _revive_twin(main: Node, ar: Variant, p: Vector3, hs: float, ds: float) -> void:
+	if not is_instance_valid(main) or ar == null or not is_instance_valid(ar) or main.get("arena") != ar or main.get("mode") != "room":
+		return
+	if not _twin_alive(main.get_tree()):
+		return
+	var f := Foe.new()
+	f.setup_kind("twin", hs * 0.7, ds)
+	f.no_loot = true
+	f.set_meta("revived", true)
+	main.add_child(f)
+	f.global_position = p
+	f.detect_mult = 2.0
+	if main.has_method("_on_drop"):
+		f.dropped.connect(main._on_drop.bind("twin"))
+
+
 func _spawn_wave(d: Vector3) -> void:
 	var w := BossWave.new()
 	w.dir = d
@@ -1287,7 +1543,7 @@ func _area_hit(p: Vector3, r: float, dmg: float, w: int) -> void:
 
 
 func _hit_target(hh: Hero, dmg: float, w: int) -> void:
-	var info := HitInfo.make(self, hh, dmg * dmg_scale * randf_range(0.9, 1.1), w)
+	var info := HitInfo.make(self, hh, dmg * dmg_scale * randf_range(0.9, 1.1) * (1.25 if _rally > 0.0 else 1.0), w)
 	info.knock = 6.0 if w == HitInfo.Weight.LIGHT else 10.0
 	Feel.I.on_hit(info)
 
@@ -1452,6 +1708,10 @@ func die(impulse: Vector3) -> void:
 		fp.life = 3.5
 		get_parent().add_child(fp)
 		fp.global_position = Vector3(global_position.x, 0, global_position.z)
+	if data.has("twin"):
+		_twin_died()
+	if kind == "greyflag" and _auras == 0 and not no_loot:
+		ArpgAch.unlock("flag_cut")
 	if kind == "bomber" and not _exploded:
 		# 爆骨鬼被打死：短暂一下后残爆，炸旁边的怪，不伤主角
 		get_tree().create_timer(0.18).timeout.connect(func() -> void:
@@ -1489,4 +1749,13 @@ func _apply_pose(dt: float) -> void:
 	var p := _pose
 	if _blend < 1.0 and not _pose_prev.is_empty():
 		p = Poses.blend(_pose_prev, _pose, Poses.ease_in_out(_blend))
+	if kind == "greyflag" and _atk != "slash" or kind == "greyflag" and not state in ["windup", "attack"]:
+		# 旗手：旗杆一直竖着扛（抡旗杆打人时才放下来）
+		p = p.duplicate()
+		p["blade"] = Vector3(0.15, 1.0, 0.1)
+	if kind == "lampkid":
+		# 灯童：左手把灯往前挑着
+		p = p.duplicate()
+		p["hand_l"] = Vector3(0.7, -0.2, -0.3)
+		p["shield"] = Vector3(0.9, 0.5, -0.2)
 	rig.apply(p)
