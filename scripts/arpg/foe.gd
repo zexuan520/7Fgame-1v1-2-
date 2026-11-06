@@ -7,9 +7,9 @@ extends Actor
 ## 盾骷髅（正面举盾挡刀，绕后或连砍破盾）、招魂巫（躲在后面招小鬼，打死它小鬼散架）、头目（夜樱剑鬼、百骨将会召唤小怪和地刺、寂光）。
 
 ## 头目进二阶段时头上冒的字
-const RAGE_NAMES := {"boss": "剑鬼·狂", "boss3": "万骨·醒", "boss2": "残灯·燃"}
+const RAGE_NAMES := {"boss": "剑鬼·狂", "boss3": "万骨·醒", "boss2": "残灯·燃", "boss4": "枯荣·涨"}
 ## 头目半血变身时说的一句
-const RAGE_LINES := {"boss": "樱花……还没落完。", "boss3": "都起来！谁准你们躺下的！", "boss2": "灯不能灭……灯不能灭！"}
+const RAGE_LINES := {"boss": "樱花……还没落完。", "boss3": "都起来！谁准你们躺下的！", "boss2": "灯不能灭……灯不能灭！", "boss4": "水……太冷了。"}
 
 signal dropped(pos: Vector3, coins: int, jade: int)
 
@@ -40,6 +40,18 @@ const TYPES := {
 		"offhand": "shield_f", "olen": 26.0, "guard": 4.0},
 	"summoner": {"name": "招魂巫", "model": "mage", "weapon": "staff", "wlen": 34.0, "tint": Color(0.75, 0.95, 0.8), "k": 1.0,
 		"hp": 60.0, "speed": 3.2, "detect": 17.0, "range": 12.0, "dmg": 12.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 6, "keep": 10.0},
+	# ---------- 第二幕 ----------
+	# 水骨：埋在积水里，主角走近才猛地站起来扑一下（lurk）
+	"drowned": {"name": "水骨", "model": "skel_rogue", "weapon": "dagger", "wlen": 22.0, "tint": Color(0.6, 0.85, 1.05), "k": 0.9,
+		"hp": 40.0, "speed": 4.6, "detect": 14.0, "range": 2.4, "dmg": 11.0, "windup": 0.38, "attack": "lunge", "poise": 0.0, "coins": 3, "lurk": true},
+	# 灯奴僧：拖着灯链的僧人骸骨，蓄力后链子横扫一整圈
+	"chainmonk": {"name": "灯奴僧", "model": "skel_mage", "weapon": "skel_staff", "wlen": 30.0, "tint": Color(0.7, 0.9, 1.1), "k": 1.15,
+		"hp": 150.0, "speed": 2.7, "detect": 13.0, "range": 3.6, "dmg": 16.0, "windup": 0.9, "attack": "chain", "poise": 40.0, "coins": 7, "head": "skel_minion"},
+	# 阿七（第四层拔刀）：续命司的刀法，快刀加突刺
+	"ronin": {"name": "阿七", "model": "barbarian", "weapon": "sword", "wlen": 34.0, "tint": Color(1.15, 0.85, 0.65), "k": 1.0,
+		"hp": 420.0, "speed": 4.8, "detect": 30.0, "range": 2.5, "dmg": 15.0, "windup": 0.42, "attack": "slash", "poise": 55.0, "coins": 25},
+	"boss4": {"name": "井中人·枯荣", "model": "skel_mage", "weapon": "skel_staff", "wlen": 48.0, "tint": Color(0.65, 0.88, 1.15), "k": 1.8,
+		"hp": 950.0, "speed": 3.0, "detect": 40.0, "range": 3.4, "dmg": 20.0, "windup": 0.6, "attack": "boss", "poise": 130.0, "coins": 80, "boss": true, "head": "skel_minion"},
 	"boss3": {"name": "百骨将", "model": "skel_warrior", "weapon": "skel_axe", "wlen": 50.0, "tint": Color(0.9, 1.0, 0.85), "k": 2.0,
 		"hp": 1100.0, "speed": 3.3, "detect": 40.0, "range": 3.4, "dmg": 22.0, "windup": 0.65, "attack": "boss", "poise": 140.0, "coins": 75, "boss": true},
 	"boss": {"name": "夜樱剑鬼", "model": "barbarian", "weapon": "sword2", "wlen": 52.0, "tint": Color(0.78, 0.72, 0.9), "k": 1.55,
@@ -85,10 +97,13 @@ var _minions: Array[Foe] = []        # 招魂巫招出来的
 var _summon_cd := 2.5
 var _exploded := false               # 爆骨鬼已经炸过
 var _aim: Array[Vector3] = []        # 骨弩手这一轮射哪几个方向
+var _lurk_t := 0.0                   # 水骨在水里埋了多久
+var _tide_t := 8.0                   # 枯荣：二阶段多久推一次水波
 ## 每种新敌人第一次出现时头上冒一句提示（一次游戏里只冒一次）
 static var _seen := {}
 const HINTS := {"archer": "骨弩手 · 躲开红线", "charger": "冲阵骨 · 引它撞墙", "bomber": "爆骨鬼 · 先下手",
-	"shield": "盾骷髅 · 绕后或连砍破盾", "summoner": "招魂巫 · 先杀它", "shadow": "残影 · 他用的是你的刀法"}
+	"shield": "盾骷髅 · 绕后或连砍破盾", "summoner": "招魂巫 · 先杀它", "shadow": "残影 · 他用的是你的刀法",
+	"drowned": "水骨 · 小心脚下的水", "chainmonk": "灯奴僧 · 链子扫一圈，翻滚躲开", "ronin": "阿七 · 续命司的刀法"}
 var _trail: BladeTrail
 var dmg_scale := 1.0
 
@@ -124,6 +139,8 @@ func _ready() -> void:
 	add_child(rig)
 	rig.setup(String(data["model"]), String(data["weapon"]), float(data["wlen"]), data["tint"], k)
 	rig.set_rim(Color(0.6, 0.85, 0.9) if not is_boss else Color(1.0, 0.6, 0.8), 0.3)
+	if data.has("head"):
+		rig.swap_head(String(data["head"]))
 	if data.has("offhand"):
 		rig.set_offhand(String(data["offhand"]), float(data.get("olen", 22.0)))
 	match kind:
@@ -148,6 +165,13 @@ func _ready() -> void:
 	add_to_group("foes")
 	_strafe = 1.0 if randf() < 0.5 else -1.0
 	_cool = randf_range(0.3, 1.2)
+	if data.get("lurk", false):
+		# 水骨：一出来就埋在水里，只看得见一圈涟漪
+		_set_state("lurk")
+		rig.visible = false
+		_layer0 = collision_layer
+		collision_layer = 0
+		return
 	# 出场：从地里冒出来
 	rig.scale = Vector3(1, 0.01, 1)
 	Vfx.I.dust(global_position, 1.0 * k, Color(0.35, 0.55, 0.55, 0.5))
@@ -189,6 +213,8 @@ func _physics_process(delta: float) -> void:
 				if HINTS.has(kind) and not _seen.has(kind):
 					_seen[kind] = true
 					Feel.I.callout(head_top() + Vector3(0, 0.3, 0), String(HINTS[kind]), Color(1.0, 0.9, 0.6), 2.2)
+		"lurk":
+			_st_lurk(dt)
 		"patrol":
 			_st_patrol(dt)
 		"chase":
@@ -248,6 +274,10 @@ func _recover_time() -> float:
 			return 0.6 if _boss_phase == 0 else 0.4
 		"rune", "shot", "volley", "summon_s":
 			return 0.45
+		"chain":
+			return 1.0
+		"boss_chain", "boss_tide":
+			return 0.6 if _boss_phase == 0 else 0.4
 		"charge":
 			return 0.6
 	return 0.55
@@ -290,6 +320,36 @@ func _walk(v: Vector3, dt: float) -> void:
 	else:
 		_pose = Poses.idle(_anim_t)
 	move_with_knock(v + _separation() * 3.0, dt)
+
+
+## 水骨埋在水里：隔一会儿冒一圈涟漪；主角走近（或者等太久）就破水而出，直接扑过去
+func _st_lurk(dt: float) -> void:
+	move_with_knock(Vector3.ZERO, dt)
+	_lurk_t += dt
+	if int(_lurk_t * 0.8) != int((_lurk_t - dt) * 0.8):
+		Vfx.I.ground(global_position, "lm_ring_b", Color(0.5, 0.85, 1.0, 0.5), 0.4, 2.2, 1.1)
+	var near := target != null and _dist_to_target() < 5.5
+	if near or _lurk_t > 9.0:
+		rig.visible = true
+		_restore_layer()
+		Vfx.I.chips(global_position + Vector3(0, 0.3, 0), Vector3.UP, Color(0.55, 0.85, 1.0), 16, 7.0, 0.1)
+		Vfx.I.shock_ring(global_position, Color(0.5, 0.85, 1.0), 0.3, 3.0, 0.35)
+		Vfx.I.dust(global_position, 1.2, Color(0.5, 0.75, 0.9, 0.55))
+		Game.sfx("slash", -8.0, 0.1, 0.7)
+		_set_state("chase")
+		if near and _get_token():
+			_begin_attack("lunge")
+		if HINTS.has(kind) and not _seen.has(kind):
+			_seen[kind] = true
+			Feel.I.callout(head_top() + Vector3(0, 0.3, 0), String(HINTS[kind]), Color(1.0, 0.9, 0.6), 2.2)
+
+
+var _layer0 := -1
+
+
+func _restore_layer() -> void:
+	if _layer0 >= 0:
+		collision_layer = _layer0
 
 
 func _st_patrol(dt: float) -> void:
@@ -388,8 +448,16 @@ func _st_chase(dt: float) -> void:
 		if kind == "samurai" and _cool <= 0.0 and dist > 4.0 and dist < 9.0 and randf() < dt * 0.8 and _get_token():
 			_begin_attack("leap")
 			return
+		if kind == "boss4" and _boss_phase == 1:
+			_tide_t -= dt
+			if _tide_t <= 0.0 and _cool <= 0.0 and _get_token():
+				_tide_t = randf_range(6.5, 8.5)
+				_begin_attack("boss_tide")
+				return
 		if is_boss and _cool <= 0.0 and dist > 5.0 and randf() < dt * 1.2 and _get_token():
-			if kind == "boss3":
+			if kind == "boss4":
+				_begin_attack("boss_spikes" if randf() < 0.7 else "boss_leap")
+			elif kind == "boss3":
 				_begin_attack("boss_spikes" if randf() < 0.6 else "boss_leap")
 			else:
 				_begin_attack("boss_leap" if randf() < 0.5 else "boss_wave")
@@ -428,6 +496,12 @@ func _choose_attack(_dist: float) -> String:
 			return "bash" if guard > 0.0 and randf() < 0.4 else "slash"
 		"boss", "boss2":
 			return "boss_combo"
+		"chainmonk":
+			return "chain" if _dist <= 4.2 else "slash"
+		"ronin":
+			return "lunge" if randf() < 0.35 else "slash"
+		"boss4":
+			return "boss_chain" if randf() < 0.35 else "boss_combo"
 		"boss3":
 			return "boss_spikes" if randf() < 0.25 else "boss_combo"
 	return "slash"
@@ -454,6 +528,12 @@ func _windup_time() -> float:
 			return 0.9
 		"bash":
 			return 0.45
+		"chain":
+			return w
+		"boss_chain":
+			return 0.85 if _boss_phase == 0 else 0.65
+		"boss_tide":
+			return 0.8
 	return w
 
 
@@ -501,7 +581,7 @@ func _begin_attack(kind_: String) -> void:
 					var a := randf() * TAU
 					_spikes.append(target.global_position + Vector3(cos(a), 0, sin(a)) * randf_range(1.5, 3.5))
 			for s in _spikes:
-				Vfx.I.telegraph_circle(s, 1.2, Color(0.75, 1.0, 0.6, 0.6), wt)
+				Vfx.I.telegraph_circle(s, 1.2, Color(0.75, 1.0, 0.6, 0.6) if kind != "boss4" else Color(0.45, 0.8, 1.0, 0.6), wt)
 		"boss_summon":
 			Vfx.I.ground(global_position, "magic_01", Color(0.5, 1.0, 0.6, 0.8), 0.5, 5.0, wt + 0.3)
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "起来！", Color(0.7, 1.0, 0.7), 1.0)
@@ -529,6 +609,13 @@ func _begin_attack(kind_: String) -> void:
 			Vfx.I.sheet("spawn-cast", global_position, 3.0, Color(0.6, 1.0, 0.7, 0.9), 1.6, false, 0.0, 1.6)
 		"bash":
 			Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * 3.0, 1.8, red, wt)
+		"chain", "boss_chain":
+			# 灯链横扫一整圈：脚下一圈青色预警，越涨越满
+			Vfx.I.telegraph_circle(global_position, _chain_r(), Color(0.4, 0.8, 1.0, 0.5), wt)
+			Feel.I.callout(head_top(), "链!", Color(0.6, 0.9, 1.0), 0.8)
+		"boss_tide":
+			Vfx.I.ground(global_position, "magic_01", Color(0.4, 0.8, 1.0, 0.8), 0.5, 6.0, wt + 0.3)
+			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "水来了——翻滚!", Color(0.6, 0.9, 1.0), 1.2)
 	Game.sfx("danger", -8.0)
 
 
@@ -555,6 +642,11 @@ func _st_windup(dt: float) -> void:
 			rig.scale = Vector3(sw, sw, sw)
 		"bash":
 			_pose = Poses.windup("enemy_h", k, st_t)
+		"chain", "boss_chain":
+			_pose = Poses.windup("enemy_h", k, st_t)
+			_pose["twist"] = -0.9 * k
+		"boss_tide":
+			_pose = Poses.cast(k, _anim_t)
 		"boss_spikes":
 			_pose = Poses.windup("enemy_v", k, st_t)
 		"leap", "boss_leap":
@@ -673,13 +765,15 @@ func _st_attack(dt: float) -> void:
 			move_with_knock(Vector3.ZERO, dt)
 			if not _did_hit and k >= 0.25:
 				_did_hit = true
+				var water := kind == "boss4"
 				for s in _spikes:
-					Vfx.I.chips(s, Vector3.UP, Color(0.9, 0.9, 0.8), 8, 9.0, 0.12)
-					Vfx.I.shock_ring(s, Color(0.7, 1.0, 0.6), 0.2, 2.4, 0.25)
-					Vfx.I.streaks(s, Vector3.UP, Color(0.8, 1.0, 0.7), 3, 2.4, 0.22, 0.25, 0.2)
+					# 百骨将：骨刺；枯荣：水柱
+					Vfx.I.chips(s, Vector3.UP, Color(0.9, 0.9, 0.8) if not water else Color(0.6, 0.9, 1.0), 8 if not water else 14, 9.0 if not water else 11.0, 0.12 if not water else 0.1)
+					Vfx.I.shock_ring(s, Color(0.7, 1.0, 0.6) if not water else Color(0.5, 0.85, 1.0), 0.2, 2.4, 0.25)
+					Vfx.I.streaks(s, Vector3.UP, Color(0.8, 1.0, 0.7) if not water else Color(0.6, 0.95, 1.0), 3 if not water else 5, 2.4 if not water else 3.4, 0.22, 0.25, 0.2)
 					_area_hit(s, 1.2, float(data["dmg"]) * 0.9, HitInfo.Weight.LIGHT)
 				CamRig.I.shake(1)
-				Game.sfx("death", -6.0)
+				Game.sfx("death" if not water else "slash_heavy", -6.0)
 			if k >= 1.0:
 				_end_attack()
 		"boss_summon":
@@ -787,6 +881,10 @@ func _st_attack(dt: float) -> void:
 				Game.sfx("block", -4.0)
 			if k >= 1.0:
 				_end_attack()
+		"chain", "boss_chain":
+			_st_chain(dt)
+		"boss_tide":
+			_st_tide(dt)
 		"boss_wave":
 			var k := st_t / 0.4
 			_pose = Poses.swing("enemy_v", 1.0, clampf(k / 0.4, 0, 1), clampf((k - 0.4) / 0.6, 0, 1))
@@ -801,6 +899,57 @@ func _st_attack(dt: float) -> void:
 				Game.sfx("boom", -4.0)
 			if k >= 1.0:
 				_end_attack()
+
+
+## 灯链横扫的半径：灯奴僧 4.2 米，枯荣 5.2（二阶段 5.8）
+func _chain_r() -> float:
+	if kind == "boss4":
+		return 5.2 if _boss_phase == 0 else 5.8
+	return 4.2
+
+
+## 灯链横扫一整圈：转一圈的刀光 + 一圈铁屑，圈内全吃到
+func _st_chain(dt: float) -> void:
+	var dur := 0.42
+	var k := st_t / dur
+	_pose = Poses.swing("enemy_h", 1.0, clampf(k / 0.5, 0, 1), clampf((k - 0.5) / 0.5, 0, 1))
+	_pose["twist"] = lerpf(-0.9, 2.4, clampf(k, 0.0, 1.0))
+	move_with_knock(Vector3.ZERO, dt)
+	if not _did_hit and k >= 0.3:
+		_did_hit = true
+		var r := _chain_r()
+		var base := Transform3D(Basis(Vector3.UP, rotation.y), global_position + Vector3(0, 0.8, 0))
+		Vfx.I.slash(base, r, PI, -PI, 0.3, Color(0.85, 0.95, 1.0), Color(0.3, 0.7, 1.0), 2.6, 0.75)
+		Vfx.I.shock_ring(global_position, Color(0.5, 0.85, 1.0), 0.5, r * 2.2, 0.35)
+		for i in range(10):
+			var a := TAU * i / 10.0
+			Vfx.I.chips(global_position + Vector3(cos(a), 0.3, sin(a)) * r * 0.8, Vector3(cos(a), 0.6, sin(a)), Color(0.35, 0.4, 0.45), 2, 6.0, 0.08)
+		CamRig.I.shake(1)
+		Game.sfx("slash_heavy", -4.0, 0.1, 0.8)
+		_area_hit(global_position, r, float(data["dmg"]) * (1.0 if kind != "boss4" else 1.1), HitInfo.Weight.HEAVY)
+	if k >= 1.0:
+		_end_attack()
+
+
+## 枯荣二阶段：推出一圈（二阶段后期两圈）水波，从脚下往外涨，碰到就挨打；翻滚的无敌帧能穿过去
+func _st_tide(dt: float) -> void:
+	var k := st_t / 0.5
+	_pose = Poses.cast(1.0, _anim_t)
+	move_with_knock(Vector3.ZERO, dt)
+	if not _did_hit:
+		_did_hit = true
+		var n := 1 if hp > max_hp * 0.25 else 2
+		for i in range(n):
+			var t := TideRing.new()
+			t.owner_foe = self
+			t.damage = float(data["dmg"]) * 0.9 * dmg_scale
+			t.delay = i * 0.9
+			get_parent().add_child(t)
+			t.global_position = Vector3(global_position.x, 0.0, global_position.z)
+		CamRig.I.shake(1)
+		Game.sfx("boom", -5.0, 0.0, 0.7)
+	if k >= 1.0:
+		_end_attack()
 
 
 func _spawn_wave(d: Vector3) -> void:
@@ -922,6 +1071,8 @@ func _hit_target(hh: Hero, dmg: float, w: int) -> void:
 func take_hit(info: HitInfo) -> bool:
 	if state == "spawn" and st_t < 0.2:
 		return false
+	if state == "lurk":
+		return false
 	# 盾骷髅：正面来的刀挡掉大半，挡满几下就破盾；绕到侧后面、或者大招，直接打进去
 	var blocked := false
 	if guard > 0.0 and alive and iframes <= 0.0 and info.weight < HitInfo.Weight.ULT and state != "stagger":
@@ -997,6 +1148,12 @@ func take_hit(info: HitInfo) -> bool:
 		Game.sfx("boss_kill", -6.0, 0.0, 1.3)
 		data = data.duplicate()
 		data["speed"] = float(data["speed"]) * 1.25
+		if kind == "boss4":
+			# 枯荣半血：整间殿水位上涨，之后隔一阵推一圈水波
+			_tide_t = 2.5
+			var ar: Variant = get_parent().get("arena") if get_parent() != null else null
+			if ar != null and ar.has_method("flood"):
+				ar.flood(true)
 	return ok
 
 
@@ -1009,6 +1166,8 @@ func fx_color() -> Color:
 			return Color(0.75, 1.0, 0.7)
 		"boss2":
 			return Color(1.0, 0.82, 0.4)
+		"boss4":
+			return Color(0.45, 0.85, 1.0)
 	return Color(1.0, 0.5, 0.3) if max_poise > 0.0 else Color(1.0, 0.85, 0.4)
 
 

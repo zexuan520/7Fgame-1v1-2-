@@ -85,6 +85,13 @@ func setup(model_id: String, weapon_id: String = "", wlen: float = 30.0, tint: C
 	apply({})
 
 
+## 换脑袋：用另一个模型的头（同一套 KayKit 骨架），比如给骷髅法师摘掉尖帽子当老僧
+func swap_head(model_id: String) -> void:
+	var m2 := VoxelModel.load_model(model_id)
+	if m2 != null and m2.parts.has("head") and parts.has("head"):
+		(parts["head"] as MeshInstance3D).mesh = m2.parts["head"]["mesh"]
+
+
 ## 换手里的兵器
 func set_weapon(weapon_id: String, wlen: float) -> void:
 	if weapon != null:

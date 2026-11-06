@@ -5,6 +5,7 @@ extends Node3D
 ##   forest 幽暗森林遗迹：苔藓石地、枯树、断墙、锈蚀巨管、木脚手架、垂藤，青绿雾最浓
 ##   temple 寺庙内殿：木地板、朱红柱、纸窗透冷月光、供台蜡烛、挂轴、香烟
 ##   sakura 夜樱广场（头目）：石板地、中央发光大樱树、鸟居、石灯笼、落花
+##   well 青井地宫（第二幕）：古寺井下的水淹殿堂，湿石板、冰蓝积水和焦散、经文石壁、垂下来的灯链、井口漏下来的冷光
 ## 开源件（KayKit，CC0）体素化后放在 assets/voxel/kit/；樱树、鸟居、石灯笼、纸窗、巨管是这里按格子画的。
 ## 坐标：1 单位 = 1 米，房间中心在原点，-z 是画面上方（远处），+z 是靠镜头的一边。
 
@@ -35,6 +36,8 @@ const ZONES := {
 		"sun": Color(0.6, 0.72, 1.0), "sun_e": 1.1, "spore": Color(0.7, 0.9, 1.0)},
 	"grave": {"bg": Color(0.03, 0.05, 0.05), "fog": Color(0.1, 0.16, 0.14), "fog_d": 0.85, "amb": Color(0.38, 0.5, 0.45), "amb_e": 1.2,
 		"sun": Color(0.62, 0.8, 0.75), "sun_e": 1.15, "spore": Color(0.6, 1.0, 0.6)},
+	"well": {"bg": Color(0.02, 0.04, 0.07), "fog": Color(0.05, 0.14, 0.2), "fog_d": 0.6, "amb": Color(0.48, 0.52, 0.58), "amb_e": 1.45,
+		"sun": Color(0.7, 0.85, 1.0), "sun_e": 1.2, "spore": Color(0.5, 0.9, 1.0)},
 	"sakura": {"bg": Color(0.05, 0.04, 0.09), "fog": Color(0.12, 0.1, 0.2), "fog_d": 0.65, "amb": Color(0.45, 0.38, 0.6), "amb_e": 1.25,
 		"sun": Color(0.72, 0.76, 1.0), "sun_e": 1.2, "spore": Color(1.0, 0.6, 0.8)},
 }
@@ -70,6 +73,8 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 			_dress_grave()
 		"sakura":
 			_dress_sakura()
+		"well":
+			_dress_well()
 	_atmosphere()
 	_clear_doorways()
 	_make_spawns()
@@ -146,6 +151,25 @@ func _floor_color(x: float, z: float) -> Color:
 				if fposmod(z, 0.9) < FV * 0.8 or fposmod(x + 5.0, 1.1) < FV * 0.8:
 					soil = Color(0.14, 0.15, 0.13)
 			return soil * (0.9 + n2 * 0.12)
+		"well":
+			# 湿石板：大块方砖 + 深缝，低洼处积着冰蓝的水（水面另有一层焦散，见 _water_plane）
+			var sx := int(floor(x / 1.5))
+			var sz := int(floor(z / 1.5))
+			var shade := 0.85 + 0.15 * sin(sx * 12.9898 + sz * 78.233)
+			var c := Color(0.2, 0.23, 0.26).lerp(Color(0.26, 0.29, 0.31), n * 0.5 + 0.5) * shade
+			if fposmod(x, 1.5) < FV * 0.8 or fposmod(z, 1.5) < FV * 0.8:
+				c = Color(0.07, 0.09, 0.12)
+			var wet := noise.get_noise_2d(x * 1.1 + 40.0, z * 1.1)
+			if wet > 0.18:
+				c = c.lerp(Color(0.08, 0.26, 0.34), clampf((wet - 0.18) * 4.0, 0.0, 0.85))
+			elif wet > 0.08:
+				c = c * 0.8
+			# 中间一条青石道（入口到出口），两边一道浅色石沿
+			if absf(x) < 1.8:
+				c = c.lerp(Color(0.27, 0.31, 0.34), 0.6)
+				if absf(absf(x) - 1.7) < FV:
+					c = c * 1.2
+			return c * (1.2 + n2 * 0.12)
 		"temple":
 			var plank := int(floor(x / 0.6))
 			var seam := fposmod(x, 0.6) < FV * 0.6
@@ -1023,6 +1047,183 @@ func _dress_sakura() -> void:
 		kit("bench", Vector3(side * 6.5 * kx, 0, 8.0 * kz), PI * 0.5, 1.0, true)
 		kit("lantern", Vector3(side * 12.5 * kx, 0, -1.0 * kz), 0.0, 1.2, false)
 	_petals()
+
+
+## 青井地宫：后面一排经文石壁和塌掉的佛龛，两侧石柱，柱上和顶上垂下灯链；
+## 地上散着断佛像、经幢、碎石，冰蓝的鬼火和井口漏下的冷光柱；整片地面铺一层带焦散的薄水
+func _dress_well() -> void:
+	var hx := size.x * 0.5
+	var hz := size.y * 0.5
+	var kx := _kx()
+	var kz := _kz()
+	var ka := _ka()
+	# 后墙：经文石壁（一块块刻满字的石板），中间留出口
+	var nt := int((hx - 1.0) / 2.4)
+	for i in range(-nt, nt + 1):
+		var x := i * 2.4
+		if absf(x) < 2.2:
+			continue
+		voxel_piece(_cached("tablet|%d" % (absi(i) % 3), _sutra_tablet.bind(absi(i) % 3)), Vector3(x - 1.05, 0, -hz - 0.25), 0.12, null)
+	kit("shrine", Vector3(-hx + 4.0, 0, -hz + 1.0), 0.0, 1.2, true)
+	kit("shrine", Vector3(hx - 4.0, 0, -hz + 1.0), 0.0, 1.2, true)
+	# 两侧：石柱一排，柱上挂灯链
+	for side: float in [-1.0, 1.0]:
+		var np := maxi(3, int(round(3.0 * kz)))
+		for j in range(np):
+			var z := -hz + 3.0 + j * (size.y - 6.0) / float(np - 1)
+			var p := Vector3(side * (hx - 1.2), 0, z)
+			voxel_piece(_cached("wpillar", _well_pillar), p, 0.12, null, Vector3(0.9, 4, 0.9))
+			if j % 2 == 0:
+				voxel_piece(_cached("chain|%d" % (j % 3), _chain.bind(22 + (j % 3) * 6)), p + Vector3(-side * 0.6, 1.2, 0.0), 0.06, null)
+	# 殿中两排大石柱（隔出柱廊，可以绕着打），每根柱上缠一截灯链，柱脚一圈积水反光
+	for sx: float in [-1.0, 1.0]:
+		for zz: float in [-4.0 * kz, 3.5 * kz]:
+			var cp := Vector3(sx * 7.5 * kx, 0, zz)
+			voxel_piece(_cached("wpillar", _well_pillar), cp, 0.12, null, Vector3(0.9, 4, 0.9))
+			voxel_piece(_cached("chain|2", _chain.bind(34)), cp + Vector3(0.0, 1.6, 0.55), 0.06, null)
+			_solid.append(Rect2(cp.x - 1.2, cp.z - 1.2, 2.4, 2.4))
+	# 场地里：断佛像、经幢、碎石（障碍，可以绕着打）
+	var spots := [Vector3(-3.5 * kx, 0, -6.0 * kz), Vector3(4.0 * kx, 0, 0.5 * kz), Vector3(-12.0 * kx, 0, 1.0 * kz), Vector3(12.5 * kx, 0, -2.0 * kz)]
+	for i in range(int(round(3.0 * (ka - 1.0)))):
+		var fp := _free_spot(4.5)
+		if fp != Vector3.INF:
+			spots.append(fp)
+	for s0: Vector3 in spots:
+		var r := rng.randf()
+		if r < 0.35:
+			kit("column", s0, 0.0, 1.6, true)
+			voxel_piece(_cached("chain|1", _chain.bind(28)), s0 + Vector3(0.0, 1.0, 0.0), 0.06, null)
+		elif r < 0.6:
+			kit("rubble", s0, rng.randf() * TAU, 1.0, true)
+		elif r < 0.85:
+			kit("shrine", s0, rng.randf_range(-0.4, 0.4), 0.9, true)
+		else:
+			kit("pillar", s0, rng.randf() * TAU, 1.0, true)
+	# 地上的碎件：经卷、蜡烛、骨头
+	for i in range(int(5 * ka)):
+		var p := Vector3(rng.randf_range(-hx + 3, hx - 3), 0, rng.randf_range(-hz + 3, hz - 3))
+		if absf(p.x) > 2.5:
+			kit(["candles", "ribcage", "rubble", "skull_candle"][rng.randi() % 4], p, rng.randf() * TAU, 0.8, false)
+	# 冰蓝鬼火 + 井口漏下来的冷光
+	for i in range(int(round(5.0 * sqrt(ka)))):
+		var side := -1.0 if i % 2 == 0 else 1.0
+		spirit_fire(Vector3(side * rng.randf_range(3.0, hx - 3.0), 0.5, rng.randf_range(-hz + 3, hz - 4)), Color(0.45, 0.85, 1.0), 1.0, 1.6, 6.0)
+	for i in range(int(round(3.0 * sqrt(ka)))):
+		_shaft(Vector3(rng.randf_range(-size.x * 0.35, size.x * 0.35), 0, rng.randf_range(-size.y * 0.4, size.y * 0.15)), Color(0.45, 0.8, 1.0, 0.14), rng.randf_range(2.0, 3.2))
+	# 暖色：佛龛前、柱脚下几簇供烛（整间青蓝里的一点人气）
+	var votive := [Vector3(-hx + 4.0, 0, -hz + 2.4), Vector3(hx - 4.0, 0, -hz + 2.4)]
+	for i in range(int(round(2.0 * ka))):
+		var vp := _free_spot(3.0)
+		if vp != Vector3.INF:
+			votive.append(vp)
+	for vp: Vector3 in votive:
+		kit("candles", vp, rng.randf() * TAU, 1.1, false)
+		var cl := OmniLight3D.new()
+		cl.light_color = Color(1.0, 0.65, 0.35)
+		cl.light_energy = 1.8
+		cl.omni_range = 5.0
+		add_child(cl)
+		cl.position = vp + Vector3(0, 0.8, 0)
+	var tops := [Vector3(0, 4.0, -1.0), Vector3(-9 * kx, 4.0, 2.0 * kz), Vector3(9 * kx, 4.0, 2.0 * kz)]
+	for p: Vector3 in tops:
+		var wl := OmniLight3D.new()
+		wl.light_color = Color(0.6, 0.85, 1.0)
+		wl.light_energy = 1.6
+		wl.omni_range = 12.0
+		add_child(wl)
+		wl.position = p
+	_water_plane()
+	# 前景：靠镜头的断柱剪影
+	for x0: float in _fg_xs():
+		voxel_piece(_cached("wpillar_fg", _well_pillar.bind(Color(0.04, 0.06, 0.08))), Vector3(x0 + rng.randf_range(-1.0, 1.0), 0, hz + 1.2), 0.16, null, Vector3.ZERO, true)
+
+
+## 积水：整块地面上一层薄水（带焦散），头目半血时 flood() 让它涨起来
+var water: MeshInstance3D
+
+
+func _water_plane() -> void:
+	water = MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(size.x + 4.0, size.y + 4.0)
+	water.mesh = pm
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/arpg/water.gdshader")
+	m.set_shader_parameter("caustic", load("res://assets/fx/lm_water_caustics_b.png"))
+	# 积水只在低洼处：按 _floor_color 里同一个“湿”噪声画一张遮罩（0.25 米一格）
+	var w := int((size.x + 4.0) / 0.25)
+	var h := int((size.y + 4.0) / 0.25)
+	var px := PackedByteArray()
+	px.resize(w * h)
+	var x0 := -(size.x + 4.0) * 0.5
+	var z0 := -(size.y + 4.0) * 0.5
+	for iz in range(h):
+		for ix in range(w):
+			var wet := noise.get_noise_2d((x0 + ix * 0.25) * 1.1 + 40.0, (z0 + iz * 0.25) * 1.1)
+			px[iz * w + ix] = clampi(int((wet - 0.1) * 6.0 * 255.0), 0, 255)
+	m.set_shader_parameter("mask", ImageTexture.create_from_image(Image.create_from_data(w, h, false, Image.FORMAT_L8, px)))
+	m.set_shader_parameter("rect", Vector4(x0, z0, size.x + 4.0, size.y + 4.0))
+	water.material_override = m
+	water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	water.set_meta("floor", true)
+	add_child(water)
+	water.position = Vector3(0, 0.015, 0)
+
+
+## 水位上涨（井中人·枯荣半血）：水面变亮、焦散流快
+func flood(on: bool) -> void:
+	if water == null:
+		return
+	var m := water.material_override as ShaderMaterial
+	var tw := create_tween()
+	tw.tween_method(func(v: float) -> void: m.set_shader_parameter("level", v), 0.0 if on else 1.0, 1.0 if on else 0.0, 1.6)
+
+
+## 经文石壁：一块竖石板，上面一行行刻痕（三种字样轮换），顶上一道檐
+func _sutra_tablet(v: int) -> VoxelGrid:
+	var g := VoxelGrid.new(100 + v)
+	var stone := Color(0.24, 0.29, 0.33)
+	g.box(Vector3i(0, 0, 0), Vector3i(17, 30, 2), stone, 0.08)
+	g.box(Vector3i(-1, 31, -1), Vector3i(18, 32, 3), Color(0.15, 0.19, 0.22), 0.05)
+	var r := RandomNumberGenerator.new()
+	r.seed = 7 + v * 31
+	for col in range(5):
+		var x := 2 + col * 3
+		var y := 27
+		while y > 3:
+			var l := r.randi_range(1, 3)
+			if r.randf() < 0.75:
+				for k in range(l):
+					g.cells[Vector3i(x, y - k, 3)] = Color(0.35, 0.65, 0.8) * (0.7 + 0.3 * r.randf())
+			y -= l + 1
+	return g
+
+
+## 石柱：方柱 + 底座 + 柱头，带一圈刻纹
+func _well_pillar(c: Color = Color(0.22, 0.27, 0.31)) -> VoxelGrid:
+	var g := VoxelGrid.new(120)
+	g.box(Vector3i(-4, 0, -4), Vector3i(4, 2, 4), c * 0.8, 0.06)
+	g.box(Vector3i(-3, 3, -3), Vector3i(3, 34, 3), c, 0.08)
+	g.box(Vector3i(-4, 35, -4), Vector3i(4, 37, 4), c * 0.8, 0.06)
+	for y: int in [10, 22]:
+		g.box(Vector3i(-3, y, -3), Vector3i(3, y, 3), Color(0.3, 0.55, 0.65), 0.05)
+	return g
+
+
+## 灯链：一串交错的铁环从上往下垂，末端一盏熄掉的小灯
+func _chain(n: int) -> VoxelGrid:
+	var g := VoxelGrid.new(130 + n)
+	var iron := Color(0.2, 0.22, 0.25)
+	for i in range(n):
+		var y := 40 - i * 2
+		if i % 2 == 0:
+			g.box(Vector3i(-1, y, 0), Vector3i(1, y + 1, 0), iron, 0.05)
+		else:
+			g.box(Vector3i(0, y, -1), Vector3i(0, y + 1, 1), iron * 1.2, 0.05)
+	var yb := 40 - n * 2
+	g.box(Vector3i(-2, yb - 3, -2), Vector3i(2, yb, 2), Color(0.25, 0.35, 0.4), 0.05)
+	g.cells[Vector3i(0, yb - 2, 3)] = Color(0.4, 0.8, 1.0)
+	return g
 
 
 ## 前景剪影的 x 位置：左右两侧各一棵，房间宽了中间再加

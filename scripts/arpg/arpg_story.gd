@@ -15,6 +15,9 @@ const C_MONK := Color(0.7, 0.85, 0.7)
 const C_BONE := Color(0.8, 0.95, 0.7)
 const C_KEEPER := Color(0.75, 0.75, 0.85)
 const C_SHADOW := Color(0.55, 0.65, 1.0)
+const C_KURONG := Color(0.55, 0.85, 1.0)
+const C_SMITH := Color(1.0, 0.65, 0.35)
+const C_GREY := Color(0.7, 0.72, 0.75)
 
 ## 第一次进山门
 const INTRO := [
@@ -34,9 +37,52 @@ const FLOOR_START := [
 	 ["残刃", "铁伯说过，村里人死了要埋在看得见村子的地方。……这里看不见。", C_HERO]],
 	[["", "寂光寺。钟早就不响了，殿里只剩那盏灯，青得像冰。"],
 	 ["残刃", "师父，我回来了。", C_HERO]],
+	# 第二幕
+	[["", "青井地宫。绳子放到底，脚下是没过脚踝的水，冷得像刀。四壁全是经文，刻字的人越刻越乱。"],
+	 ["残刃", "师父说井下什么都没有。……原来他也会说谎。", C_HERO]],
+	[["", "烛国灯冢。（还没做完）"]],
+	[["", "灰衣营。（还没做完）"]],
+]
+
+## 第二幕开场（按第一幕最后看到的结局；众生算作灯灭）
+const ACT2_OPEN := {
+	"douse": [
+		["", "灯灭的第七天，寺里那口井又冒出了青光。"],
+		["拾骨婆", "一盏灭了，另外六盏都听见了。……听见的不只是灯。", C_HAG],
+		["拾骨婆", "井绳上有新的磨痕。有人比你先下去了，穿灰衣服的。", C_HAG],
+	],
+	"keep": [
+		["", "你守灯的第七天，山下来了一个穿灰衣的信使。他把一卷文书放在山门口，没敢进来。"],
+		["", "文书上只有一行字：“续命司奉旨取灯。”落款是一个“烬”字。"],
+		["拾骨婆", "灯在你怀里，它会招东西。下井的时候，别让它灭了，也别让它太亮。", C_HAG],
+	],
+	"true": [
+		["", "师父下葬的第七天，断刀上那截灯芯长出的光刃，开始往地下指。"],
+		["残刃", "它在找另外半截。", C_HERO],
+		["拾骨婆", "跟着它走。井底下是山腹，山腹那头……是灰衣人的营。", C_HAG],
+	],
+}
+
+## 青井地宫第一间的井壁刻字（每局都在，第一次摸给魂玉）
+const WELL_WORDS := [
+	["", "井壁上有一行刻得很浅的字，像是用指甲一点一点抠出来的。"],
+	["井壁刻字", "「师父在下面。我不敢下去。——寂光，年十七」", C_MASTER],
+	["残刃", "……原来你也怕过。", C_HERO],
+]
+
+## 侧室里找到的家书、地藏的头等第二幕物件见下面；拾骨婆在山门对第二幕的话
+const HAG_ACT2 := [
+	["拾骨婆", "要下井了？井底有个老和尚，比寂光还老。他要是求你带他上来……你自己掂量。", C_HAG],
 ]
 
 const BOSS_PRE := {
+	"boss4": [
+		["", "井底是一座塌了一半的佛殿，水没到膝盖。殿中央站着一个老僧，全身缠满了灯链，链子另一头没进水里。"],
+		["井中人·枯荣", "寂光的徒弟？……他自己不敢来，派个孩子来。", C_KURONG],
+		["残刃", "你是师父的师父。", C_HERO],
+		["井中人·枯荣", "四十年前我下来找灯，灯找到了，人就上不去了。灯链拴着魂，魂拴着我。", C_KURONG],
+		["井中人·枯荣", "来吧。打断这些链子，或者被它们缠上。", C_KURONG],
+	],
 	"boss": [
 		["", "樱树下站着一个人，刀上落满了花瓣。"],
 		["夜樱剑鬼", "……残刃？你还记得这棵树吗。我们在这里比过刀，你输了，哭了一整晚。", C_SAKURA],
@@ -59,6 +105,12 @@ const BOSS_PRE := {
 
 ## 头目战前，按一局里的选择多出来的话
 const BOSS_PRE_FLAGS := {
+	"boss4": {
+		"a1_monk_told": [["残刃", "守灯僧说，师父年轻时天天在井边坐着，一坐就是一夜。", C_HERO],
+			["井中人·枯荣", "……他在等我叫他。我没叫。叫了，他就会下来。", C_KURONG]],
+		"ronin_forgiven": [["阿七", "残刃，这老和尚身上的链子……和续命司的锁魂链一个样。小心！", C_RONIN]],
+		"lantern_carry": [["井中人·枯荣", "你怀里那盏灯……寂光把它交给你了？傻孩子，它会把你也拴住的。", C_KURONG]],
+	},
 	"boss3": {
 		"sakura_blade": [["百骨将", "那把刀……是樱家丫头的。你连她也带走了？", C_BONE]],
 		"sakura_rest": [["百骨将", "樱家丫头……睡下了？", C_BONE], ["残刃", "睡下了。你也该睡了，铁伯。", C_HERO]],
@@ -75,6 +127,13 @@ const BOSS_PRE_FLAGS := {
 }
 
 const BOSS_POST := {
+	"boss4": [
+		["", "灯链一根一根断开，沉进水里。老僧跪在水中，背还是挺得笔直。"],
+		["井中人·枯荣", "好刀法。寂光教得不错……他自己没下来，倒教出一个敢下来的。", C_KURONG],
+		["井中人·枯荣", "十年前也有人从这儿过，穿灰衣，拿着半截刀。他没回头看我一眼。", C_KURONG],
+		["残刃", "……半截刀？", C_HERO],
+		["井中人·枯荣", "往里走就是烛国的灯冢。走之前，你还能替我做一件事。", C_KURONG],
+	],
 	"boss3": [
 		["百骨将", "……门，我守不住。从来都守不住。", C_BONE],
 		["百骨将", "上山去吧，孩子。寂光那老和尚……替我问他一句，为什么那夜他不开寺门。", C_BONE],
@@ -103,8 +162,37 @@ const GRAVE_CHOICE := [
 	["带走铁伯的头盔", "他守过的门，你接着守。生命、药葫芦补满", {"heal": 1, "flag": "iron_helm"}],
 ]
 
+## 打倒井中人·枯荣后的选择
+const WELL_CHOICE := [
+	["带他出井", "他会在阳光里化成灰。魂玉 +10，听他讲寂光年轻时的事", {"jade": 10, "flag": "kurong_freed"}],
+	["取下他身上的灯片", "得到专属心法“灯片”（伤害 +18%、气力 +25%，受伤 +8%）。拾骨婆会发现", {"boon_id": "lamp_shard", "flag": "kurong_shard"}],
+]
+const KURONG_FREED := [
+	["", "你背着他顺着井绳往上爬。他轻得像一捆干柴，一路都在说话。"],
+	["井中人·枯荣", "寂光小时候怕冷，冬天抄经，手冻裂了也不说。我罚他跪，他就跪一夜。", C_KURONG],
+	["井中人·枯荣", "我下井那天，他追到井边，喊了一声师父。我没回头。……原来不回头，这么容易。", C_KURONG],
+	["", "井口的光照下来。老僧眯起眼，笑了一下，在你背上散成了一捧灰。"],
+	["残刃", "……我替师父，接您回家了。", C_HERO],
+]
+const KURONG_SHARD := [
+	["", "你从他胸口的灯链上掰下一片青色的碎灯。碎片在你手心里跳了一下，像心跳。"],
+	["井中人·枯荣", "拿着吧，它比我有用。……只是别让收骨头的那个看见。", C_KURONG],
+	["", "老僧的身子一点一点沉进水里，直到水面上只剩几个气泡。"],
+]
+## 第二幕暂时只做到青井地宫：打完枯荣，这一章先到这里
+const ACT2_TBC := [
+	["", "井底的暗河一直往山腹里流。远处有铜灯的光，一排一排，像一支没睡醒的军队。"],
+	["残刃", "烛国的灯冢……师兄就在那头。", C_HERO],
+	["", "（第二幕 · 入山　未完待续：烛国灯冢、灰衣营正在路上）"],
+]
+
 ## 头目战前，按这一局的天象多出来的话（ArpgState.OMENS 的键）
 const BOSS_PRE_OMEN := {
+	"boss4": {
+		"fog": [["井中人·枯荣", "井底起雾了。四十年，我头一回看见雾。……上面是什么天气？", C_KURONG]],
+		"lantern": [["", "你怀里的灯猛地一亮，老僧身上的灯链全都绷直了，朝你这边扯。"],
+			["井中人·枯荣", "……灯在叫灯。孩子，站稳了。", C_KURONG]],
+	},
 	"boss": {
 		"blood_moon": [["夜樱剑鬼", "你看，月亮是红的。那夜的月亮也是这个颜色。", C_SAKURA]],
 		"fog": [["夜樱剑鬼", "雾这么大……那夜你也是钻进雾里跑掉的。这次别跑了。", C_SAKURA]],
@@ -239,6 +327,8 @@ static func save_cond(id: String) -> bool:
 	match id:
 		"shadow_ready":
 			return names_done() and not bool(Game.save.get("arpg_shadow", false))
+		"jizo_head":
+			return bool(Game.save.get("arpg_jizo_head", false)) and not bool(Game.save.get("arpg_jizo_home", false))
 	return false
 
 
@@ -295,6 +385,12 @@ const ENDINGS := {
 
 ## 分支剧情遭遇：剧情房里碰到，按层出现；need / not 是一局里的条件（flags）
 const ENCOUNTERS := [
+	{"id": "jizo_head", "floor": 0, "save_need": "jizo_head", "name": "无头地藏", "kit": "shrine", "lines": [
+		["", "还是那尊没有头的石地藏。你从行囊里取出井底摸上来的那颗石头，比了比，断口严丝合缝。"],
+		["残刃", "……找到你的头了。", C_HERO]],
+		"options": [
+			["把头放回去", "地藏搬去山门，以后每局出发前可以求一个小保佑。魂玉 +3", {"flag": "jizo_paid", "save": "arpg_jizo_home", "jade": 3}],
+			["下次再说", "", {}]]},
 	{"id": "ronin", "floor": 0, "name": "负伤的浪人阿七", "kit": "tent", "lines": [
 		["阿七", "别动手……我不是死人。骷髅追了我三天，药早就用完了。", C_RONIN],
 		["阿七", "你也是往山上去的？那地方……去了的人都没回来。", C_RONIN],
@@ -349,13 +445,36 @@ const ENCOUNTERS := [
 		["阿七", "我没下山。想了想，还是欠你的。", C_RONIN],
 		["阿七", "这个你拿着，山脚下捡的，我用不上。", C_RONIN]],
 		"options": [["收下", "得到一件精良以上的装备", {"gear": 2}]]},
+	# ---------- 第二幕 · 青井地宫 ----------
+	{"id": "ronin_confess", "floor": 3, "need": "a1_ronin_saved", "name": "阿七", "kit": "tent", "lines": [
+		["", "井下的岔道里蹲着一个人，火折子的光映出一张熟脸。是阿七。"],
+		["阿七", "我跟着你下来的。有句话……我在山上就该说。", C_RONIN],
+		["阿七", "十年前我在续命司当兵。那夜村外的火把……有一支是我举的。", C_RONIN],
+		["阿七", "我逃了十年，逃到樱落村的山脚下，又不敢上去。你分我药的时候，我差点跪下。", C_RONIN],
+		["残刃", "……", C_HERO]],
+		"options": [
+			["原谅他", "他认得灰衣营的路，会一直跟着你。魂玉 +3", {"flag": "ronin_forgiven", "jade": 3}],
+			["赶他走", "他把身上的铜钱都留下了（铜钱 +25）", {"coins": 25, "flag": "ronin_sent"}],
+			["拔刀", "他不躲。打一场（他用的是续命司的刀法）", {"fight": "ronin", "solo": 1, "flag": "ronin_fought"}]]},
+	{"id": "ronin_letter", "floor": 3, "need": "a1_ronin_left", "name": "阿七的记号", "kit": "gravemarker", "lines": [
+		["", "石壁上用刀尖刻着一个歪歪扭扭的“七”字，箭头指向深处。下面压着一张纸条。"],
+		["阿七的纸条", "「我先走一步，去灰衣营探路。那地方我熟，以前在那儿吃过三年饭。——欠你钱的阿七」", C_RONIN],
+		["残刃", "以前在那儿吃过饭？……", C_HERO]],
+		"options": [["收好纸条", "魂玉 +2", {"jade": 2, "flag": "ronin_ahead"}]]},
+	{"id": "grey_scout", "floor": 3, "name": "灰衣斥候的尸体", "kit": "coffin", "lines": [
+		["", "水边趴着一具尸体，灰布衣，腰上挂着一块铜牌。看样子死了没几天，是被链子勒死的。"],
+		["", "铜牌上刻着三个字：续命司。背面是一盏灯的纹样。"],
+		["残刃", "续命司……灰衣人。拾骨婆说的就是他们。", C_HERO]],
+		"options": [
+			["搜身", "铜钱 +30，还有一张画着井道的草图（下一个战斗房必有裂墙）", {"coins": 30, "flag": "secret_hint"}],
+			["给他合上眼", "人死了就不分哪边了。魂玉 +4", {"jade": 4, "flag": "scout_closed"}]]},
 	{"id": "monk", "floor": 2, "name": "守灯僧", "kit": "candles", "lines": [
 		["守灯僧", "施主是寂光师父的弟子？……那盏灯，是师父从山腹里挖出来的。", C_MONK],
 		["守灯僧", "灯每亮一年，师父就老十年。他撑不了多久了。", C_MONK]],
 		"options": [
 			["听他讲完", "知道了灯的秘密，寂光会有话对你说", {"flag": "monk_told", "jade": 2}],
 			["请他指路", "这一层多一个隐藏房间的线索（下一个战斗房必有裂墙）", {"flag": "secret_hint"}],
-			["拔刀", "他护着灯，你要从他手里拿东西，就得打一场（精英战，必掉装备）", {"fight": "samurai"}]]},
+			["拔刀", "他护着灯，你要从他手里拿东西，就得打一场（精英战，必掉装备）", {"fight": "samurai", "flag": "monk_fought"}]]},
 ]
 
 ## 寂光的残页（隐藏房间里找，跨局保留）
@@ -394,6 +513,9 @@ static func take_page(i: int) -> void:
 
 
 static func encounter_for(floor_i: int, flags: Dictionary, seen: Dictionary) -> Dictionary:
+	# 先挑一次都没见过的（存档 arpg_enc_seen），都见过了再按顺序来：这样同一层的几段遭遇会轮着出现
+	var ever: Array = Game.save.get("arpg_enc_seen", [])
+	var first := {}
 	for e: Dictionary in ENCOUNTERS:
 		if int(e["floor"]) != floor_i or seen.has(e["id"]):
 			continue
@@ -401,5 +523,69 @@ static func encounter_for(floor_i: int, flags: Dictionary, seen: Dictionary) -> 
 			continue
 		if e.has("save_need") and not save_cond(String(e["save_need"])):
 			continue
-		return e
-	return {}
+		if e.has("save_need") or not ever.has(e["id"]):
+			return e
+		if first.is_empty():
+			first = e
+	return first
+
+
+static func mark_seen(id: String) -> void:
+	var ever: Array = (Game.save.get("arpg_enc_seen", []) as Array).duplicate()
+	if not ever.has(id):
+		ever.append(id)
+		Game.save["arpg_enc_seen"] = ever
+
+
+## ---------- 第二幕支线 ----------
+
+## 地藏的头：青井地宫的遗骸侧室水底摸到（存档 arpg_jizo_head），下一局第一幕把它放回幽林的无头地藏（arpg_jizo_home）
+const JIZO_HEAD_FOUND := [
+	["", "你在积水里摸到一块圆滚滚的石头。翻过来，是一张眉眼低垂的石脸，脖子上一道整齐的断口。"],
+	["残刃", "……是幽林路边那尊地藏的头。怎么会掉到井底来？", C_HERO],
+	["", "（得到“地藏的头”。下次走第一幕时，把它放回幽林的无头地藏身上）"],
+]
+## 地藏在山门：每回山门可以求一次小保佑，下一局出发时生效
+const JIZO_BLESS := [
+	["平安", "下一局出发时生命上限 +25", {"boon_id": "vigor"}],
+	["招财", "下一局出发时多带 40 铜钱", {"coins": 40}],
+	["续命", "下一局出发时药葫芦 +1", {"boon_id": "gourd"}],
+]
+
+## 刀匠的三样东西：第二幕开始后山门来了个柳溪村逃出来的老刀匠
+const SMITH_MEET := [
+	["", "山门口多了一个背着铁砧的老头，胡子被炉火燎掉了一半。"],
+	["老刀匠", "你就是寂光寺那个拿断刀的孩子？我从柳溪村逃出来的，灰衣人把村里人都关进了笼子。", C_SMITH],
+	["老刀匠", "你那半截刀，我能重铸。缺三样东西：井底的寒铁、灯冢铸灯炉里的烛铜、灰衣军官身上的印。", C_SMITH],
+	["老刀匠", "找齐了来找我。……我闺女还在柳溪村，你要是路过，替我看一眼。", C_SMITH],
+]
+const SMITH_ITEMS := [
+	["iron", "寒铁", "青井地宫的精英身上", "井底泡了四十年的铁，冷得粘手"],
+	["bronze", "烛铜", "烛国灯冢的铸灯炉", "（第二幕后续开放）"],
+	["seal", "灰衣印", "灰衣营的军官身上", "（第二幕后续开放）"],
+]
+const SMITH_GOT_IRON := [
+	["", "精英倒下的地方，水里沉着一块青黑色的铁锭，碰一下指头就冻得发麻。"],
+	["残刃", "井底的寒铁。老刀匠要的第一样东西。", C_HERO],
+	["", "（刀匠的三样东西 1 / 3：寒铁）"],
+]
+
+
+static func smith_items() -> Array:
+	return Game.save.get("arpg_smith", [])
+
+
+static func smith_take(id: String) -> void:
+	var got: Array = smith_items().duplicate()
+	if not got.has(id):
+		got.append(id)
+	Game.save["arpg_smith"] = got
+	Game.write_save()
+
+
+## 第二幕开场：按第一幕最后的结局（众生算灯灭）
+static func act2_open() -> Array:
+	var e := String(Game.save.get("arpg_last_end", "douse"))
+	if e == "souls" or not ACT2_OPEN.has(e):
+		e = "douse"
+	return ACT2_OPEN[e]

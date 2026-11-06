@@ -42,6 +42,10 @@ const LIST := [
 	["shadow", "替我回来", "打倒隐藏头目残影", true],
 	["end_souls", "众生", "看到隐藏结局 · 众生", true],
 	["weapons_all", "兵器满架", "兵器架上的兵器全部收齐", false],
+	# 第二幕
+	["act2", "入井", "第一次走进第二幕的“入井”光门", false],
+	["boss4", "灯链尽断", "打倒第二幕头目井中人·枯荣", false],
+	["jizo_home", "地藏归位", "把井底捡到的石头放回无头地藏身上", true],
 ]
 
 ## 累计数到了就解锁：统计键 → [[数量, 成就id], ...]
@@ -148,6 +152,8 @@ static func check_save(quiet: bool = false) -> void:
 		unlock("names", quiet)
 	if bool(Game.save.get("arpg_shadow", false)):
 		unlock("shadow", quiet)
+	if bool(Game.save.get("arpg_jizo_home", false)):
+		unlock("jizo_home", quiet)
 	var owned: Array = Game.save.get("arpg_weapons", [])
 	var all := true
 	for w: String in ArpgData.WEAPONS:

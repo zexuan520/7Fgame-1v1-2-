@@ -5,14 +5,20 @@ extends RefCounted
 
 static var cur: ArpgState
 
-## 一局三层：幽林遗迹（头目夜樱）→ 无名冢（头目百骨将）→ 古寺（最终头目寂光）
-const FLOOR_ZONES := ["forest", "grave", "temple"]
-const FLOOR_NAMES := ["幽林遗迹", "无名冢", "古寺"]
-const BOSS_KINDS := ["boss", "boss3", "boss2"]
-const BOSS_ZONES := ["sakura", "grave", "temple"]
-const BOSS_TITLES := ["夜樱广场", "无名冢 · 万骨坑", "古寺 · 寂光殿"]
-const BOSS_MUSIC := ["boss", "boss2", "boss"]
+## 一局三层。第一幕“归乡”：幽林遗迹（头目夜樱）→ 无名冢（头目百骨将）→ 古寺（最终头目寂光）
+## 第二幕“入山”（第一幕任一结局后，山门出现“入井”光门）：青井地宫（井中人·枯荣）→ 烛国灯冢（不夜将军）→ 灰衣营（执灯使·烬）
+## 下面这些表按“全局层号”排（gfloor = 第几幕的偏移 + 本幕第几层），一幕三层
+const FLOOR_ZONES := ["forest", "grave", "temple", "well", "vault", "camp"]
+const FLOOR_NAMES := ["幽林遗迹", "无名冢", "古寺", "青井地宫", "烛国灯冢", "灰衣营"]
+const BOSS_KINDS := ["boss", "boss3", "boss2", "boss4", "boss5", "boss6"]
+const BOSS_ZONES := ["sakura", "grave", "temple", "well", "vault", "camp"]
+const BOSS_TITLES := ["夜樱广场", "无名冢 · 万骨坑", "古寺 · 寂光殿", "青井 · 井底", "灯冢 · 不夜殿", "灰衣营 · 帅帐"]
+const BOSS_MUSIC := ["boss", "boss2", "boss", "boss2", "boss", "boss2"]
 const LAST_FLOOR := 2
+## 第二幕已经做好的层数（分阶段做：先只有青井地宫，打完头目算这一章暂时通关）
+const ACT2_READY := 1
+const ACT_NAMES := {1: "第一幕 · 归乡", 2: "第二幕 · 入山"}
+const CN_NUM := ["一", "二", "三", "四", "五", "六", "七", "八", "九"]
 const TYPE_NAMES := {"start": "林口", "fight": "战", "elite": "精英", "shop": "商人", "rest": "歇脚", "event": "奇遇", "boss": "头目",
 	"treasure": "宝箱", "trial": "试炼", "story": "故人", "secret": "密室"}
 const TYPE_DESC := {"start": "", "fight": "成群的敌人，清完选一个心法", "elite": "赤甲武士带队，心法更好，必掉装备",
@@ -21,6 +27,7 @@ const TYPE_DESC := {"start": "", "fight": "成群的敌人，清完选一个心�
 	"story": "路上遇到的人。你的选择会改变后面的事", "secret": "藏在裂墙后面的房间"}
 
 var run: Run
+var act := 1                # 第几幕（1 归乡 / 2 入山）
 var coins := 0
 var jade := 0
 var kills := 0
@@ -44,8 +51,9 @@ var shop_cache := {}        # 商人房间的货：房间坐标 → [货物...]
 var event_cache := {}       # 奇遇房间抽到的奇遇
 
 
-static func start_new() -> ArpgState:
+static func start_new(act_: int = 1) -> ArpgState:
 	var s := ArpgState.new()
+	s.act = act_
 	s.seed_value = randi() if not OS.get_cmdline_user_args().has("--seed0") else 12345   # --seed0：测试时固定房间
 	s.run = Run.create(0, s.seed_value)
 	s.weapon = String(Game.save.get("arpg_weapon", "sword"))
@@ -57,6 +65,9 @@ static func start_new() -> ArpgState:
 	for a: String in OS.get_cmdline_user_args():
 		if a.begins_with("--omen="):
 			s.omen = a.substr(7) if OMENS.has(a.substr(7)) else ""
+	# 第二幕：第一幕最后选了“守灯人”，残刃带着灯，天象固定“残灯”（小怪被灯引来）
+	if s.act == 2 and String(Game.save.get("arpg_last_end", "")) == "keep":
+		s.omen = "lantern"
 	s.remap()
 	cur = s
 	return s
@@ -109,8 +120,51 @@ func floor_i() -> int:
 	return run.floor_index
 
 
+## 全局层号：第二幕第一层是 3
+func gfloor() -> int:
+	return mini(run.floor_index + (act - 1) * 3, FLOOR_ZONES.size() - 1)
+
+
+## 这一幕的最后一层（本幕层号）
+func last_floor() -> int:
+	return LAST_FLOOR if act == 1 else ACT2_READY - 1
+
+
+func is_last_floor() -> bool:
+	return run.floor_index >= last_floor()
+
+
 func zone() -> String:
-	return FLOOR_ZONES[mini(run.floor_index, FLOOR_ZONES.size() - 1)]
+	return FLOOR_ZONES[gfloor()]
+
+
+func floor_name() -> String:
+	return FLOOR_NAMES[gfloor()]
+
+
+func boss_kind() -> String:
+	return BOSS_KINDS[gfloor()]
+
+
+func boss_zone() -> String:
+	return BOSS_ZONES[gfloor()]
+
+
+func boss_title() -> String:
+	return BOSS_TITLES[gfloor()]
+
+
+func boss_music() -> String:
+	return BOSS_MUSIC[gfloor()]
+
+
+## 第二幕敌人更硬一点（开局没有心法，所以只加两成多，不按第四层算）
+func act_hp() -> float:
+	return 1.0 if act == 1 else 1.3
+
+
+func act_dmg() -> float:
+	return 1.0 if act == 1 else 1.15
 
 
 func room_type() -> String:
@@ -187,7 +241,7 @@ func price(base: int) -> int:
 func roll_boons(n: int, rng: RandomNumberGenerator) -> Array:
 	var pool := []
 	for b: Dictionary in ArpgData.BOONS:
-		if not b.get("hidden", false) or bool(Game.save.get("arpg_shadow", false)):
+		if not b.get("hidden", false) or bool(Game.save.get(String(b.get("unlock", "arpg_shadow")), false)):
 			pool.append(b)
 	var out := []
 	while out.size() < n and not pool.is_empty():
@@ -239,6 +293,31 @@ func settle(won: bool) -> Dictionary:
 		Game.save["clears"] = int(Game.save["clears"]) + 1
 	else:
 		Game.save["deaths"] = int(Game.save["deaths"]) + 1
-	Game.save["best_floor"] = maxi(int(Game.save["best_floor"]), run.floor_index + 1)
+	Game.save["best_floor"] = maxi(int(Game.save["best_floor"]), gfloor() + 1)
+	if act == 1:
+		remember_act1()
 	Game.write_save()
-	return {"won": won, "jade": jade, "kept": kept, "coins": coins, "kills": kills, "rooms": rooms, "floor": run.floor_index + 1}
+	return {"won": won, "jade": jade, "kept": kept, "coins": coins, "kills": kills, "rooms": rooms, "floor": gfloor() + 1}
+
+
+## 跨幕的选择：第一幕每条人物线最近一局选了什么，记进存档 arpg_act1（组 → 旗标），第二幕里有人记得
+const ACT1_GROUPS := {
+	"ronin": ["ronin_saved", "ronin_left", "ronin_ignored"],
+	"sakura": ["sakura_rest", "sakura_blade"],
+	"grave": ["graves_named", "iron_helm"],
+	"monk": ["monk_told", "monk_fought"],
+}
+
+
+func remember_act1() -> void:
+	var mem: Dictionary = Game.save.get("arpg_act1", {})
+	for g: String in ACT1_GROUPS:
+		for f: String in ACT1_GROUPS[g]:
+			if flags.has(f):
+				mem[g] = f
+	Game.save["arpg_act1"] = mem
+
+
+## 第一幕某条线最近一次的选择（没走到过返回 ""）
+static func act1(group: String) -> String:
+	return String((Game.save.get("arpg_act1", {}) as Dictionary).get(group, ""))

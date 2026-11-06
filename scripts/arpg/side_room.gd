@@ -15,6 +15,8 @@ const NAMES := {
 		"lore": ["守墓人骨室", "墙上刻着字"], "trial": ["魂灯阵", "七盏灯"]},
 	"temple": {"cache": ["香积库", "香火味"], "ambush": ["罗汉堂", "有人在等"], "spring": ["禅房", "很静"],
 		"lore": ["藏经阁", "满架经卷"], "trial": ["铜铃阵", "铃在自己响"]},
+	"well": {"cache": ["沉经库", "水底有光"], "ambush": ["水牢", "铁链在晃"], "spring": ["青泉", "水是温的"],
+		"lore": ["刻经僧遗骸", "满墙刻字"], "trial": ["链阵", "七根灯链"]},
 }
 ## 遗骸 / 骨室 / 藏经阁里读到的旧事（每层几段，随机一段）
 const LORE := {
@@ -33,17 +35,23 @@ const LORE := {
 		[["", "藏经阁的窗纸破了个洞，月光正好照在一卷摊开的经上。"], ["寂光的批注", "“徒儿若来，莫寻我。此灯一灭，寺中千魂俱散，我也就散了。”"]],
 		[["", "角落里一个小沙弥的蒲团，旁边放着没抄完的经。"], ["", "抄到一半的那一页上写着你的名字。墨迹还很新。"]],
 	],
+	"well": [
+		[["", "一具僧人的骸骨跪在墙前，手里还攥着凿子。墙上的经文刻到一半，最后几个字歪得不成样子。"], ["刻经僧的最后一行", "“灯在吃水，水在吃人。我刻经，是怕忘了自己是谁。”"]],
+		[["", "石台上摊着一本泡烂的寺志，只有一页还认得出字。"], ["寂光寺志", "“某年冬，住持枯荣下井寻灯，七日不返。弟子寂光守井四十九日，封井。”"]],
+		[["", "水里沉着一块灰布，布上缝着一盏灯的纹样。不是寺里的东西。"], ["", "布角绣着两个小字：续命。你把它塞进行囊，在布底下摸到几枚魂玉。"]],
+	],
 }
-const ZONE_OF := {"forest": "forest", "sakura": "forest", "grave": "grave", "temple": "temple"}
+const ZONE_OF := {"forest": "forest", "sakura": "forest", "grave": "grave", "temple": "temple", "well": "well"}
 ## 屋里的摆设（靠墙放）
 const PROPS := {
 	"forest": ["crates", "barrel", "sack", "lumber", "barrel_small", "table", "bench"],
 	"grave": ["coffin", "gravestone", "skull_candle", "ribcage", "post_skull", "candles", "grave_b"],
 	"temple": ["shelf", "candles", "bench", "banner", "lantern", "shelf", "candles"],
+	"well": ["column", "candles", "shrine", "rubble", "skull_candle", "shelf", "pillar"],
 }
-const WALL := {"forest": "wall", "grave": "wall_broken", "temple": "wall"}
-const LIGHT := {"forest": Color(1.0, 0.75, 0.45), "grave": Color(0.55, 1.0, 0.7), "temple": Color(1.0, 0.8, 0.5)}
-const TINT := {"forest": Color(1.3, 1.15, 1.0), "grave": Color(0.85, 0.95, 0.9), "temple": Color(0.62, 0.5, 0.48)}
+const WALL := {"forest": "wall", "grave": "wall_broken", "temple": "wall", "well": "wall_broken"}
+const LIGHT := {"forest": Color(1.0, 0.75, 0.45), "grave": Color(0.55, 1.0, 0.7), "temple": Color(1.0, 0.8, 0.5), "well": Color(0.5, 0.85, 1.0)}
+const TINT := {"forest": Color(1.3, 1.15, 1.0), "grave": Color(0.85, 0.95, 0.9), "temple": Color(0.62, 0.5, 0.48), "well": Color(0.8, 0.95, 1.1)}
 
 var main: ArpgMain
 var arena: Arena
@@ -260,8 +268,8 @@ func _dress() -> void:
 	l.omni_range = maxf(room.x, room.y) * 0.75
 	add_child(l)
 	l.global_position = center() + Vector3(0, 3.2, 0)
-	if zone == "grave":
-		arena.spirit_fire(at(0.92, 0.3) + Vector3(0, 0.4, 0), Color(0.55, 1.0, 0.7), 0.9, 1.2, 5.0)
+	if zone == "grave" or zone == "well":
+		arena.spirit_fire(at(0.92, 0.3) + Vector3(0, 0.4, 0), Color(0.55, 1.0, 0.7) if zone == "grave" else Color(0.45, 0.85, 1.0), 0.9, 1.2, 5.0)
 	elif Arena.lod > 0:
 		arena.kit("torch_wall", at(1.0, 0.5) + Vector3(-side * 0.5, 1.2, 0), side * PI * 0.5 + PI, 1.0, false)
 	# 靠上墙、里墙放几件摆设（要碰撞，绕着走）
@@ -272,7 +280,8 @@ func _dress() -> void:
 		var id: String = props[_rng.randi() % props.size()]
 		arena.kit(id, spots[i], (0.0 if i < 3 else PI * 0.5) + _rng.randf_range(-0.2, 0.2), 1.0, true)
 	# 地上散几件小东西（不挡路）
-	var bits := {"forest": ["sack", "barrel_small", "lumber"], "grave": ["ribcage", "gravemarker", "candles"], "temple": ["candles", "candles", "sack"]}
+	var bits := {"forest": ["sack", "barrel_small", "lumber"], "grave": ["ribcage", "gravemarker", "candles"], "temple": ["candles", "candles", "sack"],
+		"well": ["rubble", "candles", "ribcage"]}
 	for i in range(3):
 		var p := at(_rng.randf_range(0.2, 0.8), _rng.randf_range(0.55, 0.85))
 		arena.kit(bits[zone][i], p, _rng.randf() * TAU, 0.8, false)
@@ -289,17 +298,17 @@ func _build_content() -> void:
 				var lp := at(_rng.randf_range(0.3, 0.9), _rng.randf_range(0.25, 0.75))
 				_coin_pile(lp)
 		"ambush":
-			arena.kit({"forest": "tree_dead", "grave": "crypt", "temple": "shrine"}[zone], at(0.85, 0.5), -side * PI * 0.5, 0.9 if zone != "grave" else 0.6, true)
+			arena.kit({"forest": "tree_dead", "grave": "crypt", "temple": "shrine", "well": "shrine"}[zone], at(0.85, 0.5), -side * PI * 0.5, 0.9 if zone != "grave" else 0.6, true)
 		"spring":
 			var k: String = "shrine" if zone == "temple" else "well"
 			main._npc(display_name(), mid, {"kit": k, "scale": 1.3}, _use_spring)
 			if Vfx.I != null:
 				Vfx.I.ground(mid + Vector3(0, 0.02, 0), "magic_01", Color(0.5, 1.0, 0.8, 0.6), 2.2, 2.6, 1.0e6).reparent(self)
 		"lore":
-			var k2: String = {"forest": "grave_a", "grave": "coffin", "temple": "shelf"}[zone]
+			var k2: String = {"forest": "grave_a", "grave": "coffin", "temple": "shelf", "well": "coffin"}[zone]
 			main._npc(display_name(), mid, {"kit": k2, "scale": 1.3}, _read_lore)
 		"trial":
-			var k3: String = {"forest": "gravestone", "grave": "skull_candle", "temple": "lantern"}[zone]
+			var k3: String = {"forest": "gravestone", "grave": "skull_candle", "temple": "lantern", "well": "lantern"}[zone]
 			main._npc(display_name(), mid, {"kit": k3, "scale": 1.6}, _start_trial)
 			arena.spirit_fire(mid + Vector3(0, 0.3, 0), Color(1.0, 0.6, 0.35) if zone != "grave" else Color(0.55, 1.0, 0.7), 1.1, 1.6, 6.0)
 
@@ -359,6 +368,8 @@ func _start_ambush() -> void:
 	main.cam_rig.punch_zoom(0.3, 0.6)
 	var fl := main.state.floor_i()
 	var w: Array = [["crawler", 4, "skeleton", 2], ["rogue", 2, "skeleton", 2, "mage", 1], ["skeleton", 2, "rogue", 2, "mage", 1]][mini(fl, 2)]
+	if zone == "well":
+		w = ["drowned", 4, "chainmonk", 1]
 	if main.state.run.row >= 2 or fl >= 1:
 		w = w + ["samurai", 1]
 	_spawn(w)
@@ -387,6 +398,9 @@ func _start_trial(n: ArpgNpc) -> void:
 	Game.sfx("danger", -2.0)
 	main.hud.banner(display_name(), "22 秒内斩尽来敌", 1.8)
 	var fl := main.state.floor_i()
+	if zone == "well":
+		_spawn(["crawler", 6, "drowned", 4])
+		return
 	_spawn([["crawler", 8, "skeleton", 2], ["crawler", 5, "rogue", 3, "mage", 1], ["skeleton", 3, "rogue", 3, "mage", 1]][mini(fl, 2)])
 
 
@@ -450,6 +464,12 @@ func _use_spring(n: ArpgNpc) -> void:
 
 ## 支线物件：幽林先找阿樱的风筝（一次一件），再找无名冢的名牌（幽林一个、无名冢两个，要先拿到守墓人的名单）
 func _story_finds(lines: Array) -> void:
+	# 第二幕支线 · 地藏的头：青井的遗骸侧室水底摸到
+	if zone == "well" and not bool(Game.save.get("arpg_jizo_head", false)):
+		Game.save["arpg_jizo_head"] = true
+		Game.write_save()
+		lines.append_array(ArpgStory.JIZO_HEAD_FOUND)
+		return
 	if zone == "forest" and ArpgStory.kite() < ArpgStory.KITE.size():
 		var k := ArpgStory.kite()
 		lines.append_array(ArpgStory.KITE[k])
