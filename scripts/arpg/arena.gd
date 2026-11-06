@@ -88,6 +88,53 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 	_atmosphere()
 	_clear_doorways()
 	_make_spawns()
+	if lod <= 1:
+		_batch_static()
+
+
+## 静态合批：摆设大多共用一份场景材质，按 10 米一格把它们并成一块大网格，绘制调用少很多
+## （手机网页上每次绘制调用都很贵）。只并共用 env_mat、自己没有子节点、往上到房间都没挂脚本的件；
+## 前景遮挡件（材质是复制出来的）、发光件、灯、粒子、侧室和之后才摆的东西（裂墙）都不动。
+const BATCH_CELL := 10.0
+
+
+func _batch_static() -> void:
+	var buckets := {}
+	for n: Node in find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.material_override != env_mat or not mi.visible or mi.mesh == null or mi.has_meta("floor") \
+				or mi.get_child_count() > 0 or mi.mesh.get_surface_count() != 1:
+			continue
+		var ok := true
+		var a := mi.get_parent()
+		while a != self:
+			if a == null or a.get_script() != null or not (a is Node3D) or not (a as Node3D).visible:
+				ok = false
+				break
+			a = a.get_parent()
+		if not ok:
+			continue
+		var p := mi.position if mi.get_parent() == self else to_local(mi.global_position)
+		var key := Vector2i(floori(p.x / BATCH_CELL), floori(p.z / BATCH_CELL))
+		if not buckets.has(key):
+			buckets[key] = []
+		(buckets[key] as Array).append(mi)
+	var inv := global_transform.affine_inverse()
+	for key: Vector2i in buckets:
+		var list: Array = buckets[key]
+		if list.size() < 2:
+			continue
+		var st := SurfaceTool.new()
+		for mi: MeshInstance3D in list:
+			st.append_from(mi.mesh, 0, inv * mi.global_transform)
+		var out := MeshInstance3D.new()
+		out.mesh = st.commit()
+		out.material_override = env_mat
+		out.set_meta("batched", true)
+		add_child(out)
+		for mi: MeshInstance3D in list:
+			mi.get_parent().remove_child(mi)
+			mi.queue_free()
 
 
 func zone_info() -> Dictionary:
@@ -277,6 +324,8 @@ func _floor_patch(x0: float, z0: float, nx: int, nz: int, main_room: bool, tint:
 				var edge := maxf(absf(x) - size.x * 0.5 + 3.0, absf(z) - size.y * 0.5 + 3.0)
 				if edge > 0.0 and noise.get_noise_2d(x * 9.0, z * 9.0) > 0.4:
 					var h := 2 + int(rng.randf() * 3.0)
+					if lod == 0:
+						h = 2   # 低画质：一样高，顶面能合并成大块（逐格高低不齐时一格四个侧面）
 					c = Color(0.1, 0.22, 0.16).lerp(Color(0.16, 0.3, 0.2), rng.randf())
 					for y in range(1, h + 1):
 						bumps.cells[Vector3i(ix, y, iz)] = c * (1.0 + 0.1 * y)
@@ -522,10 +571,11 @@ func _fx_mat(tex: String, c: Color, additive: bool, energy: float = 2.0) -> Shad
 ## 大树干（深色，带根和苔藓），h 高（格），vs 0.12 米
 ## 同一个格子（缓存下来的树干、樱树、管子）只合一次网格
 func _mesh_of(g: VoxelGrid, vs: float, glow: bool) -> ArrayMesh:
-	var key := StringName("mesh_%d" % int(round(vs * 100000.0)))
+	var coarse := VoxelModel.coarse and vs < 0.1 and not glow   # 低画质：细格子的件两格并一格
+	var key := StringName("mesh_%d_%d_%d" % [int(round(vs * 100000.0)), int(VoxelGrid.quant), int(coarse)])
 	if g.has_meta(key):
 		return g.get_meta(key)
-	var m := g.build(vs, Vector3.ZERO, glow)
+	var m := g.downsample(2).build(vs * 2.0, Vector3.ZERO, glow) if coarse else g.build(vs, Vector3.ZERO, glow)
 	g.set_meta(key, m)
 	return m
 

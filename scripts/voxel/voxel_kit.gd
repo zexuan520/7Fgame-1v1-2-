@@ -23,11 +23,12 @@ static var _cache := {}
 
 ## 返回 {"mesh": ArrayMesh, "size": Vector3（像素）, "lo": 最小角（像素）, "light": [位置, 颜色, 半径] 或 []}；没有这个文件返回空字典
 static func get_piece(id: String) -> Dictionary:
-	if _cache.has(id):
-		return _cache[id]
+	var ck := "%s|%d|%d" % [id, int(VoxelGrid.quant), int(VoxelModel.coarse)]
+	if _cache.has(ck):
+		return _cache[ck]
 	var path := DIR % id
 	if not FileAccess.file_exists(path):
-		_cache[id] = {}
+		_cache[ck] = {}
 		return {}
 	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	var vs := float(d.get("vs", 2.0))
@@ -43,6 +44,8 @@ static func get_piece(id: String) -> Dictionary:
 		var rel: Vector3 = l[0]
 		light = [Vector3(rel.x * size.x * 0.5, rel.y * size.y, rel.z * size.z * 0.5), l[1], l[2]]
 	var mn: Array = d.get("min", [0, 0, 0])
-	var out := {"mesh": g.build(vs), "size": size, "lo": Vector3(float(mn[0]), float(mn[1]), float(mn[2])) * vs, "light": light}
-	_cache[id] = out
+	# 低画质：两格并一格（手机上一格不到两个像素，看不出来，三角形少四倍）
+	var mesh := g.downsample(2).build(vs * 2.0) if VoxelModel.coarse else g.build(vs)
+	var out := {"mesh": mesh, "size": size, "lo": Vector3(float(mn[0]), float(mn[1]), float(mn[2])) * vs, "light": light}
+	_cache[ck] = out
 	return out

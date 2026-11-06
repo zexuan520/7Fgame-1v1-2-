@@ -10,17 +10,19 @@ var source := ""
 
 static var _cache := {}
 static var off := false      # true 时一律不用开源模型（演示工具拍前后对比用）
+static var coarse := false   # 低画质：精细体素（res 2）的部件缩成一半分辨率再合网格，三角形少四倍左右，手机上看不出差别
 
 
 static func load_model(id: String) -> VoxelModel:
 	if off:
 		return null
-	if _cache.has(id):
-		return _cache[id]
+	var ck := "%s|%d|%d" % [id, int(coarse), int(VoxelGrid.quant)]
+	if _cache.has(ck):
+		return _cache[ck]
 	var path := "res://assets/voxel/%s.json" % id
 	if not FileAccess.file_exists(path):
 		push_warning("没有体素模型 " + path)
-		_cache[id] = null
+		_cache[ck] = null
 		return null
 	var d: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
 	var m := VoxelModel.new()
@@ -38,8 +40,13 @@ static func load_model(id: String) -> VoxelModel:
 		for i in range(0, v.size(), 6):
 			g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3]), int(v[i + 4]), int(v[i + 5]))
 		var an: Array = pd["anchor"]
-		m.parts[pname] = {"anchor": Vector3(an[0], an[1], an[2]) / res, "len": float(pd["len"]) / res, "mesh": g.build(1.0 / res)}
-	_cache[id] = m
+		var mesh: ArrayMesh
+		if coarse and res > 1.2:
+			mesh = g.downsample(2).build(2.0 / res)
+		else:
+			mesh = g.build(1.0 / res)
+		m.parts[pname] = {"anchor": Vector3(an[0], an[1], an[2]) / res, "len": float(pd["len"]) / res, "mesh": mesh}
+	_cache[ck] = m
 	return m
 
 
@@ -56,7 +63,7 @@ static var _weapons := {}
 
 ## 开源武器（assets/voxel/weapon/*.json，原点在握把、刃朝 -y），按给定的总长缩放成网格；没有返回 null
 static func weapon_mesh(id: String, length: float) -> ArrayMesh:
-	var key := "%s|%.1f" % [id, length]
+	var key := "%s|%.1f|%d|%d" % [id, length, int(coarse), int(VoxelGrid.quant)]
 	if _weapons.has(key):
 		return _weapons[key]
 	var path := "res://assets/voxel/weapon/%s.json" % id
@@ -69,6 +76,7 @@ static func weapon_mesh(id: String, length: float) -> ArrayMesh:
 	for i in range(0, v.size(), 6):
 		g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3]), int(v[i + 4]), int(v[i + 5]))
 	# len 是像素长，vs 是一格几像素（精细版 0.5），格数 = len / vs
-	var m := g.build(length * float(d.get("vs", 1.0)) / maxf(float(d.get("len", 40.0)), 1.0))
+	var vsz := length * float(d.get("vs", 1.0)) / maxf(float(d.get("len", 40.0)), 1.0)
+	var m := g.downsample(2).build(vsz * 2.0) if coarse and float(d.get("vs", 1.0)) < 1.0 else g.build(vsz)
 	_weapons[key] = m
 	return m

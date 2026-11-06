@@ -401,6 +401,13 @@ func gain_energy(v: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	var _pt := Time.get_ticks_usec() if PerfProbe.on else 0
+	_physics_process_body(delta)
+	if PerfProbe.on:
+		PerfProbe.add("hero", _pt)
+
+
+func _physics_process_body(delta: float) -> void:
 	var dt := tick_common(delta)
 	for k: String in cd:
 		cd[k] = maxf(float(cd[k]) - dt, 0.0)

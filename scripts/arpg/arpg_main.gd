@@ -84,6 +84,7 @@ func _ready() -> void:
 		Game.save.erase("arpg_hints_off")
 	if _args.has("pad"):
 		ArpgInput.pad_used[0] = true   # 测试：按键提示写成手柄的
+	VoxelGrid.greedy = not _args.has("nogreedy")   # 测试：逐格画（对比合并面前后的三角形数）
 	if _args.has("diff"):
 		Game.save["arpg_diff"] = clampi(int(_args["diff"]), 0, 1)   # 测试：不写存档，只改这次
 	if _args.has("cyclemax"):
@@ -95,6 +96,10 @@ func _ready() -> void:
 		_story_test_save(String(_args["storytest"]))
 	_setup_world()
 	apply_quality(_initial_quality())
+	if _args.has("perf") and get_node_or_null("PerfProbe") == null:
+		var pp := PerfProbe.new()
+		pp.name = "PerfProbe"
+		add_child(pp)
 	if _args.has("shot"):
 		for t: String in String(_args.get("shot_t", "3.0")).split(","):
 			_shots.append(float(t))
@@ -221,7 +226,20 @@ func _ready() -> void:
 		for i in range(int(_args["givegear"])):
 			state.bag.append(ArpgGear.roll(_rng, i % 3))
 		get_tree().create_timer(1.5).timeout.connect(func() -> void: _open_bag())
-	if _args.has("touchtest"):
+	if _args.get("touchtest", "") == "wheel":
+		# 测试：按住「器」开道具轮盘，滑到第二个（拍轮盘截图）
+		get_tree().create_timer(1.0).timeout.connect(func() -> void:
+			var t := InputEventScreenTouch.new()
+			t.index = 2
+			t.pressed = true
+			t.position = touch._item_center() * (Vector2(get_window().size) / get_viewport().get_visible_rect().size)
+			Input.parse_input_event(t))
+		get_tree().create_timer(1.6).timeout.connect(func() -> void:
+			var d := InputEventScreenDrag.new()
+			d.index = 2
+			d.position = touch._wheel_slot(1, state.props.size()) * (Vector2(get_window().size) / get_viewport().get_visible_rect().size)
+			Input.parse_input_event(d))
+	elif _args.has("touchtest"):
 		# 测试：模拟手指——左手推摇杆往右上走，右手按住“斩”
 		var send := func(ev: InputEvent) -> void: Input.parse_input_event(ev)
 		get_tree().create_timer(1.0).timeout.connect(func() -> void:
@@ -366,6 +384,9 @@ func _initial_quality() -> int:
 
 func apply_quality(q: int) -> void:
 	quality = clampi(q, 0, 2)
+	# 体素网格：低画质颜色分档粗一些、角色用半分辨率（之后新建的网格生效，缓存按档分开）
+	VoxelGrid.quant = 24.0 if quality == 0 else 64.0
+	VoxelModel.coarse = quality == 0
 	vfx.lod = quality
 	Arena.lod = quality
 	sun.shadow_enabled = quality >= 2
@@ -385,6 +406,50 @@ func apply_quality(q: int) -> void:
 		# 手机屏幕像素密度高（画布按设备像素算），3D 再降一些也看不出来
 		vp.scaling_3d_scale = [0.5, 0.65, 0.8][quality]
 	vp.msaa_3d = Viewport.MSAA_DISABLED if quality < 2 else Viewport.MSAA_2X
+
+
+## 灯光上限：兼容渲染器里每盏点光都要在它照到的每个像素上多算一遍，手机吃不消。
+## 低画质只留离主角最近的 10 盏（中 20 盏，高不限），每 0.25 秒挑一次；被自己代码关掉的灯不去碰。
+const LIGHT_CAP := [10, 20, 0]
+var _lb_t := 0.0
+
+
+func _light_budget(dt: float) -> void:
+	_lb_t -= dt
+	if _lb_t > 0.0:
+		return
+	_lb_t = 0.25
+	var cap: int = LIGHT_CAP[quality]
+	var lights := get_tree().root.find_children("*", "OmniLight3D", true, false)
+	if cap <= 0:
+		# 调高画质以后把之前关掉的灯还回去
+		for n: Node in lights:
+			if n.has_meta("lb_off"):
+				n.remove_meta("lb_off")
+				(n as Light3D).visible = true
+		return
+	var focus := hero.global_position if is_instance_valid(hero) else (cam_rig.global_position if cam_rig != null else Vector3.ZERO)
+	var cand := []
+	for n: Node in lights:
+		var l := n as OmniLight3D
+		if not l.visible and not l.has_meta("lb_off"):
+			continue
+		if not l.is_inside_tree() or (l.get_parent() is Node3D and not (l.get_parent() as Node3D).is_visible_in_tree()):
+			continue
+		var d := l.global_position.distance_to(focus) - l.omni_range * 0.4
+		if l.has_meta("lb_off"):
+			d += 1.5   # 回差：已经关掉的灯要近一点才重新打开，免得来回闪
+		cand.append([d, l])
+	cand.sort_custom(func(a: Array, b: Array) -> bool: return float(a[0]) < float(b[0]))
+	for i in range(cand.size()):
+		var l: OmniLight3D = cand[i][1]
+		if i < cap:
+			if l.has_meta("lb_off"):
+				l.remove_meta("lb_off")
+				l.visible = true
+		elif l.visible:
+			l.set_meta("lb_off", true)
+			l.visible = false
 
 
 ## 头 20 秒战斗里的平均帧数低于 40 就降一档
@@ -3317,6 +3382,8 @@ func _open_pause(sel: Variant = 0) -> void:
 		{"id": "sfx", "title": "音效音量", "right": pct.call("sfx"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
 		{"id": "quality", "title": "画质", "right": QUALITY_NAMES[quality], "desc": "低：关阴影和辉光，降低渲染分辨率，适合网页和轻薄本"},
 		{"id": "diff", "title": "难度", "right": ArpgState.DIFF_NAMES[ArpgState.difficulty()], "desc": ArpgState.DIFF_DESC[ArpgState.difficulty()]}]
+	if TouchPad.active:
+		items.insert(5, {"id": "touchsize", "title": "按键大小", "right": TouchPad.SIZE_NAMES[TouchPad.size_i], "desc": "右下角触屏按键的大小（小 → 中 → 大）"})
 	items.append({"id": "ach", "title": "成就", "right": "%d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], "desc": "看看做到了哪些"})
 	items.append({"id": "guide", "title": "新手提示", "right": "开" if ArpgHints.enabled() else "关", "desc": "开关提示、回看全部提示、重新提示一遍"})
 	if mode == "room":
@@ -3352,6 +3419,12 @@ func _on_pause_chosen(i: int) -> void:
 			Game.settings["quality"] = quality
 			Game.write_settings()
 			_fps_checked = true
+			Game.sfx("coin")
+			_open_pause(id)
+		"touchsize":
+			TouchPad.size_i = (TouchPad.size_i + 1) % 3
+			Game.settings["touch_size"] = TouchPad.size_i
+			Game.write_settings()
 			Game.sfx("coin")
 			_open_pause(id)
 		"diff":
@@ -3597,6 +3670,13 @@ func _game_over(won: bool, ending: String = "") -> void:
 # ---------- 每帧 ----------
 
 func _process(dt: float) -> void:
+	var _pt := Time.get_ticks_usec() if PerfProbe.on else 0
+	_process_body(dt)
+	if PerfProbe.on:
+		PerfProbe.add("main", _pt)
+
+
+func _process_body(dt: float) -> void:
 	if mode == "room" and room_kind == "tutorial":
 		_tut_tick(dt)
 	if not _tel.is_empty():
@@ -3625,6 +3705,7 @@ func _process(dt: float) -> void:
 		ArpgAch.combo(feel.combo)
 	_clock += dt
 	_watch_fps(dt)
+	_light_budget(dt)
 	if _args.has("nohud"):
 		hud.visible = false   # 拍宣传图用
 	if _args.has("dbg") and int(_clock * 2.0) != int((_clock - dt) * 2.0):

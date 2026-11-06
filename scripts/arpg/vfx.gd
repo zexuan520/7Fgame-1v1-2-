@@ -86,7 +86,32 @@ func _run(node: Node3D, dur: float, upd: Callable) -> void:
 	upd.call(node, 0.0)
 
 
+## 装饰性特效（火花贴片、碎块、扬尘、冲击线、残影）的令牌桶：低画质每秒最多补 BUDGET 个网格，桶最多存 CAP 个。
+## 成群小怪一起挨打时不会一下子冒出几百个贴片（每个都是一次绘制调用）；预警圈、光门这些不走这里，永远照画。
+const BUDGET := [110.0, 260.0, 0.0]
+const CAP := [55.0, 130.0, 0.0]
+var _tokens := 60.0
+
+
+func room_for(n: int) -> bool:
+	if lod >= 2:
+		return true
+	if _tokens < n:
+		return false
+	_tokens -= n
+	return true
+
+
 func _process(dt: float) -> void:
+	var _pt := Time.get_ticks_usec() if PerfProbe.on else 0
+	_process_body(dt)
+	if PerfProbe.on:
+		PerfProbe.add("vfx", _pt)
+
+
+func _process_body(dt: float) -> void:
+	if lod < 2:
+		_tokens = minf(_tokens + float(BUDGET[lod]) * dt, float(CAP[lod]))
 	var i := 0
 	while i < _live.size():
 		var e: Array = _live[i]
@@ -113,6 +138,8 @@ func _process(dt: float) -> void:
 
 ## 一张朝镜头的发光贴片：从 s0 缩放到 s1，同时淡出
 func pop(pos: Vector3, t: String, c: Color, s0: float, s1: float, dur: float, additive: bool = true, rot: float = 0.0, energy: float = 2.5) -> MeshInstance3D:
+	if not room_for(1):
+		return null
 	var mi := _take()
 	var m := _mat(mi, additive, t, c, true, energy)
 	var r0 := rot if rot != 0.0 else randf() * TAU
@@ -165,6 +192,10 @@ func impact_flash(pos: Vector3, size: float = 3.0, c: Color = Color(1, 1, 1)) ->
 func chips(pos: Vector3, dir: Vector3, c: Color, n: int = 8, speed: float = 6.0, size: float = 0.09) -> void:
 	if lod == 0:
 		n = (n + 1) / 2
+	if not room_for(n):
+		n = mini(n, int(_tokens))
+		if n <= 0 or not room_for(n):
+			return
 	for i in range(n):
 		var mi := MeshInstance3D.new()
 		mi.mesh = _cube
@@ -189,8 +220,11 @@ func chips(pos: Vector3, dir: Vector3, c: Color, n: int = 8, speed: float = 6.0,
 
 ## 落地扬尘：一圈烟往外扩
 func dust(pos: Vector3, radius: float = 1.5, c: Color = Color(0.62, 0.66, 0.62, 0.55)) -> void:
-	for i in range(8):
-		var a := TAU * i / 8.0 + randf() * 0.3
+	var puffs := 8 if lod > 0 else 5
+	if not room_for(puffs):
+		return
+	for i in range(puffs):
+		var a := TAU * i / float(puffs) + randf() * 0.3
 		var off := Vector3(cos(a), 0, sin(a))
 		var p0 := pos + off * radius * 0.3 + Vector3(0, 0.25, 0)
 		var mi := _take()
@@ -239,6 +273,8 @@ func _bar(n: Node3D, center: Vector3, d: Vector3, l: float, w: float, to_cam: Ve
 func streaks(pos: Vector3, dir: Vector3, c: Color, n: int = 5, length: float = 1.6, dur: float = 0.14, spread: float = 0.6, width: float = 0.13) -> void:
 	if lod == 0:
 		n = maxi(n / 2, 1)
+	if not room_for(n):
+		return
 	var to_cam := _cam_dir(pos)
 	var d := _screen_dir(dir, to_cam)
 	for i in range(n):
@@ -601,6 +637,8 @@ func bleed_drip(pos: Vector3) -> void:
 ## 残影：把人偶当前的样子拷一份，叠加青色发光，淡出
 func ghost(actor: VoxActor, c: Color = Color(0.3, 0.9, 1.0), dur: float = 0.3) -> void:
 	if actor == null or actor.body == null:
+		return
+	if not room_for(6):   # 一个残影十来块部件
 		return
 	var g := Node3D.new()
 	add_child(g)

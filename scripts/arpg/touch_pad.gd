@@ -1,7 +1,9 @@
 class_name TouchPad
 extends Control
-## 手机触屏操作：左半屏任意处按下出现浮动摇杆（移动），右下角一组圆形按键（斩、滚、突、光、终、药），
-## 靠近可互动的人时多出“互”键，右上角“属”（属性面板）、“囊”（行囊）和“Ⅱ”（暂停菜单）。
+## 手机触屏操作：左半屏任意处按下出现浮动摇杆（移动），右下角按常用程度排成两圈：
+##   中间最大的「斩」；贴着它一圈四个常用招（滚、突、光、终）；外面一圈小一些的（药、秘、器、换），
+##   靠近可互动的人时多出「互」。「器」点一下用当前道具，按住不放弹出道具轮盘，滑到要的那个松手就换上。
+## 右上角一排「属」（属性面板）「囊」（行囊）「Ⅱ」（暂停菜单，技能分支、画质、按键大小都在里面）。
 ## 按键直接 Input.action_press / action_release 玩家一的动作，所以角色、菜单代码都不用改。
 ## 菜单、对话框、标题画面打开时战斗按键全部收起，点击交给那些界面自己处理（它们在触屏模式下吃鼠标点击）。
 ## 竖着拿手机时盖一层“请横过来”的提示并暂停世界。
@@ -25,6 +27,20 @@ var _portrait := false
 var _modal := false
 var _t := 0.0
 var _auto_t := 0.0            # 按住“斩”自动连砍：每隔一会儿松开一帧再按下
+var _item_finger := -1        # 按着「器」的手指
+var _item_t0 := 0.0
+var _item_pos := Vector2.ZERO
+var _wheel := false           # 道具轮盘开着
+var _wheel_pick := -1
+
+## 按键大小：0 小 / 1 中 / 2 大（暂停菜单里改，记进设置）
+const SIZES := [0.88, 1.0, 1.14]
+const SIZE_NAMES := ["小", "中", "大"]
+static var size_i := 1
+
+
+static func size_k() -> float:
+	return float(SIZES[clampi(size_i, 0, 2)])
 
 
 ## 手机网页（安卓/苹果）或命令行 --touch 时打开；电脑上第一次摸屏幕也会打开
@@ -51,6 +67,7 @@ func enable() -> void:
 	if active:
 		return
 	active = true
+	size_i = clampi(int(Game.settings.get("touch_size", 1)), 0, 2)
 	ArpgInput.drop_mouse()
 	# 手机屏幕小：界面按 1024x576 排版（比 1280x720 大四分之一），3D 画面不受影响
 	get_window().content_scale_size = Vector2i(1024, 576)
@@ -60,33 +77,39 @@ func enable() -> void:
 # ---------- 布局 ----------
 
 func _buttons(vs: Vector2) -> Array:
-	## [名字, 字, 圆心, 半径, 颜色]
-	var a := Vector2(vs.x - 118, vs.y - 112)
+	## [名字, 字, 圆心, 半径, 颜色]。以「斩」为圆心排两圈弧（角度：180 朝左、270 朝上）
+	var k := size_k()
+	var a := Vector2(vs.x - 132 * k, vs.y - 122 * k)
+	var at := func(deg: float, r: float) -> Vector2:
+		return a + Vector2(cos(deg_to_rad(deg)), sin(deg_to_rad(deg))) * r * k
 	var out := [
-		["attack", "斩", a, 66.0, GOLD],
-		["roll", "滚", a + Vector2(-150, 38), 42.0, Color(0.75, 0.85, 0.9)],
-		["dash", "突", a + Vector2(-128, -76), 40.0, TEAL],
-		["beam", "光", a + Vector2(-56, -146), 40.0, Color(1.0, 0.85, 0.4)],
-		["finish", "终", a + Vector2(44, -164), 40.0, Color(1.0, 0.35, 0.35)],
-		["heal", "药", a + Vector2(-236, 52), 32.0, Color(0.4, 1.0, 0.6)],
+		["attack", "斩", a, 72.0 * k, GOLD],
+		# 内圈：最常按的四个
+		["roll", "滚", at.call(170.0, 150.0), 44.0 * k, Color(0.75, 0.85, 0.9)],
+		["dash", "突", at.call(206.0, 150.0), 44.0 * k, TEAL],
+		["beam", "光", at.call(242.0, 150.0), 44.0 * k, Color(1.0, 0.85, 0.4)],
+		["finish", "终", at.call(278.0, 150.0), 44.0 * k, Color(1.0, 0.35, 0.35)],
+		# 外圈：药随时要有
+		["heal", "药", at.call(172.0, 262.0), 34.0 * k, Color(0.4, 1.0, 0.6)],
 	]
 	if _hero_ok() and hero.art_id() != "":
-		out.append(["art", "秘", a + Vector2(-206, -160), 38.0, Color(1.0, 0.7, 0.35)])
-	if _npc_near():
-		out.append(["interact", "互", a + Vector2(-250, -60), 40.0, Color(1.0, 0.95, 0.8)])
-	# 换兵器、道具：这一局带着副手 / 道具时才出现
+		out.append(["art", "秘", at.call(199.0, 262.0), 36.0 * k, Color(1.0, 0.7, 0.35)])
+	# 道具、换兵器：这一局带着道具 / 副手时才出现
 	if _hero_ok() and hero.kit != null:
-		if not (hero.kit.arms[1] as Dictionary).is_empty():
-			out.append(["swap", "换", a + Vector2(-120, -232), 32.0, Color(0.6, 1.0, 0.95)])
 		if not hero.kit.props.is_empty():
-			out.append(["item", "器", a + Vector2(-336, 20), 32.0, Color(1.0, 0.7, 0.4)])
+			out.append(["item", "器", at.call(226.0, 262.0), 34.0 * k, Color(1.0, 0.7, 0.4)])
+		if not (hero.kit.arms[1] as Dictionary).is_empty():
+			out.append(["swap", "换", at.call(253.0, 262.0), 34.0 * k, Color(0.6, 1.0, 0.95)])
+	if _npc_near():
+		out.append(["interact", "互", at.call(178.0, 362.0), 40.0 * k, Color(1.0, 0.95, 0.8)])   # 「药」再往左，靠近屏幕下方正中
 	return out.filter(func(b: Array) -> bool: return not ArpgHints.locked(String(b[0])))   # 第一局还没亮出来的招式
 
 
+## 右上一排：Ⅱ 囊 属（排成一行，压在天象小字下面，别挡连击数）
 func _top_buttons(vs: Vector2) -> Array:
-	return [["quit", "Ⅱ", Vector2(vs.x - 44, 112), 26.0, Color(0.85, 0.9, 0.9)],
-		["bag", "囊", Vector2(vs.x - 104, 112), 26.0, Color(0.85, 0.9, 0.9)],
-		["stats", "属", Vector2(vs.x - 44, 172), 26.0, Color(0.85, 0.9, 0.9)]]   # 放在 Ⅱ 下面：左边是天象小字
+	return [["quit", "Ⅱ", Vector2(vs.x - 40, 128), 25.0, Color(0.85, 0.9, 0.9)],
+		["bag", "囊", Vector2(vs.x - 96, 128), 25.0, Color(0.85, 0.9, 0.9)],
+		["stats", "属", Vector2(vs.x - 152, 128), 25.0, Color(0.85, 0.9, 0.9)]]
 
 
 func _npc_near() -> bool:
@@ -126,6 +149,12 @@ func _input(event: InputEvent) -> void:
 		if d.index == _stick_finger:
 			_stick_pos = d.position
 			_apply_stick()
+		elif d.index == _item_finger:
+			_item_pos = d.position
+			if not _wheel and _item_pos.distance_to(_item_center()) > 40.0 * size_k():
+				_wheel = true   # 按着往外一滑也直接开轮盘
+			if _wheel:
+				_wheel_pick = _wheel_hit(_item_pos)
 
 
 func _press(finger: int, p: Vector2) -> void:
@@ -150,6 +179,16 @@ func _press(finger: int, p: Vector2) -> void:
 			best_d = dd
 	if not best.is_empty():
 		var n := String(best[0])
+		if n == "item" and hero.kit.props.size() > 1:
+			# 「器」：先不按，看是点一下（用）还是按住（开轮盘挑）
+			_item_finger = finger
+			_item_t0 = _t
+			_item_pos = p
+			_wheel = false
+			_wheel_pick = hero.kit.prop_sel
+			_flash[n] = 0.15
+			get_viewport().set_input_as_handled()
+			return
 		_btn_finger[finger] = n
 		Input.action_press(ArpgInput.act(0, n))
 		_flash[n] = 0.15
@@ -164,6 +203,18 @@ func _press(finger: int, p: Vector2) -> void:
 
 
 func _release(finger: int) -> void:
+	if finger == _item_finger:
+		_item_finger = -1
+		if _wheel:
+			_wheel = false
+			if _hero_ok() and hero.kit != null and _wheel_pick >= 0 and _wheel_pick < hero.kit.props.size() and _wheel_pick != hero.kit.prop_sel:
+				hero.kit.prop_sel = _wheel_pick
+				var it := ArpgArms.item(String(hero.kit.props[_wheel_pick]["id"]))
+				Feel.I.callout(hero.head_top(), "道具：%s" % it["name"], it["color"], 0.7)
+				Game.sfx("coin", -10.0)
+		else:
+			_tap_action("item")
+		return
 	if finger == _stick_finger:
 		_stick_finger = -1
 		_stick_pos = _stick_origin
@@ -214,7 +265,38 @@ func _auto_attack(dt: float) -> void:
 				Input.action_press(an), CONNECT_ONE_SHOT)
 
 
+func _item_center() -> Vector2:
+	for b: Array in _buttons(get_viewport_rect().size):
+		if String(b[0]) == "item":
+			return b[2]
+	return Vector2(-1000, -1000)
+
+
+## 轮盘上第 i 个道具的位置：在「器」的左上方摆一道弧
+func _wheel_slot(i: int, n: int) -> Vector2:
+	var c := _item_center()
+	var span := minf(30.0 * (n - 1), 150.0)
+	var deg := 225.0 - span * 0.5 + (span / maxf(n - 1, 1)) * i
+	return c + Vector2(cos(deg_to_rad(deg)), sin(deg_to_rad(deg))) * 108.0 * size_k()
+
+
+func _wheel_hit(p: Vector2) -> int:
+	if not _hero_ok() or hero.kit == null:
+		return -1
+	var n := hero.kit.props.size()
+	var best := _wheel_pick
+	var bd := 60.0 * size_k()
+	for i in range(n):
+		var d := p.distance_to(_wheel_slot(i, n))
+		if d < bd:
+			bd = d
+			best = i
+	return best
+
+
 func _release_all() -> void:
+	_item_finger = -1
+	_wheel = false
 	for f: int in _btn_finger:
 		Input.action_release(ArpgInput.act(0, String(_btn_finger[f])))
 	_btn_finger.clear()
@@ -226,6 +308,13 @@ func _release_all() -> void:
 # ---------- 每帧 ----------
 
 func _process(dt: float) -> void:
+	var _pt := Time.get_ticks_usec() if PerfProbe.on else 0
+	_process_body(dt)
+	if PerfProbe.on:
+		PerfProbe.add("touch", _pt)
+
+
+func _process_body(dt: float) -> void:
 	if not active:
 		return
 	_t += dt
@@ -240,6 +329,8 @@ func _process(dt: float) -> void:
 	if _portrait and Feel.I != null:
 		Feel.I.world_pause = maxf(Feel.I.world_pause, 0.05)
 	_auto_attack(dt)
+	if _item_finger >= 0 and not _wheel and _t - _item_t0 > 0.3:
+		_wheel = true
 	for k: String in _flash.keys():
 		_flash[k] = float(_flash[k]) - dt
 		if float(_flash[k]) <= 0.0:
@@ -272,7 +363,28 @@ func _draw() -> void:
 	draw_arc(knob, 30, 0, TAU, 48, Color(GOLD, 0.9 * alpha), 2.5, true)
 	for b: Array in _buttons(vs):
 		var n := String(b[0])
-		_draw_button(b, _ready_k(n), _btn_finger.values().has(n) or _flash.has(n))
+		_draw_button(b, _ready_k(n), _btn_finger.values().has(n) or _flash.has(n) or (n == "item" and _item_finger >= 0))
+	if _wheel and hero.kit != null:
+		_draw_wheel()
+
+
+func _draw_wheel() -> void:
+	var n := hero.kit.props.size()
+	var c := _item_center()
+	draw_circle(c, 150.0 * size_k(), Color(0.01, 0.02, 0.03, 0.45))
+	for i in range(n):
+		var pr: Dictionary = hero.kit.props[i]
+		var d := ArpgArms.item(String(pr["id"]))
+		var q := _wheel_slot(i, n)
+		var r := 30.0 * size_k()
+		var on := i == _wheel_pick
+		draw_circle(q, r, Color(0.08, 0.1, 0.1, 0.92) if not on else Color(Color(d["color"]) * 0.35, 0.95))
+		draw_arc(q, r, 0, TAU, 40, Color(d["color"], 1.0 if on else 0.6), 3.0 if on else 1.5, true)
+		var nm := String(d["name"])
+		draw_string(font, q + Vector2(-r * 1.6, 6), nm.left(2), HORIZONTAL_ALIGNMENT_CENTER, r * 3.2, int(17 * size_k()), Color(d["color"]))
+		draw_string(font, q + Vector2(r * 0.45, r * 0.95), str(int(pr["n"])), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.9, 0.8))
+		if on:
+			draw_string(font, q + Vector2(-80, -r - 8), nm, HORIZONTAL_ALIGNMENT_CENTER, 160, 15, Color(1.0, 0.95, 0.85))
 
 
 func _ready_k(n: String) -> float:
