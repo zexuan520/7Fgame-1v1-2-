@@ -2321,7 +2321,7 @@ func _process(dt: float) -> void:
 				_step_portal()
 
 
-# ---------- 测试：故事线（--storytest=hub / shadow / lore / souls / zen，只改内存里的存档） ----------
+# ---------- 测试：故事线（--storytest=hub / shadow / lore / souls / zen，会改写存档里的故事线进度，只在云端测试用） ----------
 
 func _story_test_save(c: String) -> void:
 	match c:
