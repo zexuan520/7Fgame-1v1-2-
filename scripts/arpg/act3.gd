@@ -196,12 +196,14 @@ static func boss_pre_flags(key: String) -> Dictionary:
 
 
 static func boss_post(key: String) -> Array:
+	if key == "boss10":
+		return Finale.POST
 	return Act3Story.BOSS_POST.get(key, [])
 
 
 ## 头目登场对话说完：约了烬的，终战多一次倒下再起
 static func boss_intro_done(main: ArpgMain, key: String) -> void:
-	if key == "boss9" and main.state.flags.has("jin_along"):
+	if key in ["boss9", "boss10"] and main.state.flags.has("jin_along"):
 		main.hero.revives += 1
 		main.feel.callout(main.hero.head_top(), "烬在你身后 · 多一次倒下再起", Act3Story.C_JIN, 1.6)
 
@@ -216,7 +218,9 @@ static func boss_choice(main: ArpgMain, key: String) -> void:
 			_choice(main, "灯车", "油布下面，灰白的灯火安安静静地烧着。", Act3Story.LAMP_CHOICE, Act3Story.C_HUO,
 				[Act3Story.LAMP_BROKEN, Act3Story.LAMP_TAKEN], "三百里外，王都的灯亮着")
 		"boss9":
-			final_choice(main)
+			# 看过真结局：龙椅底下有心跳，可以下去打隐藏头目烛王（Finale）
+			if not Finale.after_emperor(main):
+				final_choice(main)
 
 
 static func _choice(main: ArpgMain, title: String, sub: String, opts: Array, col: Color, after: Array, floor_sub: String) -> void:

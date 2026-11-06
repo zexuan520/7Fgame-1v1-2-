@@ -7,6 +7,7 @@ extends RefCounted
 ##   lifesteal 吸血  move 移速  dmg_taken 受伤倍率  iframes 翻滚无敌加时  beam 光束斩伤害  finish 终结技伤害
 ##   insight 开局天赋点  xp 悟道获取加成  sk_<分支> 技能分支级数  duo_<id> 双修（见 ArpgSkills）
 ##   coin 铜钱加成  jade 魂玉加成  discount 商人折扣  keep 死亡魂玉带回加成  start_coins 开局铜钱  revive 倒下再起
+##   execute 对残血敌人增伤  roll_cd 翻滚减突进冷却（秒）  beam_heal 光束每照到一个敌人回血  fire_dmg 火团伤害  kill_fire 斩杀爆燃几率
 
 ## 兵器：每种兵器有自己的一套连招（ArpgArms.combo）、专属特性（trait，ArpgArms.TRAITS 说明）和人偶手里的模型。
 ## dmg 乘到所有招式上（突进、光束、终结技也算），连招本身的伤害写在连招里。trail 是刀光颜色。
@@ -96,9 +97,25 @@ const BOONS := [
 	{"id": "leech", "name": "饮血", "desc": "命中回复伤害的 2% 生命", "stats": {"lifesteal": 0.02}, "school": "血"},
 	{"id": "finisher_cd", "name": "断念", "desc": "终结技冷却 -25%", "stats": {"finish_cd": 0.25}, "school": "血"},
 	{"id": "gourd", "name": "药缘", "desc": "药葫芦 +1", "stats": {"gourds": 1}, "school": "守"},
+	# 老流派各添一个带机制的
+	{"id": "behead", "name": "斩首", "desc": "对生命不到三成的敌人伤害 +35%", "stats": {"execute": 0.35}, "school": "修罗"},
+	{"id": "bloodlust", "name": "嗜杀", "desc": "每斩杀一个敌人回 4 点生命", "stats": {"kill_heal": 4.0}, "school": "血"},
+	{"id": "chase_wind", "name": "逐风", "desc": "每次翻滚，突进斩冷却 -0.5 秒", "stats": {"roll_cd": 0.5}, "school": "风"},
+	{"id": "lumen", "name": "流明", "desc": "光束斩每照到一个敌人，回 3 点生命", "stats": {"beam_heal": 3.0}, "school": "光"},
+	{"id": "recoil", "name": "反震", "desc": "受伤 -4%，近身挨打时反弹 40% 伤害", "stats": {"dmg_taken": -0.04, "thorns": 0.4}, "school": "守"},
+	# 雷：会心、翻滚引雷
+	{"id": "thunder_call", "name": "引雷", "desc": "会心率 +3%，会心时 22% 机会引一道落雷", "stats": {"crit": 0.03, "crit_bolt": 0.22}, "school": "雷"},
+	{"id": "thunder_step", "name": "雷步", "desc": "翻滚落地放出一圈雷（伤害 14）", "stats": {"roll_bolt": 14.0}, "school": "雷"},
+	{"id": "thunder_heart", "name": "雷心", "desc": "会心伤害 +30%、气力获取 +10%", "stats": {"crit_dmg": 0.3, "energy": 0.1}, "school": "雷"},
+	# 焰：命中炸火、斩杀爆燃
+	{"id": "ember", "name": "火种", "desc": "命中时 10% 机会在敌人身上炸开一团火", "stats": {"fire_proc": 0.1}, "school": "焰"},
+	{"id": "blaze", "name": "烈焰", "desc": "火团伤害 +60%、范围更大", "stats": {"fire_dmg": 0.6}, "school": "焰"},
+	{"id": "pyre", "name": "焚身", "desc": "斩杀敌人时 35% 机会让它爆燃", "stats": {"kill_fire": 0.35}, "school": "焰"},
 	# 专属心法：打赢隐藏头目残影才会出现（hidden，见 ArpgState.roll_boons）
 	{"id": "afterimage", "name": "残影", "desc": "伤害 +10%、会心率 +5%、移速 +5%", "stats": {"atk": 0.1, "crit": 0.05, "move": 0.05}, "school": "风", "hidden": true},
 	# 第二幕：井中人身上取下的灯片（只从战后选择拿到，不进心法池）
+	# 终章：打倒烛王以后进心法池
+	{"id": "eighth_lamp", "name": "第八灯", "desc": "伤害 +15%、生命 +20，斩杀时 25% 机会让敌人爆燃", "stats": {"atk": 0.15, "hp": 20.0, "kill_fire": 0.25}, "school": "焰", "hidden": true, "unlock": "arpg_king"},
 	{"id": "lamp_shard", "name": "灯片", "desc": "伤害 +18%、气力获取 +25%，代价是受伤 +8%", "stats": {"atk": 0.18, "energy": 0.25, "taken_extra": 0.08}, "school": "光", "hidden": true, "unlock": "-"},
 ]
 
@@ -110,6 +127,8 @@ const SETS := {
 	"风": {"id": "set_wind", "name": "御风", "desc": "翻滚后 1.2 秒内的下一刀必定会心，每次翻滚突进斩冷却 -0.8 秒"},
 	"光": {"id": "set_light", "name": "天光", "desc": "光束斩返还 40% 气力，命中的敌人叠 3 层出血"},
 	"守": {"id": "set_guard", "name": "金身", "desc": "每 10 秒凝一层金光，挡掉下一次伤害"},
+	"雷": {"id": "set_storm", "name": "天雷", "desc": "落雷会跳到附近两个敌人身上（六成伤害），被劈中的晕得更久"},
+	"焰": {"id": "set_pyre", "name": "燎原", "desc": "火团炸完留下火种，一秒后在原地再炸一次（七成伤害）"},
 }
 
 
@@ -123,7 +142,8 @@ static func school_counts(boons: Array) -> Dictionary:
 	return out
 
 
-const SCHOOL_COLORS := {"修罗": Color(1.0, 0.45, 0.35), "血": Color(0.95, 0.2, 0.3), "风": Color(0.45, 1.0, 0.8), "光": Color(1.0, 0.9, 0.5), "守": Color(0.5, 0.75, 1.0)}
+const SCHOOL_COLORS := {"修罗": Color(1.0, 0.45, 0.35), "血": Color(0.95, 0.2, 0.3), "风": Color(0.45, 1.0, 0.8), "光": Color(1.0, 0.9, 0.5), "守": Color(0.5, 0.75, 1.0),
+	"雷": Color(0.68, 0.72, 1.0), "焰": Color(1.0, 0.58, 0.2)}
 
 ## 天赋：三棵树（修罗攻 / 不动守 / 行者运），每棵三层，往这棵树里投够点数解锁下一层；用魂玉点，存档里永久保留
 const TALENT_TREES := [

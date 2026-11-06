@@ -74,6 +74,14 @@ var set_blood := false
 var set_wind := false
 var set_light := false
 var set_guard := false
+var set_storm := false           # 天雷：落雷跳到附近两个敌人
+var set_pyre := false            # 燎原：火团一秒后原地再炸一次
+## 新心法的机制键（ArpgData.BOONS）
+var execute := 0.0               # 斩首：对残血敌人增伤
+var roll_cd := 0.0               # 逐风：每次翻滚减突进冷却（秒）
+var beam_heal := 0.0             # 流明：光束每照到一个敌人回血
+var fire_dmg := 0.0              # 烈焰：火团伤害加成
+var kill_fire := 0.0             # 焚身：斩杀爆燃几率
 var _wind_t := 0.0               # 御风：翻滚后必会心的剩余时间
 var _guard_t := 0.0              # 金身：凝金光的计时
 var golden := false              # 金身：现在有一层金光
@@ -195,6 +203,11 @@ func apply_stats(st: Dictionary, wid: String, fill_hp: bool = false) -> void:
 	kill_heal = ArpgData.stat(st, "kill_heal")
 	crit_bolt = ArpgData.stat(st, "crit_bolt")
 	fire_proc = ArpgData.stat(st, "fire_proc")
+	execute = ArpgData.stat(st, "execute")
+	roll_cd = ArpgData.stat(st, "roll_cd")
+	beam_heal = ArpgData.stat(st, "beam_heal")
+	fire_dmg = ArpgData.stat(st, "fire_dmg")
+	kill_fire = ArpgData.stat(st, "kill_fire")
 	set_iron = ArpgData.stat(st, "set_iron") > 0.0
 	set_oni = ArpgData.stat(st, "set_oni") > 0.0
 	set_thunder = ArpgData.stat(st, "set_thunder") > 0.0
@@ -214,6 +227,8 @@ func apply_stats(st: Dictionary, wid: String, fill_hp: bool = false) -> void:
 	set_wind = ArpgData.stat(st, "set_wind") > 0.0
 	set_light = ArpgData.stat(st, "set_light") > 0.0
 	set_guard = ArpgData.stat(st, "set_guard") > 0.0
+	set_storm = ArpgData.stat(st, "set_storm") > 0.0
+	set_pyre = ArpgData.stat(st, "set_pyre") > 0.0
 	if not set_guard:
 		golden = false
 	sk.clear()
@@ -764,6 +779,8 @@ func _strike(a: Actor, s: AttackStep, k: float, force_crit: bool) -> bool:
 		m *= 1.25
 	if _swap_strike:
 		m *= 1.3
+	if execute > 0.0 and a.max_hp > 0.0 and a.hp < a.max_hp * 0.3:
+		m *= 1.0 + execute   # 斩首
 	var dmg := s.damage * m * (crit_mult if crit else 1.0) * randf_range(0.92, 1.08)
 	var info := HitInfo.make(self, a, dmg, HitInfo.Weight.HEAVY if s.heavy else HitInfo.Weight.LIGHT)
 	info.crit = crit
@@ -803,29 +820,66 @@ func _on_landed(a: Actor, crit: bool) -> void:
 		_edge_t = 1.5
 	if fire_proc > 0.0 and randf() < fire_proc and is_instance_valid(a):
 		_fire_burst(a.chest())
-	if crit and crit_bolt > 0.0 and randf() < crit_bolt and is_instance_valid(a):
-		ArpgArms.lightning(self, a.global_position, 24.0 * dmg_mult, 0.4)
+	if crit and is_instance_valid(a) and ((crit_bolt > 0.0 and randf() < crit_bolt) or (duo.has("leiren") and randf() < 0.25)):
+		bolt(a.global_position, 24.0 * dmg_mult, 0.4)
 	if set_thunder:
 		_hit_n += 1
 		if _hit_n >= 5 and is_instance_valid(a):
 			_hit_n = 0
-			ArpgArms.lightning(self, a.global_position, 30.0 * dmg_mult, 0.6)
+			bolt(a.global_position, 30.0 * dmg_mult, 0.6)
 
 
-## 火纹玉：敌人身上炸开一团火（1.8 米内都烫到）
-func _fire_burst(p: Vector3) -> void:
-	Vfx.I.explosion(p, 0.5)
-	Vfx.I.pop(p, "spark_05", Color(1.0, 0.6, 0.2), 0.4, 1.8, 0.2)
+## 火纹玉、火种、焚身：敌人身上炸开一团火（1.8 米内都烫到；烈焰更大更疼，血焰叠出血，燎原一秒后原地再炸）
+func _fire_burst(p: Vector3, k: float = 1.0, again: bool = true) -> void:
+	if not is_inside_tree():
+		return
+	var r := 1.8 * (1.0 + minf(fire_dmg, 1.2) * 0.25)
+	Vfx.I.explosion(p, 0.5 * (r / 1.8))
+	Vfx.I.pop(p, "spark_05", Color(1.0, 0.6, 0.2), 0.4, r, 0.2)
 	Game.sfx("flame", -8.0, 0.1)
 	for f: Node in get_tree().get_nodes_in_group("foes"):
 		var b := f as Actor
-		if b == null or not b.alive or b.chest().distance_to(p) > 1.8 + b.radius:
+		if b == null or not b.alive or b.chest().distance_to(p) > r + b.radius:
 			continue
-		var info := HitInfo.make(self, b, 10.0 * dmg_mult, HitInfo.Weight.LIGHT)
+		var info := HitInfo.make(self, b, 10.0 * dmg_mult * (1.0 + fire_dmg) * k, HitInfo.Weight.LIGHT)
 		info.attacker = null
 		info.knock = 2.0
 		info.stun = 0.1
-		Feel.I.on_hit(info)
+		if duo.has("xueyan"):
+			info.bleed = 2 + bleed_bonus
+			info.bleed_mult = bleed_dmg
+		if Feel.I.on_hit(info):
+			_check_blood(b)
+	if set_pyre and again:
+		Vfx.I.ground(Vector3(p.x, 0, p.z), "magic_03", Color(1.0, 0.45, 0.12, 0.6), r * 1.2, r * 1.6, 1.0, true, 0.15)
+		get_tree().create_timer(1.0).timeout.connect(func() -> void:
+			if is_instance_valid(self) and alive:
+				_fire_burst(p, k * 0.7, false))
+
+
+## 一道落雷（雷符坠、引雷、雷殛套、雷刃都走这里）：天雷大成跳到附近两个敌人，雷火同时炸一团火
+func bolt(at: Vector3, dmg: float, stun: float, chain: bool = true) -> void:
+	ArpgArms.lightning(self, at, dmg, stun * (1.5 if set_storm else 1.0))
+	if duo.has("leihuo"):
+		_fire_burst(Vector3(at.x, 1.0, at.z), 0.8, false)
+	if not set_storm or not chain or not is_inside_tree():
+		return
+	var cands := []
+	for f: Node in get_tree().get_nodes_in_group("foes"):
+		var b := f as Actor
+		if b == null or not b.alive:
+			continue
+		var d := Vector2(b.global_position.x - at.x, b.global_position.z - at.z).length()
+		if d > 1.8 and d < 6.0:
+			cands.append([d, b])
+	cands.sort_custom(func(x: Array, y: Array) -> bool: return x[0] < y[0])
+	for i in range(mini(2, cands.size())):
+		var b: Actor = cands[i][1]
+		var from := Vector3(at.x, 1.2, at.z)
+		Vfx.I.beam(from, b.chest(), 0.25, 0.14)
+		get_tree().create_timer(0.08 * (i + 1)).timeout.connect(func() -> void:
+			if is_instance_valid(b) and b.alive and is_instance_valid(self):
+				bolt(b.global_position, dmg * 0.6, stun, false))
 
 
 ## 连弩的箭、飞镖打中敌人（HeroBolt 调用）
@@ -1619,6 +1673,8 @@ func _start_roll() -> void:
 	step_i = -1
 	_roll_cut.clear()
 	_link_mark("roll")
+	if roll_cd > 0.0:
+		cd["dash"] = maxf(cd["dash"] - roll_cd, 0.0)   # 逐风
 	if duo.has("liuguang"):
 		gain_energy(6.0)
 		Vfx.I.streaks(chest(), Vector3.UP, SkillFx.LIGHT, 3, 1.2, 0.2, 0.5, 0.1)
@@ -1647,7 +1703,7 @@ func _st_roll(dt: float) -> void:
 			cd["dash"] = maxf(cd["dash"] - 0.8, 0.0)
 		if weapon_id == "crossbow":
 			_roll_crit = true
-		if roll_bolt > 0.0:
+		if roll_bolt > 0.0 or duo.has("jingzhe"):
 			_roll_thunder()
 		_set_state("move")
 		_move = _roll_dir * move_speed * 0.7
@@ -1662,10 +1718,10 @@ func _roll_thunder() -> void:
 		var a := f as Actor
 		if a == null or not a.alive or a.global_position.distance_to(global_position) > 2.6 + a.radius:
 			continue
-		var info := HitInfo.make(self, a, roll_bolt * dmg_mult, HitInfo.Weight.LIGHT)
+		var info := HitInfo.make(self, a, maxf(roll_bolt, 10.0 if duo.has("jingzhe") else 0.0) * dmg_mult, HitInfo.Weight.LIGHT)
 		info.attacker = null
 		info.knock = 3.0
-		info.stun = 0.3
+		info.stun = 0.3 * (1.5 if set_storm else 1.0)
 		Feel.I.on_hit(info)
 
 
@@ -1933,6 +1989,16 @@ func _fire_beam() -> void:
 	_beam_hits.clear()
 	var bk := 1.3 if _beam_fast else 1.0
 	_beam_line(from, to, 1.5 * wide, 60.0 * power() * beam_mult * bk)
+	if beam_heal > 0.0 and not _beam_hits.is_empty():
+		hp = minf(hp + beam_heal * _beam_hits.size(), max_hp)   # 流明
+		Vfx.I.streaks(chest(), Vector3.UP, Color(1.0, 0.95, 0.6), 4, 1.4, 0.2, 0.5, 0.12)
+	if duo.has("yanyang"):
+		var hit := _alive(_beam_hits)
+		for i in range(mini(hit.size(), 8)):
+			var a: Actor = hit[i]
+			get_tree().create_timer(0.05 * i).timeout.connect(func() -> void:
+				if is_instance_valid(a):
+					_fire_burst(a.chest(), 1.0, true))
 	_beam_branch(dir, gp, bk)
 	_link_mark("beam")
 	if duo.has("mingjing"):

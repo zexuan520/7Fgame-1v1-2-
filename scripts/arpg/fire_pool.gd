@@ -17,6 +17,8 @@ var _lit := false
 
 
 func _ready() -> void:
+	if not hurts_foes:
+		add_to_group("pools")   # 机器人认得出来、会走出去（ArpgBot）
 	if warn > 0.0:
 		Vfx.I.telegraph_circle(global_position, radius, Vfx.DANGER["poison" if elem == "poison" else "fire"], warn)
 	else:

@@ -13,6 +13,7 @@ const PX := 0.036
 const FV := 0.1                    # 地面一格 0.1 米（和精细体素角色同一档）
 
 var zone := "forest"
+var abyss := false                 # 终章无光殿：按灯冢摆，用 abyss 的光
 var size := Vector2(30, 22)        # 房间 x 宽、z 深（米）
 var rng := RandomNumberGenerator.new()
 var noise := FastNoiseLite.new()
@@ -42,13 +43,17 @@ const ZONES := {
 		"sun": Color(1.0, 0.78, 0.55), "sun_e": 1.1, "spore": Color(1.0, 0.6, 0.25)},
 	"camp": {"bg": Color(0.05, 0.05, 0.07), "fog": Color(0.16, 0.14, 0.16), "fog_d": 0.6, "amb": Color(0.56, 0.52, 0.56), "amb_e": 1.3,
 		"sun": Color(1.0, 0.72, 0.5), "sun_e": 1.15, "spore": Color(1.0, 0.55, 0.3)},
+	# 终章 · 无光殿（灯冢最深处，烛王坐的地方）：摆设和灯冢一样，光压得很暗、发红
+	"abyss": {"bg": Color(0.015, 0.008, 0.006), "fog": Color(0.12, 0.03, 0.02), "fog_d": 0.85, "amb": Color(0.42, 0.3, 0.26), "amb_e": 1.05,
+		"sun": Color(0.95, 0.5, 0.3), "sun_e": 0.7, "spore": Color(1.0, 0.45, 0.2)},
 	"sakura": {"bg": Color(0.05, 0.04, 0.09), "fog": Color(0.12, 0.1, 0.2), "fog_d": 0.65, "amb": Color(0.45, 0.38, 0.6), "amb_e": 1.25,
 		"sun": Color(0.72, 0.76, 1.0), "sun_e": 1.2, "spore": Color(1.0, 0.6, 0.8)},
 }
 
 
 func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22)) -> void:
-	zone = zone_id
+	abyss = zone_id == "abyss"
+	zone = "vault" if abyss else zone_id
 	size = room_size
 	rng.seed = seed_value
 	noise.seed = seed_value
@@ -138,7 +143,7 @@ func _batch_static() -> void:
 
 
 func zone_info() -> Dictionary:
-	return ZONES[zone]
+	return ZONES["abyss" if abyss else zone]
 
 
 ## 别的区域（子类 Arena3：第三幕）在这里摆

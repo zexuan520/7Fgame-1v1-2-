@@ -4,6 +4,8 @@ extends RefCounted
 ## 铜钱魂玉、兵器、护甲、护符、心法、药葫芦、生命。主角节点换房间时不重建，生命就留着。
 
 static var cur: ArpgState
+## 下一局用的固定种子（每日挑战、种子局，ArpgDaily.start 填，start_new 用完清空）
+static var pending := {}
 
 ## 一局三层。第一幕“归乡”：幽林遗迹（头目夜樱）→ 无名冢（头目百骨将）→ 古寺（最终头目寂光）
 ## 第二幕“入山”（第一幕任一结局后，山门出现“入井”光门）：青井地宫（井中人·枯荣）→ 烛国灯冢（不夜将军）→ 灰衣营（执灯使·烬）
@@ -66,6 +68,7 @@ var seed_value := 0
 var bought := {}            # 商人房间里已经买过的货：房间坐标 → [下标...]
 var shop_cache := {}        # 商人房间的货：房间坐标 → [货物...]
 var event_cache := {}       # 奇遇房间抽到的奇遇
+var daily := {}             # 每日挑战 / 种子局的设定（ArpgDaily.plan）；普通局是空的
 
 
 static func start_new(act_: int = 1) -> ArpgState:
@@ -98,6 +101,24 @@ static func start_new(act_: int = 1) -> ArpgState:
 	# 第二幕：第一幕最后选了“守灯人”，残刃带着灯，天象固定“残灯”（小怪被灯引来）
 	if s.act == 2 and String(Game.save.get("arpg_last_end", "")) == "keep":
 		s.omen = "lantern"
+	# 每日挑战 / 种子局：种子、天象定死；每日挑战还定兵器（只带这一把）、不开轮回
+	var pd := pending
+	pending = {}
+	if not pd.is_empty():
+		s.daily = pd.duplicate()
+		s.seed_value = int(pd["seed"])
+		s.run = Run.create(0, s.seed_value)
+		if ArpgState.OMENS.has(String(pd.get("omen", ""))):
+			s.omen = String(pd["omen"])
+		if String(pd.get("kind", "")) == "daily":
+			s.cycle = 0
+			s.weapon = String(pd["weapon"])
+			s.arms[0] = ArpgGear.weapon_item(s.weapon)
+			s.arms[1] = {}
+			s.props.clear()
+			var irng2 := RandomNumberGenerator.new()
+			irng2.seed = s.seed_value + 77
+			s.add_item(ArpgArms.random_item(irng2))
 	s.remap()
 	cur = s
 	return s
@@ -174,20 +195,21 @@ func floor_name() -> String:
 	return FLOOR_NAMES[gfloor()]
 
 
+## 终章：打倒长明帝后循着心跳下去（flags.finale），头目房换成无光殿 · 烛王（Finale）
 func boss_kind() -> String:
-	return BOSS_KINDS[gfloor()]
+	return "boss10" if flags.has("finale") else BOSS_KINDS[gfloor()]
 
 
 func boss_zone() -> String:
-	return BOSS_ZONES[gfloor()]
+	return "abyss" if flags.has("finale") else BOSS_ZONES[gfloor()]
 
 
 func boss_title() -> String:
-	return BOSS_TITLES[gfloor()]
+	return "灯冢最深处 · 无光殿" if flags.has("finale") else BOSS_TITLES[gfloor()]
 
 
 func boss_music() -> String:
-	return BOSS_MUSIC[gfloor()]
+	return "boss_vault" if flags.has("finale") else BOSS_MUSIC[gfloor()]
 
 
 ## 第二幕敌人更硬一点（开局没有心法，所以只加两成多，不按第四层算）；第三幕再硬一档
@@ -270,6 +292,9 @@ func stat_parts() -> Array:
 			add.call("心法", "大成·%s" % ArpgData.SETS[k]["name"], {String(ArpgData.SETS[k]["id"]): 1.0})
 	if cycle > 0:
 		add.call("轮回", ArpgCycle.label(cycle), ArpgCycle.hero_stats(cycle))
+	var dr := ArpgDaily.rule_part(self)
+	if not dr.is_empty():
+		add.call("境况", String(dr[0]), dr[1])
 	var ks := {}
 	ArpgSkills.add_stats(ks, skills, boons)
 	add.call("技能", "技能分支与双修", ks)

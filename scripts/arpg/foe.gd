@@ -113,7 +113,7 @@ const TYPES := {
 		"hp": 9999.0, "speed": 3.0, "detect": 40.0, "range": 2.6, "dmg": 15.0, "windup": 0.7, "attack": "charge", "poise": 999.0, "coins": 0, "phantom": true},
 	# 执灯使·烬：寂光大弟子，手里是断刀前半截。三段：刀法 → 点第四盏灯（放火、叫人）→ 燃烬（残影冲阵）
 	"boss6": {"name": "执灯使·烬", "model": "rogue", "weapon": "sword2", "wlen": 50.0, "tint": Color(0.82, 0.8, 0.86), "mono": 1.0, "k": 1.45,
-		"hp": 1250.0, "speed": 4.4, "detect": 40.0, "range": 3.0, "dmg": 21.0, "windup": 0.5, "attack": "boss", "poise": 150.0, "coins": 120, "boss": true, "dodge": 0.15},
+		"hp": 1400.0, "speed": 4.4, "detect": 40.0, "range": 3.0, "dmg": 23.0, "windup": 0.47, "attack": "boss", "poise": 160.0, "coins": 120, "boss": true, "dodge": 0.15},
 	"boss5": {"name": "不夜将军", "model": "knight", "weapon": "axe2", "wlen": 60.0, "tint": Color(1.3, 0.9, 0.5), "mono": 0.55, "k": 2.0,
 		"hp": 1050.0, "speed": 3.2, "detect": 40.0, "range": 3.6, "dmg": 22.0, "windup": 0.62, "attack": "boss", "poise": 150.0, "coins": 90, "boss": true},
 	"boss4": {"name": "井中人·枯荣", "model": "skel_mage", "weapon": "skel_staff", "wlen": 48.0, "tint": Color(0.65, 0.88, 1.15), "k": 1.8,

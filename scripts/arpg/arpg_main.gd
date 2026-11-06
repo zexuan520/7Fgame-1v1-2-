@@ -92,6 +92,8 @@ func _ready() -> void:
 		Game.save["arpg_cycle_told"] = _args.has("cycletold")
 	if _args.has("talents"):
 		_bench_talents(String(_args["talents"]))
+	if _args.has("finaleopen"):
+		Game.save["arpg_act3_endings"] = {"true": true}   # 测试：当成看过第三幕真结局（不写存档）
 	if _args.has("storytest"):
 		_story_test_save(String(_args["storytest"]))
 	_setup_world()
@@ -104,13 +106,21 @@ func _ready() -> void:
 		for t: String in String(_args.get("shot_t", "3.0")).split(","):
 			_shots.append(float(t))
 	if _args.has("demo") or _args.has("room") or _args.has("zone"):
-		_start_run(false, int(_args.get("act", "1")))
+		if _args.has("dailygo"):
+			var dp := ArpgDaily.plan(ArpgDaily.today())
+			ArpgState.pending = dp
+			_start_run(false, int(dp["act"]))
+			ArpgDaily.after_start(self, dp)
+		else:
+			_start_run(false, int(_args.get("act", "1")))
 		for i in range(int(_args.get("floor", "0"))):
 			state.run.next_floor()
 			state.remap()
 		var kind := String(_args.get("room", "fight"))
 		if kind == "1":
 			kind = "fight"
+		if _args.has("finale"):
+			state.flags["finale"] = true   # 测试：直接进无光殿（配 --room=boss --act=3 --floor=2）
 		_enter_room(kind, String(_args.get("zone", "")))
 		if _args.has("demo"):
 			_bot = ArpgBot.new()
@@ -797,6 +807,7 @@ func _enter_hub() -> void:
 		_npc("守灯僧 · 换物" if String(Game.save.get("arpg_monk_buy", "")) == "" else "守灯僧 · 已换过", Vector3(9.5, 0, -2.0), {"model": "mage", "tint": Color(0.8, 0.95, 0.8)}, _talk_monk)
 	# 第三幕：第二幕任一结局后，山门左边下山的路口出现“出山”光门；阿禾、七村名录碑
 	Act3.hub(self)
+	ArpgDaily.hub(self)   # 每日挑战、种子局的告示牌（光门右边）
 	if bool(Game.save.get("arpg_jizo_home", false)):
 		_npc("地藏 · 求保佑" if String(Game.save.get("arpg_bless", "")) == "" else "地藏 · 已求过", Vector3(-9.0, 0, 3.5), {"kit": "shrine", "scale": 1.1}, _pray_jizo)
 	# 隐藏机制：信物匣、阿七（闲聊、信物，见 ArpgSecrets）
@@ -830,6 +841,14 @@ func _enter_hub() -> void:
 				hl.append_array(ArpgStory.HAG_REVEAL_SHARD)
 			ArpgAch.unlock("hag_truth")
 			_say(hl))
+	# 终章的伏笔：看过第三幕真结局，回来时拾骨婆说山底下还有东西在跳（一次）
+	elif Finale.hint_ready() and not _args.has("demo"):
+		get_tree().create_timer(1.0).timeout.connect(func() -> void:
+			if mode != "hub":
+				return
+			Game.save["arpg_finale_told"] = true
+			Game.write_save()
+			_say(Finale.HINT))
 	# 拾骨婆的碎念：死得够多了，回来时她多说一句自己的事（隐藏剧情）
 	elif ArpgStory.next_mutter() >= 0 and not _args.has("demo"):
 		var mi := ArpgStory.next_mutter()
@@ -1228,6 +1247,7 @@ func _start_run(fresh_hero: bool = true, act: int = 1) -> void:
 	hero.apply_stats(state.stats(), state.weapon, true)
 	hero.revives = state.revives
 	_run_t0 = _clock
+	ArpgDaily.on_start(state)
 
 
 ## 数值联调：--talents=half|full 模拟局外养成（只改这次，不写存档），
@@ -1277,6 +1297,8 @@ func _bench_end(won: bool) -> void:
 		won, state.jade, state.act, state.weapon, state.cycle, ArpgState.difficulty(), state.floor_i() + 1, state.run.row, state.rooms, state.kills,
 		_clock - _run_t0, state.level, hero.hits_taken, hero.dmg_total, hero.drinks, hero.max_hp, hero.dmg_mult, hero.taken_mult,
 		hero.crit_bonus, ",".join(state.boons), ",".join(gear), str(state.skills).replace(" ", ""), "" if won else hero.last_hit_by])
+	if not state.daily.is_empty():
+		print("RUNDAILY kind=%s rule=%s seed=%d omen=%s" % [state.daily.get("kind", ""), state.daily.get("rule", ""), state.seed_value, state.omen])
 	get_tree().create_timer(0.5).timeout.connect(get_tree().quit)
 
 
@@ -1711,7 +1733,7 @@ func _next_wave() -> void:
 		var kind: String = w[j]
 		var n: int = w[j + 1]
 		if not kind.begins_with("boss") and state != null:
-			n = maxi(1, int(round(n * state.omen_val("count") * ArpgCycle.count_mult(state.cycle))))   # 天象：血月、骨潮多刷；轮回三起多两成
+			n = maxi(1, int(round(n * state.omen_val("count") * ArpgCycle.count_mult(state.cycle) * ArpgDaily.foe_mult(state, "count"))))   # 天象：血月、骨潮多刷；轮回三起多两成
 		counts.append(n)
 		total += n
 	# 轮回：这一波哪几只带词缀（试刀场、头目波不抽）
@@ -1799,19 +1821,23 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 		return
 	var fl := state.floor_i() if state != null else 0
 	var row := state.run.row if state != null else 0
-	var f: Foe = Act3Foe.new() if Act3Foe.TYPES3.has(kind) else Foe.new()
+	var f: Foe = FinaleFoe.new() if kind == "boss10" else (Act3Foe.new() if Act3Foe.TYPES3.has(kind) else Foe.new())
 	# 越往后的房间越硬；头目不吃“第几间”的加成（它总在最后一间，原来白白多了 28% 血、21% 伤害，是整层最大的难度尖刺）
 	var rk := 0 if kind.begins_with("boss") else row
-	var om_hp := state.omen_val("hp") if state != null and not kind.begins_with("boss") else 1.0
+	var om_hp: float = state.omen_val("hp") * ArpgDaily.foe_mult(state, "hp") if state != null and not kind.begins_with("boss") else 1.0
 	var om_dmg := state.omen_val("dmg") if state != null else 1.0
 	var ah := state.act_hp() if state != null else 1.0
 	var ad := state.act_dmg() if state != null else 1.0
+	# 第二、三幕的第三层：主角到这儿构筑已经成型（数值报告里挂伤只有第一层一半），小怪再硬一点
+	if state != null and state.act >= 2 and fl == 2 and not kind.begins_with("boss"):
+		ah *= 1.12
+		ad *= 1.08
 	f.setup_kind(kind, (1.0 + fl * 0.35 + rk * 0.04) * om_hp * ah, (1.0 + fl * 0.18 + rk * 0.03) * om_dmg * ad)
 	if state != null and room_kind != "tutorial" and not f.data.has("phantom"):
 		ArpgCycle.scale_foe(f, state.cycle)   # 轮回：敌人更硬、更疼
-	if state != null and state.omen_val("speed") != 1.0:
+	if state != null and state.omen_val("speed") * ArpgDaily.foe_mult(state, "speed") != 1.0:
 		f.data = f.data.duplicate()
-		f.data["speed"] = float(f.data["speed"]) * state.omen_val("speed")
+		f.data["speed"] = float(f.data["speed"]) * state.omen_val("speed") * ArpgDaily.foe_mult(state, "speed")
 	if _trial != null:
 		_trial.mod_foe(f)
 	if not affix.is_empty() and (not kind.begins_with("boss") or (state != null and state.cycle > 0)):
@@ -1832,7 +1858,7 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 		var sub: String = {"boss": "守在樱树下的无名剑客", "boss3": "无名冢下，万骨之主", "boss2": "古寺深处，一盏不灭的灯",
 			"boss4": "井底四十年，灯链缠身的老僧", "boss5": "烛国亡了四百年，他的兵还在站岗",
 			"boss6": "寂光大弟子，腰间挂着断刀的前半截", "boss7": "续命司火师，樱落村的第一把火", "boss8": "押送第五盏灯进京的禁军将军",
-			"boss9": "靠四盏灯活了一百二十年"}.get(kind, "")
+			"boss9": "靠四盏灯活了一百二十年", "boss10": "烛国最后的王，胸口点着第八盏灯"}.get(kind, "")
 		if kind == "boss6" and state.flags.has("roster"):
 			# 阿七把守台的人支开了：烬叫不来援兵，生命少一成
 			f.max_hp *= 0.9
@@ -1865,6 +1891,9 @@ func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
 		# 骨铃：斩杀回血
 		if is_instance_valid(hero) and hero.alive and hero.kill_heal > 0.0:
 			hero.hp = minf(hero.hp + hero.kill_heal, hero.max_hp)
+		# 焚身：斩杀时有几率让它爆燃
+		if is_instance_valid(hero) and hero.alive and hero.kill_fire > 0.0 and _rng.randf() < hero.kill_fire:
+			hero._fire_burst(pos + Vector3(0, 0.9, 0))
 	if state != null and kind != "" and c > 0 and mode == "room":
 		var ups := state.gain_xp(c)
 		if ups > 0:
@@ -1972,7 +2001,7 @@ func _boss_intro(fl: int) -> void:
 	if mode != "room":
 		return
 	var key := state.boss_kind()
-	var lines: Array = (ArpgStory.BOSS_PRE[key] if ArpgStory.BOSS_PRE.has(key) else Act3.boss_pre(key)).duplicate()
+	var lines: Array = (ArpgStory.BOSS_PRE[key] if ArpgStory.BOSS_PRE.has(key) else (Finale.pre(self) if key == "boss10" else Act3.boss_pre(key))).duplicate()
 	var extra: Dictionary = ArpgStory.BOSS_PRE_FLAGS.get(key, Act3.boss_pre_flags(key))
 	for f: String in extra:
 		if state.flags.has(f):
@@ -2012,6 +2041,8 @@ func _boss_outro(fl: int) -> void:
 			d.finished.connect(_act2_ending)
 		"boss7", "boss8", "boss9":
 			d.finished.connect(Act3.boss_choice.bind(self, key))
+		"boss10":
+			d.finished.connect(Finale.won.bind(self))
 
 
 ## 隐藏头目 · 残影 打赢以后：专属心法、成就，之后照常选心法
@@ -2594,6 +2625,8 @@ func _take_boon(id: String) -> void:
 			for j in range(3):
 				vfx.shock_ring(hero.global_position, ArpgData.SCHOOL_COLORS.get(sc, Color.WHITE), 0.35 + j * 0.15, 4.0 + j * 2.0, 0.5))
 		ArpgAch.unlock("set_any")
+		if String(st["id"]) in ["set_storm", "set_pyre"]:
+			ArpgAch.unlock(String(st["id"]))
 	feel.callout(hero.head_top(), String(b.get("name", "")), ArpgData.SCHOOL_COLORS.get(b.get("school", ""), Color.WHITE), 1.2)
 	vfx.shock_ring(hero.global_position, ArpgData.SCHOOL_COLORS.get(b.get("school", ""), Color.WHITE), 0.3, 3.5, 0.45)
 
@@ -3489,6 +3522,10 @@ func _open_run_info() -> void:
 	if state.omen != "":
 		var om: Dictionary = ArpgState.OMENS[state.omen]
 		items.append({"title": "天象 · %s" % om["name"], "desc": om["desc"], "tag": "天象"})
+	if String(state.daily.get("kind", "")) == "daily":
+		var rd: Dictionary = ArpgDaily.RULES.get(String(state.daily.get("rule", "")), {})
+		items.append({"title": "每日挑战 · %s" % ArpgDaily.date_cn(String(state.daily.get("date", ""))), "desc": "今日规矩「%s」：%s" % [rd.get("name", ""), rd.get("desc", "")], "tag": "每日", "color": ArpgDaily.C_BOARD})
+	items.append({"title": "种子 %d" % state.seed_value, "desc": "同一个种子，房间和路线都一样。回山门后告示牌上能“重走上一局的图”", "tag": "种子"})
 	for k in range(2):
 		var w: Dictionary = state.arms[k]
 		if not w.is_empty():
@@ -3607,11 +3644,20 @@ func _on_hero_died(_a: Actor) -> void:
 		return
 	hud.banner("败", "残刃折于此地", 2.5)
 	feel.screen_flash(Color(0.5, 0.0, 0.0, 0.6), 0.8)
-	var fl := state.floor_i()
+	var fl := _retry_key()
 	if room_kind == "boss" and ArpgState.difficulty() == 0 and not state.boss_retry.has(fl):
 		get_tree().create_timer(2.2).timeout.connect(_offer_boss_retry)
 		return
+	if state.flags.has("finale"):
+		# 终章：倒在烛王面前不丢这一局，推回金殿照常选结局
+		get_tree().create_timer(2.2).timeout.connect(func() -> void: Finale.fallen(self))
+		return
 	get_tree().create_timer(2.2).timeout.connect(func() -> void: _game_over(false))
+
+
+## 游历的“再战一次”按哪一层记：终章的烛王单独算一次
+func _retry_key() -> int:
+	return 99 if state.flags.has("finale") else state.floor_i()
 
 
 ## 游历难度：倒在头目面前，可以回满血、补满药再打一次（每层一次）
@@ -3624,9 +3670,12 @@ func _offer_boss_retry() -> void:
 	m.chosen.connect(func(i: int) -> void:
 		_close_menu()
 		if i == 1:
+			if state.flags.has("finale"):
+				Finale.fallen(self)
+				return
 			_game_over(false)
 			return
-		state.boss_retry[state.floor_i()] = true
+		state.boss_retry[_retry_key()] = true
 		_ensure_hero()
 		hero.reset_for_run()
 		hero.apply_stats(state.stats(), state.weapon, true)
@@ -3658,6 +3707,8 @@ func _game_over(won: bool, ending: String = "") -> void:
 	var items := [{"title": "回到山门", "desc": desc, "right": "存档魂玉 %d" % int(Game.save["jade"])}]
 	for cl: String in cyc_lines:
 		items.append({"title": "轮回", "desc": cl, "tag": "轮回", "color": Color(0.85, 0.6, 1.0)})
+	for dl: String in ArpgDaily.on_end(self, won):
+		items.append({"title": "每日挑战", "desc": dl, "tag": "每日", "color": ArpgDaily.C_BOARD})
 	var m := _open_menu(ending if ending != "" else ("登顶" if won else "身死"), sub, items, "list", false)
 	m.chosen.connect(func(_i: int) -> void:
 		_close_menu()

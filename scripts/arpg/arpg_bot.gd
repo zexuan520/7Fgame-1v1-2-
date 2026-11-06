@@ -16,6 +16,8 @@ var _side_t := 0.0
 var _side := 1.0
 var _heal_t := 0.0
 var _portal_t := 0.0
+var _esc_t := 0.0         # 连着躲圈躲了多久
+var _brave_t := 0.0       # 不躲圈、硬冲的剩余时间
 
 
 func _act(n: String) -> String:
@@ -112,6 +114,23 @@ func _physics_process(dt: float) -> void:
 			_side_t = 0.7
 			_side = -_side
 	_last_p = hero.global_position
+	# 站在地上的火圈、毒圈里：先走出去（数值联调发现机器人一半以上的伤是站在圈里挨的，真人会走开）
+	var esc := _pool_escape()
+	# 圈挡在路上一直绕不过去（来回躲了 4 秒）：先不管圈，硬冲 3 秒（不然会在圈边来回晃，一间房清不完）
+	if _brave_t > 0.0:
+		_brave_t -= dt
+		esc = Vector3.ZERO
+	elif esc != Vector3.ZERO:
+		_esc_t += dt
+		if _esc_t > 4.0:
+			_esc_t = 0.0
+			_brave_t = 3.0
+			esc = Vector3.ZERO
+	else:
+		_esc_t = maxf(_esc_t - dt * 0.5, 0.0)
+	if esc != Vector3.ZERO:
+		move = esc
+		_side_t = 0.0
 	if _side_t > 0.0:
 		_side_t -= dt
 		move = move.normalized().cross(Vector3.UP) * _side * 2.0 - move.normalized() * 0.5
@@ -120,6 +139,12 @@ func _physics_process(dt: float) -> void:
 	_roll_t -= dt
 	_skill_t -= dt
 	if near == null:
+		return
+	# 在圈里：先别出刀（出刀会定在原地），陷得深就直接滚出去
+	if esc != Vector3.ZERO and _heal_t <= 0.0:
+		if esc.length() > 1.2 and _roll_t <= 0.0:
+			_roll_t = 0.9
+			_tap("roll")
 		return
 	# 喝药：离得远或敌人收招时喝；血太低（< 25%）且没在挨刀的前摇里也喝（不然打头目时药一直不喝就死了）
 	# （数值联调时改的：原来要“离得远或敌人收招”才喝，成群的时候几乎等不到，机器人常带着满葫芦死掉，测出来的难度偏高。
@@ -170,6 +195,23 @@ func _physics_process(dt: float) -> void:
 	if nd < reach and _atk_t <= 0.0:
 		_atk_t = 0.11
 		_tap("attack")
+
+
+## 脚下（或快要踩进去）的敌方火圈毒圈：返回往圈外走的方向，没有就是零
+func _pool_escape() -> Vector3:
+	if OS.get_cmdline_user_args().has("--botpools"):
+		return Vector3.ZERO   # 对比用：照旧不躲
+	var out := Vector3.ZERO
+	for n: Node in get_tree().get_nodes_in_group("pools"):
+		var fp := n as FirePool
+		if fp == null or fp.hurts_foes:
+			continue
+		var to := hero.global_position - fp.global_position
+		to.y = 0
+		var r := fp.radius + hero.radius + 0.5
+		if to.length() < r:
+			out += (to.normalized() if to.length() > 0.05 else Vector3(1, 0, 0)) * (r - to.length() + 0.5)
+	return out
 
 
 func _set_move(v: Vector3) -> void:

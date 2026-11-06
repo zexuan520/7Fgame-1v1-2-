@@ -23,6 +23,8 @@ const KEYS := {
 	"bleed_dmg": ["出血伤害", "pct"], "lifesteal": ["吸血", "pct1"], "kill_heal": ["斩杀回血", "flat"], "gourds": ["药葫芦", "flat"],
 	"gourd_heal": ["每口回复", "pct"], "revive": ["倒下再起", "flat"], "thorns": ["反伤", "pct"], "rage": ["半血以下伤害", "pct"],
 	"roll_bolt": ["翻滚落雷伤害", "flat"], "crit_bolt": ["会心落雷几率", "pct"], "fire_proc": ["命中炸火几率", "pct"],
+	"execute": ["残血敌人增伤", "pct"], "roll_cd": ["翻滚减突进冷却", "sec"], "beam_heal": ["光束每敌回血", "flat"],
+	"fire_dmg": ["火团伤害", "pct"], "kill_fire": ["斩杀爆燃几率", "pct"],
 	"coin": ["铜钱", "pct"], "jade": ["魂玉", "pct"], "discount": ["商人价格", "neg"], "keep": ["身死魂玉带回", "pct"],
 	"start_coins": ["开局铜钱", "flat"], "insight": ["开局天赋点", "flat"], "xp": ["悟道", "pct"],
 	"sk_echo": ["连闪", "lv"], "sk_drink": ["饮血", "lv"], "sk_lotus": ["血莲", "lv"], "sk_split": ["裂空", "lv"],

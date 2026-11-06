@@ -214,7 +214,7 @@ func _draw_player_panel(vs: Vector2) -> void:
 	if hero._mirror_t > 0.0:
 		draw_rect(Rect2(x0 - 5, y0 + 1, w + 10, 19), Color(0.7, 1.0, 0.9, 0.5 + 0.4 * sin(Time.get_ticks_msec() * 0.012)), false, 1.5)   # 双修·明镜
 	var sets := []
-	for pair: Array in [[hero.set_shura, "修罗场"], [hero.set_blood, "血涌"], [hero.set_wind, "御风"], [hero.set_light, "天光"], [hero.set_guard, "金身"]]:
+	for pair: Array in [[hero.set_shura, "修罗场"], [hero.set_blood, "血涌"], [hero.set_wind, "御风"], [hero.set_light, "天光"], [hero.set_guard, "金身"], [hero.set_storm, "天雷"], [hero.set_pyre, "燎原"]]:
 		if pair[0]:
 			sets.append(pair[1])
 	if not sets.is_empty():
