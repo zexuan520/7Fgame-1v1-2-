@@ -1834,7 +1834,10 @@ func take_hit(info: HitInfo) -> bool:
 	if ok:
 		dmg_total += info.damage
 		hits_taken += 1
-		last_hit_by = String(info.attacker.get("kind")) if info.attacker != null and is_instance_valid(info.attacker) and info.attacker.get("kind") != null else "?"
+		if info.attacker != null and is_instance_valid(info.attacker) and info.attacker.get("kind") != null:
+			last_hit_by = String(info.attacker.get("kind"))
+		else:
+			last_hit_by = info.src if info.src != "" else "?"
 		_on_hurt(info)
 		rel.on_hurt(info)
 		if OS.get_cmdline_user_args().has("--hitlog"):

@@ -9,6 +9,7 @@ var damage := 10.0
 var life := 1.3
 var color := Color(1.0, 0.55, 0.3)
 var owner_foe: Actor
+var _src := ""   # 射出时记下射手种类：箭飞到时射手死了也知道是谁
 var _t := 0.0
 var _glow: MeshInstance3D
 var _gmat: ShaderMaterial
@@ -17,6 +18,8 @@ static var _sh_add: Shader
 
 
 func _ready() -> void:
+	if is_instance_valid(owner_foe) and owner_foe.get("kind") != null:
+		_src = String(owner_foe.get("kind"))
 	rotation.y = atan2(-dir.x, -dir.z)
 	var wm := VoxelModel.weapon_mesh("arrow", 30.0)
 	if wm != null:
@@ -72,6 +75,7 @@ func _process(dt: float) -> void:
 		d.y = 0
 		if d.length() < 0.55 + hh.radius:
 			var info := HitInfo.make(owner_foe if is_instance_valid(owner_foe) else null, hh, damage * randf_range(0.9, 1.1), HitInfo.Weight.LIGHT)
+			info.src = _src
 			info.attacker = null
 			info.dir = dir
 			info.knock = 5.0

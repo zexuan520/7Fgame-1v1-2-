@@ -864,8 +864,20 @@ func _start_chapter(act: int) -> void:
 					_menu.chosen.emit(0)))
 
 
+## 天象横幅：提示卡还开着就再等等（最多 6 秒），两张不同时弹
+func _omen_banner(om: Dictionary, tries: int) -> void:
+	if mode != "room":
+		return
+	if hints != null and hints.card_busy() and tries < 6:
+		get_tree().create_timer(1.0).timeout.connect(_omen_banner.bind(om, tries + 1))
+		return
+	hud.banner("天象 · %s" % om["name"], String(om["desc"]), 3.0)
+
+
 ## 头目生命倍率（按本幕第几层）：目标机器人打第一、二个头目 30~45 秒，最终头目 50 秒以上
-const BOSS_HP_K := [1.8, 1.5, 1.15]
+## 第一轮 ×1.8/1.5 只加血：头目打到 25~40 秒，可零天赋修罗第一个头目两局全倒，所以血少加一点、伤害降一点
+const BOSS_HP_K := [1.6, 1.4, 1.15]
+const BOSS_DMG_K := [0.72, 0.78, 0.9]
 const TITLE_PITCH := 33.0
 const TITLE_DIST := 17.0
 var _title_focus: Node3D
@@ -1611,9 +1623,7 @@ func _enter_room_body(kind: String = "", zone_override: String = "") -> void:
 			hud.omen += "　%s" % ArpgCycle.label(state.cycle)
 		if state.rooms == 1:
 			# 一局的第一间：报一下这局的天象
-			get_tree().create_timer(2.8).timeout.connect(func() -> void:
-				if mode == "room":
-					hud.banner("天象 · %s" % om["name"], String(om["desc"]), 3.0))
+			get_tree().create_timer(2.8).timeout.connect(_omen_banner.bind(om, 0))
 	hud.visible = true
 	var sub := "第 %d 层　第 %d / %d 间" % [gf + 1, state.run.row + 1, state.run.rows.size()]
 	if not _squad.is_empty():
@@ -2071,6 +2081,7 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 	# 头目加血：全量试玩里夜樱 11~17 秒就倒，登场和半血变身演出都来不及看；每幕前两个头目多加一些，最终头目少加
 	if kind.begins_with("boss") and kind != "boss10" and not _args.has("oldboss"):
 		ah *= BOSS_HP_K[clampi(fl, 0, BOSS_HP_K.size() - 1)]
+		ad *= BOSS_DMG_K[clampi(fl, 0, BOSS_DMG_K.size() - 1)]   # 打得久了，每下轻一点，整场挨的伤和原来差不多
 	f.setup_kind(kind, (1.0 + fl * 0.35 + rk * 0.04) * om_hp * ah, (1.0 + fl * 0.18 + rk * 0.03) * om_dmg * ad)
 	if state != null and room_kind != "tutorial" and not f.data.has("phantom"):
 		ArpgCycle.scale_foe(f, state.cycle)   # 轮回：敌人更硬、更疼

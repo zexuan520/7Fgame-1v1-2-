@@ -7,12 +7,15 @@ var speed := 13.0
 var damage := 18.0
 var life := 1.0
 var owner_foe: Actor
+var _src := ""   # 射出时记下射手种类：箭飞到时射手死了也知道是谁
 var _t := 0.0
 var _hit := {}
 var _mi: MeshInstance3D
 
 
 func _ready() -> void:
+	if is_instance_valid(owner_foe) and owner_foe.get("kind") != null:
+		_src = String(owner_foe.get("kind"))
 	_mi = MeshInstance3D.new()
 	var q := QuadMesh.new()
 	q.size = Vector2(1.8, 1.0)
@@ -44,6 +47,7 @@ func _process(dt: float) -> void:
 		if d.length() < 1.0 + hh.radius:
 			_hit[hh] = true
 			var info := HitInfo.make(owner_foe if is_instance_valid(owner_foe) else null, hh, damage, HitInfo.Weight.LIGHT)
+			info.src = _src
 			info.attacker = null
 			info.dir = dir
 			info.knock = 6.0

@@ -205,6 +205,10 @@ func show(id: String) -> bool:
 	return true
 
 
+func card_busy() -> bool:
+	return _card != null and _card.busy()
+
+
 ## 菜单第一次打开：提示卡贴在菜单下方，菜单关了就收起
 func menu_tip(id: String, menu: Control) -> void:
 	if _blocked() or is_seen(id) or menu == null:

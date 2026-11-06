@@ -11,6 +11,8 @@ var _roll_t := 0.0
 var _skill_t := 0.0
 var _menu_t := 0.0
 var _stuck_t := 0.0
+var _stuck_n := 0         # 连着卡了几次（绕得越来越久）
+var _far_t := 0.0         # 够不着敌人、站着不动多久
 var _last_p := Vector3.ZERO
 var _side_t := 0.0
 var _side := 1.0
@@ -110,9 +112,27 @@ func _physics_process(dt: float) -> void:
 		else:
 			_stuck_t = 0.0
 		if _stuck_t > 0.8:
+			# 绕一次没绕开：下次往同一边绕得更久（原来每次换边，会在障碍凹里左右来回晃）
 			_stuck_t = 0.0
-			_side_t = 0.7
-			_side = -_side
+			_stuck_n += 1
+			if _stuck_n % 3 == 0:
+				_side = -_side
+			_side_t = 0.7 + 0.5 * float(_stuck_n % 3)
+	else:
+		_stuck_t = 0.0
+	# 够不着最近的敌人、原地干站 6 秒（多半卡在摆设后面挨弓手射）：数值联调时直接挪到敌人身边，别把这种死算进难度
+	if near != null and nd > 3.0 and hero.velocity.length() < 0.5 and esc_free():
+		_far_t += dt
+		if _far_t > 6.0 and OS.get_cmdline_user_args().has("--quitend"):
+			var to := near.global_position + (hero.global_position - near.global_position).normalized() * 2.0
+			print("BOTWARPF %s -> %s (%s)" % [str(hero.global_position.snapped(Vector3.ONE * 0.1)), str(to.snapped(Vector3.ONE * 0.1)), near.kind])
+			hero.global_position = Vector3(to.x, hero.global_position.y, to.z)
+			_far_t = 0.0
+			_stuck_n = 0
+	else:
+		_far_t = maxf(_far_t - dt, 0.0)
+		if hero.velocity.length() > 2.0:
+			_stuck_n = 0
 	_last_p = hero.global_position
 	# 站在地上的火圈、毒圈里：先走出去（数值联调发现机器人一半以上的伤是站在圈里挨的，真人会走开）
 	var esc := _pool_escape()
@@ -195,6 +215,10 @@ func _physics_process(dt: float) -> void:
 	if nd < reach and _atk_t <= 0.0:
 		_atk_t = 0.11
 		_tap("attack")
+
+
+func esc_free() -> bool:
+	return _esc_t <= 0.0 and _heal_t <= 0.0
 
 
 ## 脚下（或快要踩进去）的敌方火圈毒圈：返回往圈外走的方向，没有就是零

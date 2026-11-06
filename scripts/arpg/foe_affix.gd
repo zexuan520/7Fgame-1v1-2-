@@ -228,6 +228,7 @@ static func _burst(main: Node, p: Vector3, r: float, dmg: float) -> void:
 		d.y = 0
 		if d.length() <= r + hh.radius:
 			var info := HitInfo.make(null, hh, dmg, HitInfo.Weight.HEAVY)
+			info.src = "affix"
 			info.dir = d.normalized() if d.length() > 0.01 else Vector3.FORWARD
 			info.point = hh.chest()
 			info.knock = 10.0
@@ -273,6 +274,7 @@ static func _strike(main: Node, p: Vector3, r: float, dmg: float) -> void:
 		d.y = 0
 		if d.length() <= r + hh.radius:
 			var info := HitInfo.make(null, hh, dmg, HitInfo.Weight.LIGHT)
+			info.src = "affix"
 			info.dir = d.normalized() if d.length() > 0.01 else Vector3.FORWARD
 			info.point = hh.chest()
 			info.knock = 5.0

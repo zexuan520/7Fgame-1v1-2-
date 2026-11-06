@@ -488,6 +488,8 @@ func open_exit() -> Vector3:
 		for r: Rect2 in _solid:
 			if r.has_point(Vector2(q.x, q.z)):
 				free = false
+				if OS.get_cmdline_user_args().has("--tel"):
+					print("EXIT blocked by %s" % str(r))
 				break
 		if free:
 			if i > 0 and OS.get_cmdline_user_args().has("--tel"):

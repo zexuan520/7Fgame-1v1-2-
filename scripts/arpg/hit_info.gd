@@ -20,6 +20,7 @@ var shake := -1                # < 0 时按重量取默认值
 var gain := 0.0                # 给攻击者回多少气
 var snd := ""                  # 命中音（空 = 按轻重用 hit / hit_heavy；锤棍 hit_blunt、枪 hit_pierce）
 var multi_mid := false         # 多段攻击的中间几段（旋风等）：只在首末段顿帧，中间段不顿
+var src := ""                  # 没有攻击者（或攻击者已死）时记来源：机关名 / 射手种类（统计死因用）
 var elem := ""                 # 敌人打主角的属性（fire/poison/water/magic/holy/thunder），决定挨打时冒什么颜色的特效
 
 

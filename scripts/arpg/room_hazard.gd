@@ -175,6 +175,7 @@ func _hit(p: Vector3, r: float, d: float, elem: String, knock: float) -> void:
 		v.y = 0
 		if v.length() <= r + hh.radius:
 			var info := HitInfo.make(null, hh, d, HitInfo.Weight.LIGHT)
+			info.src = "hazard_" + kind
 			info.dir = v.normalized() if v.length() > 0.01 else Vector3.FORWARD
 			info.point = hh.chest()
 			info.knock = knock

@@ -6,6 +6,7 @@ extends Node3D
 var damage := 16.0
 var delay := 0.0
 var owner_foe: Actor
+var _src := ""   # 射出时记下射手种类：箭飞到时射手死了也知道是谁
 var speed := 6.5
 var max_r := 20.0
 var band := 0.6
@@ -20,6 +21,8 @@ var _gm: ShaderMaterial
 
 
 func _ready() -> void:
+	if is_instance_valid(owner_foe) and owner_foe.get("kind") != null:
+		_src = String(owner_foe.get("kind"))
 	_m = _mat("lm_ring_b", Color(color, 0.95), 2.4)
 	_ring = _quad(_m)
 	_gm = _mat("lm_ring_b", Color(color.darkened(0.35), 0.5), 1.4)
@@ -77,6 +80,7 @@ func _process(dt: float) -> void:
 		if absf(d.length() - _r) < band + hh.radius * 0.5:
 			_hit[hh] = true
 			var info := HitInfo.make(owner_foe if is_instance_valid(owner_foe) else null, hh, damage, HitInfo.Weight.HEAVY)
+			info.src = _src
 			info.attacker = null
 			info.dir = d.normalized() if d.length() > 0.01 else Vector3.FORWARD
 			info.knock = 9.0
