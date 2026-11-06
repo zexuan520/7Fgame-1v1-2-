@@ -8,16 +8,18 @@ static var cur: ArpgState
 ## 一局三层。第一幕“归乡”：幽林遗迹（头目夜樱）→ 无名冢（头目百骨将）→ 古寺（最终头目寂光）
 ## 第二幕“入山”（第一幕任一结局后，山门出现“入井”光门）：青井地宫（井中人·枯荣）→ 烛国灯冢（不夜将军）→ 灰衣营（执灯使·烬）
 ## 下面这些表按“全局层号”排（gfloor = 第几幕的偏移 + 本幕第几层），一幕三层
-const FLOOR_ZONES := ["forest", "grave", "temple", "well", "vault", "camp"]
-const FLOOR_NAMES := ["幽林遗迹", "无名冢", "古寺", "青井地宫", "烛国灯冢", "灰衣营"]
-const BOSS_KINDS := ["boss", "boss3", "boss2", "boss4", "boss5", "boss6"]
-const BOSS_ZONES := ["sakura", "grave", "temple", "well", "vault", "camp"]
-const BOSS_TITLES := ["夜樱广场", "无名冢 · 万骨坑", "古寺 · 寂光殿", "青井 · 井底", "灯冢 · 不夜殿", "灰衣营 · 帅帐"]
-const BOSS_MUSIC := ["boss", "boss2", "boss", "boss2", "boss", "boss2"]
+const FLOOR_ZONES := ["forest", "grave", "temple", "well", "vault", "camp", "liuxi", "post", "palace"]
+const FLOOR_NAMES := ["幽林遗迹", "无名冢", "古寺", "青井地宫", "烛国灯冢", "灰衣营", "柳溪村", "官道驿站", "长明宫"]
+const BOSS_KINDS := ["boss", "boss3", "boss2", "boss4", "boss5", "boss6", "boss7", "boss8", "boss9"]
+const BOSS_ZONES := ["sakura", "grave", "temple", "well", "vault", "camp", "liuxi", "post", "palace"]
+const BOSS_TITLES := ["夜樱广场", "无名冢 · 万骨坑", "古寺 · 寂光殿", "青井 · 井底", "灯冢 · 不夜殿", "灰衣营 · 帅帐", "柳溪村 · 祠堂前", "官道 · 十里亭", "长明宫 · 金殿"]
+const BOSS_MUSIC := ["boss", "boss2", "boss", "boss2", "boss", "boss2", "boss", "boss2", "boss"]
 const LAST_FLOOR := 2
 ## 第二幕已经做好的层数（分阶段做：先只有青井地宫，打完头目算这一章暂时通关）
 const ACT2_READY := 3
-const ACT_NAMES := {1: "第一幕 · 归乡", 2: "第二幕 · 入山"}
+## 第三幕“出山”（第二幕任一结局后，山门左边下山的路口出现“出山”光门）：柳溪村（火师焦明）→ 官道驿站（押灯将霍长风）→ 长明宫（长明帝）
+const ACT3_READY := 3
+const ACT_NAMES := {1: "第一幕 · 归乡", 2: "第二幕 · 入山", 3: "第三幕 · 出山"}
 const CN_NUM := ["一", "二", "三", "四", "五", "六", "七", "八", "九"]
 const TYPE_NAMES := {"start": "林口", "fight": "战", "elite": "精英", "shop": "商人", "rest": "歇脚", "event": "奇遇", "boss": "头目",
 	"treasure": "宝箱", "trial": "试炼", "story": "故人", "secret": "密室"}
@@ -27,7 +29,7 @@ const TYPE_DESC := {"start": "", "fight": "成群的敌人，清完选一个心�
 	"story": "路上遇到的人。你的选择会改变后面的事", "secret": "藏在裂墙后面的房间"}
 
 var run: Run
-var act := 1                # 第几幕（1 归乡 / 2 入山）
+var act := 1                # 第几幕（1 归乡 / 2 入山 / 3 出山）
 var cycle := 0              # 轮回级（通关后的加难，见 ArpgCycle；0 = 本相）
 var coins := 0
 var jade := 0
@@ -137,7 +139,7 @@ func gfloor() -> int:
 
 ## 这一幕的最后一层（本幕层号）
 func last_floor() -> int:
-	return LAST_FLOOR if act == 1 else ACT2_READY - 1
+	return LAST_FLOOR if act == 1 else (ACT2_READY - 1 if act == 2 else ACT3_READY - 1)
 
 
 func is_last_floor() -> bool:
@@ -168,13 +170,13 @@ func boss_music() -> String:
 	return BOSS_MUSIC[gfloor()]
 
 
-## 第二幕敌人更硬一点（开局没有心法，所以只加两成多，不按第四层算）
+## 第二幕敌人更硬一点（开局没有心法，所以只加两成多，不按第四层算）；第三幕再硬一档
 func act_hp() -> float:
-	return 1.0 if act == 1 else 1.3
+	return [1.0, 1.0, 1.3, 1.42][clampi(act, 0, 3)]
 
 
 func act_dmg() -> float:
-	return 1.0 if act == 1 else 1.15
+	return [1.0, 1.0, 1.15, 1.25][clampi(act, 0, 3)]
 
 
 func room_type() -> String:
@@ -201,6 +203,8 @@ func stats() -> Dictionary:
 		ArpgData.add_stats(st, {"hp": FORGE_HP * forged})
 	if omen != "" and OMENS.has(omen):
 		ArpgData.add_stats(st, OMENS[omen].get("stats", {}))
+	if act == 3:
+		Act3.run_stats(self, st)   # 第三幕：带着的石门灯、喂过的驿马
 	var sc := ArpgData.school_counts(boons)
 	for k: String in sc:
 		if int(sc[k]) >= ArpgData.SET_NEED and ArpgData.SETS.has(k):
