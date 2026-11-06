@@ -14,6 +14,8 @@ var _stuck_t := 0.0
 var _last_p := Vector3.ZERO
 var _side_t := 0.0
 var _side := 1.0
+var _heal_t := 0.0
+var _portal_t := 0.0
 
 
 func _act(n: String) -> String:
@@ -86,6 +88,15 @@ func _physics_process(dt: float) -> void:
 	if near == null:
 		if is_instance_valid(portal):
 			move = portal.global_position - hero.global_position
+			# 数值联调（--quitend）：机器人只会直线走，偶尔被凹进去的摆设卡住走不到光门（人能绕过去，
+			# tests/test_rooms 查过出口都走得到），卡 8 秒就直接挪过去，别让一局白白超时
+			_portal_t += dt
+			if _portal_t > 8.0 and hero.velocity.length() < 0.5 and OS.get_cmdline_user_args().has("--quitend"):
+				print("BOTWARP %s -> %s" % [str(hero.global_position.snapped(Vector3.ONE * 0.1)), str(portal.global_position)])
+				hero.global_position = portal.global_position + Vector3(0, 0, 1.6)
+				_portal_t = 0.0
+		else:
+			_portal_t = 0.0
 	elif nd > (6.0 if hero.weapon_id == "crossbow" else 2.2):
 		move = near.global_position - hero.global_position
 	elif hero.weapon_id == "crossbow" and nd < 3.5:
@@ -111,11 +122,20 @@ func _physics_process(dt: float) -> void:
 	if near == null:
 		return
 	# 喝药：离得远或敌人收招时喝；血太低（< 25%）且没在挨刀的前摇里也喝（不然打头目时药一直不喝就死了）
-	# （数值联调时改的：原来要“离得远或敌人收招”才喝，成群的时候几乎等不到，机器人常带着满葫芦死掉，测出来的难度偏高）
+	# （数值联调时改的：原来要“离得远或敌人收招”才喝，成群的时候几乎等不到，机器人常带着满葫芦死掉，测出来的难度偏高。
+	#  现在想喝就先停手 0.8 秒、每 0.15 秒按一下，直到真喝上：攻击键会把缓冲里的喝药顶掉）
+	if _heal_t > 0.0:
+		_heal_t -= dt
+		if hero.state == "heal":
+			_heal_t = 0.0
+		elif int(_heal_t / 0.15) != int((_heal_t + dt) / 0.15):
+			_tap("heal")
+		return
 	if hero.hp < hero.max_hp * 0.45 and hero.gourds > 0 and _skill_t <= 0.0 \
 			and (not danger or hero.hp < hero.max_hp * 0.2):
 		_skill_t = 1.0
-		_atk_t = 0.7   # 别马上又按攻击把喝药的输入盖掉
+		_atk_t = 0.7
+		_heal_t = 0.8
 		_tap("heal")
 		return
 	if danger and _roll_t <= 0.0:
@@ -142,7 +162,7 @@ func _physics_process(dt: float) -> void:
 			_skill_t = 0.8
 			_tap("item")
 			return
-		if not (hero.kit.arms[1] as Dictionary).is_empty() and hero.cd["swap_strike"] <= 0.0 and nd < 3.0 and randf() < 0.01:
+		if not (hero.kit.arms[1] as Dictionary).is_empty() and hero.cd["swap_strike"] <= 0.0 and not OS.get_cmdline_user_args().has("--lockarms") and nd < 3.0 and randf() < 0.01:
 			_skill_t = 0.8
 			_tap("swap")
 			return

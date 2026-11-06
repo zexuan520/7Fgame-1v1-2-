@@ -476,15 +476,17 @@ func _stat_rows() -> Array:
 	if h.kill_heal > 0.0:
 		ls += " · 斩杀回 %d" % int(h.kill_heal)
 	rows.append(_row("守", "吸血", ls, ["lifesteal", "kill_heal"], {"num": h.lifesteal + h.kill_heal * 0.01, "base_num": 0.0, "base_txt": "0",
-		"note": "命中回复伤害的这么多生命。" + ("饮血：引爆的每层出血回血。" if h.skr("drink") > 0 else "")}))
+		"note": "命中回复伤害的这么多生命（最多 %d%%）。" % int(round(Hero.LIFESTEAL_MAX * 100.0)) + ("饮血：引爆的每层出血回血。" if h.skr("drink") > 0 else "")}))
 	rows.append(_row("守", "药葫芦", "%d / %d 个 · 每口 %d%%" % [h.gourds, h.max_gourds, int(round(h.gourd_heal * 100.0))], ["gourds", "gourd_heal"],
-		{"num": h.max_gourds + h.gourd_heal, "base_num": 3.4, "base_txt": "3 个 · 40%", "note": "歇脚的土地庙、游商能补满。" + ("轮回七起回血少三成。" if state.cycle >= 7 else "")}))
+		{"num": h.max_gourds + h.gourd_heal, "base_num": 3.4, "base_txt": "3 个 · 40%", "note": "歇脚的土地庙、游商能补满。最多 %d 个。" % Hero.GOURDS_MAX + ("轮回七起回血少三成。" if state.cycle >= 7 else "")}))
 	rows.append(_row("守", "倒下再起", "%d 次" % h.revives, ["revive"], {"num": h.revives, "base_num": 0, "base_txt": "0", "note": "倒下时以 50% 生命站起来。"}))
 	# 身法
 	var mv := h.move_speed / Hero.BASE_MOVE - 1.0
-	rows.append(_row("身法", "移速", "%.1f 米/秒（%+d%%）" % [h.move_speed, int(round(mv * 100.0))], ["move"], {"num": h.move_speed, "base_num": Hero.BASE_MOVE, "base_txt": "%.1f" % Hero.BASE_MOVE}))
+	rows.append(_row("身法", "移速", "%.1f 米/秒（%+d%%）" % [h.move_speed, int(round(mv * 100.0))], ["move"], {"num": h.move_speed, "base_num": Hero.BASE_MOVE, "base_txt": "%.1f" % Hero.BASE_MOVE,
+		"note": "加成最多 +%d%%。" % int(round((Hero.MOVE_MAX - 1.0) * 100.0))}))
 	rows.append(_row("身法", "翻滚", "无敌 %.2f 秒 · %.1f 米" % [h.roll_iframes, h.roll_dist], ["iframes", "roll_far"],
-		{"num": h.roll_iframes + h.roll_dist * 0.01, "base_num": Hero.BASE_IFRAMES + Hero.BASE_ROLL_DIST * 0.01, "base_txt": "%.2f 秒 · %.1f 米" % [Hero.BASE_IFRAMES, Hero.BASE_ROLL_DIST]}))
+		{"num": h.roll_iframes + h.roll_dist * 0.01, "base_num": Hero.BASE_IFRAMES + Hero.BASE_ROLL_DIST * 0.01, "base_txt": "%.2f 秒 · %.1f 米" % [Hero.BASE_IFRAMES, Hero.BASE_ROLL_DIST],
+		"note": "翻滚一次 0.4 秒，无敌最多 %.2f 秒（再多就能一直滚着不挨打了）。" % Hero.ROLL_IFRAMES_MAX}))
 	rows.append(_row("身法", "突进斩冷却", "%.1f 秒" % h.dash_cd, ["dash_cd", "sk_echo"], {"num": h.dash_cd, "base_num": Hero.BASE_DASH_CD, "dir": -1.0, "base_txt": "%.1f 秒" % Hero.BASE_DASH_CD,
 		"note": "加成最多缩短七成；技能分支“连闪”二级再 ×0.85、三级 ×0.7。" + ("御风：每次翻滚再 -0.8 秒。" if h.set_wind else "")}))
 	rows.append(_row("身法", "终结技冷却", "%.1f 秒" % h.finish_cd, ["finish_cd", "sk_drink", "sk_lotus"], {"num": h.finish_cd, "base_num": Hero.BASE_FINISH_CD, "dir": -1.0, "base_txt": "%.1f 秒" % Hero.BASE_FINISH_CD,
@@ -493,7 +495,7 @@ func _stat_rows() -> Array:
 	if art != "":
 		rows.append(_row("身法", "秘技冷却", "%s %.0f 秒" % [ArpgSkills.branch(art)["name"], h.art_cd], [], {"note": "秘技四选一，学了哪种就是哪种的冷却。"}))
 	rows.append(_row("身法", "气力获取", "×%.2f" % h.energy_mult, ["energy", "hurt_energy"], {"num": h.energy_mult, "base_num": 1.0, "base_txt": "×1.00",
-		"note": "砍中敌人回气，满了放光束斩。" + ("棍扫：每一棍多回 3 点。" if state.weapon == "staff" else "") + ("挨打回 %d 点气。" % int(h.hurt_energy) if h.hurt_energy > 0.0 else "")}))
+		"note": "砍中敌人回气，满了放光束斩。最多 ×%.1f。" % Hero.ENERGY_MAX + ("棍扫：每一棍多回 3 点。" if state.weapon == "staff" else "") + ("挨打回 %d 点气。" % int(h.hurt_energy) if h.hurt_energy > 0.0 else "")}))
 	# 装备特效（有才列）
 	var fx := [["thorns", "反伤", "%d%%", "近身挨打时把 %d%% 的伤害弹回去", h.thorns * 100.0],
 		["rage", "狼首", "+%d%%", "生命低于一半时伤害 +%d%%", h.rage * 100.0],

@@ -1094,6 +1094,7 @@ func _open_skins(_n: ArpgNpc, keep_index: int = -1) -> void:
 # ---------- 一局 ----------
 
 func _start_run(fresh_hero: bool = true, act: int = 1) -> void:
+	_pending_weapons.clear()
 	state = ArpgState.start_new(act)
 	if act == 2:
 		# 第一幕的选择带进第二幕：flags 里加 a1_ 前缀的旗标（剧情遭遇、头目对白用）
@@ -1148,6 +1149,23 @@ func _start_run(fresh_hero: bool = true, act: int = 1) -> void:
 ## --quitend 一局结束（登顶或身死）打一行 RUN 汇总后退出；一间房卡住超过 BENCH_STALL 秒打 STALL 也退出。
 ## tools/balance/run_matrix.sh 用这两个参数并行跑多局，tools/balance/report.py 汇总。
 const BENCH_STALL := 420.0
+var _bench_seen := 0.0
+
+
+## --quitend：不管在房间、对话、菜单还是山门，游戏时间过了 BENCH_STALL 秒都没再打 TEL 就算卡住
+func _bench_watch() -> void:
+	if not _args.has("quitend") or mode == "over":
+		return
+	if _clock - _bench_seen > BENCH_STALL:
+		var dlg := ""
+		for n: Node in ui_layer.get_children():
+			dlg += n.get_class() + ":" + String(n.name) + " "
+		print("STUCK mode=%s room=%s menu=%s ui=[%s] portal=%s hero=%s act=%d floor=%d row=%d" % [mode, room_kind, str(_menu.get("title")) if is_instance_valid(_menu) else "-", dlg,
+			str(_portal.global_position) if is_instance_valid(_portal) else "-", str(hero.global_position) if is_instance_valid(hero) else "-",
+			state.act if state != null else 0, state.floor_i() + 1 if state != null else 0, state.run.row if state != null else 0])
+		print("STUCK2 done=%s wi=%d/%d hold=%s going=%s hero_state=%s alive=%s foes=%d extra=%d side=%d npcs=%d" % [_room_done, wave_i, waves.size(), _hold_waves, _going,
+			hero.state if is_instance_valid(hero) else "-", hero.alive if is_instance_valid(hero) else false, get_tree().get_nodes_in_group("foes").size(), _extra_portals.size(), side_rooms.size(), _npcs.size()])
+		get_tree().quit(4)
 
 
 func _bench_talents(kind: String) -> void:
@@ -1170,8 +1188,8 @@ func _bench_end(won: bool) -> void:
 		var it: Dictionary = state.gear[slot]
 		if not it.is_empty():
 			gear.append("%s:%s%d" % [slot, it.get("base", ""), int(it.get("rarity", 0))])
-	print("RUN won=%s act=%d weapon=%s cycle=%d diff=%d floor=%d row=%d rooms=%d kills=%d clk=%.0f lv=%d hits=%d dmg=%.0f drinks=%d maxhp=%.0f atk=%.2f taken=%.2f crit=%.2f boons=%s gear=%s skills=%s killer=%s" % [
-		won, state.act, state.weapon, state.cycle, ArpgState.difficulty(), state.floor_i() + 1, state.run.row, state.rooms, state.kills,
+	print("RUN won=%s jade=%d act=%d weapon=%s cycle=%d diff=%d floor=%d row=%d rooms=%d kills=%d clk=%.0f lv=%d hits=%d dmg=%.0f drinks=%d maxhp=%.0f atk=%.2f taken=%.2f crit=%.2f boons=%s gear=%s skills=%s killer=%s" % [
+		won, state.jade, state.act, state.weapon, state.cycle, ArpgState.difficulty(), state.floor_i() + 1, state.run.row, state.rooms, state.kills,
 		_clock - _run_t0, state.level, hero.hits_taken, hero.dmg_total, hero.drinks, hero.max_hp, hero.dmg_mult, hero.taken_mult,
 		hero.crit_bonus, ",".join(state.boons), ",".join(gear), str(state.skills).replace(" ", ""), "" if won else hero.last_hit_by])
 	get_tree().create_timer(0.5).timeout.connect(get_tree().quit)
@@ -1182,6 +1200,7 @@ var _tel := {}
 
 
 func _tel_print(what: String) -> void:
+	_bench_seen = _clock
 	if not _args.has("tel") or state == null or not is_instance_valid(hero) or _tel.is_empty():
 		return
 	print("TEL %s %s clk=%.0f fl=%d row=%d secs=%.1f dmg=%.0f hp=%.0f/%.0f gourd=%d coins=%d kills=%d lv=%d pts=%d sk=%s" % [what, room_kind, _clock, state.floor_i(), state.run.row,
@@ -2768,7 +2787,7 @@ func _offer_boons_then(n: int) -> void:
 
 func _open_portal(kind: String = "next") -> void:
 	_room_done = true
-	_make_portal(arena.exit_pos, kind, Color(0.4, 1.0, 1.0))
+	_make_portal(arena.open_exit(), kind, Color(0.4, 1.0, 1.0))
 
 
 func _make_portal(p: Vector3, kind: String, col: Color) -> void:
@@ -2961,6 +2980,7 @@ func _say(lines: Array) -> DialogBox:
 	if _args.has("storytest"):
 		for l: Array in lines:
 			print("SAY [%s] %s" % [l[0], l[1]])
+	_requeue_weapon_menu()
 	_close_menu()
 	var d := DialogBox.new()
 	d.lines = lines
@@ -3029,8 +3049,29 @@ func _gain_prop(id: String) -> void:
 
 
 ## 捡到兵器：副手空着就挂上；两手都有就问换哪一把。没见过的兵器同时挂上山门兵器架
+## 捡到兵器要问“换哪只手”，这时候要是正开着别的菜单或对话（精英房清场的心法三选一、头目战后的对话），
+## 直接开会把那个顶掉，它后面的流程（开光门）就没了，房间里出不去。先排着，菜单关了再问。
+var _pending_weapons: Array = []
+
+
+## 捡兵器的菜单被别的菜单、对话顶掉了：这把兵器放回队里，等会儿再问
+func _requeue_weapon_menu() -> void:
+	if is_instance_valid(_menu) and _menu.has_meta("weapon_item"):
+		_pending_weapons.append(_menu.get_meta("weapon_item"))
+		_menu.remove_meta("weapon_item")
+
+
+func _flush_pending_weapons() -> void:
+	if _pending_weapons.is_empty() or is_instance_valid(_menu) or not _no_dialog() or state == null or mode != "room":
+		return
+	_gain_weapon(_pending_weapons.pop_front())
+
+
 func _gain_weapon(it: Dictionary) -> void:
 	if state == null:
+		return
+	if is_instance_valid(_menu) or not _no_dialog():
+		_pending_weapons.append(it)
 		return
 	var wid := String(it["base"])
 	var owned: Array = Game.save.get("arpg_weapons", ["sword"])
@@ -3043,6 +3084,9 @@ func _gain_weapon(it: Dictionary) -> void:
 	if int(it["rarity"]) >= 4:
 		ArpgAch.unlock("gear_legend")
 	var tail := "（山门兵器架上也挂上了）" if fresh else ""
+	if _args.has("lockarms"):
+		state.coins += 20 + 15 * int(it["rarity"])   # 数值联调比兵器：捡到的兵器一律熔掉，整局只用出发时那一把
+		return
 	if (state.arms[1] as Dictionary).is_empty():
 		state.arms[1] = it
 		feel.callout(hero.head_top() + Vector3(0, 0.3, 0), String(it["name"]), ArpgGear.color(it), 1.3)
@@ -3057,6 +3101,7 @@ func _gain_weapon(it: Dictionary) -> void:
 	items.append({"tag": "不要", "title": "熔了换铜钱", "desc": "", "right": "%d 铜钱" % c})
 	var wd := ArpgData.weapon(wid)
 	var m := _open_menu("捡到 " + String(it["name"]), String(wd["desc"]) + "。" + ArpgGear.describe(it) + tail, items, "list", false)
+	m.set_meta("weapon_item", it)
 	m.chosen.connect(func(i: int) -> void:
 		if i < 2:
 			state.arms[i] = it
@@ -3206,6 +3251,7 @@ func _open_bag(keep_index: int = -1) -> void:
 func _open_menu(title: String, sub: String, items: Array, layout: String, cancellable: bool) -> ArpgMenu:
 	if _args.has("storytest"):
 		print("MENU %s | %s | %s" % [title, sub, str(items.map(func(it: Dictionary) -> String: return String(it.get("title", ""))))])
+	_requeue_weapon_menu()
 	_close_menu()
 	var m := ArpgMenu.new()
 	m.title = title
@@ -3597,6 +3643,8 @@ func _process(dt: float) -> void:
 						var sk := String(sp.get_meta("kind", "secret"))   # secret 裂墙密室 / realm 秘境
 						_fade_then(func() -> void: _enter_room(sk))
 	_watch_stuck(dt)
+	_bench_watch()
+	_flush_pending_weapons()
 	if mode == "room" and not _room_done and not _hold_waves and is_instance_valid(hero) and hero.alive:
 		if get_tree().get_nodes_in_group("foes").is_empty():
 			_wave_delay -= dt

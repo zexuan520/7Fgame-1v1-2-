@@ -13,7 +13,7 @@ run_one() {
 	local name=$1; shift
 	local home="$OUT/home_$name"
 	rm -rf "$home"; mkdir -p "$home"
-	XDG_DATA_HOME="$home" timeout "$TMO" "$GODOT" --headless --fixed-fps 30 --path "$ROOT" -- \
+	XDG_DATA_HOME="$home" timeout "$TMO" stdbuf -oL -eL "$GODOT" --headless --fixed-fps 30 --path "$ROOT" -- \
 		--demo=fight --mortal --tel --quitend --noach $@ > "$OUT/$name.log" 2>&1
 	echo "done $name exit=$?"
 }

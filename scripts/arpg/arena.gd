@@ -351,6 +351,24 @@ func _build_bounds() -> void:
 
 
 ## 门口要清空的一块（房间里靠墙那一截 + 墙本身）
+## 出口光门的位置：exit_pos 被摆设压住（比如第三幕驿站头目房的十里亭正好盖在出口上，光门开在亭子里面，走不进去）
+## 就往房间里挪，挪到第一个空地
+func open_exit() -> Vector3:
+	var p := exit_pos
+	for i in range(40):
+		var q := p + Vector3(0, 0, 0.5 * i)
+		var free := true
+		for r: Rect2 in _solid:
+			if r.has_point(Vector2(q.x, q.z)):
+				free = false
+				break
+		if free:
+			if i > 0 and OS.get_cmdline_user_args().has("--tel"):
+				print("EXIT moved %s -> %s" % [str(p), str(q)])
+			return q
+	return p
+
+
 func _door_clear_rect(dr: Dictionary) -> Rect2:
 	var hx := size.x * 0.5
 	var side := float(dr["side"])
