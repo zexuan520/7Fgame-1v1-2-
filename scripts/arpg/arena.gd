@@ -83,6 +83,8 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 			_dress_vault()
 		"camp":
 			_dress_camp()
+		_:
+			_dress_more()
 	_atmosphere()
 	_clear_doorways()
 	_make_spawns()
@@ -90,6 +92,11 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 
 func zone_info() -> Dictionary:
 	return ZONES[zone]
+
+
+## 别的区域（子类 Arena3：第三幕）在这里摆
+func _dress_more() -> void:
+	pass
 
 
 ## 房间相对 30×22 老尺寸的倍数（摆设按这个放大位置、加数量，密度保持差不多）
@@ -1744,7 +1751,7 @@ func _petals() -> void:
 
 
 func _atmosphere() -> void:
-	var info: Dictionary = ZONES[zone]
+	var info: Dictionary = zone_info()
 	# 漂浮孢子 / 光尘
 	var sp := CPUParticles3D.new()
 	sp.amount = mini(int(140 * _ka()), 280) / (2 if lod == 0 else 1)

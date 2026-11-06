@@ -201,6 +201,11 @@ var _affix_ring: MeshInstance3D
 var _ward_fx: MeshInstance3D
 
 
+## 第一次见到这种敌人时头上冒的提示（子类可以换，见 Act3Foe）
+func _hint_text() -> String:
+	return String(HINTS.get(kind, ""))
+
+
 func setup_kind(k: String, hp_scale: float = 1.0, dmg_mult: float = 1.0) -> void:
 	kind = k
 	data = TYPES[k]
@@ -353,9 +358,9 @@ func _physics_process(delta: float) -> void:
 				if data.has("phantom"):
 					_has_token = false
 					_begin_attack("charge")
-				if HINTS.has(kind) and not _seen.has(kind):
+				if _hint_text() != "" and not _seen.has(kind):
 					_seen[kind] = true
-					Feel.I.callout(head_top() + Vector3(0, 0.3, 0), String(HINTS[kind]), Color(1.0, 0.9, 0.6), 2.2)
+					Feel.I.callout(head_top() + Vector3(0, 0.3, 0), _hint_text(), Color(1.0, 0.9, 0.6), 2.2)
 		"lurk":
 			_st_lurk(dt)
 		"patrol":
@@ -498,9 +503,9 @@ func _st_lurk(dt: float) -> void:
 		_set_state("chase")
 		if near and _get_token():
 			_begin_attack("lunge")
-		if HINTS.has(kind) and not _seen.has(kind):
+		if _hint_text() != "" and not _seen.has(kind):
 			_seen[kind] = true
-			Feel.I.callout(head_top() + Vector3(0, 0.3, 0), String(HINTS[kind]), Color(1.0, 0.9, 0.6), 2.2)
+			Feel.I.callout(head_top() + Vector3(0, 0.3, 0), _hint_text(), Color(1.0, 0.9, 0.6), 2.2)
 
 
 var _layer0 := -1
@@ -1767,8 +1772,8 @@ func take_hit(info: HitInfo) -> bool:
 	if is_boss and _boss_phase == 0 and hp < max_hp * (0.66 if kind == "boss6" else 0.5):
 		_boss_phase = 1
 		rig.set_rim(fx_color(), 0.9)
-		Feel.I.callout(head_top() + Vector3(0, 0.6, 0), String(RAGE_NAMES.get(kind, "狂")), Color(1.0, 0.4, 0.55), 1.5)
-		Feel.I.callout(head_top() + Vector3(0, 1.4, 0), "“%s”" % String(RAGE_LINES.get(kind, "")), Color(0.95, 0.92, 0.85), 2.2)
+		Feel.I.callout(head_top() + Vector3(0, 0.6, 0), String(RAGE_NAMES.get(kind, data.get("rage", "狂"))), Color(1.0, 0.4, 0.55), 1.5)
+		Feel.I.callout(head_top() + Vector3(0, 1.4, 0), "“%s”" % String(RAGE_LINES.get(kind, data.get("rage_line", ""))), Color(0.95, 0.92, 0.85), 2.2)
 		# 特写：镜头转过去、上下黑边
 		CamRig.I.close_up(self, 1.3, 0.55)
 		if Hud3D.I != null:
