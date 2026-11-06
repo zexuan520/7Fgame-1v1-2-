@@ -297,6 +297,7 @@ static func lightning(hero: Hero, at: Vector3, dmg: float, stun: float = 0.4) ->
 # ---------- 皮肤 ----------
 
 ## model 体素模型；swap 换掉游侠兜帽披风的颜色（只对 rogue 有用）；rim 描边光；trail 刀光边色（null 用兵器的）；
+## neutral 灯光去色（0~1，金色这类暖色在青光、绿光下不发绿）；swap_glow 换色那块自己亮几分；
 ## k 体型缩放；unlock：free / jade 魂玉买 / ach 成就数 / clears 登顶次数 / kills 累计斩敌 / act2 第二幕通关
 const SKINS := [
 	{"id": "qing", "name": "青衫", "desc": "最早那身衣服，洗得发白", "model": "rogue", "swap": Color(0.24, 0.42, 0.72), "rim": Color(0.45, 0.95, 1.0), "unlock": {"free": true}},
@@ -306,7 +307,7 @@ const SKINS := [
 	{"id": "knight", "name": "铁甲骑士", "desc": "从柳江远那里学来的板甲", "model": "knight", "rim": Color(1.0, 0.85, 0.5), "unlock": {"clears": 1}},
 	{"id": "barbarian", "name": "北地蛮勇", "desc": "一身兽皮，砍过一千个敌人才穿得上", "model": "barbarian", "rim": Color(1.0, 0.55, 0.35), "unlock": {"kills": 1000}},
 	{"id": "mage", "name": "云游术士", "desc": "宽袍大袖，打起来却不含糊", "model": "mage", "k": 1.3, "rim": Color(0.72, 0.6, 1.0), "unlock": {"jade": 60}},
-	{"id": "jin", "name": "金身", "desc": "第二幕走到底的人，才有这一身金", "model": "rogue", "swap": Color(1.0, 0.6, 0.14), "rim": Color(1.0, 0.85, 0.4), "glow": Color(0.08, 0.05, 0.0), "unlock": {"act2": true}},
+	{"id": "jin", "name": "金身", "desc": "第二幕走到底的人，才有这一身金", "model": "rogue", "swap": Color(1.0, 0.6, 0.14), "rim": Color(1.0, 0.85, 0.4), "glow": Color(0.08, 0.05, 0.0), "neutral": 0.75, "swap_glow": 0.35, "unlock": {"act2": true}},
 ]
 
 

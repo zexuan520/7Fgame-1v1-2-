@@ -1,6 +1,6 @@
 """第二幕新小怪的手持物（程序生成体素，和 weapon/*.json 同格式：握把在原点，尖端朝 -y，一格 0.5 像素）。
 python tools/voxelize/gen_act2_props.py  →  assets/voxel/weapon/spear.json、lantern_h.json、flag.json"""
-import json, os, random
+import gzip, json, os, random
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "voxel", "weapon")
 random.seed(7)
@@ -14,7 +14,7 @@ def save(name, cells):
     d = {"vs": 0.5, "len": (max(ys) - min(ys) + 1) * 0.5,
          "size": [max(xs) - min(xs) + 1, max(ys) - min(ys) + 1, max(zs) - min(zs) + 1],
          "min": [min(xs), min(ys), min(zs)], "vox": vox}
-    with open(os.path.join(OUT, name + ".json"), "w") as f:
+    with gzip.open(os.path.join(OUT, name + ".json.gz"), "wt", compresslevel=9) as f:   # 游戏读 .json.gz（VoxelModel.read_data）
         json.dump(d, f, separators=(",", ":"))
     print(name, d["size"], len(cells))
 

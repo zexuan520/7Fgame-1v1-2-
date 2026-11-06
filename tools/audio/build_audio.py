@@ -135,7 +135,11 @@ SFX = {
 }
 
 # 背景音乐：曲名 → 文件（"压缩包:里面的路径" 先解压），或者 {"src": 文件, "cut": (从第几秒, 到第几秒), "fade": (淡入, 淡出), "q": 质量}
-# cut/fade 给不是循环曲的去掉开头结尾的静音、免得循环时断一截；q 是 libvorbis 质量（第二、三幕的用 2，包体小一点）
+# cut/fade 给不是循环曲的去掉开头结尾的静音、免得循环时断一截；q 是 libvorbis 质量（不写就用 MUSIC_Q）
+# 网页版整个包要先下完才能玩，音乐占大头：q0 约 64kbps，18 首约 11MB（原来 q2~q4 约 21MB）
+MUSIC_Q = 0
+SFX_Q = 3   # 音效是短的单声道，q3 听不出区别
+
 MUSIC = {
     "hub": "forest_whisper_theme.zip:Forest Whisper Theme/Forest Whisper.ogg",
     "village": "GameMusic_ForestTheme_24_0.mp3",
@@ -144,19 +148,19 @@ MUSIC = {
     "boss2": "battleThemeA.mp3",
     "secret": "dungeon002_0.ogg",
     # ---------- 第二幕 · 入山 ----------
-    "well": {"src": "act23/music/cursed_tower.ogg", "q": 2},                   # 青井地宫：闹鬼的低音 + 鼓点
-    "vault": {"src": "act23/music/great_labyrinth.ogg", "q": 2},               # 烛国灯冢：管弦地宫曲，又悲又重
-    "camp": {"src": "act23/music/march_loop.flac", "q": 2},                    # 灰衣营：行军鼓
-    "boss_well": {"src": "act23/music/dramatic_boss.flac", "cut": (0, 37.9), "fade": (0.05, 0.6), "q": 2},   # 枯荣：鼓 + 提琴
-    "boss_vault": {"src": "act23/music/heavy_boss2.ogg", "q": 2},              # 不夜将军：沉重的头目曲
-    "boss_camp": {"src": "act23/music/determined_pursuit.flac", "q": 2},       # 烬：急促的弦乐和号
+    "well": {"src": "act23/music/cursed_tower.ogg"},                   # 青井地宫：闹鬼的低音 + 鼓点
+    "vault": {"src": "act23/music/great_labyrinth.ogg"},               # 烛国灯冢：管弦地宫曲，又悲又重
+    "camp": {"src": "act23/music/march_loop.flac"},                    # 灰衣营：行军鼓
+    "boss_well": {"src": "act23/music/dramatic_boss.flac", "cut": (0, 37.9), "fade": (0.05, 0.6)},   # 枯荣：鼓 + 提琴
+    "boss_vault": {"src": "act23/music/heavy_boss2.ogg"},              # 不夜将军：沉重的头目曲
+    "boss_camp": {"src": "act23/music/determined_pursuit.flac"},       # 烬：急促的弦乐和号
     # ---------- 第三幕 · 出山 ----------
-    "liuxi": {"src": "act23/music/looted_village.ogg", "q": 2},                # 柳溪村：回乡发现村子遭了劫
-    "post": {"src": "act23/music/last_journey.mp3", "cut": (0, 59.3), "fade": (0.05, 1.5), "q": 2},   # 官道驿站：管弦行路曲
-    "palace": {"src": "act23/music/journey_noname.mp3", "q": 2},               # 长明宫：宏大的史诗配乐
-    "boss_liuxi": {"src": "act23/music/fire_dragon_loop.flac", "cut": (0.96, 0), "q": 2},   # 火师焦明：火龙
-    "boss_post": {"src": "act23/music/call_to_war.flac", "q": 2},              # 押灯将霍长风：军鼓和号
-    "boss_palace": {"src": "act23/music/epic_endgame.flac", "cut": (0, 89.3), "fade": (0.05, 1.2), "q": 2},  # 长明帝：女声合唱 + 号 + 低音
+    "liuxi": {"src": "act23/music/looted_village.ogg"},                # 柳溪村：回乡发现村子遭了劫
+    "post": {"src": "act23/music/last_journey.mp3", "cut": (0, 59.3), "fade": (0.05, 1.5)},   # 官道驿站：管弦行路曲
+    "palace": {"src": "act23/music/journey_noname.mp3"},               # 长明宫：宏大的史诗配乐
+    "boss_liuxi": {"src": "act23/music/fire_dragon_loop.flac", "cut": (0.96, 0)},   # 火师焦明：火龙
+    "boss_post": {"src": "act23/music/call_to_war.flac"},              # 押灯将霍长风：军鼓和号
+    "boss_palace": {"src": "act23/music/epic_endgame.flac", "cut": (0, 89.3), "fade": (0.05, 1.2)},  # 长明帝：女声合唱 + 号 + 低音
 }
 
 
@@ -195,7 +199,7 @@ def main():
             mix = "".join("[l%d]" % j for j in range(len(layers)))
             filt.append("%samix=inputs=%d:normalize=0,atrim=0:%.2f,afade=t=out:st=%.2f:d=%.2f,alimiter=limit=0.89[o]"
                         % (mix, len(layers), max_len, max(max_len - fade, 0.0), fade))
-            args += ["-filter_complex", ";".join(filt), "-map", "[o]", "-ar", "44100", "-c:a", "libvorbis", "-q:a", "5",
+            args += ["-filter_complex", ";".join(filt), "-map", "[o]", "-ar", "44100", "-c:a", "libvorbis", "-q:a", str(SFX_Q),
                      os.path.join(out_dir, "%d.ogg" % i)]
             run(args)
         print(name, len(variants))
@@ -221,7 +225,7 @@ def main():
             af.append("afade=t=in:d=%.2f,afade=t=out:st=%.2f:d=%.2f" % (fi, dur - fo, fo))
         af.append("loudnorm=I=-18:TP=-1.5:LRA=11")
         run(["ffmpeg", "-y", "-i", path, "-af", ",".join(af), "-ar", "44100", "-ac", "2",
-             "-c:a", "libvorbis", "-q:a", str(spec.get("q", 4)), os.path.join(MUSIC_OUT, name + ".ogg")])
+             "-c:a", "libvorbis", "-q:a", str(spec.get("q", MUSIC_Q)), os.path.join(MUSIC_OUT, name + ".ogg")])
         print("music", name)
     shutil.rmtree(tmp)
 
