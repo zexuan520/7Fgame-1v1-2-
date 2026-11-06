@@ -7,7 +7,14 @@ extends CanvasLayer
 
 static var I: Feel
 
-const HITSTOP := [0.05, 0.1, 0.15]
+const HITSTOP := [0.05, 0.1, 0.15]   # 旧的按重量取的默认值（别的地方还在引用）
+## 顿帧三档（秒）：弱击 / 强击 / 会心，各自一个区间，按伤害和连击在区间里取；大招另算
+const STOP_WEAK := Vector2(0.0, 0.03)
+const STOP_STRONG := Vector2(0.05, 0.08)
+const STOP_CRIT := Vector2(0.1, 0.15)
+const STOP_ULT := 0.15
+const STOP_KILL := 0.08        # 斩杀至少按强击顿
+const FLASH_T := 0.08          # 受击闪白
 const NUM_LIFE := 0.7
 
 var world_pause := 0.0
@@ -63,15 +70,7 @@ func on_hit(info: HitInfo) -> bool:
 		_frame_hits = 0
 	_frame_hits += 1
 	var extra := _frame_hits > 2        # 同一帧第三下以后：只出伤害数字、小火花，镜头不再推
-	var hs: float = info.hitstop if info.hitstop >= 0.0 else HITSTOP[w]
-	# 伤害越高顿得越久（最多再加 40%）；连段越长每一下也略沉一点
-	hs *= 1.0 + clampf(info.damage / 120.0, 0.0, 0.4)
-	if info.crit:
-		hs *= 1.25
-	if hero_hit:
-		hs *= 1.0 + clampf(combo / 60.0, 0.0, 0.25)
-	if killed:
-		hs = maxf(hs, HITSTOP[1] * 1.2)
+	var hs := _hitstop(info, w, hero_hit, killed)
 	tgt.freeze(hs)
 	if info.attacker != null:
 		info.attacker.self_stop(hs * 0.9)
@@ -82,9 +81,10 @@ func on_hit(info: HitInfo) -> bool:
 			tgt.rig.flash(0.12, Color(1.0, 0.35, 0.35))
 		# 后仰：顺着刀的方向歪一下（头目只歪一点，主角挨打也歪）
 		tgt.rig.recoil(info.dir, (0.16 if w == 0 else 0.28) * (0.35 if boss else 1.0) * (1.25 if info.crit else 1.0) * (0.7 if tgt.team == 0 else 1.0))
-	var sl: int = info.shake if info.shake >= 0 else w
+	# 震屏逐档增强：弱 → 强 → 会心（会心至少按中档，再大三成）
+	var sl: int = info.shake if info.shake >= 0 else (maxi(w, 1) if info.crit else w)
 	if CamRig.I != null and not extra:
-		CamRig.I.shake(sl, 1.0 + clampf(info.damage / 150.0, 0.0, 0.6))
+		CamRig.I.shake(sl, (1.0 + clampf(info.damage / 150.0, 0.0, 0.6)) * (1.3 if info.crit and info.shake < 0 else 1.0))
 		# 定向冲击：镜头顺着打击方向推一下（挨打时更猛，让玩家“疼”）
 		var kick: float = [0.06, 0.13, 0.2][w] * (1.4 if tgt.team == 0 else 1.0) * (1.3 if info.crit else 1.0)
 		CamRig.I.kick(info.dir, kick, 0.0 if w == 0 else 0.012 * (w + 1))
@@ -119,6 +119,31 @@ func on_hit(info: HitInfo) -> bool:
 	if info.attacker != null and info.gain > 0.0 and info.attacker.has_method("gain_energy"):
 		info.attacker.call("gain_energy", info.gain)
 	return true
+
+
+## 这一下顿多久：显式给了 hitstop 就用它；多段攻击的中间段不顿；否则按 弱 / 强 / 会心 三档区间取
+func _hitstop(info: HitInfo, w: int, hero_hit: bool, killed: bool) -> float:
+	if info.multi_mid and not killed:
+		return 0.0
+	var k := clampf(info.damage / 120.0, 0.0, 1.0)
+	if hero_hit:
+		k = clampf(k + combo / 80.0, 0.0, 1.0)
+	var hs: float
+	if info.hitstop >= 0.0:
+		hs = info.hitstop * (1.25 if info.crit else 1.0)
+	elif w >= HitInfo.Weight.ULT:
+		hs = STOP_ULT
+	elif info.crit:
+		hs = lerpf(STOP_CRIT.x, STOP_CRIT.y, k)
+	elif w >= HitInfo.Weight.HEAVY:
+		hs = lerpf(STOP_STRONG.x, STOP_STRONG.y, k)
+	else:
+		hs = lerpf(STOP_WEAK.x, STOP_WEAK.y, k)
+	if killed:
+		hs = maxf(hs, STOP_KILL)
+	if info.target != null and info.target.team == 0:
+		hs = maxf(hs, STOP_STRONG.x)   # 主角挨打至少顿到强击下限，疼要让人感觉到
+	return hs
 
 
 ## 一下命中的冲击线、会心字、地面刀痕、碎块（同一帧头两下才放）

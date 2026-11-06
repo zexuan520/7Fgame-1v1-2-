@@ -3432,7 +3432,8 @@ func _open_pause(sel: Variant = 0) -> void:
 		{"id": "sfx", "title": "音效音量", "right": pct.call("sfx"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
 		{"id": "quality", "title": "画质", "right": QUALITY_NAMES[quality], "desc": "低：关阴影和辉光，降低渲染分辨率，适合网页和轻薄本"},
 		{"id": "diff", "title": "难度", "right": ArpgState.DIFF_NAMES[ArpgState.difficulty()], "desc": ArpgState.DIFF_DESC[ArpgState.difficulty()]},
-		{"id": "impact", "title": "冲击帧", "right": "开" if bool(Game.settings.get("impact_frames", true)) else "关", "desc": "清完一波、斩精英、见切时整屏黑白定格一瞬；对闪光敏感可以关掉"}]
+		{"id": "impact", "title": "冲击帧", "right": "开" if bool(Game.settings.get("impact_frames", true)) else "关", "desc": "清完一波、斩精英、见切时整屏黑白定格一瞬；对闪光敏感可以关掉"},
+		{"id": "shake", "title": "震屏强度", "right": CamRig.SHAKE_NAMES[CamRig.shake_level()], "desc": "命中、爆炸时镜头抖动的幅度（关 → 弱 → 中 → 强）；容易晕可以调低"}]
 	if TouchPad.active:
 		items.insert(5, {"id": "touchsize", "title": "按键大小", "right": TouchPad.SIZE_NAMES[TouchPad.size_i], "desc": "右下角触屏按键的大小（小 → 中 → 大）"})
 	items.append({"id": "ach", "title": "成就", "right": "%d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], "desc": "看看做到了哪些"})
@@ -3475,6 +3476,13 @@ func _on_pause_chosen(i: int) -> void:
 		"impact":
 			Game.settings["impact_frames"] = not bool(Game.settings.get("impact_frames", true))
 			Game.write_settings()
+			Game.sfx("coin")
+			_open_pause(id)
+		"shake":
+			Game.settings["shake"] = (CamRig.shake_level() + 1) % CamRig.SHAKE_SCALES.size()
+			Game.write_settings()
+			if CamRig.I != null:
+				CamRig.I.shake(1)
 			Game.sfx("coin")
 			_open_pause(id)
 		"touchsize":
