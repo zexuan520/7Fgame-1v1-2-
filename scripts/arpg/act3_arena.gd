@@ -9,8 +9,8 @@ extends Arena
 const ZONES3 := {
 	"liuxi": {"bg": Color(0.09, 0.06, 0.07), "fog": Color(0.3, 0.17, 0.13), "fog_d": 0.5, "amb": Color(0.64, 0.52, 0.5), "amb_e": 1.35,
 		"sun": Color(1.0, 0.62, 0.38), "sun_e": 1.35, "spore": Color(1.0, 0.78, 0.45)},
-	"post": {"bg": Color(0.03, 0.04, 0.06), "fog": Color(0.11, 0.14, 0.2), "fog_d": 0.7, "amb": Color(0.45, 0.5, 0.62), "amb_e": 1.4,
-		"sun": Color(0.62, 0.72, 0.95), "sun_e": 1.0, "spore": Color(0.65, 0.78, 1.0)},
+	"post": {"bg": Color(0.03, 0.04, 0.06), "fog": Color(0.13, 0.16, 0.22), "fog_d": 0.6, "amb": Color(0.56, 0.6, 0.72), "amb_e": 1.55,
+		"sun": Color(0.72, 0.8, 1.0), "sun_e": 1.2, "spore": Color(0.65, 0.78, 1.0)},
 	"palace": {"bg": Color(0.07, 0.03, 0.03), "fog": Color(0.22, 0.1, 0.06), "fog_d": 0.45, "amb": Color(0.72, 0.58, 0.48), "amb_e": 1.45,
 		"sun": Color(1.0, 0.85, 0.62), "sun_e": 1.25, "spore": Color(1.0, 0.82, 0.45)},
 }
@@ -505,7 +505,7 @@ func _dress_palace() -> void:
 	for i in range(int(3 * _ka())):
 		var p := Vector3(rng.randf_range(-cx + 2.0, cx - 2.0), 0, rng.randf_range(-hz + 4, hz - 3))
 		if absf(p.x) > 3.0:
-			kit(["candles", "box", "rubble"][rng.randi() % 3], p, rng.randf() * TAU, 0.8, false)
+			kit(["candles", "box", "candles"][rng.randi() % 3], p, rng.randf() * TAU, 0.8, false)
 	for p: Vector3 in [Vector3(0, 6.0, -hz + 2.0), Vector3(0, 6.0, 0), Vector3(0, 6.0, hz - 5.0)]:
 		var l := OmniLight3D.new()
 		l.light_color = Color(1.0, 0.82, 0.55)

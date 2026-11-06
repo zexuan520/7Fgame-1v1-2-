@@ -64,6 +64,21 @@ const LIST := [
 	["forge", "回炉", "在灯冢的熔铜炉里淬刃、铸甲或熔一件装备", false],
 	["cage_10", "破笼", "累计从灰衣营的木笼里放出 10 个人", false],
 	["side_act2", "山中别室", "许愿井、熔铜炉、木笼三种侧室都进过", false],
+	# 第三幕 · 出山
+	["act3", "出山", "第一次走进第三幕的“出山”光门", false],
+	["boss7", "火尽", "打倒第三幕头目火师焦明", false],
+	["boss8", "灯车止", "打倒第三幕头目押灯将霍长风", false],
+	["boss9", "长夜无明", "打倒第三幕头目长明帝", false],
+	["lamps4", "四灯俱灭", "长明帝战里砸灭全部四盏护体灯", false],
+	["bell_cut", "断铃", "镇魂铃还没摇响就把它斩了", false],
+	["a3_foes", "出山百态", "灯兵、稻草人、镇灯卫、纵火手、驿卒、冲骑、镇魂铃、金吾卫、提炉官、宫灯魂都斩过", false],
+	["side_act3", "人间别室", "祠堂、马厩、内库三种侧室都进过", false],
+	["ahe_home", "父女", "把阿禾送回刀匠身边", true],
+	["jin_along", "同行", "约烬一起进京", true],
+	["villages", "七村名录", "认齐七个被点过灯的村子", true],
+	["end3_douse", "灯尽", "最终结局：灯尽", false],
+	["end3_keep", "守灯", "最终结局：守灯", true],
+	["end3_true", "归途", "真结局：归途", true],
 	# 各层独有小怪、精英词缀
 	["a1_foes", "山下三怪", "瘴菇骨、抬棺骨、铜钟僧都斩过", false],
 	["affix_30", "斩将", "累计斩 30 只带词缀的精英", false],
@@ -91,6 +106,8 @@ const LIST := [
 const A2_FOES := ["lampkid", "eel", "oiler", "twin", "greyspear", "greyflag"]
 ## 第一幕每层独有的小怪（全都斩过：山下三怪）
 const A1_FOES := ["sporer", "coffin", "bellmonk"]
+## 第三幕的新小怪（全都斩过：出山百态）
+const A3_FOES := ["lampman", "scarecrow", "lampguard", "torcher", "courier", "lancer", "wardbell", "goldguard", "censer", "palaceghost"]
 
 ## 累计数到了就解锁：统计键 → [[数量, 成就id], ...]
 const STAT_GOALS := {
@@ -165,7 +182,7 @@ static func add(key: String, n: int = 1) -> void:
 static func killed(kind: String) -> void:
 	if not enabled:
 		return
-	for pair: Array in [[A2_FOES, "a2_foes"], [A1_FOES, "a1_foes"]]:
+	for pair: Array in [[A3_FOES, "a3_foes"], [A2_FOES, "a2_foes"], [A1_FOES, "a1_foes"]]:
 		var lst: Array = pair[0]
 		if not lst.has(kind):
 			continue

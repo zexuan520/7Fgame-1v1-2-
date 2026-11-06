@@ -18,6 +18,10 @@ const BOSS_ROOM := Vector2(40, 30)
 const ACT2_ROOM := Vector2(52, 38)
 const ACT2_SMALL := Vector2(34, 26)
 const ACT2_BOSS := Vector2(46, 34)
+## 第三幕：再大一圈
+const ACT3_ROOM := Vector2(56, 40)
+const ACT3_SMALL := Vector2(36, 28)
+const ACT3_BOSS := Vector2(48, 36)
 
 var world_env: WorldEnvironment
 var sun: DirectionalLight3D
@@ -133,7 +137,7 @@ func _ready() -> void:
 		# 测试：新敌人站成一排不动（看模型、兵器、盾的位置）
 		var ks := String(_args["foelineup"]).split(",")
 		for i in range(ks.size()):
-			var f := Foe.new()
+			var f: Foe = Act3Foe.new() if Act3Foe.TYPES3.has(ks[i]) else Foe.new()
 			f.setup_kind(ks[i])
 			add_child(f)
 			f.global_position = hero.global_position + Vector3(-(ks.size() - 1) * 0.9 + i * 1.8, 0, -2.4)
@@ -509,7 +513,7 @@ func _clear_scene() -> void:
 
 
 func _build_arena(zone_id: String, seed_value: int, sz: Vector2, side_plans: Array = []) -> void:
-	arena = Arena.new()
+	arena = Arena3.new() if Arena3.ZONES3.has(zone_id) else Arena.new()
 	arena.doors = side_plans
 	add_child(arena)
 	var _bt := Time.get_ticks_msec()
@@ -695,6 +699,8 @@ func _enter_hub() -> void:
 	if int(Game.save.get("arpg_act2_runs", 0)) > 0:
 		_npc("老刀匠 · 刀镡已成" if ArpgStory.smith_done() else "老刀匠 %d / %d" % [ArpgStory.smith_items().size(), ArpgStory.SMITH_ITEMS.size()], Vector3(9.0, 0, 2.5), {"model": "barbarian", "tint": Color(1.05, 0.8, 0.6)}, _talk_smith)
 		_npc("守灯僧 · 换物" if String(Game.save.get("arpg_monk_buy", "")) == "" else "守灯僧 · 已换过", Vector3(9.5, 0, -2.0), {"model": "mage", "tint": Color(0.8, 0.95, 0.8)}, _talk_monk)
+	# 第三幕：第二幕任一结局后，山门左边下山的路口出现“出山”光门；阿禾、七村名录碑
+	Act3.hub(self)
 	if bool(Game.save.get("arpg_jizo_home", false)):
 		_npc("地藏 · 求保佑" if String(Game.save.get("arpg_bless", "")) == "" else "地藏 · 已求过", Vector3(-9.0, 0, 3.5), {"kit": "shrine", "scale": 1.1}, _pray_jizo)
 	# 第一次进山门：拾骨婆说开场白
@@ -1076,6 +1082,8 @@ func _start_run(fresh_hero: bool = true, act: int = 1) -> void:
 		Game.save["arpg_act2_runs"] = int(Game.save.get("arpg_act2_runs", 0)) + 1
 		Game.write_save()
 		ArpgAch.unlock("act2")
+	elif act == 3:
+		Act3.start_run(self)
 	if fresh_hero or not is_instance_valid(hero):
 		_ensure_hero()
 	hero.reset_for_run()
@@ -1143,11 +1151,12 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	if zone_override != "":
 		zone_id = zone_override
 	var a2 := state.act == 2 and room_kind != "tutorial"
-	var sz := ACT2_ROOM if a2 else ROOM_SIZE
+	var a3 := state.act == 3 and room_kind != "tutorial"
+	var sz := ACT3_ROOM if a3 else (ACT2_ROOM if a2 else ROOM_SIZE)
 	if room_kind in ["shop", "rest", "event", "start", "story", "treasure", "secret", "tutorial"]:
-		sz = ACT2_SMALL if a2 else SMALL_ROOM
+		sz = ACT3_SMALL if a3 else (ACT2_SMALL if a2 else SMALL_ROOM)
 	elif room_kind == "boss":
-		sz = ACT2_BOSS if a2 else BOSS_ROOM
+		sz = ACT3_BOSS if a3 else (ACT2_BOSS if a2 else BOSS_ROOM)
 	var plans := [] if _args.has("noside") else SideRoom.plan(room_kind, sz, _rng, String(_args.get("side", "")) if _args.get("side", "1") != "1" else "", zone_id)
 	_build_arena(zone_id, state.seed_value + fl * 1000 + state.run.row * 37 + state.run.col * 7 + (500 if room_kind == "secret" else 0), sz, plans)
 	_place_hero(arena.entry_pos)
@@ -1221,7 +1230,7 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 		"shop", "rest", "event", "start", "story", "treasure", "tutorial":
 			Game.music("hub")
 		_:
-			Game.music({"temple": "bamboo", "grave": "secret", "well": "secret", "vault": "bamboo", "camp": "village"}.get(zone_id, "village"))
+			Game.music({"temple": "bamboo", "grave": "secret", "well": "secret", "vault": "bamboo", "camp": "village", "liuxi": "village", "post": "secret", "palace": "bamboo"}.get(zone_id, "village"))
 	var mid := Vector3(-3.5, 0, -1.5)   # 摆在一边，别挡住去光门的路
 	if room_kind in ["fight", "elite", "trial"] and not state.secrets_done.has(state.run.room_id()):
 		var hint := state.flags.has("secret_hint")
@@ -1293,6 +1302,8 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 			var kits := {"blood_altar": "skull_candle", "wounded_ronin": "tent", "gambler": "table", "hermit": "well"}
 			_npc(String(ev["name"]), mid, {"kit": kits.get(ev["id"], "grave_a"), "scale": 1.1}, _open_event)
 			_open_portal()
+	if state.act == 3 and room_kind != "tutorial":
+		Act3.enter_room(self, room_kind)
 	# 第一次玩：第一间房先听拾骨婆的开场白，说完再刷怪
 	if _first_intro:
 		_first_intro = false
@@ -1570,7 +1581,7 @@ func _affix_slot(w: Array) -> int:
 	if room_kind == "elite":
 		chance = 1.0
 	elif room_kind == "fight" and wave_i >= 1:
-		chance = 0.0 if state.run.row < 1 else 0.15 + 0.08 * state.run.row + (0.1 if state.act == 2 else 0.0)
+		chance = 0.0 if state.run.row < 1 else 0.15 + 0.08 * state.run.row + (0.1 if state.act >= 2 else 0.0)
 		if wave_i >= 3:
 			chance = 1.0
 	if chance <= 0.0 or _rng.randf() > chance:
@@ -1595,7 +1606,7 @@ func _affix_for(kind: String) -> Array:
 	var pool: Array = FoeSquads.ELITE_AFFIX.get(state.zone(), ["stout"]) if room_kind != "fight" or _squad.is_empty() else _squad["affix"]
 	pool = pool.duplicate()
 	pool.shuffle()
-	var n := 2 if room_kind == "elite" and state.act == 2 and pool.size() >= 2 else 1
+	var n := 2 if room_kind == "elite" and state.act >= 2 and pool.size() >= 2 else 1
 	# 远程的不拿“狂”以外的近身词缀也无妨；只是“坚”放在小个子身上看不出来，换一条
 	var out := pool.slice(0, n)
 	if kind in ["archer", "greybow", "mage", "sporer"] and out.has("stout") and pool.size() > n:
@@ -1619,7 +1630,7 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 		return
 	var fl := state.floor_i() if state != null else 0
 	var row := state.run.row if state != null else 0
-	var f := Foe.new()
+	var f: Foe = Act3Foe.new() if Act3Foe.TYPES3.has(kind) else Foe.new()
 	# 越往后的房间越硬；头目不吃“第几间”的加成（它总在最后一间，原来白白多了 28% 血、21% 伤害，是整层最大的难度尖刺）
 	var rk := 0 if kind.begins_with("boss") else row
 	var om_hp := state.omen_val("hp") if state != null and not kind.begins_with("boss") else 1.0
@@ -1651,7 +1662,8 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 		hud.boss = f
 		var sub: String = {"boss": "守在樱树下的无名剑客", "boss3": "无名冢下，万骨之主", "boss2": "古寺深处，一盏不灭的灯",
 			"boss4": "井底四十年，灯链缠身的老僧", "boss5": "烛国亡了四百年，他的兵还在站岗",
-			"boss6": "寂光大弟子，腰间挂着断刀的前半截"}.get(kind, "")
+			"boss6": "寂光大弟子，腰间挂着断刀的前半截", "boss7": "续命司火师，樱落村的第一把火", "boss8": "押送第五盏灯进京的禁军将军",
+			"boss9": "靠四盏灯活了一百二十年"}.get(kind, "")
 		if kind == "boss6" and state.flags.has("roster"):
 			# 阿七把守台的人支开了：烬叫不来援兵，生命少一成
 			f.max_hp *= 0.9
@@ -1673,7 +1685,9 @@ func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
 		ArpgAch.killed(kind)
 		# 装备掉落：赤甲武士常掉，小怪偶尔掉
 		var chance := {"sporer": 0.05, "coffin": 0.12, "bellmonk": 0.12, "ronin": 0.6, "digger": 0.8, "officer": 0.5, "greyguard": 0.06, "greyspear": 0.05, "greyflag": 0.08, "oiler": 0.06, "twin": 0.03, "eel": 0.04, "lampkid": 0.06, "greyblade": 0.04, "greybow": 0.04, "armored": 0.12, "flameskel": 0.03, "chainmonk": 0.12, "drowned": 0.03, "samurai": 0.35, "charger": 0.15, "summoner": 0.1, "shield": 0.08, "mage": 0.06, "archer": 0.05,
-			"skeleton": 0.04, "rogue": 0.04, "crawler": 0.015}
+			"skeleton": 0.04, "rogue": 0.04, "crawler": 0.015,
+			"lampman": 0.03, "scarecrow": 0.04, "lampguard": 0.1, "torcher": 0.05, "courier": 0.04, "lancer": 0.12, "wardbell": 0.08,
+			"goldguard": 0.14, "censer": 0.06, "palaceghost": 0.05, "chief": 0.9}
 		if _rng.randf() < float(chance.get(kind, 0.0)):
 			_drop_gear(pos, -1, 0.1 if kind == "samurai" else 0.0)
 		# 道具：小怪偶尔掉，精英常掉
@@ -1722,7 +1736,7 @@ func _room_cleared() -> void:
 			sr.unlock(true)
 	if room_kind == "boss":
 		var fl := state.floor_i()
-		if state.boss_kind() in ["boss4", "boss5", "boss6"]:
+		if state.boss_kind() in ["boss4", "boss5", "boss6", "boss7", "boss8", "boss9"]:
 			ArpgAch.unlock(state.boss_kind())
 		if state.act == 1 and fl == 0:
 			ArpgAch.unlock("boss1")
@@ -1784,8 +1798,8 @@ func _boss_intro(fl: int) -> void:
 	if mode != "room":
 		return
 	var key := state.boss_kind()
-	var lines: Array = ArpgStory.BOSS_PRE[key].duplicate()
-	var extra: Dictionary = ArpgStory.BOSS_PRE_FLAGS.get(key, {})
+	var lines: Array = (ArpgStory.BOSS_PRE[key] if ArpgStory.BOSS_PRE.has(key) else Act3.boss_pre(key)).duplicate()
+	var extra: Dictionary = ArpgStory.BOSS_PRE_FLAGS.get(key, Act3.boss_pre_flags(key))
 	for f: String in extra:
 		if state.flags.has(f):
 			lines.append_array(extra[f])
@@ -1798,6 +1812,7 @@ func _boss_intro(fl: int) -> void:
 	d.finished.connect(func() -> void:
 		if key == "boss2" and state.flags.has("ronin_saved"):
 			hero.revives += 1
+		Act3.boss_intro_done(self, key)
 		_hold_waves = false
 		_wave_delay = 0.3)
 
@@ -1807,7 +1822,7 @@ func _boss_outro(fl: int) -> void:
 		return
 	var key := state.boss_kind()
 	_drop_gear(hero.global_position + hero.facing * 1.5, 3, 0.0)
-	var d := _say(ArpgStory.BOSS_POST[key])
+	var d := _say(ArpgStory.BOSS_POST[key] if ArpgStory.BOSS_POST.has(key) else Act3.boss_post(key))
 	match key:
 		"boss":
 			d.finished.connect(_sakura_choice)
@@ -1821,6 +1836,8 @@ func _boss_outro(fl: int) -> void:
 			d.finished.connect(_vault_choice)
 		"boss6":
 			d.finished.connect(_act2_ending)
+		"boss7", "boss8", "boss9":
+			d.finished.connect(Act3.boss_choice.bind(self, key))
 
 
 ## 隐藏头目 · 残影 打赢以后：专属心法、成就，之后照常选心法
@@ -2090,12 +2107,13 @@ func _act2_ending() -> void:
 		Game.save["arpg_act2_clears"] = cl
 		Game.write_save()
 		ArpgAch.unlock("end2_" + id)
+		Act3.on_act2_end(state, id)
 		state.add_jade(30 if id == "he" else 15)
 		var lines: Array = (e["lines"] as Array).duplicate()
 		if state.flags.has("xiaoman"):
 			lines.append(["小满", "哥哥，我们回家吗？", ArpgStory.C_XIAOMAN])
 			lines.append(["残刃", "……嗯。回家。", ArpgStory.C_HERO])
-		lines.append(["", "（第二幕 · 入山　完。第三幕“出山”还在路上）"])
+		lines.append(["", "（第二幕 · 入山　完。山门左边下山的路口，亮起了“出山”的光门）"])
 		var d := _say(lines)
 		d.finished.connect(func() -> void:
 			hud.banner(String(e["title"]), "第二幕 · 入山", 4.0)
@@ -2210,7 +2228,7 @@ func _story_effect(fx: Dictionary, n: ArpgNpc) -> void:
 	if fx.has("fight"):
 		hud.banner(n.display, "动手了", 1.6)
 		_room_done = false
-		waves = [[String(fx["fight"]), 1]] if fx.has("solo") else [[String(fx["fight"]), 1, "skeleton", 2]]
+		waves = [[String(fx["fight"]), 1]] if fx.has("solo") else [[String(fx["fight"]), 1, String(fx.get("with", "skeleton")), 2]]
 		wave_i = -1
 		_wave_delay = 0.6
 		room_kind = "elite"
@@ -2219,6 +2237,8 @@ func _story_effect(fx: Dictionary, n: ArpgNpc) -> void:
 		n.queue_free()
 	if fx.has("boon"):
 		_offer_boons_then(int(fx["boon"]))
+	if state.act == 3:
+		Act3.story_effect(self, fx)
 
 
 func _open_chest(n: ArpgNpc, min_rarity: int = 0) -> void:
@@ -2720,7 +2740,7 @@ func _make_portal(p: Vector3, kind: String, col: Color) -> void:
 	lab.modulate = Color(col.lightened(0.4), 0.9)
 	lab.position.y = 3.2
 	var cyc := "" if ArpgCycle.picked() <= 0 else " · " + ArpgCycle.label(ArpgCycle.picked())
-	lab.text = {"run": "出发" + cyc, "act2": "入井 · 第二幕" + cyc, "floor": "前往第%s层" % ArpgState.CN_NUM[state.gfloor()] if state != null else "", "next": "前路", "secret": "密室"}.get(kind, "")
+	lab.text = {"run": "出发" + cyc, "act2": "入井 · 第二幕" + cyc, "act3": "出山 · 第三幕" + cyc, "floor": "前往第%s层" % ArpgState.CN_NUM[state.gfloor()] if state != null else "", "next": "前路", "secret": "密室"}.get(kind, "")
 	_portal.add_child(lab)
 
 
@@ -3430,6 +3450,10 @@ func _process(dt: float) -> void:
 						# 山门的“入井”光门：开第二幕的一局
 						_start_run(true, 2)
 						_fade_then(func() -> void: _enter_room())
+					elif String(sp.get_meta("kind", "secret")) == "act3":
+						# 山门的“出山”光门：开第三幕的一局
+						_start_run(true, 3)
+						_fade_then(func() -> void: _enter_room())
 					else:
 						_fade_then(func() -> void: _enter_room("secret"))
 	if mode == "room" and not _room_done and not _hold_waves and is_instance_valid(hero) and hero.alive:
@@ -3517,6 +3541,19 @@ func _story_test_save(c: String) -> void:
 			Game.save["arpg_hag_mural"] = true
 			Game.save["arpg_hag_told"] = false
 			Game.save["arpg_shard"] = true
+		"act3", "act3boss", "act3end", "act3hub":
+			# 第三幕：第二幕看过合刃、救过阿七、见过刀匠；act3end 七村名录认齐（看真结局）
+			Game.save["arpg_endings"] = {"douse": true}
+			Game.save["arpg_act2_endings"] = {"he": true} if c != "act3" else {"du": true}
+			Game.save["arpg_last_end2"] = "he" if c != "act3" else "du"
+			Game.save["arpg_act1"] = {"ronin": "ronin_saved"}
+			Game.save["arpg_smith_met"] = true
+			Game.save["arpg_enc_seen"] = []
+			Game.save["arpg_villages"] = range(7) if c == "act3end" else ([0, 1] if c == "act3hub" else [])
+			Game.save["arpg_ahe_home"] = c == "act3hub"
+			Game.save["arpg_intro"] = true
+			Game.save["arpg_mutter"] = 99
+			Game.save["arpg_hag_told"] = true
 
 
 func _story_test(c: String) -> void:
@@ -3634,6 +3671,52 @@ func _story_test(c: String) -> void:
 		"jizo":
 			_start_run(true, 1)
 			print("STORYTEST jizo encounter %s" % String(ArpgStory.encounter_for(0, state.flags, state.seen).get("id", "-")))
+		"act3":
+			# 第三幕三层：开场、剧情遭遇轮到哪段、各层的阵
+			if _title != null:
+				_title.queue_free()
+				_title = null
+			_start_run(true, 3)
+			for fl in range(3):
+				print("STORYTEST act3 floor=%d gfloor=%d zone=%s boss=%s flags=%s" % [fl, state.gfloor(), state.zone(), state.boss_kind(), str(state.flags.keys())])
+				for i in range(4):
+					var en := ArpgStory.encounter_for(state.gfloor(), state.flags, state.seen)
+					print("STORYTEST encounter %s" % String(en.get("id", "-")))
+					if not en.is_empty():
+						ArpgStory.mark_seen(String(en["id"]))
+						state.seen[en["id"]] = true
+				print("STORYTEST fight waves %s" % str(_make_waves("fight", state.floor_i())))
+				print("STORYTEST elite waves %s" % str(_make_waves("elite", state.floor_i())))
+				if fl < 2:
+					state.run.next_floor()
+					state.remap()
+			_start_run(true, 3)
+			_enter_room("start")
+		"act3boss", "act3end":
+			if _title != null:
+				_title.queue_free()
+				_title = null
+			_start_run(true, 3)
+			for i in range(2):
+				state.run.next_floor()
+				state.remap()
+			state.flags["jin_along"] = true
+			_enter_room("boss")
+			get_tree().create_timer(5.0).timeout.connect(func() -> void:
+				_close_menu()
+				for f: Node in get_tree().get_nodes_in_group("foes"):
+					f.queue_free()
+				hero.invincible = true
+				print("STORYTEST jin follower %s revives %d" % [str(is_instance_valid(Act3._jin)), hero.revives])
+				Act3.final_choice(self)
+				var mm := _menu as ArpgMenu
+				print("STORYTEST ending enabled %s" % str(mm.items.map(func(it: Dictionary) -> bool: return bool(it.get("enabled", true)))))
+				if c == "act3end":
+					mm.chosen.emit(2))
+		"act3hub":
+			for n: ArpgNpc in _npcs:
+				print("STORYTEST npc %s" % n.display)
+			print("STORYTEST portals %s" % str(_extra_portals.map(func(p: Node3D) -> String: return String(p.get_meta("kind", "")))))
 		"zen":
 			for n: ArpgNpc in _npcs:
 				if is_instance_valid(n) and n.display == "两把木刀":

@@ -747,7 +747,7 @@ static func encounter_for(floor_i: int, flags: Dictionary, seen: Dictionary) -> 
 	# 先挑一次都没见过的（存档 arpg_enc_seen），都见过了再按顺序来：这样同一层的几段遭遇会轮着出现
 	var ever: Array = Game.save.get("arpg_enc_seen", [])
 	var first := {}
-	for e: Dictionary in ENCOUNTERS:
+	for e: Dictionary in (ENCOUNTERS + Act3Story.ENCOUNTERS if floor_i >= 6 else ENCOUNTERS):
 		if int(e["floor"]) != floor_i or seen.has(e["id"]):
 			continue
 		if e.has("need") and not flags.has(e["need"]):

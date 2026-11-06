@@ -120,6 +120,63 @@ const THEMES := {
 				["greyblade", 4, "greyspear", 1], ["greyblade", 3, "armored", 1], ["greyblade", 4, "greyguard", 1, "greybow", 1]],
 			"late": [["officer", 1, "greyblade", 3], ["officer", 1, "greyblade", 2, "greyflag", 1]]},
 	],
+	# ---------------- 第三幕 · 柳溪村（敌人见 Act3Foe） ----------------
+	"liuxi": [
+		{"id": "lamps", "name": "灰灯", "desc": "被灰纸灯点起来的村民成群走过来，倒下了还会再站起来", "hazard": "", "affix": ["haunt", "stout"],
+			"waves": [["lampman", 5, "crawler", 2], ["lampman", 4, "torcher", 1], ["lampman", 6, "torcher", 1],
+				["lampman", 4, "lampguard", 1, "torcher", 1], ["lampman", 5, "bomber", 2], ["lampman", 6, "scarecrow", 2]],
+			"late": [["lampguard", 2, "lampman", 3], ["samurai", 1, "lampman", 4]]},
+		{"id": "field", "name": "稻田", "desc": "田里站着一排稻草人，走近了才扑上来", "hazard": "", "affix": ["swift", "frenzy"],
+			"waves": [["scarecrow", 3, "lampman", 2], ["scarecrow", 4, "crawler", 2], ["scarecrow", 4, "torcher", 1, "lampman", 2],
+				["scarecrow", 5, "lampman", 2], ["scarecrow", 3, "rogue", 2, "torcher", 1], ["scarecrow", 4, "lampguard", 1]],
+			"late": [["scarecrow", 4, "samurai", 1], ["scarecrow", 3, "lampguard", 2]]},
+		{"id": "arson", "name": "纵火", "desc": "纵火手站远了扔火罐，脚下到处是火", "hazard": "", "affix": ["blazing", "volatile"],
+			"waves": [["torcher", 2, "lampman", 3], ["torcher", 1, "lampman", 2, "scarecrow", 1], ["torcher", 2, "lampman", 4],
+				["torcher", 3, "lampguard", 1], ["torcher", 2, "bomber", 2, "lampman", 2], ["torcher", 2, "scarecrow", 2, "lampman", 2]],
+			"late": [["torcher", 3, "lampguard", 1], ["samurai", 1, "torcher", 2]]},
+		{"id": "guard", "name": "收村", "desc": "王都来的镇灯卫举盾挺枪，挨家挨户收人", "hazard": "", "affix": ["stout", "warded"],
+			"waves": [["lampguard", 1, "lampman", 3], ["lampguard", 1, "greybow", 2], ["lampguard", 2, "lampman", 3],
+				["lampguard", 2, "greybow", 2, "torcher", 1], ["lampguard", 3, "lampman", 2], ["lampguard", 2, "greyspear", 2]],
+			"late": [["officer", 1, "lampguard", 2], ["lampguard", 3, "torcher", 1]]},
+	],
+	# ---------------- 第三幕 · 官道驿站 ----------------
+	"post": [
+		{"id": "relay", "name": "驿马", "desc": "驿卒腿快，刺一下就跑，你一挥刀就闪", "hazard": "", "affix": ["swift", "frenzy"],
+			"waves": [["courier", 3, "lampman", 2], ["courier", 3, "greybow", 1], ["courier", 4, "greybow", 2],
+				["courier", 3, "lancer", 1, "greybow", 1], ["courier", 5, "lampguard", 1], ["courier", 4, "wardbell", 1]],
+			"late": [["officer", 1, "courier", 3], ["lancer", 2, "courier", 3]]},
+		{"id": "cavalry", "name": "冲骑", "desc": "下了马的禁军枪骑，隔远了就直线冲过来，引它们去撞墙", "hazard": "", "affix": ["stout", "frenzy"],
+			"waves": [["lancer", 1, "courier", 2], ["lancer", 1, "lampman", 3], ["lancer", 2, "courier", 2],
+				["lancer", 2, "greyguard", 2], ["lancer", 2, "greybow", 2, "courier", 1], ["lancer", 3, "wardbell", 1]],
+			"late": [["lancer", 3, "lampguard", 1], ["officer", 1, "lancer", 2]]},
+		{"id": "bells", "name": "镇魂", "desc": "押灯僧摇着铃跟在队里，铃一响身边的人刀枪不入一半", "hazard": "", "affix": ["warded", "haunt"],
+			"waves": [["wardbell", 1, "courier", 3], ["wardbell", 1, "lampguard", 1, "lampman", 2], ["wardbell", 1, "lampguard", 2, "courier", 2],
+				["wardbell", 2, "greyspear", 2, "courier", 1], ["wardbell", 1, "lancer", 2, "greybow", 1], ["wardbell", 2, "lampguard", 2]],
+			"late": [["wardbell", 1, "officer", 1, "courier", 2], ["wardbell", 2, "lancer", 2]]},
+		{"id": "convoy", "name": "押车", "desc": "灯车边上的弩手往路上放箭，看见红圈就挪开", "hazard": "arrows", "affix": ["swift", "thunder"],
+			"waves": [["greybow", 2, "courier", 2], ["lampguard", 1, "greybow", 2], ["greybow", 3, "courier", 2],
+				["lampguard", 2, "greybow", 2, "wardbell", 1], ["greybow", 2, "lancer", 1, "courier", 2], ["greybow", 3, "lampguard", 1, "courier", 1]],
+			"late": [["officer", 1, "greybow", 2, "lampguard", 1], ["lancer", 2, "greybow", 2]]},
+	],
+	# ---------------- 第三幕 · 长明宫 ----------------
+	"palace": [
+		{"id": "golden", "name": "金吾", "desc": "金吾卫披着金甲列队，先打破韧再下刀", "hazard": "", "affix": ["stout", "thunder"],
+			"waves": [["goldguard", 1, "lampman", 3], ["goldguard", 1, "courier", 2], ["goldguard", 2, "censer", 1],
+				["goldguard", 2, "lampguard", 2], ["goldguard", 2, "palaceghost", 2], ["goldguard", 3, "wardbell", 1]],
+			"late": [["goldguard", 3, "censer", 1], ["goldguard", 2, "armored", 1]]},
+		{"id": "incense", "name": "御香", "desc": "提炉官把香炉往你脚下扔，落地就烧", "hazard": "", "affix": ["blazing", "volatile"],
+			"waves": [["censer", 2, "lampman", 3], ["censer", 1, "goldguard", 1, "lampman", 1], ["censer", 2, "lampguard", 2],
+				["censer", 3, "courier", 2], ["censer", 2, "goldguard", 1, "palaceghost", 1], ["censer", 3, "wardbell", 1]],
+			"late": [["censer", 3, "goldguard", 1], ["goldguard", 2, "censer", 2]]},
+		{"id": "ghosts", "name": "宫灯", "desc": "宫灯魂飘着，一眨眼就闪到你身边施法，看脚下", "hazard": "", "affix": ["haunt", "swift"],
+			"waves": [["palaceghost", 2, "lampman", 2], ["palaceghost", 2, "courier", 2], ["palaceghost", 3, "lampguard", 1],
+				["palaceghost", 3, "censer", 1, "lampman", 2], ["palaceghost", 4, "goldguard", 1], ["palaceghost", 3, "wardbell", 1, "courier", 1]],
+			"late": [["palaceghost", 4, "goldguard", 1], ["palaceghost", 3, "goldguard", 2]]},
+		{"id": "court", "name": "朝会", "desc": "整座宫里的人都来了：金吾卫、镇灯卫、押灯僧一起上", "hazard": "", "affix": ["warded", "frenzy", "stout"],
+			"waves": [["lampguard", 2, "courier", 2], ["goldguard", 1, "wardbell", 1, "lampman", 2], ["goldguard", 2, "wardbell", 1, "courier", 1],
+				["lampguard", 2, "goldguard", 1, "censer", 1], ["lancer", 2, "goldguard", 1, "palaceghost", 1], ["goldguard", 2, "lampguard", 2, "wardbell", 1]],
+			"late": [["goldguard", 2, "officer", 1], ["goldguard", 3, "wardbell", 1]]},
+	],
 }
 
 ## 精英房：每层一组固定编成（领头的精英一定带词缀，第二幕带两条）
@@ -130,11 +187,15 @@ const ELITE := {
 	"well": [["chainmonk", 2, "drowned", 3], ["samurai", 1, "chainmonk", 1, "lampkid", 1, "archer", 2], ["samurai", 2, "eel", 3, "lampkid", 1]],
 	"vault": [["armored", 2, "flameskel", 3], ["samurai", 1, "armored", 1, "oiler", 2], ["armored", 2, "samurai", 1, "twin", 2]],
 	"camp": [["greyguard", 2, "greyblade", 3], ["officer", 1, "greybow", 1, "greyspear", 2], ["officer", 1, "greyguard", 2, "greyflag", 1, "greybow", 1]],
+	"liuxi": [["lampguard", 2, "lampman", 4], ["samurai", 1, "lampguard", 1, "torcher", 2], ["officer", 1, "lampguard", 2, "scarecrow", 2]],
+	"post": [["lancer", 2, "courier", 3], ["officer", 1, "wardbell", 1, "lancer", 2], ["lancer", 2, "lampguard", 2, "wardbell", 1]],
+	"palace": [["goldguard", 2, "palaceghost", 2], ["goldguard", 2, "censer", 2, "wardbell", 1], ["goldguard", 3, "palaceghost", 2, "censer", 1]],
 }
 ## 精英房的词缀池（每层气质不同）
 const ELITE_AFFIX := {
 	"forest": ["swift", "stout", "miasma"], "grave": ["haunt", "volatile", "stout"], "temple": ["thunder", "warded", "frenzy"],
 	"well": ["warded", "swift", "haunt"], "vault": ["blazing", "stout", "volatile"], "camp": ["frenzy", "swift", "thunder"],
+	"liuxi": ["blazing", "haunt", "stout"], "post": ["swift", "warded", "frenzy"], "palace": ["warded", "thunder", "stout"],
 }
 
 
