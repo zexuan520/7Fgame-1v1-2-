@@ -201,8 +201,8 @@ func menu_tip(id: String, menu: Control) -> void:
 	if _blocked() or is_seen(id) or menu == null:
 		return
 	_queue.erase(id)
-	if _card.busy() and _card.menu == null and _card.id != "" and _card.id != id:
-		# 局内提示还没看完就被菜单顶掉：放回队首，菜单关了再弹
+	if _card.busy() and _card.menu == null and _card.id != "" and _card.id != id and _card.age < 2.5:
+		# 局内提示刚弹出来就被菜单顶掉：放回队首，菜单关了再弹
 		var old := _card.id
 		var s := seen().duplicate()
 		s.erase(old)
@@ -447,6 +447,7 @@ class Card extends Control:
 	var _a := 0.0
 	var _rect := Rect2()
 	var _w := 0.0
+	var age := 0.0              # 这张卡亮了多久
 	var _dev := ""
 	var _lines: Array = []
 
@@ -467,6 +468,7 @@ class Card extends Control:
 		_left = secs
 		_lines = []
 		_dev = ArpgInput.device(0)
+		age = 0.0
 		visible = true
 
 	func close() -> void:
@@ -487,6 +489,7 @@ class Card extends Control:
 			hide = true   # 世界里的提示：菜单、对话框打开时先藏着，不减时间
 		if not hide:
 			_left -= rdt
+			age += rdt
 		var want := 1.0 if _left > 0.0 and not hide else 0.0
 		_a = move_toward(_a, want, rdt * (5.0 if want > 0.0 else 3.0))
 		if _a <= 0.0 and _left <= 0.0:
