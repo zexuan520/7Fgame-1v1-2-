@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash tools/setup_godot.sh)",
+      "Bash(/root/godot/godot4 *)",
+      "Bash(timeout * /root/godot/godot4 *)"
+    ]
+  }
+}
