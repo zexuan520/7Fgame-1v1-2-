@@ -3700,7 +3700,8 @@ var _stuck_sig := -1.0
 
 
 func _watch_stuck(dt: float) -> void:
-	if mode != "room" or _room_done or not is_instance_valid(hero) or not hero.alive or arena == null or is_instance_valid(_menu):
+	# 头目房不管（长明帝的护体灯是钉在原地的，不能挪）
+	if mode != "room" or _room_done or room_kind == "boss" or not is_instance_valid(hero) or not hero.alive or arena == null or is_instance_valid(_menu):
 		_stuck_t = 0.0
 		return
 	var foes := get_tree().get_nodes_in_group("foes")
