@@ -262,6 +262,13 @@ func pause_world(t: float) -> void:
 
 
 func _process(dt: float) -> void:
+	var _pt := Time.get_ticks_usec() if PerfProbe.on else 0
+	_process_body(dt)
+	if PerfProbe.on:
+		PerfProbe.add("feel", _pt)
+
+
+func _process_body(dt: float) -> void:
 	# dt 已经乘过 Engine.time_scale；慢镜头本身要按真实时间走
 	_tick_slow(dt / maxf(Engine.time_scale, 0.01))
 	_tick_combo(dt)

@@ -236,6 +236,8 @@ func _ready() -> void:
 	rig = VoxActor.new()
 	add_child(rig)
 	rig.setup(String(data["model"]), String(data["weapon"]), float(data["wlen"]), data["tint"], k)
+	if Arena.lod == 0 and not is_boss:
+		rig.mat.next_pass = null   # 低画质：小怪不描边（描边是整个人偶再画一遍，成群时绘制调用翻倍）
 	rig.set_rim(Color(0.6, 0.85, 0.9) if not is_boss else Color(1.0, 0.6, 0.8), 0.3)
 	if data.has("head"):
 		rig.swap_head(String(data["head"]))
@@ -313,6 +315,13 @@ func _ready() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	var _pt := Time.get_ticks_usec() if PerfProbe.on else 0
+	_physics_process_body(delta)
+	if PerfProbe.on:
+		PerfProbe.add("foe", _pt)
+
+
+func _physics_process_body(delta: float) -> void:
 	var dt := tick_common(delta)
 	if not alive:
 		return
@@ -1911,7 +1920,30 @@ func queue_free_later() -> void:
 	queue_free()
 
 
+var _pose_acc := 0.0
+var _pose_skip := 0
+
+
+## 低画质：离主角远、又没在出招的小怪少摆几次姿势（8 米外隔一帧，14 米外（多半在画面外）隔三帧），
+## 出招、蓄力时每帧都摆（刀光、预警要准）
 func _apply_pose(dt: float) -> void:
+	_pose_acc += dt
+	if Arena.lod == 0 and not is_boss and is_instance_valid(target) and state in ["patrol", "chase", "recover", "lurk", "stagger"]:
+		var d2 := global_position.distance_squared_to(target.global_position)
+		var every := 4 if d2 > 196.0 else (2 if d2 > 64.0 else 1)
+		_pose_skip += 1
+		if _pose_skip < every:
+			return
+	_pose_skip = 0
+	var pdt := _pose_acc
+	_pose_acc = 0.0
+	var _pt := Time.get_ticks_usec() if PerfProbe.on else 0
+	_apply_pose_body(pdt)
+	if PerfProbe.on:
+		PerfProbe.add("foe_pose", _pt)
+
+
+func _apply_pose_body(dt: float) -> void:
 	_blend = minf(_blend + dt * 10.0, 1.0)
 	var p := _pose
 	if _blend < 1.0 and not _pose_prev.is_empty():

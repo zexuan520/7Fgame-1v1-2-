@@ -324,6 +324,16 @@
 
 敌人的数值、外观、招式和 AI 都在 `scripts/enemy_data.gd` 的 `TYPES` 里，每个招式写前摇/判定/后摇、伤害、判定框、能不能挡、用哪两个姿势；头目的每个阶段可以换招式表和出招速度。遭遇在同一个文件的 `ENCOUNTERS` 里。新姿势加在 `Enemy._build_poses()`；画法完全不同的敌人（比如四条腿的野狗）继承 `Enemy` 重写 `_draw()`，见 `scripts/dog.gd`。
 
+## 手机性能和触屏（斜俯视版）
+
+- 体素网格合并同色面（`VoxelGrid.greedy`，颜色按 `VoxelGrid.quant` 分档），画面和逐格画一样，三角形少一截。
+- 低画质（手机默认）：角色、开源摆设、细格子的件两格并一格（`VoxelModel.coarse`）；点光最多 10 盏（中 20 盏，离主角近的优先，`ArpgMain._light_budget`）；
+  装饰特效走令牌桶（`Vfx.room_for`，预警圈、光门不受限）；小怪不描边；离主角远的小怪少摆姿势；中、低画质摆设按 10 米一格合批（`Arena._batch_static`）。
+- 触屏按键：「斩」最大居中，内圈 滚/突/光/终，外圈 药/秘/器/换，「互」在下方；「器」按住开道具轮盘。暂停菜单里能调按键大小（小/中/大）。
+- 测性能：`--perf` 每 2 秒打印帧数、绘制调用、三角形、可见点光、各脚本每帧毫秒，第 9 秒按挂载位置汇总三角形；
+  `--nogreedy` 逐格画对比；`--touchtest=wheel` 拍道具轮盘。例：
+  `xvfb-run -a godot4 --rendering-driver opengl3 --quit-after 600 -- --demo=fight --zone=camp --act=2 --floor=2 --quality=0 --touch --perf`
+
 ## 自动测试
 
 ```

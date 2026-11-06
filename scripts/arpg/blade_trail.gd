@@ -40,6 +40,13 @@ func set_colors(c_core: Color, c_edge: Color) -> void:
 
 
 func _process(dt: float) -> void:
+	var _pt := Time.get_ticks_usec() if PerfProbe.on else 0
+	_process_body(dt)
+	if PerfProbe.on:
+		PerfProbe.add("trail", _pt)
+
+
+func _process_body(dt: float) -> void:
 	if not is_instance_valid(rig):
 		return
 	var adt := dt

@@ -91,6 +91,13 @@ func banner(text: String, sub: String = "", t: float = 2.2) -> void:
 
 
 func _process(dt: float) -> void:
+	var _pt := Time.get_ticks_usec() if PerfProbe.on else 0
+	_process_body(dt)
+	if PerfProbe.on:
+		PerfProbe.add("hud", _pt)
+
+
+func _process_body(dt: float) -> void:
 	var rdt := dt / maxf(Engine.time_scale, 0.01)
 	_bars = maxf(_bars - rdt, 0.0)
 	_bars_k = move_toward(_bars_k, 1.0 if _bars > 0.0 else 0.0, rdt * 4.0)
