@@ -1534,7 +1534,7 @@ func _start_art() -> void:
 
 
 ## 一圈范围伤害（秘技用），打中的记进 art_hits
-func _aoe(p: Vector3, rad: float, dmg: float, kn: float, w: int, bleed_n: int = 0) -> int:
+func _aoe(p: Vector3, rad: float, dmg: float, kn: float, w: int, bleed_n: int = 0, mid: bool = false) -> int:
 	var n := 0
 	for f: Node in get_tree().get_nodes_in_group("foes"):
 		var a := f as Actor
@@ -1552,6 +1552,7 @@ func _aoe(p: Vector3, rad: float, dmg: float, kn: float, w: int, bleed_n: int = 
 		info.bleed_mult = bleed_dmg
 		if w == HitInfo.Weight.LIGHT:
 			info.hitstop = 0.03
+		info.multi_mid = mid
 		if Feel.I.on_hit(info):
 			on_skill_hit(a, info)
 			if not art_hits.has(a):
@@ -1583,7 +1584,10 @@ func _st_whirl(dt: float) -> void:
 					var to := global_position - a.global_position
 					to.y = 0
 					a.knock = to.normalized() * 6.0
-		_aoe(global_position, rad, (4.0 + 2.0 * r) * power() * _art_k, 1.5, HitInfo.Weight.LIGHT)
+		# 多段：只有第一圈和最后一圈顿帧
+		var first := st_t < 0.21
+		var last := st_t + 0.2 >= dur
+		_aoe(global_position, rad, (4.0 + 2.0 * r) * power() * _art_k, 1.5, HitInfo.Weight.LIGHT, 0, not first and not last)
 		Game.sfx("slash", -8.0, 0.15, 1.2)
 	if _take_buffer(["roll"]) == "roll":
 		_link_mark("art")

@@ -13,6 +13,9 @@ static var I: CamRig
 @export var look_offset := Vector3(0, 0.9, 0.0)
 @export var lead := 1.2                 # 往主角面朝的方向多看一点
 const SHAKE_AMP := [0.05, 0.15, 0.3]
+## 设置里的震屏强度（Game.settings.shake 0~3）：关 / 弱 / 中 / 强，乘到震屏和定向冲击上
+const SHAKE_NAMES := ["关", "弱", "中", "强"]
+const SHAKE_SCALES := [0.0, 0.5, 1.0, 1.5]
 
 var cam: Camera3D
 var target: Node3D
@@ -49,10 +52,18 @@ func snap() -> void:
 	_place(0.0)
 
 
+static func shake_level() -> int:
+	return clampi(int(Game.settings.get("shake", 2)), 0, SHAKE_SCALES.size() - 1)
+
+
+static func shake_scale() -> float:
+	return SHAKE_SCALES[shake_level()]
+
+
 ## 震屏：level 0 轻 / 1 中 / 2 重；scale 再按伤害调
 func shake(level: int, scale: float = 1.0) -> void:
-	var a: float = SHAKE_AMP[clampi(level, 0, 2)] * scale
-	_trauma = minf(_trauma + a, 0.6)
+	var a: float = SHAKE_AMP[clampi(level, 0, 2)] * scale * shake_scale()
+	_trauma = minf(_trauma + a, 0.6 * maxf(shake_scale(), 0.01))
 
 
 ## 定向冲击：镜头沿 dir（地面方向）被推 amt 米，带一点回弹；roll 是顺带歪的角度（弧度）
@@ -60,8 +71,9 @@ func kick(dir: Vector3, amt: float, roll: float = 0.0) -> void:
 	dir.y = 0
 	if dir.length_squared() < 0.0001:
 		return
-	_kick_v += dir.normalized() * amt * 28.0
-	_roll_v += roll * 28.0 * (1.0 if randf() < 0.5 else -1.0)
+	var ss := minf(shake_scale(), 1.2)
+	_kick_v += dir.normalized() * amt * 28.0 * ss
+	_roll_v += roll * 28.0 * ss * (1.0 if randf() < 0.5 else -1.0)
 
 
 ## 拉近：amount 0~1，hold 秒后弹回

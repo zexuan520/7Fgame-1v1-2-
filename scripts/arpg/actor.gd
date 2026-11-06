@@ -117,7 +117,7 @@ func take_hit(info: HitInfo) -> bool:
 		return false
 	hp -= info.damage
 	if rig != null:
-		rig.flash(0.1)
+		rig.flash(Feel.FLASH_T)
 	if info.bleed > 0:
 		add_bleed(info.bleed, info.bleed_mult)
 	var kd := info.dir
