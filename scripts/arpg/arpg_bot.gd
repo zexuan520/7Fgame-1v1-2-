@@ -81,7 +81,8 @@ func _physics_process(dt: float) -> void:
 				_tap(need)
 				return
 	var move := Vector3.ZERO
-	var portal := get_parent().get("_portal") as Node3D
+	var pv: Variant = get_parent().get("_portal")
+	var portal: Node3D = pv as Node3D if is_instance_valid(pv) else null
 	if near == null:
 		if is_instance_valid(portal):
 			move = portal.global_position - hero.global_position

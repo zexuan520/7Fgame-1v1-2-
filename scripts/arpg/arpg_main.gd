@@ -68,6 +68,8 @@ func _ready() -> void:
 	_parse_args()
 	if _args.has("diff"):
 		Game.save["arpg_diff"] = clampi(int(_args["diff"]), 0, 1)   # 测试：不写存档，只改这次
+	if _args.has("storytest"):
+		_story_test_save(String(_args["storytest"]))
 	_setup_world()
 	apply_quality(_initial_quality())
 	if _args.has("shot"):
@@ -187,6 +189,8 @@ func _ready() -> void:
 			_choose_path(ex))
 	if _args.has("runinfo") and state != null:
 		get_tree().create_timer(1.2).timeout.connect(_open_run_info)
+	if _args.has("storytest"):
+		get_tree().create_timer(0.3 if _args["storytest"] == "shadow" else 1.5).timeout.connect(func() -> void: _story_test(String(_args["storytest"])))
 	if _args.has("press"):
 		# 测试：在这些时刻按一下攻击键（标题、菜单、对话框都认）
 		for t: String in String(_args["press"]).split(","):
@@ -564,7 +568,7 @@ func _enter_hub() -> void:
 	if ArpgStory.has_name_list():
 		_npc("无名碑 %d / %d" % [ArpgStory.names().size(), ArpgStory.NAMES.size()], Vector3(-8.5, 0, -0.5), {"kit": "gravestone", "scale": 1.4}, _read_names)
 	if ArpgStory.kite() >= ArpgStory.KITE.size():
-		_hub_kite(Vector3(7.0, 0, -2.0))
+		_hub_kite(Vector3(5.0, 0, 5.5))
 	# 残页石：看已经找到的寂光残页（隐藏剧情）
 	if not ArpgStory.pages().is_empty():
 		_npc("残页 %d / %d" % [ArpgStory.pages().size(), ArpgStory.PAGES.size()], Vector3(0, 0, 2.5), {"kit": "gravestone", "scale": 1.2}, _read_pages)
@@ -681,19 +685,36 @@ func _hub_kite(base: Vector3) -> void:
 	post.material_override = pm
 	root.add_child(post)
 	var kite := Node3D.new()
-	kite.position = Vector3(1.5, 7.5, -2.5)
+	kite.position = Vector3(1.0, 3.4, 0.6)
 	root.add_child(kite)
-	var face := MeshInstance3D.new()
-	var q := QuadMesh.new()
-	q.size = Vector2(1.3, 1.3)
-	face.mesh = q
-	face.rotation = Vector3(-0.5, 0.0, PI * 0.25)
-	var fm := StandardMaterial3D.new()
-	fm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	fm.cull_mode = BaseMaterial3D.CULL_DISABLED
-	fm.albedo_color = Color(1.0, 0.55, 0.65) * 1.2
-	face.material_override = fm
+	# 体素风筝：菱形纸面（粉）+ 十字竹骨（深色）+ 一串红布尾巴
+	var cube := BoxMesh.new()
+	cube.size = Vector3.ONE * 0.16
+	var mats := {}
+	for key: String in ["paper", "spar", "tail"]:
+		var mm := StandardMaterial3D.new()
+		mm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mm.albedo_color = {"paper": Color(1.0, 0.62, 0.72) * 1.15, "spar": Color(0.45, 0.25, 0.2), "tail": Color(1.0, 0.3, 0.3) * 1.2}[key]
+		mats[key] = mm
+	var face := Node3D.new()
+	face.rotation = Vector3(-0.6, 0.0, 0.0)
 	kite.add_child(face)
+	for x in range(-3, 4):
+		for y in range(-4, 4):
+			if absi(x) + absi(y if y >= 0 else y + 1) > 3:
+				continue
+			var c := MeshInstance3D.new()
+			c.mesh = cube
+			c.position = Vector3(x, y, 0) * 0.16
+			c.material_override = mats["spar" if x == 0 or y == 1 else "paper"]
+			face.add_child(c)
+	for i in range(5):
+		var t := MeshInstance3D.new()
+		t.mesh = cube
+		t.scale = Vector3.ONE * 0.7
+		t.position = Vector3(sin(i * 1.3) * 0.12, -0.75 - i * 0.2, 0)
+		t.material_override = mats["tail"] if i % 2 == 0 else mats["paper"]
+		face.add_child(t)
 	# 线：从木桩顶拉到风筝
 	var line := MeshInstance3D.new()
 	var im := ImmediateMesh.new()
@@ -1945,6 +1966,9 @@ func _draw_map(c: Control, vs: Vector2, ex: Array = [], top: float = -1.0) -> vo
 
 ## 放一段对话，返回对话框（await 它的 finished 等说完）
 func _say(lines: Array) -> DialogBox:
+	if _args.has("storytest"):
+		for l: Array in lines:
+			print("SAY [%s] %s" % [l[0], l[1]])
 	_close_menu()
 	var d := DialogBox.new()
 	d.lines = lines
@@ -2052,6 +2076,8 @@ func _open_bag(keep_index: int = -1) -> void:
 # ---------- 菜单 ----------
 
 func _open_menu(title: String, sub: String, items: Array, layout: String, cancellable: bool) -> ArpgMenu:
+	if _args.has("storytest"):
+		print("MENU %s | %s | %s" % [title, sub, str(items.map(func(it: Dictionary) -> String: return String(it.get("title", ""))))])
 	_close_menu()
 	var m := ArpgMenu.new()
 	m.title = title
@@ -2293,3 +2319,66 @@ func _process(dt: float) -> void:
 			d.y = 0
 			if d.length() < 1.3:
 				_step_portal()
+
+
+# ---------- 测试：故事线（--storytest=hub / shadow / lore / souls / zen，只改内存里的存档） ----------
+
+func _story_test_save(c: String) -> void:
+	match c:
+		"hub":
+			Game.save["deaths"] = 3
+			Game.save["arpg_intro"] = true
+			Game.save["arpg_mutter"] = 0
+			Game.save["arpg_kite"] = 3
+			Game.save["arpg_name_list"] = true
+			Game.save["arpg_names"] = range(12)
+			Game.save["arpg_page6"] = true
+			Game.save["arpg_pages"] = [0, 1]
+		"shadow":
+			Game.save["arpg_names"] = range(12)
+			Game.save["arpg_shadow"] = false
+		"lore":
+			Game.save["arpg_kite"] = 2
+			Game.save["arpg_name_list"] = true
+			Game.save["arpg_names"] = range(10)
+		"zen":
+			Game.save["arpg_pages"] = [0, 1, 2, 3, 4]
+			Game.save["arpg_endings"] = {"true": true}
+			Game.save["arpg_page6"] = false
+
+
+func _story_test(c: String) -> void:
+	print("STORYTEST ", c)
+	match c:
+		"hub":
+			_read_names(null)
+			get_tree().create_timer(0.5).timeout.connect(func() -> void: _read_pages(null))
+		"shadow":
+			for n: ArpgNpc in _npcs:
+				if is_instance_valid(n) and n.display == "第十三座坟":
+					for e: Dictionary in ArpgStory.ENCOUNTERS:
+						if e["id"] == "shadow":
+							_say(e["lines"])
+							_story_effect(e["options"][0][2], n)
+					print("STORYTEST fight kind=%s waves=%s done=%s" % [room_kind, str(waves), _room_done])
+					get_tree().create_timer(3.0).timeout.connect(func() -> void:
+						for f: Node in get_tree().get_nodes_in_group("foes"):
+							print("STORYTEST foe %s hp=%d" % [(f as Foe).kind, int((f as Foe).hp)]))
+					return
+			print("STORYTEST 没有第十三座坟")
+		"lore":
+			var lines := []
+			for sr: SideRoom in side_rooms:
+				sr._story_finds(lines)
+			_say(lines)
+			print("STORYTEST kite=%d names=%d" % [ArpgStory.kite(), ArpgStory.names().size()])
+		"souls":
+			for f: String in ArpgStory.ALL_SOULS_NEED:
+				state.flags[f] = true
+			_ending_choice()
+		"zen":
+			for n: ArpgNpc in _npcs:
+				if is_instance_valid(n) and n.display == "两把木刀":
+					n.interacted.emit(n)
+					return
+			print("STORYTEST 没有禅房")
