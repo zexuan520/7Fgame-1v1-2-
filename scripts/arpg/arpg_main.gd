@@ -322,6 +322,8 @@ func _ready() -> void:
 				state.run.advance(int(ex[0][0]))
 				ex = state.run.exits()
 			_choose_path(ex))
+	if _args.has("roster"):
+		get_tree().create_timer(1.5).timeout.connect(func() -> void: _open_roster() if _args["roster"] != "relic" else _open_relic_book())   # 测试：山门名册 / 奇物谱
 	if _args.has("relicmenu") and state != null:
 		get_tree().create_timer(1.2).timeout.connect(func() -> void: _offer_relics(2, "next"))   # 测试：直接打开奇物二选一
 	if _args.has("runinfo") and state != null:
@@ -860,6 +862,9 @@ func _enter_hub_body() -> void:
 	_npc("拾骨婆 · 天赋", Vector3(-4.0, 0, 1.0), {"model": "skel_mage", "weapon": "skel_staff", "tint": Color(1.1, 0.95, 0.8)}, _open_talents)
 	_npc("兵器架", Vector3(4.0, 0, 1.0), {"kit": "sword_shield", "scale": 1.3}, _open_weapons)
 	_npc("衣箱 · 皮肤", Vector3(-6.5, 0, 4.0), {"kit": "crates", "scale": 0.9}, _open_skins)
+	ArpgChars.check_unlocks()
+	_npc("名册 · %s" % ArpgChars.get_char(ArpgChars.current())["name"], Vector3(6.5, 0, 4.0), {"kit": "banner", "scale": 1.1}, _open_roster)
+	_npc("奇物谱 %d / %d" % [ArpgRelics.LIST.filter(func(r: Dictionary) -> bool: return ArpgRelics.unlocked(String(r["id"]))).size(), ArpgRelics.LIST.size()], Vector3(2.6, 0, 5.2), {"kit": "chest_gold", "scale": 1.1}, _open_relic_book)
 	_make_portal(Vector3(0, 0, -hz + 2.5), "run", Color(1.0, 0.8, 0.45))
 	_npc("试刀 · 教学", Vector3(-4.5, 0, -3.5), {"kit": "sword_shield", "scale": 1.1}, func(_n: ArpgNpc) -> void: _start_tutorial())
 	_npc("功业碑 · 成就 %d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], Vector3(4.5, 0, -3.5), {"kit": "shrine", "scale": 1.1}, func(_n: ArpgNpc) -> void: _open_achievements())
@@ -1310,6 +1315,10 @@ func _start_run(fresh_hero: bool = true, act: int = 1) -> void:
 				if fx.has("coins"):
 					state.coins += int(fx["coins"])
 				state.flags["blessed"] = bl
+	# 角色的开局心法
+	var cb := String(ArpgChars.get_char(state.char_id).get("boon", ""))
+	if cb != "":
+		state.boons.append(cb)
 	# 守灯僧那儿换的东西（出发时生效一次）
 	var mb := String(Game.save.get("arpg_monk_buy", ""))
 	if mb != "":
@@ -2029,6 +2038,8 @@ func _room_cleared() -> void:
 	_tel_print("clear")
 	if state != null and state.omen_val("heal", 0.0) > 0.0 and room_kind in ["fight", "elite", "trial"] and is_instance_valid(hero):
 		_heal(state.omen_val("heal", 0.0))   # 天象：清明
+	if state != null and room_kind in ["fight", "elite", "trial"] and is_instance_valid(hero) and ArpgData.stat(state.stats(), "clear_heal") > 0.0:
+		_heal(ArpgData.stat(state.stats(), "clear_heal"))   # 角色慧明：清房回血
 	hud.wave_text = "清场"
 	Game.sfx("door")
 	var clean := is_instance_valid(hero) and hero.hits_taken == _room_hits0
@@ -3025,6 +3036,61 @@ func _shop_price(it: Dictionary) -> int:
 	# 往后几层铜钱多，价钱跟着涨（第二层 ×1.3，第三层 ×1.6）
 	var k := 1.0 + 0.3 * state.floor_i() if it["kind"] != "refill" else 1.0
 	return state.price(int(round(int(it["price"]) * k)))
+
+
+## 山门名册：选这次出发用谁（ArpgChars）
+func _open_roster(n: ArpgNpc = null) -> void:
+	var items := []
+	var cur := ArpgChars.current()
+	for c: Dictionary in ArpgChars.CHARS:
+		var open := ArpgChars.char_open(String(c["id"]))
+		items.append({"title": "%s · %s" % [c["name"], c["title"]], "desc": String(c["desc"]) if open else "未解锁：" + ArpgChars.cond_text(c["unlock"]),
+			"right": "这次出发" if String(c["id"]) == cur else ("兵器 " + String(ArpgData.weapon(String(c["weapon"]))["name"]) if open else ""),
+			"enabled": open, "tag": "角色", "color": Color(1.0, 0.9, 0.7)})
+	var m := _open_menu("名册", "选这次出发用谁。选了以后兵器架主手、衣箱换成这个角色的，之后还能自己换", items, "list", true)
+	m.chosen.connect(func(i: int) -> void:
+		var c: Dictionary = ArpgChars.CHARS[i]
+		if not ArpgChars.char_open(String(c["id"])):
+			Game.sfx("block")
+			return
+		ArpgChars.pick(String(c["id"]))
+		Game.sfx("reward", -4.0)
+		_close_menu()
+		if is_instance_valid(hero):
+			hero.apply_skin(String(Game.save.get("arpg_skin", "qing")))
+			_hub_stats()
+		if n != null and is_instance_valid(n):
+			n.display = "名册 · %s" % c["name"]
+		hud.banner(String(c["name"]), String(c["title"]), 2.0))
+
+
+## 山门奇物谱：看全部奇物，没解锁的可以花魂玉开（ArpgChars.RELIC_UNLOCK）
+func _open_relic_book(n: ArpgNpc = null) -> void:
+	var items := []
+	for r: Dictionary in ArpgRelics.LIST:
+		var id := String(r["id"])
+		var open := ArpgRelics.unlocked(id)
+		var u: Dictionary = ArpgChars.RELIC_UNLOCK.get(id, {})
+		items.append({"title": String(r["name"]), "desc": ArpgRelics.card_desc(r) if open else ArpgRelics.card_desc(r) + "。解锁：" + ArpgChars.cond_text(u),
+			"right": "·".join(r["tags"]) if open else "%d 魂玉" % int(u.get("price", 0)), "tag": "奇物", "color": ArpgRelics.COLOR if open else Color(0.6, 0.55, 0.5)})
+	var m := _open_menu("奇物谱", "存档魂玉 %d　·　开了的奇物才会在局里掉；没开的选中花魂玉开" % int(Game.save["jade"]), items, "list", true)
+	m.chosen.connect(func(i: int) -> void:
+		var r: Dictionary = ArpgRelics.LIST[i]
+		var id := String(r["id"])
+		if ArpgRelics.unlocked(id):
+			return
+		var price := int((ArpgChars.RELIC_UNLOCK.get(id, {}) as Dictionary).get("price", 999))
+		if int(Game.save["jade"]) < price:
+			Game.sfx("block")
+			return
+		Game.save["jade"] = int(Game.save["jade"]) - price
+		ArpgChars.open_relic(id)
+		hud.jade = int(Game.save["jade"])
+		Game.sfx("reward", -4.0)
+		_close_menu()
+		if n != null and is_instance_valid(n):
+			n.display = "奇物谱"
+		hud.banner("奇物进掉落池", String(r["name"]), 2.0))
 
 
 func _open_rest(n: ArpgNpc) -> void:
@@ -4061,6 +4127,13 @@ func _game_over(won: bool, ending: String = "") -> void:
 	if state.cycle > 0:
 		sub += "　" + ArpgCycle.label(state.cycle)
 	var items := [{"title": "回到山门", "desc": desc, "right": "存档魂玉 %d" % int(Game.save["jade"])}]
+	# 这局收获：新解锁的角色、奇物，和离下一个解锁还差什么
+	for ul: String in ArpgChars.check_unlocks():
+		items.append({"title": "收获", "desc": ul, "tag": "解锁", "color": ArpgRelics.COLOR})
+	if not state.relics.is_empty():
+		items.append({"title": "这局的奇物", "desc": "、".join(state.relics.map(func(id: String) -> String: return String(ArpgRelics.get_relic(id).get("name", id)))), "tag": "回顾", "color": ArpgRelics.COLOR})
+	for gl: String in ArpgChars.next_goals():
+		items.append({"title": "下一个", "desc": gl, "tag": "目标", "color": Color(0.7, 0.8, 0.85)})
 	for cl: String in cyc_lines:
 		items.append({"title": "轮回", "desc": cl, "tag": "轮回", "color": Color(0.85, 0.6, 1.0)})
 	for dl: String in ArpgDaily.on_end(self, won):

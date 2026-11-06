@@ -55,6 +55,7 @@ var squads := {}                         # 每间战斗房抽到的“阵”（"
 var side_rooms := 0                      # 这一局拿完的侧室（藏宝 / 伏兵 / 灵泉 / 遗骸 / 小试炼）
 var boons: Array[String] = []
 var relics: Array[String] = []
+var char_id := "canren"                 # 这一局用的角色（ArpgChars）
 var curses: Array[String] = []          # 奇遇背上的诅咒（ArpgEvents.CURSES）
 var event_stats := {}                   # 奇遇给的这一局永久加成（磨剑客、郎中、夜商 …）          # 奇物（ArpgRelics），标签和心法一起算流派件数
 var forged := 0            # 这一局在灯冢熔铜炉里铸过几层甲（每层生命 +FORGE_HP）
@@ -78,6 +79,7 @@ static func start_new(act_: int = 1) -> ArpgState:
 	var s := ArpgState.new()
 	s.act = act_
 	s.cycle = ArpgCycle.picked()
+	s.char_id = ArpgChars.current()
 	s.seed_value = randi() if not OS.get_cmdline_user_args().has("--seed0") else 12345   # --seed0：测试时固定房间
 	s.run = Run.create(0, s.seed_value)
 	s.weapon = String(Game.save.get("arpg_weapon", "sword"))
@@ -252,6 +254,8 @@ func stat_parts() -> Array:
 					var ts := {}
 					ArpgData.add_stats(ts, nd["stats"], r)
 					add.call("天赋", "天赋·%s%s" % [nd["name"], " ×%d" % r if r > 1 else ""], ts)
+	var ch := ArpgChars.get_char(char_id)
+	add.call("角色", "角色·%s" % ch["name"], ch["stats"])
 	for kid: String in ArpgSecrets.keeps():
 		add.call("信物", "信物·%s" % ArpgSecrets.keep_info(kid).get("name", kid), ArpgSecrets.keep_info(kid).get("stats", {}))
 	var wd := ArpgData.weapon(weapon)
@@ -321,6 +325,7 @@ func stat_parts() -> Array:
 static func preview() -> ArpgState:
 	var s := ArpgState.new()
 	s.cycle = ArpgCycle.picked()
+	s.char_id = ArpgChars.current()
 	s.weapon = String(Game.save.get("arpg_weapon", "sword"))
 	if not ArpgData.WEAPONS.has(s.weapon):
 		s.weapon = "sword"
