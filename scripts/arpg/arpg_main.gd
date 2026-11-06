@@ -66,6 +66,7 @@ var _run_t0 := 0.0             # 这一局出发时的 _clock（成就“一气�
 var _first_intro := false     # 第一次玩：第一间房先说开场白
 var _boss_retry := false       # 游历难度重打头目：不再放登场对话
 var hints: ArpgHints
+var secrets: ArpgSecrets        # 隐藏机制：散件开封门、秘境、山门闲聊、信物
 var _room_hits0 := 0           # 进这间房时挨过几下（成就“片叶不沾身”“毫发无伤”）
 
 
@@ -466,6 +467,9 @@ func _setup_world() -> void:
 	hints = ArpgHints.new()
 	hints.main = self
 	add_child(hints)
+	secrets = ArpgSecrets.new()
+	secrets.main = self
+	add_child(secrets)
 
 
 func _apply_zone_env(info: Dictionary) -> void:
@@ -703,6 +707,8 @@ func _enter_hub() -> void:
 	Act3.hub(self)
 	if bool(Game.save.get("arpg_jizo_home", false)):
 		_npc("地藏 · 求保佑" if String(Game.save.get("arpg_bless", "")) == "" else "地藏 · 已求过", Vector3(-9.0, 0, 3.5), {"kit": "shrine", "scale": 1.1}, _pray_jizo)
+	# 隐藏机制：信物匣、阿七（闲聊、信物，见 ArpgSecrets）
+	secrets.hub_entered()
 	# 第一次进山门：拾骨婆说开场白
 	if not bool(Game.save.get("arpg_intro", false)) and not _args.has("demo"):
 		get_tree().create_timer(1.0).timeout.connect(func() -> void:
@@ -837,6 +843,11 @@ func _npc(label: String, p: Vector3, spec: Dictionary, cb: Callable) -> ArpgNpc:
 func _open_talents(_n: ArpgNpc, keep_index: int = -1) -> void:
 	var items := []
 	var refs := []
+	# 第一项：闲聊（每回山门说一段新的，藏着提示和信物，见 ArpgSecrets）
+	items.append({"tag": "闲聊", "tag_color": ArpgStory.C_HAG, "title": "闲聊",
+		"desc": "听拾骨婆念叨几句" if secrets.can_chat("hag") else "今天已经说过了……再问问？",
+		"right": "新" if secrets.can_chat("hag") and secrets._chat_i("hag") >= 0 else "", "enabled": true, "color": ArpgStory.C_HAG})
+	refs.append(["", 0])
 	for ti in range(ArpgData.TALENT_TREES.size()):
 		var t: Dictionary = ArpgData.TALENT_TREES[ti]
 		for tier_i in range(t["tiers"].size()):
@@ -856,6 +867,10 @@ func _open_talents(_n: ArpgNpc, keep_index: int = -1) -> void:
 		m.index = keep_index
 	m.chosen.connect(func(i: int) -> void:
 		var id: String = refs[i][0]
+		if id == "":
+			_close_menu()
+			secrets.chat("hag")
+			return
 		var cost: int = ArpgData.TALENT_COSTS[refs[i][1]]
 		Game.save["jade"] = int(Game.save["jade"]) - cost
 		var tal: Dictionary = Game.save["talents"]
@@ -1154,12 +1169,12 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	var a2 := state.act == 2 and room_kind != "tutorial"
 	var a3 := state.act == 3 and room_kind != "tutorial"
 	var sz := ACT3_ROOM if a3 else (ACT2_ROOM if a2 else ROOM_SIZE)
-	if room_kind in ["shop", "rest", "event", "start", "story", "treasure", "secret", "tutorial", "nook"]:
+	if room_kind in ["shop", "rest", "event", "start", "story", "treasure", "secret", "tutorial", "nook", "realm"]:
 		sz = ACT3_SMALL if a3 else (ACT2_SMALL if a2 else SMALL_ROOM)
 	elif room_kind == "boss":
 		sz = ACT3_BOSS if a3 else (ACT2_BOSS if a2 else BOSS_ROOM)
 	var plans := [] if _args.has("noside") else SideRoom.plan(room_kind, sz, _rng, String(_args.get("side", "")) if _args.get("side", "1") != "1" else "", zone_id)
-	_build_arena(zone_id, state.seed_value + fl * 1000 + state.run.row * 37 + state.run.col * 7 + (500 if room_kind == "secret" else 0), sz, plans)
+	_build_arena(zone_id, state.seed_value + fl * 1000 + state.run.row * 37 + state.run.col * 7 + (500 if room_kind == "secret" else 0) + (700 if room_kind == "realm" else 0), sz, plans)
 	_place_hero(arena.entry_pos)
 	state.rooms += 1
 	wave_i = -1
@@ -1286,6 +1301,9 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 			arena.spirit_fire(Vector3(0, 0.6, -2.5), Color(0.8, 0.6, 1.0), 1.6, 2.4, 9.0)
 			hud.banner("禅房" if zen else "密室", "师父住过的屋子" if zen else "裂墙后面藏着的房间", 2.4)
 			_open_portal()
+		"realm":
+			# 秘境：凑齐一层的散件后封门里面的地方（ArpgSecrets）
+			secrets.enter_realm(zone_id)
 		"boss":
 			# 头目先说话，说完再出手
 			_hold_waves = not _args.has("demo") and not _boss_retry
@@ -1326,6 +1344,7 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	if _room_done:
 		for sr: SideRoom in side_rooms:
 			sr.unlock(false)
+	secrets.room_entered(room_kind, zone_id)   # 封门（入口房）、散件
 	if _args.has("inside") and not side_rooms.is_empty():
 		# 测试：直接站进第一间侧室门口
 		_args.erase("inside")
@@ -1737,6 +1756,9 @@ func _room_cleared() -> void:
 	for sr: SideRoom in side_rooms:
 		if is_instance_valid(sr):
 			sr.unlock(true)
+	if room_kind == "realm":
+		secrets.realm_cleared()
+		return
 	if room_kind == "boss":
 		var fl := state.floor_i()
 		if state.boss_kind() in ["boss4", "boss5", "boss6", "boss7", "boss8", "boss9"]:
@@ -2070,14 +2092,25 @@ func _talk_monk(n: ArpgNpc) -> void:
 		d.finished.connect(func() -> void: _talk_monk(n))
 		return
 	if String(Game.save.get("arpg_monk_buy", "")) != "":
-		_say([["守灯僧", "东西替你收着了，出发时带上。", ArpgStory.C_MONK]])
+		var d := _say([["守灯僧", "东西替你收着了，出发时带上。", ArpgStory.C_MONK]])
+		if secrets.can_chat("monk"):
+			d.finished.connect(func() -> void:
+				if mode == "hub":
+					secrets.chat("monk"))
 		return
 	var jade := int(Game.save["jade"])
 	var items := []
 	for w: Array in ArpgStory.MONK_WARES:
 		items.append({"title": "%s　%d 魂玉" % [w[0], int(w[1])], "desc": w[2], "color": ArpgStory.C_MONK, "enabled": jade >= int(w[1])})
+	# 最后一项：闲聊（见 ArpgSecrets）
+	items.append({"title": "闲聊", "desc": "听守灯僧说说寺里的事" if secrets.can_chat("monk") else "今天已经说过了", "color": ArpgStory.C_MONK, "enabled": true,
+		"right": "新" if secrets.can_chat("monk") and secrets._chat_i("monk") >= 0 else ""})
 	var m := _open_menu("守灯僧 · 换物", "魂玉 %d　　一次换一样，下一局出发时生效" % jade, items, "list", true)
 	m.chosen.connect(func(i: int) -> void:
+		if i >= ArpgStory.MONK_WARES.size():
+			_close_menu()
+			secrets.chat("monk")
+			return
 		var w: Array = ArpgStory.MONK_WARES[i]
 		Game.save["jade"] = int(Game.save["jade"]) - int(w[1])
 		Game.save["arpg_monk_buy"] = String(w[0])
@@ -2148,13 +2181,18 @@ func _talk_smith(_n: ArpgNpc) -> void:
 		lines.append_array(ArpgStory.SMITH_DONE)
 	else:
 		lines.append(["老刀匠", "还差 %d 样。不急，刀等得起，人等不起。" % (ArpgStory.SMITH_ITEMS.size() - got.size()), ArpgStory.C_SMITH])
-	_say(lines)
+	var d := _say(lines)
+	# 说完正事，每回山门再念叨一段（提示、最后给磨刀石）
+	if secrets.can_chat("smith"):
+		d.finished.connect(func() -> void:
+			if mode == "hub":
+				secrets.chat("smith"))
 
 
 ## 山门的地藏：每回山门求一次保佑，下一局出发时生效
 func _pray_jizo(n: ArpgNpc) -> void:
 	if String(Game.save.get("arpg_bless", "")) != "":
-		_say([["", "地藏脚下的铜钱还压着。保佑已经求过了，出发时就灵。"]])
+		secrets.rub_jizo()   # 求过了还来：摸摸脑袋（摸够了掉铜钱，见 ArpgSecrets）
 		return
 	var items := []
 	for b: Array in ArpgStory.JIZO_BLESS:
@@ -2745,7 +2783,7 @@ func _make_portal(p: Vector3, kind: String, col: Color) -> void:
 	lab.modulate = Color(col.lightened(0.4), 0.9)
 	lab.position.y = 3.2
 	var cyc := "" if ArpgCycle.picked() <= 0 else " · " + ArpgCycle.label(ArpgCycle.picked())
-	lab.text = {"run": "出发" + cyc, "act2": "入井 · 第二幕" + cyc, "act3": "出山 · 第三幕" + cyc, "floor": "前往第%s层" % ArpgState.CN_NUM[state.gfloor()] if state != null else "", "next": "前路", "secret": "密室"}.get(kind, "")
+	lab.text = {"run": "出发" + cyc, "act2": "入井 · 第二幕" + cyc, "act3": "出山 · 第三幕" + cyc, "floor": "前往第%s层" % ArpgState.CN_NUM[state.gfloor()] if state != null else "", "next": "前路", "secret": "密室", "realm": "秘境"}.get(kind, "")
 	_portal.add_child(lab)
 
 
@@ -3468,7 +3506,8 @@ func _process(dt: float) -> void:
 						_start_run(true, 3)
 						_fade_then(func() -> void: _enter_room())
 					else:
-						_fade_then(func() -> void: _enter_room("secret"))
+						var sk := String(sp.get_meta("kind", "secret"))   # secret 裂墙密室 / realm 秘境
+						_fade_then(func() -> void: _enter_room(sk))
 	if mode == "room" and not _room_done and not _hold_waves and is_instance_valid(hero) and hero.alive:
 		if get_tree().get_nodes_in_group("foes").is_empty():
 			_wave_delay -= dt

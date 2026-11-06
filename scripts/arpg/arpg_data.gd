@@ -225,6 +225,7 @@ static func talent_stats() -> Dictionary:
 				var r := talent_rank(nd["id"])
 				if r > 0:
 					add_stats(st, nd["stats"], r)
+	add_stats(st, ArpgSecrets.keep_stats())   # 信物（隐藏机制拿到的小东西，永久生效）
 	return st
 
 
