@@ -50,5 +50,7 @@ func _land() -> void:
 	if Vfx.I != null:
 		Vfx.I.explosion(Vector3(to.x, 0.4, to.z), 0.55)
 		Vfx.I.chips(Vector3(to.x, 0.3, to.z), Vector3.UP, Color(0.5, 0.32, 0.2), 10, 6.0, 0.1)
-	Game.sfx("flame", -4.0)
+	Game.sfx("flame", -6.0)
+	Game.sfx("jar_break", -5.0, 0.1)
+	Game.sfx("fire_burst", -9.0, 0.1)
 	queue_free()

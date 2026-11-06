@@ -13,7 +13,11 @@ const FLOOR_NAMES := ["幽林遗迹", "无名冢", "古寺", "青井地宫", "�
 const BOSS_KINDS := ["boss", "boss3", "boss2", "boss4", "boss5", "boss6", "boss7", "boss8", "boss9"]
 const BOSS_ZONES := ["sakura", "grave", "temple", "well", "vault", "camp", "liuxi", "post", "palace"]
 const BOSS_TITLES := ["夜樱广场", "无名冢 · 万骨坑", "古寺 · 寂光殿", "青井 · 井底", "灯冢 · 不夜殿", "灰衣营 · 帅帐", "柳溪村 · 祠堂前", "官道 · 十里亭", "长明宫 · 金殿"]
-const BOSS_MUSIC := ["boss", "boss2", "boss", "boss2", "boss", "boss2", "boss", "boss2", "boss"]
+## 头目曲：第一幕三首轮着用；第二、三幕每个头目一首（assets/music/boss_<场景>.ogg）
+const BOSS_MUSIC := ["boss", "boss2", "boss", "boss_well", "boss_vault", "boss_camp", "boss_liuxi", "boss_post", "boss_palace"]
+## 场景曲（战斗房、精英房等）：第二、三幕每层一首
+const ZONE_MUSIC := {"temple": "bamboo", "grave": "secret", "well": "well", "vault": "vault", "camp": "camp",
+	"liuxi": "liuxi", "post": "post", "palace": "palace"}
 const LAST_FLOOR := 2
 ## 第二幕已经做好的层数（分阶段做：先只有青井地宫，打完头目算这一章暂时通关）
 const ACT2_READY := 3
@@ -140,7 +144,7 @@ func remap() -> void:
 			if nd["type"] == "fight":
 				nd["type"] = "story"
 				break
-	# 第三幕：一层多两列房间，再加一条分岔支线（ArpgRoutes）
+	# 三幕都一样：一层多两列房间，再加一条分岔支线（ArpgRoutes）
 	ArpgRoutes.expand(self)
 
 
@@ -248,8 +252,8 @@ func stat_parts() -> Array:
 		add.call("境况", "熔铜炉铸甲 ×%d" % forged, {"hp": FORGE_HP * forged})
 	if omen != "" and OMENS.has(omen):
 		add.call("境况", "天象·%s" % OMENS[omen]["name"], OMENS[omen].get("stats", {}))
-	if act == 3:
-		# 第三幕：带着的石门灯、喂过的驿马、支线尽头拿的加成（数值照 Act3.run_stats 算，这里只起个名字）
+	if act == 3 and (flags.has("lamp_carried") or flags.has("stable_fed")):
+		# 第三幕：带着的石门灯、喂过的驿马（数值照 Act3.run_stats 算，这里只起个名字）
 		var a3 := {}
 		Act3.run_stats(self, a3)
 		var got := []
@@ -257,9 +261,9 @@ func stat_parts() -> Array:
 			got.append("石门灯")
 		if flags.has("stable_fed"):
 			got.append("驿马")
-		if not (flags.get("route_stats", {}) as Dictionary).is_empty():
-			got.append("支线所得")
 		add.call("境况", "路上·%s" % "、".join(got), a3)
+	if not (flags.get("route_stats", {}) as Dictionary).is_empty():
+		add.call("境况", "支线所得", flags["route_stats"])   # 分岔支线尽头拿的加成（ArpgRoutes）
 	var sc := ArpgData.school_counts(boons)
 	for k: String in sc:
 		if int(sc[k]) >= ArpgData.SET_NEED and ArpgData.SETS.has(k):

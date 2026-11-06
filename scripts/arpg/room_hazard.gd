@@ -91,6 +91,7 @@ func _process(dt: float) -> void:
 				get_tree().create_timer(1.0).timeout.connect(_drip.bind(p))
 		"arrows":
 			_t = randf_range(6.0, 7.5)
+			Game.sfx("arrow_volley", -5.0, 0.08, 0.9)   # 望楼上一齐放箭，一秒后落地
 			for i in range(6):
 				var p := _clamp(hp if i == 0 else hp + _rand_off(1.0, 3.8))
 				Vfx.I.telegraph_circle(p, 0.9, Vfx.DANGER["shot"], 1.1)
@@ -139,7 +140,8 @@ func _geyser(p: Vector3) -> void:
 	Vfx.I.streaks(p, Vector3.UP, Color(0.6, 0.95, 1.0), 6, 3.6, 0.3, 0.25, 0.22)
 	Vfx.I.shock_ring(p, Vfx.ELEM_COLOR["water"], 0.3, 3.0, 0.3)
 	Vfx.I.pop(p + Vector3(0, 1.5, 0), "circle_05", Color(0.5, 0.85, 1.0), 0.6, 2.4, 0.3)
-	Game.sfx("slash_heavy", -8.0, 0.1, 0.6)
+	Game.sfx("splash", -3.0, 0.1, 0.8)
+	Game.sfx("water_big", -10.0, 0.1)
 	_hit(p, 1.4, dmg, "water", 12.0)
 
 
@@ -148,6 +150,7 @@ func _drip(p: Vector3) -> void:
 		return
 	Vfx.I.streaks(p + Vector3(0, 6.0, 0), Vector3.DOWN, Color(1.0, 0.6, 0.2), 2, 6.0, 0.12, 0.05, 0.25)
 	Vfx.I.chips(p, Vector3.UP, Color(1.0, 0.6, 0.2), 8, 5.0, 0.08)
+	Game.sfx("sizzle", -6.0, 0.1)
 
 
 func _arrow(p: Vector3) -> void:
@@ -157,6 +160,7 @@ func _arrow(p: Vector3) -> void:
 	Vfx.I.streaks(p - d * 5.0, d, Color(1.0, 0.9, 0.75), 1, 5.0, 0.1, 0.0, 0.08)
 	Vfx.I.chips(p, Vector3.UP, Color(0.5, 0.45, 0.4), 4, 3.0, 0.06)
 	Vfx.I.pop(p + Vector3(0, 0.2, 0), "spark_05", Color(1.0, 0.8, 0.6), 0.2, 1.0, 0.12)
+	Game.sfx("arrow_hit", -6.0, 0.12)
 	_hit(p, 0.9, dmg * 0.7, "", 4.0)
 
 

@@ -175,7 +175,8 @@ func _wake() -> void:
 	Feel.I.callout(head_top(), "！", Color(1.0, 0.75, 0.3), 0.9)
 	Vfx.I.chips(chest(), Vector3.UP, Color(0.85, 0.72, 0.38), 12, 5.0, 0.08)
 	Vfx.I.dust(global_position, 1.0, Color(0.6, 0.55, 0.4, 0.5))
-	Game.sfx("slash", -8.0, 0.1, 0.8)
+	if not FoeSfx.play(self, "wake"):
+		Game.sfx("slash", -8.0, 0.1, 0.8)
 	_set_state("chase")
 	if _get_token():
 		_begin_attack("lunge")
@@ -269,6 +270,7 @@ func _blink(r: float) -> void:
 	global_position = Vector3(to.x, 0, to.z)
 	Vfx.I.sheet("spawn-cast", global_position, 2.4, Color(col, 0.9), 1.6, false, 0.0, 2.2)
 	Game.sfx("dash", -8.0, 0.1, 1.2)
+	FoeSfx.play(self, "blink")
 	face_to(p - global_position)
 
 
@@ -396,6 +398,7 @@ func _begin_attack(kind_: String) -> void:
 			Vfx.I.ground(global_position, "magic_01", Color(1.0, 0.75, 0.45, 0.8), 0.5, 5.0, wt + 0.3)
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "宫里的人，都过来。", Color(1.0, 0.85, 0.6), 1.2)
 	Game.sfx("danger", -8.0)
+	FoeSfx.play(self, "windup:" + _atk)
 
 
 func _st_windup(dt: float) -> void:
@@ -563,6 +566,7 @@ func _rain_land(pts: Array[Vector3]) -> void:
 		_area_hit(s, 1.4, float(data["dmg"]) * 0.75, HitInfo.Weight.LIGHT)
 	CamRig.I.shake(1)
 	Game.sfx("slash_heavy", -6.0, 0.1, 1.3)
+	Game.sfx("arrow_hit", -2.0, 0.08)
 
 
 ## 幽骑 / 宫人魂列阵：排成一排从房间一头冲到另一头
@@ -612,7 +616,8 @@ func _do_ward() -> void:
 	var col := Color(0.55, 0.85, 1.0)
 	Vfx.I.shock_ring(global_position, col, 0.5, AURA_R * 2.0, 0.5)
 	Vfx.I.sheet("spawn-cast", global_position, 2.6, Color(col, 0.9), 1.6, false, 0.0, 1.6)
-	Game.sfx("block", -4.0, 0.0, 1.6)
+	Game.sfx("block", -8.0, 0.0, 1.6)
+	FoeSfx.play(self, "aura")
 	for f: Node in get_tree().get_nodes_in_group("foes"):
 		var ff := f as Act3Foe
 		if ff == null or ff == self or not ff.alive or ff.data.has("phantom") or ff.data.has("aura") or ff.kind == "lampnode":
@@ -669,6 +674,7 @@ func _lamp_out() -> void:
 	Feel.I.callout(head_top() + Vector3(0, 0.5, 0), "灯灭 · 剩 %d 盏" % _lit, Color(1.0, 0.8, 0.4), 1.4)
 	Vfx.I.shock_ring(global_position, Color(1.0, 0.85, 0.4), 0.4, 6.0, 0.5)
 	Game.sfx("posture_break", -3.0)
+	FoeSfx.play(self, "lamp_out")
 	rig.set_glow(Color(0.25, 0.2, 0.05) * (_lit / 4.0))
 	# 踉跄一下：白打的机会
 	_release()
@@ -829,5 +835,6 @@ static func _rise(main: Node, ar: Variant, p: Vector3, hs: float, ds: float) -> 
 	main.add_child(f)
 	f.global_position = p
 	f.detect_mult = 2.0
+	FoeSfx.play(f, "rise")
 	if main.has_method("_on_drop"):
 		f.dropped.connect(main._on_drop.bind("lampman"))

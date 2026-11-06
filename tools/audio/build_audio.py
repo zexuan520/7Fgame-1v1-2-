@@ -17,7 +17,9 @@ SFX_OUT = os.path.join(ROOT, "assets", "sfx")
 MUSIC_OUT = os.path.join(ROOT, "assets", "music")
 
 ZIPS = ["swishes.zip", "rpg_sound_pack.zip", "RPGsounds_Kenney.zip", "sfx_breaking_and_falling.zip",
-        "sword_-_starninjas_1.zip", "sword_clash_-_starninjas_0.zip", "impact_-_starninjas.zip", "tinysized.zip"]
+        "sword_-_starninjas_1.zip", "sword_clash_-_starninjas_0.zip", "impact_-_starninjas.zip", "tinysized.zip",
+        # 第二、三幕加的（素材目录的 act23/ 子目录，出处同样记在 SOURCES.md）
+        "act23/water-splash-slime-sfx.zip:water40", "act23/80-CC0-RPG-SFX_0.zip:rpg80", "act23/100-CC0-SFX_0.zip:sfx100"]
 
 SW = "swishes/swishes/swish-%d.wav"
 RPG = "rpg_sound_pack/RPG Sound Pack/%s.wav"
@@ -27,6 +29,14 @@ CLASH = "sword_clash_-_starninjas_0/sword_clash.%d.ogg"
 TINY = "tinysized/sfx-cc0/%s.wav"
 IMP = "impact_-_starninjas/impact.%d.ogg"
 SWD = "sword_-_starninjas_1/sword - StarNinjas/sword.%d.ogg"
+SHADE = "rpg_sound_pack/RPG Sound Pack/NPC/shade/shade%d.wav"
+RINV = "rpg_sound_pack/RPG Sound Pack/inventory/%s.wav"
+RBAT = "rpg_sound_pack/RPG Sound Pack/battle/%s.wav"
+W40 = "water40/%s.ogg"
+R80 = "rpg80/%s.ogg"
+C100 = "sfx100/%s.ogg"
+FS = "act23/fire_staff/fire_staff_%d.flac"
+A23 = "act23/%s"
 
 # 每个音效：变体列表。每个变体是 [(文件, 音量 dB, 音高倍数)...]，多个文件叠在一起；
 # 后面是通用处理：最长秒数、淡出秒数
@@ -71,9 +81,61 @@ SFX = {
     "door": ([[(KEN % "doorOpen_1", 0, 0.9)], [(KEN % "doorOpen_2", 0, 0.9)]], 1.0, 0.3),
     # 喝药：拔塞子 + 倒水
     "drink": ([[(TINY % "bottle-clay-uncork-01", 0, 1.0), (TINY % "water-pour-01", -6, 1.0)]], 0.9, 0.3),
+
+    # ---------- 第二、三幕：小怪、机关、头目招式的专属声（FoeSfx 里按种类和招式挑） ----------
+    # 水花：水骨/井鳗骨冒头、潜回，地宫涌泉
+    "splash": ([[(W40 % ("splash_%02d" % i), 0, 1.0)] for i in (1, 3, 5, 7, 9, 11, 13)], 0.7, 0.2),
+    # 大水：枯荣的水柱、水波、殿里涨水
+    "water_big": ([[(W40 % "splash_02", 0, 0.7), (W40 % "splash_08", -3, 0.6), (W40 % "bubble_01", -6, 0.8)],
+                   [(W40 % "splash_04", 0, 0.7), (W40 % "splash_12", -3, 0.6), (W40 % "bubble_02", -6, 0.8)],
+                   [(W40 % "splash_06", 0, 0.65), (W40 % "splash_14", -3, 0.62), (W40 % "bubble_03", -6, 0.8)]], 1.4, 0.5),
+    # 铁链：灯奴僧、枯荣、不夜将军的横扫
+    "chain": ([[(R80 % ("chain_%02d" % i), 0, p), (SW % j, -6, 0.75)] for i, j, p in ((1, 12, 1.0), (2, 7, 0.95), (3, 10, 1.05))], 0.8, 0.25),
+    # 长枪直刺：短促的破风 + 枪头的金属声
+    "spear": ([[(SW % i, 0, 1.25), (R80 % ("blade_%02d" % j), -5, 1.1)] for i, j in ((1, 1), (4, 2), (8, 3), (11, 1))], 0.4, 0.12),
+    # 镇魂铃 / 引魂灯童：小铃
+    "bell_ward": ([[(C100 % "bell_01", 0, 1.0)], [(C100 % "bell_03", 0, 1.05)], [(A23 % "bell_ding1.wav", -2, 1.0)], [(A23 % "bell_ding3.wav", -2, 0.95)]], 1.6, 0.6),
+    # 回血的灯：清脆的宝石声 + 一点法术
+    "chime": ([[(R80 % ("item_gem_%02d" % i), 0, 1.0), (RBAT % "magic1", -10, 1.2)] for i in (1, 2, 3, 4)], 0.9, 0.35),
+    # 锣：头目狂暴、长明帝点灯
+    "gong": ([[(C100 % "gong_01", 0, 0.8)], [(C100 % "gong_02", 0, 0.75)]], 2.2, 0.9),
+    # 号角：灰衣旗手举旗、头目叫人、押灯将列阵
+    "horn": ([[(A23 % "theircoming.ogg", 0, 1.0, 0.0)], [(A23 % "theircoming.ogg", 0, 1.0, 10.4)], [(A23 % "theircoming3.ogg", 0, 1.0, 0.0)]], 1.8, 0.6),
+    # 战鼓：旗手举旗那一下、灰衣营的号令
+    "war_drum": ([[(A23 % "horde_war_drums.flac", 0, 1.0, t)] for t in (0.0, 2.1, 4.3, 8.6)], 1.6, 0.4),
+    # 马蹄：冲骑、幽骑、押灯将的幽骑列阵
+    "hooves": ([[(A23 % "Trot.ogg", 5, 1.35, t)] for t in (0.0, 2.0, 5.0, 9.5)], 1.1, 0.3),
+    # 火：起火、火罐落地、天火、火场一圈
+    "fire_burst": ([[(FS % i, 0, 1.0), (R80 % ("spell_fire_%02d" % j), -6, 1.0)] for i, j in ((1, 1), (3, 3), (6, 4), (8, 6), (11, 7))], 1.1, 0.4),
+    # 施火法：焦明、提炉官、纵火手抬手那一下（呼的一声）
+    "fire_cast": ([[(FS % i, 0, 1.0)] for i in (13, 15, 16, 17, 19)], 1.2, 0.4),
+    # 罐子碎：泼油俑、纵火手、提炉官扔的罐子落地；灯童、护体灯碎掉
+    "jar_break": ([[(BFH % ("glass_breaking_%02d" % i), 0, 1.0), (C100 % ("pot_%02d" % (1 + i % 2)), -4, 0.9)] for i in (1, 2, 3, 4, 5)], 0.9, 0.3),
+    # 金属甲：刀砍在铜甲、金甲上
+    "armor_clank": ([[(C100 % ("metal_%02d" % i), 0, 1.0), (RINV % "chainmail1", -8, 1.0)] for i in (1, 3, 5, 7, 9, 11)], 0.5, 0.2),
+    # 甲士倒地：一堆铁片砸地
+    "armor_fall": ([[(BFH % ("metal_falling_%02d" % i), 0, 0.9), (BFH % "hit_04", -6, 0.8)] for i in (1, 2, 3, 4, 5)], 1.2, 0.4),
+    # 活人倒地：灰衣营、驿卒、灯兵（不是骨头碎）
+    "body_fall": ([[(BFH % ("falling_%02d" % i), 0, 0.85), (KEN % "dropLeather", -3, 0.9), (KEN % ("cloth%d" % (1 + i % 4)), -6, 1.0)] for i in (1, 2, 3, 4, 5)], 0.9, 0.3),
+    # 鬼：宫灯魂闪身、烬影/宫人魂/幽骑出现、死掉
+    "ghost": ([[(SHADE % i, 0, 1.0)] for i in (1, 3, 5, 7, 9, 11)] + [[(A23 % "ghostbreath.flac", 18, 1.0)]], 1.4, 0.5),
+    # 稻草人：草秆折断 + 布料
+    "straw": ([[(TINY % "wood-twigs-break-01", 0, 1.0), (KEN % "cloth3", -4, 0.9)], [(TINY % "wood-twigs-break-02", 0, 1.0), (KEN % "cloth1", -4, 0.9)]], 0.7, 0.2),
+    # 爬起来：灯兵再站起来、殉灯俑复活
+    "rise": ([[(RBAT % "spell", 0, 0.8), (BFH % "wood_hit_02", -6, 0.8)], [(RBAT % "magic1", 0, 0.75), (BFH % "wood_hit_03", -6, 0.8)]], 1.2, 0.4),
+    # 金光：长明帝的光柱、金光扇
+    "holy": ([[(R80 % "spell_01", 0, 0.9), (C100 % "bell_02", -6, 0.8)], [(R80 % "spell_02", 0, 0.9), (C100 % "bell_01", -8, 0.7)]], 1.3, 0.5),
+    # 箭落地：营地箭雨、押灯将箭雨（一声闷的扎地）
+    "arrow_hit": ([[(BFH % ("wood_hit_%02d" % i), 0, 1.3), (KEN % "knifeSlice", -6, 1.2)] for i in (1, 2, 3)], 0.35, 0.12),
+    # 箭雨放出去：一片破风
+    "arrow_volley": ([[(SW % 3, 0, 1.4), (SW % 6, -2, 1.3, 0, 70), (SW % 10, -3, 1.5, 0, 150), (SW % 4, -4, 1.35, 0, 240)],
+                      [(SW % 2, 0, 1.4), (SW % 9, -2, 1.3, 0, 90), (SW % 13, -3, 1.5, 0, 170), (SW % 8, -4, 1.35, 0, 260)]], 0.7, 0.3),
+    # 铜汁滴下来：嗞的一声
+    "sizzle": ([[(FS % 7, 0, 1.4), (TINY % "compressed-air-spray-01", -8, 0.8)], [(FS % 9, 0, 1.4), (TINY % "compressed-air-spray-02", -8, 0.8)]], 0.7, 0.3),
 }
 
-# 背景音乐：曲名 → (文件, 是否先解压 zip 里的路径)
+# 背景音乐：曲名 → 文件（"压缩包:里面的路径" 先解压），或者 {"src": 文件, "cut": (从第几秒, 到第几秒), "fade": (淡入, 淡出), "q": 质量}
+# cut/fade 给不是循环曲的去掉开头结尾的静音、免得循环时断一截；q 是 libvorbis 质量（第二、三幕的用 2，包体小一点）
 MUSIC = {
     "hub": "forest_whisper_theme.zip:Forest Whisper Theme/Forest Whisper.ogg",
     "village": "GameMusic_ForestTheme_24_0.mp3",
@@ -81,6 +143,20 @@ MUSIC = {
     "boss": "Juhani Junkala - Epic Boss Battle [Seamlessly Looping].wav",
     "boss2": "battleThemeA.mp3",
     "secret": "dungeon002_0.ogg",
+    # ---------- 第二幕 · 入山 ----------
+    "well": {"src": "act23/music/cursed_tower.ogg", "q": 2},                   # 青井地宫：闹鬼的低音 + 鼓点
+    "vault": {"src": "act23/music/great_labyrinth.ogg", "q": 2},               # 烛国灯冢：管弦地宫曲，又悲又重
+    "camp": {"src": "act23/music/march_loop.flac", "q": 2},                    # 灰衣营：行军鼓
+    "boss_well": {"src": "act23/music/dramatic_boss.flac", "cut": (0, 37.9), "fade": (0.05, 0.6), "q": 2},   # 枯荣：鼓 + 提琴
+    "boss_vault": {"src": "act23/music/heavy_boss2.ogg", "q": 2},              # 不夜将军：沉重的头目曲
+    "boss_camp": {"src": "act23/music/determined_pursuit.flac", "q": 2},       # 烬：急促的弦乐和号
+    # ---------- 第三幕 · 出山 ----------
+    "liuxi": {"src": "act23/music/looted_village.ogg", "q": 2},                # 柳溪村：回乡发现村子遭了劫
+    "post": {"src": "act23/music/last_journey.mp3", "cut": (0, 59.3), "fade": (0.05, 1.5), "q": 2},   # 官道驿站：管弦行路曲
+    "palace": {"src": "act23/music/journey_noname.mp3", "q": 2},               # 长明宫：宏大的史诗配乐
+    "boss_liuxi": {"src": "act23/music/fire_dragon_loop.flac", "cut": (0.96, 0), "q": 2},   # 火师焦明：火龙
+    "boss_post": {"src": "act23/music/call_to_war.flac", "q": 2},              # 押灯将霍长风：军鼓和号
+    "boss_palace": {"src": "act23/music/epic_endgame.flac", "cut": (0, 89.3), "fade": (0.05, 1.2), "q": 2},  # 长明帝：女声合唱 + 号 + 低音
 }
 
 
@@ -91,8 +167,9 @@ def run(args):
 def main():
     tmp = tempfile.mkdtemp()
     for z in ZIPS:
+        z, _, into = z.partition(":")
         with zipfile.ZipFile(os.path.join(SRC, z)) as f:
-            f.extractall(os.path.join(tmp, z[:-4]))
+            f.extractall(os.path.join(tmp, into or os.path.basename(z)[:-4]))
     only = [x for x in os.environ.get("ONLY", "").split(",") if x]   # ONLY=kill,crit 只重做这几个
     for name, (variants, max_len, fade) in SFX.items():
         if only and name not in only:
@@ -103,11 +180,18 @@ def main():
         for i, layers in enumerate(variants):
             args = ["ffmpeg", "-y"]
             filt = []
-            for j, (path, db, pitch) in enumerate(layers):
-                args += ["-i", os.path.join(tmp, path)]
+            for j, layer in enumerate(layers):
+                path, db, pitch = layer[:3]
+                p = os.path.join(tmp, path)
+                if not os.path.exists(p):
+                    p = os.path.join(SRC, path)     # 不在压缩包里的单个文件
+                if len(layer) > 3 and layer[3] > 0:
+                    args += ["-ss", "%.2f" % layer[3]]   # 从长录音里截一段（号角、马蹄、鼓）
+                args += ["-i", p]
+                delay = layer[4] if len(layer) > 4 else 0   # 第五项：晚几毫秒进来（一片箭雨错开）
                 # 去掉开头静音，变调（改采样率再重采样），调音量，转单声道
                 filt.append("[%d:a]aformat=channel_layouts=mono,silenceremove=start_periods=1:start_threshold=-45dB,"
-                            "asetrate=44100*%.3f,aresample=44100,volume=%ddB[l%d]" % (j, pitch, db, j))
+                            "asetrate=44100*%.3f,aresample=44100,volume=%ddB,adelay=%d[l%d]" % (j, pitch, db, delay, j))
             mix = "".join("[l%d]" % j for j in range(len(layers)))
             filt.append("%samix=inputs=%d:normalize=0,atrim=0:%.2f,afade=t=out:st=%.2f:d=%.2f,alimiter=limit=0.89[o]"
                         % (mix, len(layers), max_len, max(max_len - fade, 0.0), fade))
@@ -115,9 +199,11 @@ def main():
                      os.path.join(out_dir, "%d.ogg" % i)]
             run(args)
         print(name, len(variants))
-    for name, src in MUSIC.items():
-        if only:
-            break
+    for name, spec in MUSIC.items():
+        if only and name not in only:
+            continue
+        spec = spec if isinstance(spec, dict) else {"src": spec}
+        src = spec["src"]
         if ":" in src:
             z, inner = src.split(":", 1)
             with zipfile.ZipFile(os.path.join(SRC, z)) as f:
@@ -125,8 +211,17 @@ def main():
         else:
             path = os.path.join(SRC, src)
         # 统一响度（EBU R128 -18 LUFS），立体声 44.1k，ogg
-        run(["ffmpeg", "-y", "-i", path, "-af", "loudnorm=I=-18:TP=-1.5:LRA=11", "-ar", "44100", "-ac", "2",
-             "-c:a", "libvorbis", "-q:a", "4", os.path.join(MUSIC_OUT, name + ".ogg")])
+        af = []
+        if "cut" in spec:
+            a, b = spec["cut"]
+            af.append("atrim=start=%.2f%s,asetpts=PTS-STARTPTS" % (a, (":end=%.2f" % b) if b > 0 else ""))
+        if "fade" in spec:
+            fi, fo = spec["fade"]
+            dur = spec["cut"][1] - spec["cut"][0]
+            af.append("afade=t=in:d=%.2f,afade=t=out:st=%.2f:d=%.2f" % (fi, dur - fo, fo))
+        af.append("loudnorm=I=-18:TP=-1.5:LRA=11")
+        run(["ffmpeg", "-y", "-i", path, "-af", ",".join(af), "-ar", "44100", "-ac", "2",
+             "-c:a", "libvorbis", "-q:a", str(spec.get("q", 4)), os.path.join(MUSIC_OUT, name + ".ogg")])
         print("music", name)
     shutil.rmtree(tmp)
 

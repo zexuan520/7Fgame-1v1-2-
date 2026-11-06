@@ -352,12 +352,18 @@ func apply_volume() -> void:
 	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("SFX"), linear_to_db(maxf(float(settings["sfx"]), 0.0001)))
 
 
+## 测试用：命令行带 --sfxlog 时把放过的音效和音乐打印出来
+var _sfx_log := OS.get_cmdline_user_args().has("--sfxlog")
+
+
 ## 放一个音效。pitch_var 是随机音高的幅度（同一个声音听起来不那么机械）
 func sfx(sound: String, volume_db: float = 0.0, pitch_var: float = 0.06, pitch: float = 1.0) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	if now - float(_sfx_last.get(sound, -1.0)) < SFX_GAP:
 		return
 	_sfx_last[sound] = now
+	if _sfx_log:
+		print("[sfx] ", sound)
 	var stream := _sfx_stream(sound)
 	if stream == null or _voices.is_empty():
 		return
@@ -373,6 +379,8 @@ func sfx(sound: String, volume_db: float = 0.0, pitch_var: float = 0.06, pitch: 
 func music(track: String) -> void:
 	if track == _bgm_name or _bgm == null:
 		return
+	if _sfx_log:
+		print("[music] ", track)
 	_bgm_name = track
 	if _bgm_tween != null:
 		_bgm_tween.kill()
