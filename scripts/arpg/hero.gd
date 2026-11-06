@@ -288,7 +288,7 @@ func _reset_trail() -> void:
 	if trail == null:
 		return
 	var tc := ArpgArms.trail(weapon_id)
-	trail.set_colors(tc[0], tc[1])
+	trail.set_colors(tc[0], rel.tint_edge(tc[1]))
 
 
 ## 换皮肤：换模型就整个人偶重建（兵器、刀光跟着挂回去）
@@ -318,6 +318,7 @@ func apply_skin(id: String) -> void:
 	var gl: Color = sk.get("glow", Color(0, 0, 0))
 	rig.set_glow(gl)
 	rig.apply(_pose if not _pose.is_empty() else Poses.idle(0.0))
+	rel._update_look()
 
 
 func _ready() -> void:
@@ -654,7 +655,7 @@ func _start_attack(i: int) -> void:
 	# 拖尾：按兵器上色，重击更亮更长、回旋斩最长；连弩不拖尾
 	trail.life = 0.3 if s.swing == "spin" else (0.2 if s.heavy else 0.15)
 	var tc := ArpgArms.trail(weapon_id)
-	var edge_c: Color = (tc[1] as Color).lightened(0.2) if s.heavy else tc[1]
+	var edge_c: Color = rel.tint_edge((tc[1] as Color).lightened(0.2) if s.heavy else tc[1])   # 主流派染刀光
 	# 连击越高刀光越烫：10 连青白、25 连金、50 连赤（和右边连击数的颜色一致），拖得也更长
 	var tier := -1
 	for ti in range(Feel.COMBO_TIERS.size()):
@@ -1178,7 +1179,10 @@ func _tick_skills(dt: float) -> void:
 	var g := duo.has("budong") and hp > max_hp * 0.7
 	if g != _rim_gold and rig != null:
 		_rim_gold = g
-		rig.set_rim(Color(1.0, 0.82, 0.4) if g else Color(0.45, 0.95, 1.0), 0.9 if g else 0.6)
+		if g:
+			rig.set_rim(Color(1.0, 0.82, 0.4), 0.9)
+		else:
+			rel._update_look()   # 回到流派色 / 皮肤描边
 
 
 ## 放完一招：记下来，下一招在窗口内接上就是连携

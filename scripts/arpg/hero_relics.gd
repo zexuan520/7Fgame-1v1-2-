@@ -34,6 +34,14 @@ var fire_self := 0.0          # 野火
 
 const SOUL_COLOR := Color(0.55, 1.0, 0.85)
 
+## 看得见的流派：主流派 ≥ 2 件时描边和刀光染成流派色，大成后身上发光、脚下冒流派粒子
+var look_schools: Array = []   # 大成了的流派（可能两个）
+var look_color := Color(0, 0, 0, 0)   # 主流派颜色；a = 0 表示没有
+var look_full := false
+var _aura_t := 0.0
+var _ring_t := 0.0
+const AURA_TEX := {"修罗": "slash_02", "血": "smoke_04", "风": "twirl_01", "光": "star_04", "守": "circle_05", "雷": "spark_04", "焰": "flame_01", "魂": "flare_01"}
+
 
 func apply(st: Dictionary) -> void:
 	has.clear()
@@ -54,6 +62,69 @@ func apply(st: Dictionary) -> void:
 	if not has.has("tiezhuang"):
 		stance = false
 	_sync_orbs()
+	_update_look()
+
+
+func _update_look() -> void:
+	if hero == null:
+		return
+	look_schools.clear()
+	look_color = Color(0, 0, 0, 0)
+	look_full = false
+	if hero.kit != null:
+		var sc := ArpgData.school_counts(hero.kit.build_ids())
+		var best := ""
+		var bn := 1
+		for k: String in sc:
+			if not ArpgData.SCHOOL_COLORS.has(k):
+				continue
+			if int(sc[k]) >= ArpgData.SET_NEED:
+				look_schools.append(k)
+			if int(sc[k]) > bn:
+				bn = int(sc[k])
+				best = k
+		if best != "":
+			look_color = ArpgData.SCHOOL_COLORS[best]
+			look_full = bn >= ArpgData.SET_NEED
+	if hero.rig == null:
+		return
+	var sk := ArpgArms.skin(hero.skin_id)
+	if look_color.a > 0.0:
+		hero.rig.set_rim(look_color, 2.8 if look_full else 1.5)
+	else:
+		hero.rig.set_rim(sk.get("rim", Color(0.45, 0.95, 1.0)), 0.6)
+	var gl: Color = sk.get("glow", Color(0, 0, 0))
+	if look_full:
+		gl = Color(gl.r + look_color.r * 0.1, gl.g + look_color.g * 0.1, gl.b + look_color.b * 0.1)
+	hero.rig.set_glow(gl)
+	hero._reset_trail()
+
+
+## 刀光边色往流派色靠
+func tint_edge(c: Color) -> Color:
+	if look_color.a <= 0.0:
+		return c
+	return c.lerp(look_color, 0.75 if look_full else 0.5)
+
+
+func _tick_look(dt: float) -> void:
+	if look_color.a <= 0.0 or Vfx.I == null or not hero.visible:
+		return
+	_aura_t -= dt
+	if _aura_t <= 0.0:
+		_aura_t = 0.08 if look_full else 0.35
+		var sc: String = look_schools[randi() % look_schools.size()] if not look_schools.is_empty() else ""
+		var col: Color = ArpgData.SCHOOL_COLORS.get(sc, look_color)
+		var tex := String(AURA_TEX.get(sc, "spark_05")) if look_full else "spark_05"
+		var ang := randf() * TAU
+		var off := Vector3(cos(ang) * randf_range(0.8, 1.2), randf_range(0.3, 1.9), sin(ang) * randf_range(0.8, 1.2))
+		if Vfx.I.room_for(1):
+			Vfx.I.pop(hero.global_position + off, tex, Color(col, 1.0), 0.8 if not look_full else 1.7, 0.15, 0.6, true, 0.0, 3.5)
+	if look_full:
+		_ring_t -= dt
+		if _ring_t <= 0.0:
+			_ring_t = 1.6
+			Vfx.I.ground(hero.global_position, "lm_circle_a", Color(look_color, 0.6), 1.2, 3.0, 0.8, true)
 
 
 func mikiri_window() -> float:
@@ -301,6 +372,7 @@ func soul_hit(a: Actor, dmg: float, from_dir: Vector3) -> bool:
 func _physics_process(dt: float) -> void:
 	if hero == null or not hero.alive or Feel.I == null or Feel.I.world_pause > 0.0:
 		return
+	_tick_look(dt)
 	_eye_t = maxf(_eye_t - dt, 0.0)
 	_wind_up = maxf(_wind_up - dt, 0.0)
 	lock_t = maxf(lock_t - dt, 0.0)
