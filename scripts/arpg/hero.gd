@@ -872,7 +872,7 @@ func _weapon_fx(s: AttackStep) -> void:
 				b.hero = self
 				b.dir = dir.rotated(Vector3.UP, deg_to_rad(0.0 if n == 1 else -24.0 + 12.0 * i))
 				b.step = s
-				b.pierce = 1
+				b.pierce = 2   # 数值联调：机器人和同图对比里连弩明显最弱（单体输出最低、成群时被围），穿透 1 → 2、伤害 ×1.12
 				b.life = s.reach / b.speed
 				b.crit = _roll_crit
 				get_parent().add_child(b)

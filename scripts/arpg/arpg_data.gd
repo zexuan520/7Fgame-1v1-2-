@@ -19,7 +19,7 @@ const WEAPONS := {
 	"staff": {"style": "五段，大开大合", "name": "齐眉棍", "desc": "五段，大开大合，把敌人打飞；收势扫堂把一圈人扫晕", "trait": "棍扫：每一棍多回 3 点气力，击退更远", "model": "staff", "len": 44.0, "dmg": 1.0, "price": 30},
 	"twin": {"style": "六段，双手轮着砍", "name": "鸳鸯双刀", "desc": "六段，两手轮着砍，最后两段旋身连斩", "trait": "刀势：砍中叠层，每层伤害 +4%（最多 10 层）", "model": "twin_blade", "offhand": "twin_blade", "len": 28.0, "dmg": 0.95, "price": 40},
 	"hammer": {"style": "三段，最慢最重", "name": "镇岳锤", "desc": "三段，最慢最重；后两锤砸地，第三锤震出三圈地波", "trait": "震荡：被砸中的敌人晕得更久（×1.8）", "model": "hammer", "len": 44.0, "dmg": 1.1, "price": 45},
-	"crossbow": {"style": "远程，四段连射", "name": "连弩", "desc": "远程：三发连射，第四段扇形连珠五箭；射击时略往后退", "trait": "游射：翻滚后的第一箭必定会心，弩箭穿透一个敌人", "model": "crossbow", "len": 30.0, "dmg": 1.0, "price": 45, "ranged": true},
+	"crossbow": {"style": "远程，四段连射", "name": "连弩", "desc": "远程：三发连射，第四段扇形连珠五箭；射击时略往后退", "trait": "游射：翻滚后的第一箭必定会心，弩箭穿透两个敌人", "model": "crossbow", "len": 30.0, "dmg": 1.12, "price": 45, "ranged": true},
 }
 
 ## 装备部位：护甲、头冠、靴子、护符（护符可以戴两件，第二件要在兵器架解锁“双佩”）。

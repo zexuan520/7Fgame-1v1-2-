@@ -1672,9 +1672,11 @@ func _affix_slot(w: Array) -> int:
 	var best_hp := -1.0
 	for j in range(0, w.size(), 2):
 		var k: String = w[j]
-		if not Foe.TYPES.has(k) or Foe.TYPES[k].has("aura") or Foe.TYPES[k].has("boss") or k in ["bomber", "lampkid"]:
+		# 第三幕的小怪在 Act3Foe.TYPES3 里（原来只查 Foe.TYPES，第三幕的精英房领头、深处那波常常一只词缀怪都没有）
+		var td: Dictionary = Foe.TYPES.get(k, Act3Foe.TYPES3.get(k, {}))
+		if td.is_empty() or td.has("aura") or td.has("boss") or td.has("phantom") or k in ["bomber", "lampkid", "lampnode"]:
 			continue
-		var hp := float(Foe.TYPES[k]["hp"])
+		var hp := float(td["hp"])
 		if hp > best_hp:
 			best_hp = hp
 			best = j
