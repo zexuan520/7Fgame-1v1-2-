@@ -18,6 +18,7 @@ var stun := 0.25               # 硬直时间
 var hitstop := -1.0            # < 0 时按重量取默认值
 var shake := -1                # < 0 时按重量取默认值
 var gain := 0.0                # 给攻击者回多少气
+var snd := ""                  # 命中音（空 = 按轻重用 hit / hit_heavy；锤棍 hit_blunt、枪 hit_pierce）
 var elem := ""                 # 敌人打主角的属性（fire/poison/water/magic/holy/thunder），决定挨打时冒什么颜色的特效
 
 

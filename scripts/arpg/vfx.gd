@@ -241,6 +241,28 @@ func dust(pos: Vector3, radius: float = 1.5, c: Color = Color(0.62, 0.66, 0.62, 
 	ground(pos, "lm_ring_b", Color(0.8, 0.85, 0.8, 0.45), radius * 0.5, radius * 2.4, 0.35, false)
 
 
+## 脚下一小团烟（跑步踩地、翻滚收脚）：往 dir 方向飘一点；低画质只出一团
+func puff(pos: Vector3, dir: Vector3, n: int = 1, c: Color = Color(0.6, 0.64, 0.6, 0.32)) -> void:
+	if lod == 0:
+		n = 1
+	if not room_for(n):
+		return
+	for i in range(n):
+		var p0 := Vector3(pos.x, 0.2, pos.z) + Vector3(randf_range(-0.2, 0.2), 0, randf_range(-0.2, 0.2))
+		var p1 := p0 + dir * randf_range(0.3, 0.7) + Vector3(0, randf_range(0.2, 0.45), 0)
+		var mi := _take()
+		var m := _mat(mi, false, "smoke_04", c, true)
+		var r0 := randf() * TAU
+		var s1 := randf_range(0.7, 1.0)
+		_run(mi, randf_range(0.4, 0.55), func(nd: MeshInstance3D, k: float) -> void:
+			var e := 1.0 - pow(1.0 - k, 2.0)
+			var s := lerpf(0.25, s1, e)
+			nd.transform = Transform3D(Basis(Vector3.BACK, r0 + k * 0.8).scaled(Vector3(s, s, s)), p0.lerp(p1, e))
+			var cc := c
+			cc.a = c.a * (1.0 - k)
+			m.set_shader_parameter("color", cc))
+
+
 ## 冲击环
 func shock_ring(pos: Vector3, c: Color, r0: float, r1: float, dur: float = 0.3) -> void:
 	ground(pos, "lm_ring_b", c, r0, r1, dur, true)

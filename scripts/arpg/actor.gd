@@ -84,6 +84,11 @@ func freeze(t: float) -> void:
 	freeze_t = maxf(freeze_t, t)
 
 
+## 打中别人时自己的顿帧（主角一刀只顿一次，见 Hero.self_stop）
+func self_stop(t: float) -> void:
+	freeze(t)
+
+
 ## 胸口位置（火花、伤害数字从这里冒）
 func chest() -> Vector3:
 	var h := 1.0

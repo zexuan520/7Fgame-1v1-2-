@@ -11,7 +11,7 @@ signal link_fired(id: String)
 @export var roll_time := 0.4
 @export var roll_dist := 5.2
 @export var roll_iframes := 0.26
-@export var buffer_time := 0.2
+@export var buffer_time := 0.25
 @export var combo: Array[AttackStep] = []
 ## 技能冷却（秒）
 @export var dash_cd := 3.5
@@ -28,6 +28,11 @@ var _hit_set := {}              # 这一段已经打到的敌人
 var _called := false            # 这一段已经弹过“N段!”
 var _buf_action := ""
 var _buf_t := 0.0
+var _atk_held := false           # 攻击键是这局里按下去的（按住连砍；菜单里按住带出来的不算）
+var _stop_used := false          # 这一刀已经让主角顿过帧了（一刀扫到一群时只顿一次，不卡手）
+var _lunge_len := 0.0            # 这一刀往前冲多远（有目标时贴过去，不冲过头）
+var _mikiri_cd := 0.0            # 见切冷却（成群的刀一起擦过时只触发一次）
+const MIKIRI_WINDOW := 0.2       # 翻滚开头这么久内躲开攻击算见切
 var _roll_dir := Vector3.ZERO
 var _ghost_t := 0.0
 var _phase := 0.0
@@ -354,6 +359,7 @@ func reset_for_run() -> void:
 func clear_buffer() -> void:
 	_buf_action = ""
 	_buf_t = 0.0
+	_atk_held = false
 
 
 func _ready_body() -> void:
@@ -433,7 +439,7 @@ func _physics_process_body(delta: float) -> void:
 		return
 	_tick_sets(dt)
 	_tick_skills(dt)
-	_read_buffer(delta)
+	_read_buffer(dt)
 	if dt <= 0.0:
 		move_with_knock(Vector3.ZERO, 0.0)
 		return
@@ -470,11 +476,20 @@ func _physics_process_body(delta: float) -> void:
 	_apply_pose(dt)
 
 
+## 输入缓冲按主角自己的时间走：顿帧、全屏停顿时不倒数，停顿里按的键停完照样出招（以前顿帧 0.15 秒就吃掉大半缓冲）。
+## 按住攻击键：缓冲空着时一直补“攻击”，连招自己接下去（手机上按住「斩」也一样）。
 func _read_buffer(delta: float) -> void:
 	for a: String in ["attack", "roll", "dash", "beam", "finish", "heal", "art", "swap", "item", "item_next"]:
 		if _pressed(a):
 			_buf_action = a
 			_buf_t = buffer_time
+			if a == "attack":
+				_atk_held = true
+	if _atk_held and not Input.is_action_pressed(_a("attack")):
+		_atk_held = false
+	if _atk_held and _buf_action == "" and state in ["move", "attack"]:
+		_buf_action = "attack"
+		_buf_t = 0.05
 	if _buf_t > 0.0:
 		_buf_t -= delta
 		if _buf_t <= 0.0:
@@ -591,6 +606,8 @@ func _st_move(dt: float) -> void:
 		if _step_snd <= 0.0:
 			_step_snd = 0.32
 			Game.sfx("step", -14.0, 0.1)
+			if sp > 0.7:
+				Vfx.I.puff(global_position - facing * 0.25, -_move.normalized())
 	else:
 		_target_pose(Poses.idle(_anim_t))
 	if CamRig.I != null:
@@ -614,6 +631,13 @@ func _start_attack(i: int) -> void:
 		face_to(d)
 	_lunge_dir = facing
 	var s: AttackStep = combo[i]
+	_stop_used = false
+	# 吸附：有目标时冲到刚好够得着的地方（远了多冲一点、近了少冲），不会冲过头站到怪背后
+	_lunge_len = s.lunge
+	if tgt != null and s.lunge > 0.0:
+		var gap := (tgt.global_position - global_position) * Vector3(1, 0, 1)
+		var want := gap.length() - tgt.radius - minf(s.reach * 0.45, 1.3)
+		_lunge_len = clampf(want, s.lunge * 0.3, s.lunge * 1.6)
 	_swap_strike = false
 	if OS.get_cmdline_user_args().has("--armslog"):
 		print("ARMS atk %s %d %s" % [weapon_id, i, s.label])
@@ -621,7 +645,16 @@ func _start_attack(i: int) -> void:
 	# 拖尾：按兵器上色，重击更亮更长、回旋斩最长；连弩不拖尾
 	trail.life = 0.3 if s.swing == "spin" else (0.2 if s.heavy else 0.15)
 	var tc := ArpgArms.trail(weapon_id)
-	trail.set_colors(tc[0], (tc[1] as Color).lightened(0.2) if s.heavy else tc[1])
+	var edge_c: Color = (tc[1] as Color).lightened(0.2) if s.heavy else tc[1]
+	# 连击越高刀光越烫：10 连青白、25 连金、50 连赤（和右边连击数的颜色一致），拖得也更长
+	var tier := -1
+	for ti in range(Feel.COMBO_TIERS.size()):
+		if Feel.I.combo >= int(Feel.COMBO_TIERS[ti][0]):
+			tier = ti
+	if tier >= 0:
+		edge_c = edge_c.lerp(Feel.COMBO_TIERS[tier][1], 0.65)
+		trail.life *= 1.0 + 0.15 * (tier + 1)
+	trail.set_colors(tc[0], edge_c)
 	if s.swing == "shoot":
 		trail.active = false
 	_move = Vector3.ZERO
@@ -660,7 +693,7 @@ func _st_attack(dt: float) -> void:
 	if t < s.startup + s.active:
 		var near := _nearest_ahead(1.1)
 		if not near:
-			lunge_v = _lunge_dir * s.lunge / (s.startup + s.active)
+			lunge_v = _lunge_dir * _lunge_len / (s.startup + s.active)
 	move_with_knock(lunge_v, dt)
 	_target_pose(Poses.swing(s.swing, su, ac, rc))
 	# 判定开始的那一帧放刀光
@@ -754,7 +787,8 @@ func _do_hits(s: AttackStep) -> void:
 			_link_mark("combo")
 		if _swap_strike:
 			ArpgAch.unlock("swap_hit")
-	if landed and not _called:
+	# 只给收招（最后一段）和换刃斩弹字，前几段不弹，免得一群“1段! 2段!”叠在人头上挡视线
+	if landed and not _called and (step_i == combo.size() - 1 or _swap_strike):
 		_called = true
 		var lbl := s.label if not _swap_strike else "换刃·%s" % String(ArpgData.weapon(weapon_id)["name"])
 		Feel.I.callout(head_top() + Vector3(0.6, 0.3, 0), lbl, Color(0.75, 1.0, 1.0), 0.9 if step_i < combo.size() - 1 else 1.2)
@@ -796,6 +830,13 @@ func _strike(a: Actor, s: AttackStep, k: float, force_crit: bool) -> bool:
 	if weapon_id == "hammer":
 		info.stun *= 1.8
 	info.gain = (6.0 if not s.heavy else 9.0) + (3.0 if weapon_id == "staff" else 0.0)
+	match weapon_id:
+		"hammer", "staff":
+			info.snd = "hit_blunt"
+		"spear":
+			info.snd = "hit_pierce"
+		"crossbow":
+			info.snd = "arrow_hit"
 	if s.swing == "shoot":
 		info.attacker = null    # 远程：主角不跟着顿帧
 		info.dir = to.normalized() if to.length() > 0.1 else facing
@@ -1082,6 +1123,7 @@ func _check_blood(a: Actor) -> void:
 ## 金身：每 10 秒凝一层金光（在 _physics_process 里调用）
 func _tick_sets(dt: float) -> void:
 	_wind_t = maxf(_wind_t - dt, 0.0)
+	_mikiri_cd = maxf(_mikiri_cd - dt, 0.0)
 	_iron_t = maxf(_iron_t - dt, 0.0)
 	for k: String in buffs.keys():
 		buffs[k] = float(buffs[k]) - dt
@@ -1710,6 +1752,7 @@ func _st_roll(dt: float) -> void:
 		_set_state("move")
 		_move = _roll_dir * move_speed * 0.7
 		_blend = 0.5
+		Vfx.I.puff(global_position + _roll_dir * 0.3, _roll_dir, 2)
 
 
 ## 雷纹靴：翻滚落地放一圈雷
@@ -1729,7 +1772,19 @@ func _roll_thunder() -> void:
 
 # ---------- 受击 ----------
 
+## 出刀打中别人时主角自己的顿帧：一刀只顿一次（第一下打中时），之后同一刀再扫到的怪只让怪停
+func self_stop(t: float) -> void:
+	if state == "attack":
+		if _stop_used:
+			return
+		_stop_used = true
+	freeze(t)
+
+
 func take_hit(info: HitInfo) -> bool:
+	if state == "roll" and iframes > 0.0 and alive:
+		_try_mikiri(info)
+		return false
 	info.damage *= taken_mult
 	if _mirror_t > 0.0:
 		info.damage *= 0.6   # 双修·明镜
@@ -1767,6 +1822,34 @@ func take_hit(info: HitInfo) -> bool:
 			_blend = 0.8
 		iframes = 0.35
 	return ok
+
+
+## 见切：翻滚刚起身（头 0.2 秒）就有敌人的刀、箭擦身而过。慢镜头 + 青光一闪，下一刀必会心，回一点气。
+## 地上的火、毒、机关不算（没有出手的人）。
+func _try_mikiri(info: HitInfo) -> void:
+	if _mikiri_cd > 0.0 or st_t > MIKIRI_WINDOW or info.attacker == null or not is_instance_valid(info.attacker) or info.attacker.team == team:
+		return
+	_mikiri_cd = 2.5
+	if OS.get_cmdline_user_args().has("--feellog"):
+		print("FEEL mikiri t=%.2f from=%s" % [st_t, info.attacker.get("kind")])
+	_wind_t = maxf(_wind_t, 1.6)
+	iframes = maxf(iframes, 0.3)
+	gain_energy(12.0)
+	Feel.I.slowmo(0.2, 0.5)
+	Feel.I.impact_frame(0.05)
+	Feel.I.screen_flash(Color(0.55, 0.9, 1.0, 0.3), 3.0)
+	Feel.I.callout(head_top() + Vector3(0, 0.2, 0), "见切", Color(0.6, 0.95, 1.0), 1.3)
+	var src := info.attacker.chest()
+	Vfx.I.cut_line(chest().lerp(src, 0.5), (src - chest()).rotated(Vector3.UP, PI / 2), 3.4, Color(1, 1, 1), 0.3, 0.16, Color(0.4, 0.9, 1.0))
+	Vfx.I.shock_ring(global_position, Color(0.5, 0.9, 1.0), 0.4, 4.2, 0.45)
+	Vfx.I.ghost(rig, Color(0.6, 0.95, 1.0), 0.6)
+	Vfx.I.pop(chest(), "flare_01", Color(0.6, 0.95, 1.0), 1.0, 4.0, 0.3, true, 0.0, 2.0)
+	CamRig.I.punch_zoom(0.35, 0.3)
+	Game.sfx("mikiri", -2.0, 0.03)
+	ArpgAch.add("mikiri")
+	var am := get_tree().current_scene as ArpgMain
+	if am != null and am.hints != null:
+		am.hints.show("mikiri")
 
 
 ## 挨打后的装备效果：荆棘甲反弹、灵纹袍回气、不动套反震

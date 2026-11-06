@@ -145,6 +145,23 @@ var _sq := 0.0
 var _sq_t := 1.0
 
 
+## 受击后仰：人偶顺着挨打的方向歪一下再弹回来（dir 是世界空间的打击方向，amt 弧度）
+var _rec := Vector3.ZERO      # 人偶自己坐标里的歪倒方向 × 角度
+var _rec_t := 1.0
+
+
+func recoil(dir: Vector3, amt: float) -> void:
+	var p := get_parent() as Node3D
+	var d := dir
+	if p != null:
+		d = p.global_transform.basis.inverse() * dir
+	d.y = 0
+	if d.length_squared() < 0.0001:
+		return
+	_rec = d.normalized() * amt
+	_rec_t = 0.0
+
+
 func squash(amount: float) -> void:
 	_sq = maxf(amount, _sq * maxf(0.0, 1.0 - _sq_t * 4.0))
 	_sq_t = 0.0
@@ -164,6 +181,12 @@ func tick_flash(dt: float) -> void:
 		if _sq_t < 0.5:
 			a = _sq * exp(-_sq_t * 9.0) * cos(_sq_t * 34.0)
 		scale = Vector3(1.0 + a * 0.6, 1.0 - a, 1.0 + a * 0.6)
+	if _rec_t < 0.6:
+		_rec_t += dt
+		var r := _rec * exp(-_rec_t * 7.0) * cos(_rec_t * 15.0) if _rec_t < 0.6 else Vector3.ZERO
+		# 小角度：绕 x 转让头往 +z 倒，绕 z 转让头往 -x 倒
+		rotation.x = r.z
+		rotation.z = -r.x
 
 
 ## 模型空间（格）→ body 节点空间（米）：模型 +x 朝前 → -z，+z 朝右 → +x

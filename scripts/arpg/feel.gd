@@ -26,6 +26,10 @@ var combo := 0
 var _combo_t := 0.0
 var _combo_punch := 0.0
 var _combo_lbl: Label
+var _frame := -1                  # 同一物理帧里第几下命中（一刀扫中一群：镜头、火花只算头两下，不叠成一大坨）
+var _frame_hits := 0
+var _impact := 0.0                # 冲击帧剩余时间（全屏黑白一两帧）
+var _impact_cd := 0.0
 
 
 func _ready() -> void:
@@ -51,6 +55,12 @@ func on_hit(info: HitInfo) -> bool:
 		_combo_add()
 	elif tgt.team == 0:
 		_combo_break()
+	var pf := Engine.get_physics_frames()
+	if pf != _frame:
+		_frame = pf
+		_frame_hits = 0
+	_frame_hits += 1
+	var extra := _frame_hits > 2        # 同一帧第三下以后：只出伤害数字、小火花，镜头不再推
 	var hs: float = info.hitstop if info.hitstop >= 0.0 else HITSTOP[w]
 	# 伤害越高顿得越久（最多再加 40%）；连段越长每一下也略沉一点
 	hs *= 1.0 + clampf(info.damage / 120.0, 0.0, 0.4)
@@ -62,14 +72,16 @@ func on_hit(info: HitInfo) -> bool:
 		hs = maxf(hs, HITSTOP[1] * 1.2)
 	tgt.freeze(hs)
 	if info.attacker != null:
-		info.attacker.freeze(hs * 0.9)
+		info.attacker.self_stop(hs * 0.9)
 	# 受击挤压：压扁再弹回
 	if tgt.rig != null:
 		tgt.rig.squash((0.16 if w == 0 else 0.26) * (0.45 if boss else 1.0) * (1.3 if info.crit else 1.0))
 		if tgt.team == 0:
 			tgt.rig.flash(0.12, Color(1.0, 0.35, 0.35))
+		# 后仰：顺着刀的方向歪一下（头目只歪一点，主角挨打也歪）
+		tgt.rig.recoil(info.dir, (0.16 if w == 0 else 0.28) * (0.35 if boss else 1.0) * (1.25 if info.crit else 1.0) * (0.7 if tgt.team == 0 else 1.0))
 	var sl: int = info.shake if info.shake >= 0 else w
-	if CamRig.I != null:
+	if CamRig.I != null and not extra:
 		CamRig.I.shake(sl, 1.0 + clampf(info.damage / 150.0, 0.0, 0.6))
 		# 定向冲击：镜头顺着打击方向推一下（挨打时更猛，让玩家“疼”）
 		var kick: float = [0.06, 0.13, 0.2][w] * (1.4 if tgt.team == 0 else 1.0) * (1.3 if info.crit else 1.0)
@@ -83,22 +95,19 @@ func on_hit(info: HitInfo) -> bool:
 		elif boss:
 			spark_col = (tgt as Foe).fx_color()
 		Vfx.I.hit_spark(info.point, w >= 1, info.crit)
-		Vfx.I.streaks(info.point, info.dir, spark_col if not info.crit else Color(1.0, 0.95, 0.6),
-			3 + w * 2 + (2 if info.crit else 0), 1.1 + 0.5 * w, 0.12 + 0.03 * w)
-		if info.crit:
-			Vfx.I.sheet("crit-hit", info.point - Vector3(0, 0.7, 0), 3.3, Color(1, 1, 1), 2.2)
-			Vfx.I.cut_line(info.point, info.dir.rotated(Vector3.UP, PI / 2) + Vector3.UP * 0.6, 3.0, Color(1, 1, 0.85), 0.16, 0.16, Color(1.0, 0.8, 0.3))
-		elif w >= 1 or boss:
-			Vfx.I.sheet("hit-spark", info.point - Vector3(0, 0.4, 0), 1.6, Color(1, 1, 1), 2.0, false, 0.0, 1.4)
-		if w >= 1 and hero_hit:
-			Vfx.I.scar(tgt.global_position - info.dir * 0.3, info.dir, 1.4 + 0.4 * w)
-		var chip_col := Color(0.92, 0.9, 0.82) if tgt.team == 1 else Color(0.9, 0.15, 0.2)
-		Vfx.I.chips(info.point, info.dir + Vector3.UP * 0.3, chip_col, 5 + 4 * w, 5.0 + 2.0 * w)
+		if hero_hit:
+			_weapon_fx(info, w)
+		if extra:
+			Vfx.I.chips(info.point, info.dir + Vector3.UP * 0.3, Color(0.92, 0.9, 0.82) if tgt.team == 1 else Color(0.9, 0.15, 0.2), 3, 5.0)
+		else:
+			_hit_fx(info, tgt, w, boss, hero_hit, spark_col)
 	if Game.show_damage:
 		var col := Color(1.0, 0.86, 0.3) if info.crit else (Color(1, 1, 1) if tgt.team == 1 else Color(1.0, 0.3, 0.3))
 		number(info.point, "%d" % int(round(info.damage)), col, 1.45 if info.crit else 1.0, info.crit)
 	# 声音：命中音随连段慢慢升调（最多高 3 个半音），会心叠一声刀鸣，击杀叠一记闷响
 	var snd := "hit_heavy" if w >= 1 or info.crit else "hit"
+	if info.snd != "":
+		snd = info.snd
 	var pitch := 1.0 + (minf(combo, 30) / 30.0 * 0.19 if hero_hit else 0.0)
 	Game.sfx(snd, -3.0 if w < 1 else 0.0, 0.08, pitch)
 	if info.crit:
@@ -110,6 +119,48 @@ func on_hit(info: HitInfo) -> bool:
 	return true
 
 
+## 一下命中的冲击线、会心字、地面刀痕、碎块（同一帧头两下才放）
+func _hit_fx(info: HitInfo, tgt: Actor, w: int, boss: bool, hero_hit: bool, spark_col: Color) -> void:
+	Vfx.I.streaks(info.point, info.dir, spark_col if not info.crit else Color(1.0, 0.95, 0.6),
+		3 + w * 2 + (2 if info.crit else 0), 1.1 + 0.5 * w, 0.12 + 0.03 * w)
+	if info.crit:
+		Vfx.I.sheet("crit-hit", info.point - Vector3(0, 0.7, 0), 3.3, Color(1, 1, 1), 2.2)
+		Vfx.I.cut_line(info.point, info.dir.rotated(Vector3.UP, PI / 2) + Vector3.UP * 0.6, 3.0, Color(1, 1, 0.85), 0.16, 0.16, Color(1.0, 0.8, 0.3))
+	elif w >= 1 or boss:
+		Vfx.I.sheet("hit-spark", info.point - Vector3(0, 0.4, 0), 1.6, Color(1, 1, 1), 2.0, false, 0.0, 1.4)
+	if w >= 1 and hero_hit:
+		Vfx.I.scar(tgt.global_position - info.dir * 0.3, info.dir, 1.4 + 0.4 * w)
+	var chip_col := Color(0.92, 0.9, 0.82) if tgt.team == 1 else Color(0.9, 0.15, 0.2)
+	Vfx.I.chips(info.point, info.dir + Vector3.UP * 0.3, chip_col, 5 + 4 * w, 5.0 + 2.0 * w)
+
+
+## 兵器手感：锤、棍砸出一圈尘土和更大的碎块，枪一下扎穿（顺着刺的方向拉出一道穿透光），弩箭钉进去冒木屑
+func _weapon_fx(info: HitInfo, w: int) -> void:
+	match info.snd:
+		"hit_blunt":
+			var gp := Vector3(info.target.global_position.x, 0.0, info.target.global_position.z)
+			if w >= 1 or _frame_hits == 1:
+				Vfx.I.dust(gp, 1.0 + 0.5 * w, Color(0.55, 0.5, 0.42, 0.5))
+			Vfx.I.pop(info.point, "circle_05", Color(1.0, 0.85, 0.6), 0.4, 1.6 + 0.6 * w, 0.12, true, 0.0, 2.5)
+			Vfx.I.chips(info.point, Vector3.UP + info.dir * 0.4, Color(0.8, 0.78, 0.7), 3 + 2 * w, 6.5, 0.13)
+		"hit_pierce":
+			var p := info.point + info.dir * 0.6
+			Vfx.I.cut_line(p, info.dir, 2.6 + 0.8 * w, Color(1, 1, 1), 0.14, 0.12, Color(1.0, 0.75, 0.4))
+			Vfx.I.streaks(p + info.dir * 0.4, info.dir, Color(1.0, 0.85, 0.55), 2 + w, 1.6, 0.12, 0.12, 0.1)
+		"arrow_hit":
+			Vfx.I.chips(info.point, -info.dir + Vector3.UP * 0.5, Color(0.55, 0.42, 0.28), 3, 4.0, 0.06)
+
+
+## 冲击帧：全屏一两帧变成黑白高反差（动漫式“定格”），t 秒；一秒内最多一次，免得闪个不停
+func impact_frame(t: float = 0.05) -> void:
+	if _impact_cd > 0.0 or not bool(Game.settings.get("impact_frames", true)):
+		return
+	_impact = t
+	_impact_cd = 1.0
+	if OS.get_cmdline_user_args().has("--feellog"):
+		print("FEEL impact %.2f post=%s" % [t, post != null])
+
+
 ## 敌人倒下（Foe.die 调）：斩线 + 放射线；精英、一波最后一个、头目会短暂慢镜头
 func on_kill(f: Foe, impulse: Vector3) -> void:
 	var p := f.chest()
@@ -117,6 +168,8 @@ func on_kill(f: Foe, impulse: Vector3) -> void:
 	if f.is_boss:
 		# 倒下：先定格一瞬，再慢镜头、镜头特写、上下黑边
 		pause_world(0.3)
+		_impact_cd = 0.0
+		impact_frame(0.09)
 		slowmo(0.15, 1.6)
 		CamRig.I.close_up(f, 2.2, 0.85)
 		if Hud3D.I != null:
@@ -133,10 +186,12 @@ func on_kill(f: Foe, impulse: Vector3) -> void:
 	if last:
 		# 清完一波：慢镜头 + 拉近，给玩家一口气
 		slowmo(0.22, 0.55)
+		impact_frame(0.05)
 		CamRig.I.punch_zoom(0.55, 0.45)
 		screen_flash(Color(1, 1, 1, 0.25), 3.0)
 	elif elite:
 		slowmo(0.35, 0.22)
+		impact_frame(0.04)
 		CamRig.I.punch_zoom(0.35, 0.18)
 
 
@@ -270,7 +325,9 @@ func _process(dt: float) -> void:
 
 func _process_body(dt: float) -> void:
 	# dt 已经乘过 Engine.time_scale；慢镜头本身要按真实时间走
-	_tick_slow(dt / maxf(Engine.time_scale, 0.01))
+	var real_dt := dt / maxf(Engine.time_scale, 0.01)
+	_tick_slow(real_dt)
+	_impact_cd = maxf(_impact_cd - real_dt, 0.0)
 	_tick_combo(dt)
 	world_pause = maxf(world_pause - dt, 0.0)
 	var cam := get_viewport().get_camera_3d()
@@ -310,3 +367,5 @@ func _process_body(dt: float) -> void:
 		post.set_shader_parameter("flash", _flash)
 		_hurt = maxf(_hurt - dt * 1.5, 0.0)
 		post.set_shader_parameter("hurt", _hurt)
+		post.set_shader_parameter("impact", 1.0 if _impact > 0.0 else 0.0)
+		_impact = maxf(_impact - real_dt, 0.0)

@@ -99,6 +99,8 @@ const LIST := [
 	["lv_10", "十重悟道", "一局里悟道到第十重", false],
 	["branch_max", "一招通透", "把一条技能分支点满三级", false],
 	["link_1", "招招相连", "第一次打出连携", false],
+	["mikiri", "见切", "翻滚的一瞬间躲开敌人的刀箭，打出见切", false],
+	["mikiri_30", "刀下留影", "累计打出 30 次见切", false],
 	["link_all", "七式俱通", "瞬狱、残月、焚血、天落、血步、风雷、归一七种连携都打出过", false],
 	["art_all", "四门秘技", "旋风、飞轮、震岳、分身四种秘技都学过", false],
 	["dual_any", "双修", "一局里凑成一种双修", false],
@@ -133,6 +135,7 @@ const STAT_GOALS := {
 	"k_eel": [[15, "eel_15"]],
 	"k_affix": [[30, "affix_30"]],
 	"prop_use": [[20, "prop_20"]],
+	"mikiri": [[1, "mikiri"], [30, "mikiri_30"]],
 }
 
 static var on_unlock: Callable      # func(id: String, name: String, desc: String)
