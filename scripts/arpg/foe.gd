@@ -1731,6 +1731,8 @@ func take_hit(info: HitInfo) -> bool:
 				info.damage *= 0.15
 				info.knock *= 0.3
 				Vfx.I.pop(chest() - info.dir * 0.4, "spark_05", Color(0.8, 0.9, 1.0), 0.4, 1.8, 0.14)
+				if Vfx.I.room_for(1):
+					Vfx.I.sheet("parry", global_position - info.dir * 0.4 + Vector3(0, 0.3, 0), 2.4, Color(1, 1, 1), 1.6, false, 0.0, 1.5)
 				Feel.I.callout(head_top(), "格", Color(0.75, 0.85, 1.0), 0.5)
 				Game.sfx("block", -5.0)
 	var ok := super.take_hit(info)

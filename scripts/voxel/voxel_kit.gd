@@ -5,6 +5,14 @@ extends RefCounted
 
 const DIR := "res://assets/voxel/kit/%s.json"
 const DIM := 0.85          # KayKit 原色偏亮、像玩具，压暗一点配暗色光照
+## 个别件再压暗 / 换色（中世纪包的山石是很亮的浅灰，放进暗色场景像发光）
+const TINT := {
+	"rock_a": Color(0.62, 0.64, 0.66), "rock_b": Color(0.62, 0.64, 0.66), "rock_c": Color(0.62, 0.64, 0.66),
+	"rock_d": Color(0.62, 0.64, 0.66), "rock_e": Color(0.62, 0.64, 0.66), "stones": Color(0.7, 0.7, 0.72),
+	"skull": Color(0.8, 0.78, 0.72), "bone_a": Color(0.8, 0.78, 0.72), "bone_b": Color(0.8, 0.78, 0.72), "bone_c": Color(0.8, 0.78, 0.72),
+	"tree_a": Color(0.7, 0.78, 0.7), "tree_b": Color(0.7, 0.78, 0.7),
+	"reeds_a": Color(0.45, 0.62, 0.6), "reeds_b": Color(0.45, 0.62, 0.6),
+}
 
 ## 会发光的件：[相对底面中心的位置（以件的高度为 1）, 颜色, 半径]
 const LIGHTS := {
@@ -62,10 +70,11 @@ static func _make(id: String, sliced: bool) -> Dictionary:
 	var vs := float(d.get("vs", 2.0))
 	var g := VoxelGrid.new(1)
 	var v: Array = d["vox"]
+	var t: Color = TINT.get(id, Color.WHITE)
 	for i in range(0, v.size(), 6):
 		if sliced and (i % 3072) == 0 and VoxelWarm.over():
 			await VoxelWarm.pause()
-		g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3] * DIM), int(v[i + 4] * DIM), int(v[i + 5] * DIM))
+		g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3] * DIM * t.r), int(v[i + 4] * DIM * t.g), int(v[i + 5] * DIM * t.b))
 	var sz: Array = d["size"]
 	var size := Vector3(float(sz[0]), float(sz[1]), float(sz[2])) * vs
 	var light := []

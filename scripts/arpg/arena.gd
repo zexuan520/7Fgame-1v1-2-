@@ -92,6 +92,9 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 			_dress_more()
 	LoadProf.add("arena.dress", _lp)
 	_lp = LoadProf.t()
+	TerrainDress.apply(self)   # 地形层：墙外边坡、地面碎件、场中石丛、每层专属摆设
+	LoadProf.add("arena.terrain", _lp)
+	_lp = LoadProf.t()
 	_atmosphere()
 	LoadProf.add("arena.atmosphere", _lp)
 	_clear_doorways()

@@ -166,6 +166,9 @@ func _ready() -> void:
 			var p := hero.global_position + Vector3(-9.0 + (i % 5) * 4.5, 0, -7.5 + (i / 5) * 6.0)
 			vfx.sheet(ids[i], p, 3.0, Color.WHITE, 1.6, false, 30.0, float(_args["fxtest"]) if _args["fxtest"] != "1" else 1.0)
 			vfx.shock_ring(p, Color.RED, 0.2, 0.3, 30.0)
+	if _args.has("feeltest"):
+		# 测试：--feeltest=mikiri|impact 在 --feel_t 秒（默认 4）时触发见切 / 冲击帧，配 --shot 拍图
+		_feel_t = float(_args.get("feel_t", "4.0"))
 	if _args.has("secret") and is_instance_valid(_secret):
 		# 测试：站到裂墙旁边，清场后自动砍三刀
 		_place_hero(_secret.global_position + Vector3(-signf(_secret.global_position.x) * 1.8, 0, 0.5), Vector3(signf(_secret.global_position.x), 0, 0))
@@ -381,6 +384,20 @@ func _arms_menu_test(kind: String) -> void:
 		_:
 			_open_bag()
 
+
+var _feel_t := 0.0
+
+
+func _feel_test() -> void:
+	match String(_args["feeltest"]):
+		"mikiri":
+			var foes := get_tree().get_nodes_in_group("foes")
+			if not foes.is_empty() and is_instance_valid(hero):
+				hero._start_roll()
+				hero.take_hit(HitInfo.make(foes[0], hero, 5.0))
+		"impact":
+			feel._impact_cd = 0.0
+			feel.impact_frame(0.5)
 
 func _parse_args() -> void:
 	for a: String in OS.get_cmdline_user_args():
@@ -3478,7 +3495,8 @@ func _open_pause(sel: Variant = 0) -> void:
 		{"id": "music", "title": "音乐音量", "right": pct.call("music"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
 		{"id": "sfx", "title": "音效音量", "right": pct.call("sfx"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
 		{"id": "quality", "title": "画质", "right": QUALITY_NAMES[quality], "desc": "低：关阴影和辉光，降低渲染分辨率，适合网页和轻薄本"},
-		{"id": "diff", "title": "难度", "right": ArpgState.DIFF_NAMES[ArpgState.difficulty()], "desc": ArpgState.DIFF_DESC[ArpgState.difficulty()]}]
+		{"id": "diff", "title": "难度", "right": ArpgState.DIFF_NAMES[ArpgState.difficulty()], "desc": ArpgState.DIFF_DESC[ArpgState.difficulty()]},
+		{"id": "impact", "title": "冲击帧", "right": "开" if bool(Game.settings.get("impact_frames", true)) else "关", "desc": "清完一波、斩精英、见切时整屏黑白定格一瞬；对闪光敏感可以关掉"}]
 	if TouchPad.active:
 		items.insert(5, {"id": "touchsize", "title": "按键大小", "right": TouchPad.SIZE_NAMES[TouchPad.size_i], "desc": "右下角触屏按键的大小（小 → 中 → 大）"})
 	items.append({"id": "ach", "title": "成就", "right": "%d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], "desc": "看看做到了哪些"})
@@ -3516,6 +3534,11 @@ func _on_pause_chosen(i: int) -> void:
 			Game.settings["quality"] = quality
 			Game.write_settings()
 			_fps_checked = true
+			Game.sfx("coin")
+			_open_pause(id)
+		"impact":
+			Game.settings["impact_frames"] = not bool(Game.settings.get("impact_frames", true))
+			Game.write_settings()
 			Game.sfx("coin")
 			_open_pause(id)
 		"touchsize":
@@ -3924,6 +3947,9 @@ func _process_body(dt: float) -> void:
 			var a := f as Foe
 			out.append("%s hp%d %s %s alive%s" % [a.kind, int(a.hp), a.state, str(a.global_position.snapped(Vector3.ONE * 0.1)), a.alive])
 		print("wp=%.2f menu=%s cam=%s t=%d %s done=%s wd=%.2f wi=%d alive=%s hero=%s %s foes=%s" % [feel.world_pause, is_instance_valid(_menu), str(cam_rig.cam.global_position.snapped(Vector3.ONE*0.1)) if cam_rig.cam else "", int(_clock), mode, _room_done, _wave_delay, wave_i, hero.alive, str(hero.global_position.snapped(Vector3.ONE * 0.1)), hero.state, out])
+	if _feel_t > 0.0 and _clock >= _feel_t:
+		_feel_t = 0.0
+		_feel_test()
 	if not _shots.is_empty() and _clock >= _shots[0]:
 		_shots.pop_front()
 		var img := get_viewport().get_texture().get_image()
