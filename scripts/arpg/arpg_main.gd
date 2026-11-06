@@ -71,6 +71,7 @@ var _room_hits0 := 0           # 进这间房时挨过几下（成就“片叶�
 
 
 func _ready() -> void:
+	var _lp0 := Time.get_ticks_usec()
 	ArpgInput.setup()
 	Foe.tokens = 0
 	_rng.randomize()
@@ -84,7 +85,10 @@ func _ready() -> void:
 		Game.save.erase("arpg_hints_off")
 	if _args.has("pad"):
 		ArpgInput.pad_used[0] = true   # 测试：按键提示写成手柄的
-	VoxelGrid.greedy = not _args.has("nogreedy")   # 测试：逐格画（对比合并面前后的三角形数）
+	VoxelGrid.greedy = not _args.has("nogreedy")
+	VoxelGrid.fast = not _args.has("slowmesh")   # 测试：用老的合网格写法（对比快多少）
+	if _args.has("batchmax"):
+		Arena.batch_max = int(_args["batchmax"])   # 测试：合批的顶点上限（0 = 不合批，很大 = 全并，老做法）   # 测试：逐格画（对比合并面前后的三角形数）
 	if _args.has("diff"):
 		Game.save["arpg_diff"] = clampi(int(_args["diff"]), 0, 1)   # 测试：不写存档，只改这次
 	if _args.has("cyclemax"):
@@ -96,7 +100,24 @@ func _ready() -> void:
 		Game.save["arpg_act3_endings"] = {"true": true}   # 测试：当成看过第三幕真结局（不写存档）
 	if _args.has("storytest"):
 		_story_test_save(String(_args["storytest"]))
+	LoadProf.on = _args.has("loadprof")
+	if _args.has("goafter"):
+		# 测试：标题 / 山门停几秒（让后台预拼跑一会儿）再自动往下走，量进第一间房要多久；--goafter=秒[,秒]
+		var ts := String(_args["goafter"]).split(",")
+		var acc := 0.0
+		for t: String in ts:
+			acc += float(t)
+			get_tree().create_timer(acc).timeout.connect(_test_go)
+	if _args.has("warmrec"):
+		# 工具：记下这次进的房间用到了哪些体素件（tools/gen_warm_list.sh）
+		VoxelKit.record = {}
+		VoxelModel.record = {}
+		get_tree().create_timer(float(_args.get("warmrec_t", "5.0"))).timeout.connect(_dump_warm_record)
+	if LoadProf.on:
+		print("loadprof: engine→_ready %d ms" % Time.get_ticks_msec())
+	var _lp := LoadProf.t()
 	_setup_world()
+	LoadProf.add("main.setup_world", _lp)
 	apply_quality(_initial_quality())
 	if _args.has("perf") and get_node_or_null("PerfProbe") == null:
 		var pp := PerfProbe.new()
@@ -397,6 +418,8 @@ func apply_quality(q: int) -> void:
 	# 体素网格：低画质颜色分档粗一些、角色用半分辨率（之后新建的网格生效，缓存按档分开）
 	VoxelGrid.quant = 24.0 if quality == 0 else 64.0
 	VoxelModel.coarse = quality == 0
+	if VoxelWarm.I != null:
+		VoxelWarm.I.forget()   # 换了画质，缓存按档分开，之前预拼的那档不算数，下次进房再排
 	vfx.lod = quality
 	Arena.lod = quality
 	sun.shadow_enabled = quality >= 2
@@ -565,6 +588,10 @@ func _setup_world() -> void:
 	secrets = ArpgSecrets.new()
 	secrets.main = self
 	add_child(secrets)
+	if not _args.has("nowarm") and not _args.has("warmrec"):
+		var w := VoxelWarm.new()
+		w.name = "VoxelWarm"
+		add_child(w)
 
 
 func _apply_zone_env(info: Dictionary) -> void:
@@ -616,7 +643,9 @@ func _build_arena(zone_id: String, seed_value: int, sz: Vector2, side_plans: Arr
 	arena.doors = side_plans
 	add_child(arena)
 	var _bt := Time.get_ticks_msec()
+	var _lp := LoadProf.t()
 	arena.build(zone_id, seed_value, sz)
+	LoadProf.add("arena.build", _lp)
 	if _args.has("dbg"):
 		print("arena build ms ", Time.get_ticks_msec() - _bt)
 	if _args.has("bench"):
@@ -630,6 +659,7 @@ func _build_arena(zone_id: String, seed_value: int, sz: Vector2, side_plans: Arr
 	_apply_zone_env(arena.zone_info())
 	cam_rig.bounds = Rect2(-sz.x * 0.5 + 6.0, -sz.y * 0.5 + 2.0, sz.x - 12.0, sz.y - 6.5)   # 靠镜头那边多收一点，别拍到墙外
 	side_rooms.clear()
+	_lp = LoadProf.t()
 	for pl: Dictionary in side_plans:
 		var sr := SideRoom.new()
 		sr.main = self
@@ -641,6 +671,7 @@ func _build_arena(zone_id: String, seed_value: int, sz: Vector2, side_plans: Arr
 		var r := sr.rect
 		var cr := Rect2(r.position.x + 4.0, r.position.y + 2.0, maxf(r.size.x - 8.0, 0.1), maxf(r.size.y - 6.0, 0.1))
 		cam_rig.bounds = cam_rig.bounds.merge(cr)
+	LoadProf.add("side_rooms", _lp)
 
 
 ## 主角：死过一次（人偶碎了）或者还没有，就新做一个
@@ -649,9 +680,11 @@ func _ensure_hero() -> void:
 		return
 	if is_instance_valid(hero):
 		hero.queue_free()
+	var _lp := LoadProf.t()
 	hero = Hero.new()
 	hero.name = "Hero"
 	add_child(hero)
+	LoadProf.add("hero.new", _lp)
 	hero.died.connect(_on_hero_died)
 	hero.link_fired.connect(_on_link)
 	cam_rig.target = hero
@@ -673,7 +706,19 @@ func _place_hero(p: Vector3, face: Vector3 = Vector3(0, 0, -1)) -> void:
 # ---------- 标题 ----------
 
 func _enter_title() -> void:
+	var _lp := LoadProf.t()
+	_enter_title_body()
+	LoadProf.add("enter_title", _lp)
+	LoadProf.report("标题")
+
+
+func _enter_title_body() -> void:
 	mode = "title"
+	if VoxelWarm.I != null:
+		# 看标题的这几秒：先拼角色模型和第一层（山门、第一层都是幽林）
+		VoxelWarm.I.queue_models()
+		VoxelWarm.I.queue_zone("forest")
+		VoxelWarm.I.queue_zone("sakura")
 	_clear_scene()
 	_build_arena("sakura", 7, Vector2(30, 22))
 	_ensure_hero()
@@ -752,7 +797,15 @@ var _hag_tag := 0   # 拾骨婆天赋标语这次用哪一句，每回山门换�
 
 
 func _enter_hub() -> void:
+	var _lp := LoadProf.t()
+	_enter_hub_body()
+	LoadProf.add("enter_hub", _lp)
+	LoadProf.report("山门")
+
+
+func _enter_hub_body() -> void:
 	mode = "hub"
+	_warm_hub()
 	Game.clear_checkpoint()   # 回到山门，这一局就结束了
 	_hag_tag = randi() % ArpgStory.HAG_TAGS.size()
 	state = null
@@ -1316,7 +1369,16 @@ func _tel_print(what: String) -> void:
 
 ## 进当前房间（kind 为空时按地图上的房间类型）
 func _enter_room(kind: String = "", zone_override: String = "") -> void:
+	var _lp := LoadProf.t()
+	_enter_room_body(kind, zone_override)
+	LoadProf.add("enter_room", _lp)
+	if LoadProf.on:
+		get_tree().create_timer(4.0).timeout.connect(func() -> void: LoadProf.report("房间 %s（含 4 秒内刷怪）" % room_kind))
+
+
+func _enter_room_body(kind: String = "", zone_override: String = "") -> void:
 	mode = "room"
+	_warm_ahead()
 	_clear_scene()
 	_ensure_hero()
 	_tel = {"t": 0.0, "dmg0": hero.dmg_total}
@@ -1821,6 +1883,7 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 		return
 	var fl := state.floor_i() if state != null else 0
 	var row := state.run.row if state != null else 0
+	var _lp := LoadProf.t()
 	var f: Foe = FinaleFoe.new() if kind == "boss10" else (Act3Foe.new() if Act3Foe.TYPES3.has(kind) else Foe.new())
 	# 越往后的房间越硬；头目不吃“第几间”的加成（它总在最后一间，原来白白多了 28% 血、21% 伤害，是整层最大的难度尖刺）
 	var rk := 0 if kind.begins_with("boss") else row
@@ -1847,6 +1910,7 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 		_trial.dress_foe(f)
 	f.global_position = p
 	f.face_to(hero.global_position - p)
+	LoadProf.add("foe.spawn", _lp)
 	f.detect_mult = 1.6   # 波次刷的怪一出来就该找人，大房间里别在角落发呆
 	f.dropped.connect(_on_drop.bind(kind))
 	if not f.affixes.is_empty():
@@ -3720,6 +3784,100 @@ func _game_over(won: bool, ending: String = "") -> void:
 
 # ---------- 每帧 ----------
 
+# ---------- 后台预拼（VoxelWarm） ----------
+
+## 每帧给后台预拼多少时间：打架时不给；看标题、开着菜单或对话框时多给；山门里、清完房以后少给一点。
+## 按上一帧的时长按比例给（慢机器上一帧本来就长，给固定几毫秒会拼得太慢）：
+## 空闲时最多让帧数掉一半，平静时掉四分之一左右
+const WARM_IDLE := [0.5, 14000, 120000]   # [占上一帧的比例, 最少微秒, 最多微秒]
+const WARM_CALM := [0.25, 6000, 40000]
+
+
+func _warm_budget(dt: float) -> void:
+	if VoxelWarm.I == null:
+		return
+	var w: Array = []
+	if _going:
+		w = []
+	elif mode == "title" or _menu != null or not _no_dialog():
+		w = WARM_IDLE
+	elif mode == "hub" or mode == "over":
+		w = WARM_CALM
+	elif mode == "room" and (_room_done or get_tree().get_node_count_in_group("foes") == 0 and _wave_delay > 0.3):
+		w = WARM_CALM
+	VoxelWarm.budget_us = 0 if w.is_empty() else clampi(int(dt * 1.0e6 * float(w[0])), int(w[1]), int(w[2]))
+	if LoadProf.on and int(_clock) != int(_clock - dt) and int(_clock) % 2 == 0:
+		print("loadprof: t=%d %s going=%s wp=%.2f menu=%s fps=%d 预拼预算=%dus 已完成=%d 排队=%d 在做=%s" % [int(_clock), mode, _going, feel.world_pause, _menu != null, Engine.get_frames_per_second(), VoxelWarm.budget_us, VoxelWarm.I.done_n, VoxelWarm.I._queue.size(), VoxelWarm.I._busy])
+
+
+## 山门：每一幕的第一层（开出来的）和第一层头目房
+func _warm_hub() -> void:
+	if VoxelWarm.I == null:
+		return
+	VoxelWarm.I.queue_zone_first("forest")
+	VoxelWarm.I.queue_zone("sakura")
+	VoxelWarm.I.queue_models()
+	if act2_open():
+		VoxelWarm.I.queue_zone(ArpgState.FLOOR_ZONES[3])
+	if not (Game.save.get("arpg_act2_endings", {}) as Dictionary).is_empty():
+		VoxelWarm.I.queue_zone(ArpgState.FLOOR_ZONES[6])
+
+
+## 进房间：这一层的区域先（一般已经拼好），再这一层头目房、下一层
+func _warm_ahead() -> void:
+	if VoxelWarm.I == null or state == null:
+		return
+	var g := state.gfloor()
+	VoxelWarm.I.queue_zone_first(state.zone())
+	VoxelWarm.I.queue_zone(state.boss_zone())
+	if g + 1 < ArpgState.FLOOR_ZONES.size() and state.floor_i() < state.last_floor():
+		VoxelWarm.I.queue_zone(ArpgState.FLOOR_ZONES[g + 1])
+		VoxelWarm.I.queue_zone(ArpgState.BOSS_ZONES[g + 1])
+
+
+func _test_go() -> void:
+	if VoxelWarm.I != null and LoadProf.on:
+		print("loadprof: 预拼已完成 %d 件，队里还有 %d 件" % [VoxelWarm.I.done_n, VoxelWarm.I._queue.size()])
+	LoadProf.report("预拼（%s）" % mode)
+	if mode == "title" and _title != null:
+		_title.started.emit()
+	elif mode == "hub":
+		_portal_kind = "run"
+		_step_portal()
+	elif mode == "room" and state != null:
+		for f: Node in get_tree().get_nodes_in_group("foes"):
+			f.queue_free()
+		var ex := state.run.exits()
+		if ex.is_empty():
+			state.run.next_floor()
+			state.remap()
+		else:
+			state.run.advance(int(ex[0][0]))
+		_enter_room()
+
+
+## 工具（--warmrec=文件）：把这次用到的体素件写成 JSON，tools/gen_warm_list.sh 汇总成 assets/voxel/warm_list.json
+func _dump_warm_record() -> void:
+	var zone := "sakura" if mode == "title" else (arena.zone if arena != null else "")
+	if arena != null and arena.abyss:
+		zone = "abyss"
+	var kit := []
+	var grids := []
+	for k: String in VoxelKit.record:
+		if k.begins_with("grid|"):
+			var r: Dictionary = VoxelKit.record[k]
+			if not (r["meshes"] as Array).is_empty():
+				grids.append([r["cls"], r["key"], r["method"], Arena.args_to_json(r["args"]), r["meshes"]])
+		else:
+			kit.append(k)
+	var out := {"zone": zone, "mode": mode, "kit": kit, "grids": grids, "models": VoxelModel.record.values()}
+	var f := FileAccess.open(String(_args["warmrec"]), FileAccess.WRITE)
+	f.store_string(JSON.stringify(out))
+	f.close()
+	print("warmrec %s kit=%d grids=%d models=%d" % [zone, kit.size(), grids.size(), VoxelModel.record.size()])
+	get_tree().quit()
+
+
 func _process(dt: float) -> void:
 	var _pt := Time.get_ticks_usec() if PerfProbe.on else 0
 	_process_body(dt)
@@ -3757,6 +3915,7 @@ func _process_body(dt: float) -> void:
 	_clock += dt
 	_watch_fps(dt)
 	_light_budget(dt)
+	_warm_budget(dt)
 	if _args.has("nohud"):
 		hud.visible = false   # 拍宣传图用
 	if _args.has("dbg") and int(_clock * 2.0) != int((_clock - dt) * 2.0):

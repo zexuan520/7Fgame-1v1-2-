@@ -116,8 +116,22 @@ static var quant := 0.0
 
 ## 缩小 f 倍（f×f×f 个小格并成一格，颜色取平均；一半以上是空的就不要）：低画质给精细体素的角色用
 func downsample(f: int) -> VoxelGrid:
+	return _downsample.call(f, false)
+
+
+## 后台分帧版（见 build_sliced）
+func downsample_sliced(f: int) -> VoxelGrid:
+	return await _downsample(f, true)
+
+
+func _downsample(f: int, sliced: bool) -> VoxelGrid:
+	var _lp := LoadProf.t()
 	var acc := {}
+	var nn := 0
 	for p: Vector3i in cells:
+		nn += 1
+		if sliced and (nn & 1023) == 0 and VoxelWarm.over():
+			await VoxelWarm.pause()
 		var q := Vector3i(floori(p.x / float(f)), floori(p.y / float(f)), floori(p.z / float(f)))
 		var c: Color = cells[p]
 		var a: Variant = acc.get(q)
@@ -135,6 +149,7 @@ func downsample(f: int) -> VoxelGrid:
 		var n := int(a[3])
 		if n >= need:
 			g.cells[q] = Color(a[0] / n, a[1] / n, a[2] / n)
+	LoadProf.add("grid.downsample", _lp)
 	return g
 
 
@@ -147,7 +162,13 @@ static func _q(c: Color) -> Color:
 ## 合成网格。vsize：一格多大（世界单位）；origin：格子坐标里哪一点放在节点原点
 func build(vsize: float, origin: Vector3 = Vector3.ZERO, glow: bool = false) -> ArrayMesh:
 	if greedy:
-		return _build_greedy(vsize, origin, glow)
+		var _lp := LoadProf.t()
+		# _build_fast 带 await（后台分帧时用），同步调用走 Callable，不让它停下来就直接拿到结果
+		var gm: ArrayMesh = _build_fast.call(vsize, origin, glow, false) if fast and not cells.is_empty() else _build_greedy(vsize, origin, glow)
+		LoadProf.add("grid.build", _lp)
+		if LoadProf.on and LoadProf.big and Time.get_ticks_usec() - _lp > 15000:
+			print("  big grid %d cells %.1f ms vs=%.3f glow=%s %s" % [cells.size(), (Time.get_ticks_usec() - _lp) / 1000.0, vsize, glow, str(get_meta("wk", ""))])
+		return gm
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
 	var cols := PackedColorArray()
@@ -302,6 +323,282 @@ func _build_greedy(vsize: float, origin: Vector3, glow: bool) -> ArrayMesh:
 				norms.append(Vector3(n))
 				cols.append(col)
 			idx.append_array([start, start + 2, start + 1, start, start + 3, start + 2])
+	var mesh := ArrayMesh.new()
+	if verts.is_empty():
+		return mesh
+	var arr := []
+	arr.resize(Mesh.ARRAY_MAX)
+	arr[Mesh.ARRAY_VERTEX] = verts
+	arr[Mesh.ARRAY_NORMAL] = norms
+	arr[Mesh.ARRAY_COLOR] = cols
+	arr[Mesh.ARRAY_INDEX] = idx
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arr)
+	mesh.surface_set_material(0, glow_material() if glow else material())
+	return mesh
+
+
+## 快速版贪心合并（和 _build_greedy 结果一样，快几倍）：格子先摊平成一维数组，邻格查表靠下标加减，
+## 不再用 Vector3i 查字典；可合并的面按“法线层 → v → u”的顺序用整数排序（C++ 排序，不走 GDScript 比较函数）。
+## 网页版单线程，进房间的时间大半花在合网格上，这里每快一倍，第一次进新区域就少等一半。
+static var fast := true
+static var glow_merge := true   # 测试时关掉（和老版逐位对比）
+static var _AO := PackedFloat32Array([1.0, 0.8, 0.66, 0.52])   # 和老版一样存成 32 位（对角线挑法、颜色逐位相同）
+static var _tab := {}   # 预算好的表：每个朝向每个角的切向符号
+
+
+static func _tables() -> Dictionary:
+	if not _tab.is_empty():
+		return _tab
+	var s1 := PackedInt32Array()
+	var s2 := PackedInt32Array()
+	for f in range(6):
+		var face: Array = _FACES[f]
+		var t1: Vector3i = face[2]
+		var t2: Vector3i = face[3]
+		for ci in range(4):
+			var cv: Vector3 = face[1][ci]
+			s1.append(1 if cv.dot(Vector3(t1)) + _neg(t1) > 0.5 else -1)
+			s2.append(1 if cv.dot(Vector3(t2)) + _neg(t2) > 0.5 else -1)
+	_tab = {"s1": s1, "s2": s2}
+	return _tab
+
+
+## 后台分帧版：每帧只做 VoxelWarm.budget_us 微秒，做不完下一帧接着做（标题、山门、清完房这些空档里提前拼下一区域的件）
+func build_sliced(vsize: float, origin: Vector3 = Vector3.ZERO, glow: bool = false) -> ArrayMesh:
+	if not greedy or not fast or cells.is_empty():
+		return build(vsize, origin, glow)
+	return await _build_fast(vsize, origin, glow, true)
+
+
+func _build_fast(vsize: float, origin: Vector3, glow: bool, sliced: bool = false) -> ArrayMesh:
+	var keys: Array = cells.keys()
+	var vals: Array = cells.values()
+	var n_cells := keys.size()
+	var mn: Vector3i = keys[0]
+	var mx: Vector3i = keys[0]
+	for p: Vector3i in keys:
+		mn = mn.min(p)
+		mx = mx.max(p)
+	# 四周各留一格空，查邻格不用判断越界
+	var sx := mx.x - mn.x + 3
+	var sy := mx.y - mn.y + 3
+	var sz := mx.z - mn.z + 3
+	var sxy := sx * sy
+	if sxy * sz > 24000000:
+		return _build_greedy(vsize, origin, glow)   # 特别稀疏的大格子：摊平太占内存，走老办法
+	var lo := mn - Vector3i.ONE
+	var occ := PackedByteArray()
+	occ.resize(sxy * sz)
+	var idx_of := PackedInt32Array()
+	idx_of.resize(n_cells)
+	for k in range(n_cells):
+		var p: Vector3i = keys[k]
+		var i := (p.x - lo.x) + (p.y - lo.y) * sx + (p.z - lo.z) * sxy
+		occ[i] = 1
+		idx_of[k] = i
+	var stride := [1, sx, sxy]
+	var tb := _tables()
+	var s1t: PackedInt32Array = tb["s1"]
+	var s2t: PackedInt32Array = tb["s2"]
+	# 每个朝向：法线偏移、四个角三个邻格的偏移（相对 q = 面前那一格）
+	var noff := PackedInt32Array()
+	var aoff := PackedInt32Array()   # f*12 + ci*3 + (a, b, c)
+	var cvs := []                    # f*4 + ci → 角坐标
+	var nrm := []
+	for f in range(6):
+		var face: Array = _FACES[f]
+		var nn: Vector3i = face[0]
+		var t1: Vector3i = face[2]
+		var t2: Vector3i = face[3]
+		noff.append(nn.x + nn.y * sx + nn.z * sxy)
+		var o1 := t1.x + t1.y * sx + t1.z * sxy
+		var o2 := t2.x + t2.y * sx + t2.z * sxy
+		for ci in range(4):
+			var a1 := o1 * s1t[f * 4 + ci]
+			var a2 := o2 * s2t[f * 4 + ci]
+			aoff.append(a1)
+			aoff.append(a2)
+			aoff.append(a1 + a2)
+			cvs.append(Vector3(face[1][ci]))
+		nrm.append(Vector3(nn))
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	var cols := PackedColorArray()
+	var idx := PackedInt32Array()
+	# 可合并的面：按朝向分开，记 (排序键, 颜色)
+	# （Packed 数组放进 Array 里取出来是副本，所以六个朝向共用一个键数组：键 = 朝向 × 体积 + 层内键）
+	var mkeys := PackedInt64Array()
+	var mcol: Array = [{}, {}, {}, {}, {}, {}]
+	var vol: int = sxy * sz
+	var dims := [sx, sy, sz]
+	var kmul := PackedInt64Array()   # f*3 + 轴 → 这个轴在排序键里的倍数
+	for f in range(6):
+		var ax: Array = _AX[f]
+		var m3 := [0, 0, 0]
+		m3[ax[0]] = dims[ax[2]] * dims[ax[1]]
+		m3[ax[2]] = dims[ax[1]]
+		m3[ax[1]] = 1
+		kmul.append_array(m3)
+	var q := quant
+	for k in range(n_cells):
+		if sliced and (k & 63) == 0 and VoxelWarm.over():
+			await VoxelWarm.pause()
+		var i: int = idx_of[k]
+		var base: Color = vals[k]
+		if q > 0.0:
+			base = Color(roundf(base.r * q) / q, roundf(base.g * q) / q, roundf(base.b * q) / q, base.a)
+		var pv: Vector3 = Vector3(keys[k])
+		for f in range(6):
+			var qi := i + noff[f]
+			if occ[qi] != 0:
+				continue
+			if glow and glow_merge:
+				# 发光件不吃遮蔽（颜色每个角都一样），四角遮蔽不同也能并：画面一样，算得少、三角形也少
+				var kg := f * 3
+				mkeys.append(f * vol + (i % sx) * kmul[kg] + ((i / sx) % sy) * kmul[kg + 1] + (i / sxy) * kmul[kg + 2])
+				(mcol[f] as Dictionary)[i] = base
+				continue
+			var ob := f * 12
+			var a := occ[qi + aoff[ob]]
+			var b := occ[qi + aoff[ob + 1]]
+			var o0 := 3 if (a != 0 and b != 0) else a + b + occ[qi + aoff[ob + 2]]
+			a = occ[qi + aoff[ob + 3]]
+			b = occ[qi + aoff[ob + 4]]
+			var o1 := 3 if (a != 0 and b != 0) else a + b + occ[qi + aoff[ob + 5]]
+			a = occ[qi + aoff[ob + 6]]
+			b = occ[qi + aoff[ob + 7]]
+			var o2 := 3 if (a != 0 and b != 0) else a + b + occ[qi + aoff[ob + 8]]
+			a = occ[qi + aoff[ob + 9]]
+			b = occ[qi + aoff[ob + 10]]
+			var o3 := 3 if (a != 0 and b != 0) else a + b + occ[qi + aoff[ob + 11]]
+			if o0 == o1 and o1 == o2 and o2 == o3:
+				var sh: float = 1.0 if glow else _SHADE[f] * _AO[o0]
+				# 排序键：(法线轴坐标, v 轴坐标, u 轴坐标)，都用摊平后的格子坐标
+				var kb := f * 3
+				mkeys.append(f * vol + (i % sx) * kmul[kb] + ((i / sx) % sy) * kmul[kb + 1] + (i / sxy) * kmul[kb + 2])
+				(mcol[f] as Dictionary)[i] = Color(base.r * sh, base.g * sh, base.b * sh, base.a)
+				continue
+			var start := verts.size()
+			var nv: Vector3 = nrm[f]
+			var cb := f * 4
+			verts.append((pv + cvs[cb] - origin) * vsize)
+			verts.append((pv + cvs[cb + 1] - origin) * vsize)
+			verts.append((pv + cvs[cb + 2] - origin) * vsize)
+			verts.append((pv + cvs[cb + 3] - origin) * vsize)
+			norms.append(nv)
+			norms.append(nv)
+			norms.append(nv)
+			norms.append(nv)
+			if glow:
+				cols.append(base)
+				cols.append(base)
+				cols.append(base)
+				cols.append(base)
+			else:
+				var shf: float = _SHADE[f]
+				var k0: float = _AO[o0] * shf
+				var k1: float = _AO[o1] * shf
+				var k2: float = _AO[o2] * shf
+				var k3: float = _AO[o3] * shf
+				cols.append(Color(base.r * k0, base.g * k0, base.b * k0, base.a))
+				cols.append(Color(base.r * k1, base.g * k1, base.b * k1, base.a))
+				cols.append(Color(base.r * k2, base.g * k2, base.b * k2, base.a))
+				cols.append(Color(base.r * k3, base.g * k3, base.b * k3, base.a))
+			# 按遮蔽选对角线（和 _build_greedy 一样）
+			if _AO[o0] + _AO[o2] >= _AO[o1] + _AO[o3]:
+				idx.append(start)
+				idx.append(start + 2)
+				idx.append(start + 1)
+				idx.append(start)
+				idx.append(start + 3)
+				idx.append(start + 2)
+			else:
+				idx.append(start + 1)
+				idx.append(start + 3)
+				idx.append(start + 2)
+				idx.append(start + 1)
+				idx.append(start)
+				idx.append(start + 3)
+	# 第二遍：每个朝向里同色的面沿两个切向拉成矩形
+	mkeys.sort()
+	var kpos := 0
+	var nk := mkeys.size()
+	for f in range(6):
+		if kpos >= nk or mkeys[kpos] >= (f + 1) * vol:
+			continue
+		var fm: Dictionary = mcol[f]
+		var ax: Array = _AX[f]
+		var na: int = ax[0]
+		var ua: int = ax[1]
+		var va: int = ax[2]
+		var su: int = dims[ua]
+		var sv: int = dims[va]
+		var du: int = stride[ua]
+		var dv: int = stride[va]
+		var dn: int = stride[na]
+		var face: Array = _FACES[f]
+		var corners: Array = face[1]
+		var nv: Vector3 = nrm[f]
+		var cu := Vector3.ZERO
+		cu[ua] = 1.0
+		var cvv := Vector3.ZERO
+		cvv[va] = 1.0
+		var fbase: int = f * vol
+		var fend: int = fbase + vol
+		while kpos < nk and mkeys[kpos] < fend:
+			var key: int = mkeys[kpos] - fbase
+			kpos += 1
+			if sliced and (kpos & 255) == 0 and VoxelWarm.over():
+				await VoxelWarm.pause()
+			var pu := key % su
+			var pvv := (key / su) % sv
+			var pn := key / (su * sv)
+			var i := pu * du + pvv * dv + pn * dn
+			var cc: Variant = fm.get(i)
+			if cc == null:
+				continue
+			var col: Color = cc
+			var w := 1
+			while true:
+				var c2: Variant = fm.get(i + du * w)
+				if c2 == null or c2 != col:
+					break
+				w += 1
+			var h := 1
+			var grow := true
+			while grow:
+				var row := i + dv * h
+				for t in range(w):
+					var c2: Variant = fm.get(row + du * t)
+					if c2 == null or c2 != col:
+						grow = false
+						break
+				if grow:
+					h += 1
+			for jj in range(h):
+				var row := i + dv * jj
+				for t in range(w):
+					fm.erase(row + du * t)
+			var cell := Vector3(i % sx + lo.x, (i / sx) % sy + lo.y, i / sxy + lo.z)
+			var sc := Vector3.ONE + cu * (w - 1) + cvv * (h - 1)
+			var start := verts.size()
+			for ci in range(4):
+				var cv: Vector3 = corners[ci]
+				verts.append((cell + cv * sc - origin) * vsize)
+			norms.append(nv)
+			norms.append(nv)
+			norms.append(nv)
+			norms.append(nv)
+			cols.append(col)
+			cols.append(col)
+			cols.append(col)
+			cols.append(col)
+			idx.append(start)
+			idx.append(start + 2)
+			idx.append(start + 1)
+			idx.append(start)
+			idx.append(start + 3)
+			idx.append(start + 2)
 	var mesh := ArrayMesh.new()
 	if verts.is_empty():
 		return mesh

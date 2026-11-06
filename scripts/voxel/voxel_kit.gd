@@ -23,18 +23,48 @@ static var _cache := {}
 
 ## 返回 {"mesh": ArrayMesh, "size": Vector3（像素）, "lo": 最小角（像素）, "light": [位置, 颜色, 半径] 或 []}；没有这个文件返回空字典
 static func get_piece(id: String) -> Dictionary:
-	var ck := "%s|%d|%d" % [id, int(VoxelGrid.quant), int(VoxelModel.coarse)]
+	var ck := _key(id)
 	if _cache.has(ck):
 		return _cache[ck]
+	if record != null:
+		record[id] = true
+	var _lp := LoadProf.t()
+	var out: Dictionary = _make.call(id, false)   # 不分帧：一口气拼完
+	_cache[ck] = out
+	LoadProf.add("kit.cold", _lp)
+	return out
+
+
+## 后台预拼（VoxelWarm 用）：分帧拼好放进缓存
+static func warm(id: String) -> void:
+	if _cache.has(_key(id)):
+		return
+	var out: Dictionary = await _make(id, true)
+	var ck := _key(id)   # 拼的过程中可能换了画质，按现在的画质存（不对就扔掉）
+	if not _cache.has(ck) and out.get("q", "") == ck:
+		_cache[ck] = out
+
+
+static var record: Variant = null   # 测试：记下用到了哪些件（tools/gen_warm_list.sh）
+
+
+static func _key(id: String) -> String:
+	return "%s|%d|%d" % [id, int(VoxelGrid.quant), int(VoxelModel.coarse)]
+
+
+static func _make(id: String, sliced: bool) -> Dictionary:
+	var ck := _key(id)
+	var coarse := VoxelModel.coarse
 	var path := DIR % id
 	if not VoxelModel.data_exists(path):
-		_cache[ck] = {}
 		return {}
 	var d := VoxelModel.read_data(path)
 	var vs := float(d.get("vs", 2.0))
 	var g := VoxelGrid.new(1)
 	var v: Array = d["vox"]
 	for i in range(0, v.size(), 6):
+		if sliced and (i % 3072) == 0 and VoxelWarm.over():
+			await VoxelWarm.pause()
 		g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3] * DIM), int(v[i + 4] * DIM), int(v[i + 5] * DIM))
 	var sz: Array = d["size"]
 	var size := Vector3(float(sz[0]), float(sz[1]), float(sz[2])) * vs
@@ -45,7 +75,9 @@ static func get_piece(id: String) -> Dictionary:
 		light = [Vector3(rel.x * size.x * 0.5, rel.y * size.y, rel.z * size.z * 0.5), l[1], l[2]]
 	var mn: Array = d.get("min", [0, 0, 0])
 	# 低画质：两格并一格（手机上一格不到两个像素，看不出来，三角形少四倍）
-	var mesh := g.downsample(2).build(vs * 2.0) if VoxelModel.coarse else g.build(vs)
-	var out := {"mesh": mesh, "size": size, "lo": Vector3(float(mn[0]), float(mn[1]), float(mn[2])) * vs, "light": light}
-	_cache[ck] = out
-	return out
+	var mesh: ArrayMesh
+	if sliced:
+		mesh = await (await g.downsample_sliced(2)).build_sliced(vs * 2.0) if coarse else await g.build_sliced(vs)
+	else:
+		mesh = g.downsample(2).build(vs * 2.0) if coarse else g.build(vs)
+	return {"mesh": mesh, "size": size, "lo": Vector3(float(mn[0]), float(mn[1]), float(mn[2])) * vs, "light": light, "q": ck}

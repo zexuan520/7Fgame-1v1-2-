@@ -20,6 +20,7 @@ static func data_exists(path: String) -> bool:
 
 
 static func read_data(path: String) -> Dictionary:
+	var _lp := LoadProf.t()
 	var txt := ""
 	if FileAccess.file_exists(path + ".gz"):
 		var raw := FileAccess.get_file_as_bytes(path + ".gz")
@@ -27,20 +28,49 @@ static func read_data(path: String) -> Dictionary:
 	elif FileAccess.file_exists(path):
 		txt = FileAccess.get_file_as_string(path)
 	var d: Variant = JSON.parse_string(txt) if txt != "" else null
+	LoadProf.add("read_data", _lp)
 	return d if d is Dictionary else {}
 
 
 static func load_model(id: String) -> VoxelModel:
 	if off:
 		return null
-	var ck := "%s|%d|%d" % [id, int(coarse), int(VoxelGrid.quant)]
+	var ck := _mkey(id)
 	if _cache.has(ck):
 		return _cache[ck]
+	if record != null:
+		record["model|" + id] = ["model", id]
+	var _lp := LoadProf.t()
+	var m: VoxelModel = _make.call(id, false)   # 不分帧
+	if m == null:
+		push_warning("没有体素模型 " + id)
+	_cache[ck] = m
+	LoadProf.add("model.cold", _lp)
+	return m
+
+
+static var record: Variant = null   # 测试：记下用到了哪些模型、兵器（tools/gen_warm_list.sh）
+
+
+static func _mkey(id: String) -> String:
+	return "%s|%d|%d" % [id, int(coarse), int(VoxelGrid.quant)]
+
+
+## 后台预拼（VoxelWarm 用）
+static func warm(id: String) -> void:
+	if off or _cache.has(_mkey(id)):
+		return
+	var ck := _mkey(id)
+	var m: VoxelModel = await _make(id, true)
+	if m != null and not _cache.has(ck) and _mkey(id) == ck:
+		_cache[ck] = m
+
+
+static func _make(id: String, sliced: bool) -> VoxelModel:
 	var path := "res://assets/voxel/%s.json" % id
 	if not data_exists(path):
-		push_warning("没有体素模型 " + path)
-		_cache[ck] = null
 		return null
+	var cs := coarse
 	var d := read_data(path)
 	var m := VoxelModel.new()
 	m.source = String(d.get("source", ""))
@@ -55,15 +85,18 @@ static func load_model(id: String) -> VoxelModel:
 		var g := VoxelGrid.new(1)
 		var v: Array = pd["vox"]
 		for i in range(0, v.size(), 6):
+			if sliced and (i % 3072) == 0 and VoxelWarm.over():
+				await VoxelWarm.pause()
 			g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3]), int(v[i + 4]), int(v[i + 5]))
 		var an: Array = pd["anchor"]
 		var mesh: ArrayMesh
-		if coarse and res > 1.2:
+		if sliced:
+			mesh = await (await g.downsample_sliced(2)).build_sliced(2.0 / res) if cs and res > 1.2 else await g.build_sliced(1.0 / res)
+		elif cs and res > 1.2:
 			mesh = g.downsample(2).build(2.0 / res)
 		else:
 			mesh = g.build(1.0 / res)
 		m.parts[pname] = {"anchor": Vector3(an[0], an[1], an[2]) / res, "len": float(pd["len"]) / res, "mesh": mesh}
-	_cache[ck] = m
 	return m
 
 
@@ -83,6 +116,9 @@ static func weapon_mesh(id: String, length: float) -> ArrayMesh:
 	var key := "%s|%.1f|%d|%d" % [id, length, int(coarse), int(VoxelGrid.quant)]
 	if _weapons.has(key):
 		return _weapons[key]
+	if record != null and id != "":
+		record["weapon|%s|%.1f" % [id, length]] = ["weapon", id, snappedf(length, 0.1)]
+	var _lp := LoadProf.t()
 	var path := "res://assets/voxel/weapon/%s.json" % id
 	if id == "" or not data_exists(path):
 		_weapons[key] = null
@@ -96,4 +132,5 @@ static func weapon_mesh(id: String, length: float) -> ArrayMesh:
 	var vsz := length * float(d.get("vs", 1.0)) / maxf(float(d.get("len", 40.0)), 1.0)
 	var m := g.downsample(2).build(vsz * 2.0) if coarse and float(d.get("vs", 1.0)) < 1.0 else g.build(vsz)
 	_weapons[key] = m
+	LoadProf.add("weapon.cold", _lp)
 	return m

@@ -65,14 +65,14 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 	glow_mat.shader = load("res://shaders/arpg/vcol_emit.gdshader")
 	entry_pos = Vector3(0, 0, size.y * 0.5 - 3.0)
 	exit_pos = Vector3(0, 0, -size.y * 0.5 + 1.5)
-	var _t0 := Time.get_ticks_msec()
+	var _lp := LoadProf.t()
 	_build_floor()
-	if OS.get_cmdline_user_args().has("--dbg"):
-		print("floor ms ", Time.get_ticks_msec() - _t0)
+	LoadProf.add("arena.floor", _lp)
 	_build_bounds()
 	# 门口留出空地：摆设、刷怪点都别放这里
 	for dr: Dictionary in doors:
 		_solid.append(_door_clear_rect(dr))
+	_lp = LoadProf.t()
 	match zone:
 		"forest":
 			_dress_forest()
@@ -90,17 +90,25 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 			_dress_camp()
 		_:
 			_dress_more()
+	LoadProf.add("arena.dress", _lp)
+	_lp = LoadProf.t()
 	_atmosphere()
+	LoadProf.add("arena.atmosphere", _lp)
 	_clear_doorways()
 	_make_spawns()
 	if lod <= 1:
+		_lp = LoadProf.t()
 		_batch_static()
+		LoadProf.add("arena.batch", _lp)
 
 
 ## 静态合批：摆设大多共用一份场景材质，按 10 米一格把它们并成一块大网格，绘制调用少很多
 ## （手机网页上每次绘制调用都很贵）。只并共用 env_mat、自己没有子节点、往上到房间都没挂脚本的件；
 ## 前景遮挡件（材质是复制出来的）、发光件、灯、粒子、侧室和之后才摆的东西（裂墙）都不动。
 const BATCH_CELL := 10.0
+## 顶点比这多的大件（房子、大树、墙）不并：本来就是一次绘制，复制几十万个顶点在网页上要好几秒，
+## 省下的只是这几十次绘制调用。合批主要省在满地的小件（石头、蜡烛、草丛）上
+static var batch_max := 30000
 
 
 func _batch_static() -> void:
@@ -108,7 +116,8 @@ func _batch_static() -> void:
 	for n: Node in find_children("*", "MeshInstance3D", true, false):
 		var mi := n as MeshInstance3D
 		if mi.material_override != env_mat or not mi.visible or mi.mesh == null or mi.has_meta("floor") \
-				or mi.get_child_count() > 0 or mi.mesh.get_surface_count() != 1:
+				or mi.get_child_count() > 0 or mi.mesh.get_surface_count() != 1 \
+				or mi.mesh.surface_get_array_len(0) > batch_max:
 			continue
 		var ok := true
 		var a := mi.get_parent()
@@ -311,6 +320,7 @@ func floor_patch(rect: Rect2, tint: Color) -> void:
 
 
 func _floor_patch(x0: float, z0: float, nx: int, nz: int, main_room: bool, tint: Color) -> void:
+	var _lpf := LoadProf.t()
 	var px := PackedByteArray()
 	px.resize(nx * nz * 3)
 	var bumps := VoxelGrid.new(rng.randi())
@@ -339,6 +349,7 @@ func _floor_patch(x0: float, z0: float, nx: int, nz: int, main_room: bool, tint:
 			px[o] = clampi(int(c.r * 255.0), 0, 255)
 			px[o + 1] = clampi(int(c.g * 255.0), 0, 255)
 			px[o + 2] = clampi(int(c.b * 255.0), 0, 255)
+	LoadProf.add("floor.pixels", _lpf)
 	var img := Image.create_from_data(nx, nz, false, Image.FORMAT_RGB8, px)
 	var mat := ShaderMaterial.new()
 	mat.shader = load("res://shaders/arpg/floor.gdshader")
@@ -576,13 +587,25 @@ func _fx_mat(tex: String, c: Color, additive: bool, energy: float = 2.0) -> Shad
 ## 大树干（深色，带根和苔藓），h 高（格），vs 0.12 米
 ## 同一个格子（缓存下来的树干、樱树、管子）只合一次网格
 func _mesh_of(g: VoxelGrid, vs: float, glow: bool) -> ArrayMesh:
-	var coarse := VoxelModel.coarse and vs < 0.1 and not glow   # 低画质：细格子的件两格并一格
-	var key := StringName("mesh_%d_%d_%d" % [int(round(vs * 100000.0)), int(VoxelGrid.quant), int(coarse)])
+	if g.has_meta("wk") and VoxelKit.record != null:
+		var wk: Array = g.get_meta("wk")
+		var rec: Dictionary = VoxelKit.record.get("grid|" + String(wk[0]), {})
+		if not rec.is_empty() and not (rec["meshes"] as Array).has([wk[1], vs, glow]):
+			(rec["meshes"] as Array).append([wk[1], vs, glow])
+	var key := _mesh_key(vs, glow)
 	if g.has_meta(key):
 		return g.get_meta(key)
-	var m := g.downsample(2).build(vs * 2.0, Vector3.ZERO, glow) if coarse else g.build(vs, Vector3.ZERO, glow)
+	var m := g.downsample(2).build(vs * 2.0, Vector3.ZERO, glow) if _mesh_coarse(vs, glow) else g.build(vs, Vector3.ZERO, glow)
 	g.set_meta(key, m)
 	return m
+
+
+static func _mesh_coarse(vs: float, glow: bool) -> bool:
+	return VoxelModel.coarse and vs < 0.1 and not glow   # 低画质：细格子的件两格并一格
+
+
+static func _mesh_key(vs: float, glow: bool) -> StringName:
+	return StringName("mesh_%d_%d_%d" % [int(round(vs * 100000.0)), int(VoxelGrid.quant), int(_mesh_coarse(vs, glow))])
 
 
 ## 精细体素的件生成很慢（几万格），按参数缓存下来跨房间复用。make 返回格子（或 [格子, 发光格子]）
@@ -592,7 +615,72 @@ static var _grid_cache := {}
 func _cached(key: String, make: Callable) -> Variant:
 	if not _grid_cache.has(key):
 		_grid_cache[key] = make.call()
+		if VoxelKit.record != null and make.get_object() is Arena:
+			# 记下怎么生成（tools/gen_warm_list.sh 写进预拼清单，VoxelWarm 照着提前生成、拼网格）
+			var cls := "Arena3" if make.get_object() is Arena3 else "Arena"
+			VoxelKit.record["grid|" + key] = {"cls": cls, "key": key, "method": String(make.get_method()), "args": make.get_bound_arguments(), "meshes": []}
+			var r: Variant = _grid_cache[key]
+			if r is VoxelGrid:
+				(r as VoxelGrid).set_meta("wk", [key, -1])
+			elif r is Array:
+				for i in range((r as Array).size()):
+					if r[i] is VoxelGrid:
+						(r[i] as VoxelGrid).set_meta("wk", [key, i])
 	return _grid_cache[key]
+
+
+## 后台预拼自己画的件（VoxelWarm 用）：job = ["grid", 类名, 键, 方法, 参数, [[第几个格子, vs, 发光], ...]]
+## 生成格子那一步不分帧（这些件生成都很快，慢的是拼网格）
+static func warm_grid(job: Array) -> void:
+	var key := String(job[2])
+	if not _grid_cache.has(key):
+		var dummy: Arena = Arena3.new() if String(job[1]) == "Arena3" else Arena.new()
+		dummy.rng.seed = hash(key)
+		dummy.noise.seed = hash(key)
+		dummy.noise.frequency = 0.08
+		var r: Variant = dummy.callv(String(job[3]), _args_of(job[4]))
+		dummy.free()
+		if _grid_cache.has(key) or r == null:
+			return
+		_grid_cache[key] = r
+	var res: Variant = _grid_cache[key]
+	for m: Array in job[5]:
+		var g: VoxelGrid = res if int(m[0]) < 0 else res[int(m[0])]
+		var vs := float(m[1])
+		var glow := bool(m[2])
+		var mk := _mesh_key(vs, glow)
+		if g == null or g.has_meta(mk) or g.size() == 0:
+			continue
+		var mesh: ArrayMesh
+		if _mesh_coarse(vs, glow):
+			mesh = await (await g.downsample_sliced(2)).build_sliced(vs * 2.0, Vector3.ZERO, glow)
+		else:
+			mesh = await g.build_sliced(vs, Vector3.ZERO, glow)
+		if not g.has_meta(mk) and mk == _mesh_key(vs, glow):
+			g.set_meta(mk, mesh)
+
+
+## 清单里的参数是 JSON 存的：整数存成 ["i", n]、颜色存成 ["c", "rrggbbaa"]，还原成方法要的类型
+static func _args_of(a: Variant) -> Array:
+	var out := []
+	for v: Variant in a:
+		if v is Array and (v as Array).size() == 2 and v[0] is String:
+			out.append(int(v[1]) if v[0] == "i" else Color.html(String(v[1])))
+		else:
+			out.append(v)
+	return out
+
+
+static func args_to_json(a: Array) -> Array:
+	var out := []
+	for v: Variant in a:
+		if v is int:
+			out.append(["i", v])
+		elif v is Color:
+			out.append(["c", (v as Color).to_html(true)])
+		else:
+			out.append(v)
+	return out
 
 
 ## 树干只留三种粗细高矮（按传进来的高度挑最近的一档），同色同档的跨房间复用

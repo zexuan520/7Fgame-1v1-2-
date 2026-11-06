@@ -44,6 +44,7 @@ var _bgm_tween: Tween
 
 
 func _ready() -> void:
+	var _t0 := Time.get_ticks_msec()
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	# 像素字体 Fusion Pixel（SIL OFL 1.1），12 像素的倍数最清晰
 	var pixel: FontFile = load("res://assets/fonts/fusion-pixel.ttf")
@@ -57,6 +58,8 @@ func _ready() -> void:
 	load_settings()
 	_setup_audio()
 	_cloud_start()
+	if OS.get_cmdline_user_args().has("--loadprof"):
+		print("loadprof: Game._ready %d→%d ms" % [_t0, Time.get_ticks_msec()])
 
 
 # ---------- 存档（局外进度） ----------
