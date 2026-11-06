@@ -207,6 +207,8 @@ func _ready() -> void:
 		# 测试：开局塞几个心法（看流派大成）
 		for id: String in String(_args["boons"]).split(","):
 			_take_boon(id)
+	if _args.has("curses") and state != null:
+		_add_curses(Array(String(_args["curses"]).split(",")))   # 测试：开局背诅咒
 	if _args.has("relics") and state != null:
 		# 测试：开局塞奇物 --relics=bilei,zhaohun（--relics=all 全部，含没解锁的）
 		var ids: Array = ArpgRelics.LIST.map(func(r: Dictionary) -> String: return String(r["id"])) if _args["relics"] == "all" else Array(String(_args["relics"]).split(","))
@@ -1573,9 +1575,14 @@ func _enter_room_body(kind: String = "", zone_override: String = "") -> void:
 			_npc("土地庙", mid, {"kit": "shrine", "scale": 1.2}, _open_rest)
 			_open_portal()
 		"event":
+			if _args.has("event"):
+				# 测试：指定奇遇 --event=curse_altar
+				for e: Dictionary in ArpgEvents.all():
+					if String(e["id"]) == String(_args["event"]):
+						state.event_cache[state.run.room_id()] = e
 			var ev := state.event_for_room()
 			var kits := {"blood_altar": "skull_candle", "wounded_ronin": "tent", "gambler": "table", "hermit": "well"}
-			_npc(String(ev["name"]), mid, {"kit": kits.get(ev["id"], "grave_a"), "scale": 1.1}, _open_event)
+			_npc(String(ev["name"]), mid, {"kit": String(ev.get("kit", kits.get(ev["id"], "grave_a"))), "scale": 1.1}, _open_event)
 			_open_portal()
 	if state.act == 3 and room_kind != "tutorial":
 		Act3.enter_room(self, room_kind)
@@ -2051,6 +2058,9 @@ func _room_cleared() -> void:
 		return
 	if room_kind == "elite":
 		_drop_gear(hero.global_position + hero.facing * 1.5, -1, 0.25)
+		if _event_bonus.has("gear"):
+			_drop_gear(hero.global_position + hero.facing * 1.5 + Vector3(-0.8, 0, 0), int(_event_bonus["gear"]))
+			_event_bonus = {}
 		if _rng.randf() < 0.4:
 			_drop_weapon(hero.global_position + hero.facing * 1.5 + Vector3(0.8, 0, 0), -1, 0.2)
 		# 支线 · 刀匠的三样东西：青井地宫的精英身上掉寒铁（要先在山门见过刀匠）
@@ -3024,13 +3034,17 @@ func _open_rest(n: ArpgNpc) -> void:
 		{"title": "上香歇息", "desc": "回复 50% 生命", "tag": "歇脚"},
 		{"title": "求一壶药", "desc": "补满药葫芦，再回复 15% 生命", "tag": "歇脚"},
 	]
+	if state != null and not state.curses.is_empty():
+		items.append({"title": "清心", "desc": "解掉一个诅咒（%s）" % ArpgEvents.CURSES[state.curses.back()]["name"], "tag": "歇脚", "color": ArpgEvents.CURSE_COLOR})
 	var m := _open_menu("土地庙", "香火还没断。歇一歇再走。", items, "list", true)
 	m.chosen.connect(func(i: int) -> void:
 		if i == 0:
 			_heal(0.5)
-		else:
+		elif i == 1:
 			hero.gourds = hero.max_gourds
 			_heal(0.15)
+		else:
+			_apply_event({"uncurse": 1})
 		n.used = true
 		_close_menu())
 
@@ -3053,13 +3067,19 @@ func _open_event(n: ArpgNpc) -> void:
 		var en := state.coins >= -int(fx.get("coins", 0))
 		if int(fx.get("gourd", 0)) < 0 and hero.gourds <= 0:
 			en = false
+		if fx.has("need_curse") and state.curses.is_empty():
+			en = false
+		if state.jade < int(fx.get("need_jade", 0)):
+			en = false
 		items.append({"title": op[0], "desc": "" if en else "做不到", "enabled": en})
 	var m := _open_menu(String(ev["name"]), String(ev["text"]), items, "list", false)
 	m.chosen.connect(func(i: int) -> void:
 		var fx: Dictionary = ev["options"][i][1]
 		n.used = true
 		_close_menu()
-		_apply_event(fx))
+		_apply_event(fx)
+		if fx.has("mimic") and room_kind == "elite" and is_instance_valid(n):
+			n.queue_free())   # 宝箱怪：箱子自己跳起来了
 
 
 func _apply_event(fx: Dictionary) -> void:
@@ -3076,6 +3096,76 @@ func _apply_event(fx: Dictionary) -> void:
 		hero.gourds = maxi(0, hero.gourds + int(fx["gourd"]))
 	if fx.has("gourd_refill"):
 		hero.gourds = hero.max_gourds
+	if fx.has("jade"):
+		if int(fx["jade"]) > 0:
+			state.add_jade(int(fx["jade"]))
+		else:
+			state.jade = maxi(0, state.jade + int(fx["jade"]))
+	if fx.has("stat"):
+		ArpgData.add_stats(state.event_stats, fx["stat"])
+		if float((fx["stat"] as Dictionary).get("hp", 0.0)) > 0.0:
+			hero.apply_stats(state.stats(), state.weapon)
+			hero.hp = minf(hero.hp + float(fx["stat"]["hp"]), hero.max_hp)
+	var new_curses := []
+	if fx.has("curse"):
+		var cid := String(fx["curse"])
+		new_curses.append(ArpgEvents.random_curse(_rng, state.curses) if cid == "random" else cid)
+	for i in range(int(fx.get("curses", 0))):
+		new_curses.append(ArpgEvents.random_curse(_rng, state.curses + new_curses))
+	if fx.has("gamble_curse"):
+		if _rng.randf() < 0.5:
+			state.coins += 40
+			hud.banner("上上签", "得 40 铜钱", 2.0)
+			Game.sfx("coin")
+		else:
+			new_curses.append(ArpgEvents.random_curse(_rng, state.curses))
+	_add_curses(new_curses)
+	for i in range(int(fx.get("uncurse", 0))):
+		if not state.curses.is_empty():
+			var gone: String = state.curses.pop_back()
+			hud.banner("诅咒解了", String(ArpgEvents.CURSES[gone]["name"]), 2.0)
+			vfx.shock_ring(hero.global_position, Color(0.9, 0.95, 1.0), 0.3, 3.5, 0.5)
+	if fx.has("xp"):
+		var ups := state.gain_xp(ArpgRewards.xp(state) * int(fx["xp"]))
+		if ups > 0:
+			_on_level_up(ups)
+	if fx.has("gear"):
+		_drop_gear(hero.global_position + hero.facing * 1.5, int(fx["gear"]))
+	if fx.has("fate"):
+		var sc := state.top_school(_rng)
+		var n := 0
+		for r in range(state.run.row + 1, state.run.rows.size()):
+			for nd: Dictionary in state.run.rows[r]:
+				if String(nd["type"]) == "fight":
+					nd["reward"] = "school"
+					nd["school"] = sc
+					n += 1
+		hud.banner("卦象 · %s" % sc, "这一层剩下的 %d 间战斗房都给%s派心法" % [n, sc], 2.6)
+	if fx.has("next_relic"):
+		for e: Array in state.run.exits():
+			if String(e[1]["type"]) == "fight":
+				e[1]["reward"] = "relic"
+		hud.banner("兵法", "下一间战斗房清完给奇物", 2.2)
+	hero.apply_stats(state.stats(), state.weapon)
+	if fx.has("mimic"):
+		if _rng.randf() < 0.5:
+			hud.banner("宝箱怪", "箱子里钻出来一窝骨头！", 1.8)
+			_event_fight(ArpgEvents.MIMIC_WAVES, {"gear": 4})
+		else:
+			hud.banner("真是宝箱", "", 1.4)
+			_drop_gear(hero.global_position + hero.facing * 1.5, 3)
+			Game.sfx("chest")
+	if fx.has("fight"):
+		hud.banner("动手了", "", 1.4)
+		_event_fight(fx["fight"], {})
+	if fx.has("relic"):
+		var twice := fx.has("relic_twice")
+		_offer_relics(int(fx["relic"]), "", func() -> void:
+			if twice:
+				_offer_relics(int(fx["relic"]), ""))
+	if fx.has("boon_school"):
+		var sc2 := state.top_school(_rng)
+		_offer_boons_then(int(fx["boon_school"]), sc2)
 	var boons := int(fx.get("boon", 0))
 	if fx.has("gamble"):
 		if _rng.randf() < 0.5:
@@ -3088,11 +3178,44 @@ func _apply_event(fx: Dictionary) -> void:
 		_offer_boons_then(boons)
 
 
+## 背上诅咒（空字符串跳过）：紫红横幅
+func _add_curses(ids: Array) -> void:
+	var names := []
+	for cid in ids:
+		if String(cid) == "" or state.curses.has(String(cid)):
+			continue
+		state.curses.append(String(cid))
+		var cd: Dictionary = ArpgEvents.CURSES[String(cid)]
+		names.append("%s（%s）" % [cd["name"], cd["desc"]])
+	if names.is_empty():
+		return
+	hero.apply_stats(state.stats(), state.weapon)
+	hud.banner("诅咒", "、".join(names), 2.6)
+	feel.screen_flash(Color(0.4, 0.0, 0.25, 0.5), 1.5)
+	vfx.shock_ring(hero.global_position, ArpgEvents.CURSE_COLOR, 0.3, 4.0, 0.5)
+	Game.sfx("ghost", -4.0)
+
+
+## 奇遇里打一场：按精英房算（赢了掉装备 + 奖励），bonus.gear 是额外掉的装备品质
+var _event_bonus := {}
+
+
+func _event_fight(wv: Array, bonus: Dictionary) -> void:
+	_event_bonus = bonus
+	_room_done = false
+	waves = wv.duplicate(true)
+	wave_i = -1
+	_wave_delay = 0.8
+	room_kind = "elite"
+	if is_instance_valid(_portal):
+		_portal.queue_free()
+
+
 ## 奇遇给的心法：连着选 n 次（不开光门，光门本来就开着）
-func _offer_boons_then(n: int) -> void:
+func _offer_boons_then(n: int, school: String = "") -> void:
 	if n <= 0:
 		return
-	var offer := state.roll_boons(3, _rng)
+	var offer := state.roll_boons(3, _rng, school)
 	var items := []
 	for b: Dictionary in offer:
 		items.append({"title": b["name"], "desc": ArpgData.boon_desc(b), "tag": _school_tag(String(b["school"])), "color": ArpgData.SCHOOL_COLORS.get(b["school"], ArpgMenu.TEAL)})
@@ -3100,7 +3223,7 @@ func _offer_boons_then(n: int) -> void:
 	m.chosen.connect(func(i: int) -> void:
 		_take_boon(String(offer[i]["id"]))
 		_close_menu()
-		_offer_boons_then(n - 1))
+		_offer_boons_then(n - 1, school))
 
 
 # ---------- 光门、分岔路 ----------
@@ -3763,6 +3886,9 @@ func _open_run_info() -> void:
 		var gn := int(gsc[sid])
 		items.append({"title": "套装「%s」" % gs["name"], "right": "%d / 3" % mini(gn, 3), "desc": "两件 %s；三件 %s" % [gs["d2"], gs["d3"]],
 			"color": gs["color"], "enabled": gn >= 2, "tag": "套装"})
+	for cid: String in state.curses:
+		var cdd: Dictionary = ArpgEvents.CURSES[cid]
+		items.append({"title": "诅咒 · %s" % cdd["name"], "desc": "%s（游方郎中、土地庙能解）" % cdd["desc"], "tag": "诅咒", "color": ArpgEvents.CURSE_COLOR})
 	for rid: String in state.relics:
 		var r := ArpgRelics.get_relic(rid)
 		items.append({"title": "奇物 · %s" % r.get("name", rid), "desc": ArpgRelics.card_desc(r).replace("\n", "　"), "tag": "·".join(r.get("tags", [])), "color": ArpgRelics.COLOR})

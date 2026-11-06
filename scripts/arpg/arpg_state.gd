@@ -54,7 +54,9 @@ var secrets_done := {}                   # 已经打开过的隐藏房间（房�
 var squads := {}                         # 每间战斗房抽到的“阵”（"层号:房间坐标" → 阵 id，FoeSquads）
 var side_rooms := 0                      # 这一局拿完的侧室（藏宝 / 伏兵 / 灵泉 / 遗骸 / 小试炼）
 var boons: Array[String] = []
-var relics: Array[String] = []          # 奇物（ArpgRelics），标签和心法一起算流派件数
+var relics: Array[String] = []
+var curses: Array[String] = []          # 奇遇背上的诅咒（ArpgEvents.CURSES）
+var event_stats := {}                   # 奇遇给的这一局永久加成（磨剑客、郎中、夜商 …）          # 奇物（ArpgRelics），标签和心法一起算流派件数
 var forged := 0            # 这一局在灯冢熔铜炉里铸过几层甲（每层生命 +FORGE_HP）
 var whet := 0               # 这一局在游商那里磨过几次刀（每次伤害 +6%，铜钱的长期去处）
 var revives := 0
@@ -271,6 +273,11 @@ func stat_parts() -> Array:
 		var bs := {}
 		ArpgData.add_stats(bs, bd.get("stats", {}), int(seen_b[b]))
 		add.call("心法", "心法·%s%s" % [bd.get("name", b), " ×%d" % seen_b[b] if int(seen_b[b]) > 1 else ""], bs)
+	for cid: String in curses:
+		var cd: Dictionary = ArpgEvents.CURSES.get(cid, {})
+		add.call("境况", "诅咒·%s" % cd.get("name", cid), cd.get("stats", {}))
+	if not event_stats.is_empty():
+		add.call("境况", "奇遇所得", event_stats)
 	for rid: String in relics:
 		add.call("奇物", "奇物·%s" % ArpgRelics.get_relic(rid).get("name", rid), ArpgRelics.stats_of(rid))
 	if whet > 0:
@@ -498,6 +505,24 @@ func shop_stock() -> Array:
 	return items
 
 
+## 现在件数最多的流派（一样多随便挑一个；什么都没有就随机一派）
+func top_school(rng: RandomNumberGenerator) -> String:
+	var sc := ArpgData.school_counts(build_ids())
+	var best := []
+	var bn := 0
+	for k: String in sc:
+		if not ArpgData.SETS.has(k):
+			continue
+		if int(sc[k]) > bn:
+			bn = int(sc[k])
+			best = [k]
+		elif int(sc[k]) == bn:
+			best.append(k)
+	if best.is_empty():
+		best = ArpgData.SETS.keys()
+	return best[rng.randi_range(0, best.size() - 1)]
+
+
 ## 算流派件数用：心法 + 奇物（奇物每个标签算一件）
 func build_ids() -> Array:
 	var out: Array = []
@@ -516,7 +541,11 @@ func event_for_room() -> Dictionary:
 	if not event_cache.has(key):
 		var rng := RandomNumberGenerator.new()
 		rng.seed = seed_value + run.row * 13 + run.col
-		event_cache[key] = ArpgData.EVENTS[rng.randi_range(0, ArpgData.EVENTS.size() - 1)]
+		var seen: Array = flags.get("events_seen", [])
+		var ev := ArpgEvents.pick(rng, seen)
+		seen.append(String(ev["id"]))
+		flags["events_seen"] = seen
+		event_cache[key] = ev
 	return event_cache[key]
 
 
