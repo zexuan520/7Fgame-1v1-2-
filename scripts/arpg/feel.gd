@@ -77,7 +77,9 @@ func on_hit(info: HitInfo) -> bool:
 	if Vfx.I != null:
 		var spark_col := Color(1.0, 0.86, 0.35)
 		if tgt.team == 0:
-			spark_col = Color(1.0, 0.3, 0.25)
+			spark_col = Color(1.0, 0.3, 0.25) if info.elem == "" else Vfx.ELEM_COLOR.get(info.elem, Color(1.0, 0.3, 0.25))
+			if info.elem != "":
+				Vfx.I.elem_burst(info.point, info.elem, w >= 1)
 		elif boss:
 			spark_col = (tgt as Foe).fx_color()
 		Vfx.I.hit_spark(info.point, w >= 1, info.crit)

@@ -437,13 +437,11 @@ func _start_ambush() -> void:
 	main.hud.banner(display_name(), "门在身后关上了", 1.8)
 	main.cam_rig.punch_zoom(0.3, 0.6)
 	var fl := main.state.floor_i()
-	var w: Array = [["crawler", 4, "skeleton", 2], ["rogue", 2, "skeleton", 2, "mage", 1], ["skeleton", 2, "rogue", 2, "mage", 1]][mini(fl, 2)]
-	if zone == "well":
-		w = ["drowned", 3, "eel", 2, "chainmonk", 1, "lampkid", 1]
-	elif zone == "vault":
-		w = ["armored", 2, "twin", 2, "oiler", 1]
-	elif zone == "camp":
-		w = ["greyblade", 3, "greyspear", 1, "greyflag", 1]
+	# 伏兵从这层的“阵”里随手抽一种（每次伏兵都不太一样，第一幕各层也会碰到本层独有的小怪）
+	var ths := FoeSquads.themes(zone)
+	var th: Dictionary = ths[_rng.randi() % ths.size()]
+	var pool: Array = th["waves"]
+	var w: Array = (pool[2 + _rng.randi() % (pool.size() - 2)] as Array).duplicate()
 	if main.state.run.row >= 2 or fl >= 1:
 		w = w + ["samurai", 1]
 	_spawn(w)

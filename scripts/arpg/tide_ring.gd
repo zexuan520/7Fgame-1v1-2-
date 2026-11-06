@@ -9,6 +9,8 @@ var owner_foe: Actor
 var speed := 6.5
 var max_r := 20.0
 var band := 0.6
+var color := Color(0.55, 0.9, 1.0)     # 环的颜色（铜钟僧的钟声是金色）
+var elem := "water"
 var _r := 0.6
 var _hit := {}
 var _ring: MeshInstance3D
@@ -18,9 +20,9 @@ var _gm: ShaderMaterial
 
 
 func _ready() -> void:
-	_m = _mat("lm_ring_b", Color(0.55, 0.9, 1.0, 0.95), 2.4)
+	_m = _mat("lm_ring_b", Color(color, 0.95), 2.4)
 	_ring = _quad(_m)
-	_gm = _mat("lm_ring_b", Color(0.3, 0.6, 1.0, 0.5), 1.4)
+	_gm = _mat("lm_ring_b", Color(color.darkened(0.35), 0.5), 1.4)
 	_glow = _quad(_gm)
 	visible = delay <= 0.0
 
@@ -60,12 +62,12 @@ func _process(dt: float) -> void:
 	_ring.scale = Vector3.ONE * _r * 2.2
 	_glow.scale = Vector3.ONE * (_r * 2.2 + 0.8)
 	var fade := clampf(1.0 - (_r - max_r * 0.7) / (max_r * 0.3), 0.0, 1.0)
-	_m.set_shader_parameter("color", Color(0.55, 0.9, 1.0, 0.95 * fade))
-	_gm.set_shader_parameter("color", Color(0.3, 0.6, 1.0, 0.5 * fade))
+	_m.set_shader_parameter("color", Color(color, 0.95 * fade))
+	_gm.set_shader_parameter("color", Color(color.darkened(0.35), 0.5 * fade))
 	# 前沿溅起水花
 	if Vfx.I != null and Vfx.I.lod > 0 and randf() < dt * 14.0:
 		var a := randf() * TAU
-		Vfx.I.chips(global_position + Vector3(cos(a), 0.15, sin(a)) * _r, Vector3(cos(a), 1.2, sin(a)), Color(0.6, 0.9, 1.0), 2, 4.0, 0.08)
+		Vfx.I.chips(global_position + Vector3(cos(a), 0.15, sin(a)) * _r, Vector3(cos(a), 1.2, sin(a)), color.lightened(0.1), 2, 4.0, 0.08)
 	for h: Node in get_tree().get_nodes_in_group("heroes"):
 		var hh := h as Hero
 		if hh == null or not hh.alive or _hit.has(hh) or hh.iframes > 0.0:
@@ -78,6 +80,7 @@ func _process(dt: float) -> void:
 			info.attacker = null
 			info.dir = d.normalized() if d.length() > 0.01 else Vector3.FORWARD
 			info.knock = 9.0
+			info.elem = elem
 			Feel.I.on_hit(info)
 	if _r >= max_r:
 		queue_free()

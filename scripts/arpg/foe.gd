@@ -26,7 +26,7 @@ const TYPES := {
 	"samurai": {"name": "赤甲武士", "model": "knight", "weapon": "axe2", "wlen": 44.0, "tint": Color(1.25, 0.5, 0.45), "k": 1.25,
 		"hp": 190.0, "speed": 3.2, "detect": 14.0, "range": 2.8, "dmg": 22.0, "windup": 0.75, "attack": "heavy", "poise": 45.0, "coins": 9},
 	"mage": {"name": "幽魂术士", "model": "skel_mage", "weapon": "skel_staff", "wlen": 34.0, "tint": Color(0.85, 0.7, 1.15), "k": 1.0,
-		"hp": 42.0, "speed": 3.4, "detect": 16.0, "range": 11.0, "dmg": 14.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 4, "keep": 7.5},
+		"hp": 42.0, "speed": 3.4, "detect": 16.0, "range": 11.0, "dmg": 14.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 4, "keep": 7.5, "elem": "magic"},
 	"rogue": {"name": "骨刺客", "model": "skel_rogue", "weapon": "dagger", "wlen": 22.0, "tint": Color(0.8, 0.95, 0.85), "k": 0.95,
 		"hp": 38.0, "speed": 5.0, "detect": 15.0, "range": 2.6, "dmg": 10.0, "windup": 0.32, "attack": "lunge", "poise": 0.0, "coins": 3},
 	"archer": {"name": "骨弩手", "model": "skel_minion", "weapon": "crossbow", "wlen": 28.0, "tint": Color(0.95, 0.9, 0.8), "k": 0.95,
@@ -34,19 +34,31 @@ const TYPES := {
 	"charger": {"name": "冲阵骨", "model": "skel_warrior", "weapon": "skel_axe", "wlen": 38.0, "tint": Color(1.2, 0.72, 0.55), "k": 1.3,
 		"hp": 120.0, "speed": 3.1, "detect": 16.0, "range": 2.6, "dmg": 18.0, "windup": 0.7, "attack": "charge", "poise": 30.0, "coins": 6},
 	"bomber": {"name": "爆骨鬼", "model": "skel_minion", "weapon": "", "wlen": 0.0, "tint": Color(1.35, 0.8, 0.45), "k": 0.8,
-		"hp": 20.0, "speed": 6.2, "detect": 16.0, "range": 2.3, "dmg": 20.0, "windup": 0.8, "attack": "blast", "poise": 0.0, "coins": 2},
+		"hp": 20.0, "speed": 6.2, "detect": 16.0, "range": 2.3, "dmg": 20.0, "windup": 0.8, "attack": "blast", "poise": 0.0, "coins": 2, "elem": "fire"},
 	"shield": {"name": "盾骷髅", "model": "skel_warrior", "weapon": "skel_blade", "wlen": 28.0, "tint": Color(0.85, 0.9, 1.0), "k": 1.1,
 		"hp": 70.0, "speed": 3.3, "detect": 12.0, "range": 2.2, "dmg": 12.0, "windup": 0.6, "attack": "slash", "poise": 0.0, "coins": 5,
 		"offhand": "shield_f", "olen": 26.0, "guard": 4.0},
 	"summoner": {"name": "招魂巫", "model": "mage", "weapon": "staff", "wlen": 34.0, "tint": Color(0.75, 0.95, 0.8), "k": 1.0,
-		"hp": 60.0, "speed": 3.2, "detect": 17.0, "range": 12.0, "dmg": 12.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 6, "keep": 10.0},
+		"hp": 60.0, "speed": 3.2, "detect": 17.0, "range": 12.0, "dmg": 12.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 6, "keep": 10.0, "elem": "magic"},
+	# ---------- 第一幕 · 每层独有 ----------
+	# 瘴菇骨（幽林）：顶着一朵毒菇的小骸骨，站开几步往你脚下喷一团瘴，落地留一滩毒；死了也会噗地散一小团
+	"sporer": {"name": "瘴菇骨", "model": "skel_minion", "weapon": "", "wlen": 0.0, "tint": Color(0.78, 1.0, 0.62), "k": 0.85,
+		"hp": 44.0, "speed": 3.3, "detect": 15.0, "range": 8.0, "dmg": 8.0, "windup": 0.85, "attack": "spore", "poise": 0.0, "coins": 4, "keep": 5.5,
+		"offhand": "shroom", "olen": 26.0, "elem": "poison"},
+	# 抬棺骨（无名冢）：扛着一块棺盖当盾，抡斧头重劈；劈碎了它，棺材里还会爬出三只腐骨虫
+	"coffin": {"name": "抬棺骨", "model": "skel_warrior", "weapon": "skel_axe", "wlen": 36.0, "tint": Color(0.88, 0.84, 0.74), "k": 1.25,
+		"hp": 125.0, "speed": 2.8, "detect": 13.0, "range": 2.6, "dmg": 17.0, "windup": 0.75, "attack": "heavy", "poise": 25.0, "coins": 6,
+		"offhand": "coffin_lid", "olen": 34.0, "guard": 3.0, "split": "crawler"},
+	# 铜钟僧（古寺）：拄着钟杖的僧骨，站在几步外一敲钟，金色的声浪一圈圈往外推（翻滚穿过，或者站到圈外）
+	"bellmonk": {"name": "铜钟僧", "model": "skel_mage", "weapon": "bell_h", "wlen": 46.0, "tint": Color(1.05, 0.98, 0.85), "head": "skel_minion", "k": 1.1,
+		"hp": 95.0, "speed": 2.9, "detect": 15.0, "range": 7.5, "dmg": 13.0, "windup": 0.95, "attack": "bell", "poise": 20.0, "coins": 6, "keep": 5.0, "elem": "holy"},
 	# ---------- 第二幕 ----------
 	# 水骨：埋在积水里，主角走近才猛地站起来扑一下（lurk）
 	"drowned": {"name": "水骨", "model": "skel_rogue", "weapon": "dagger", "wlen": 22.0, "tint": Color(0.6, 0.85, 1.05), "k": 0.9,
-		"hp": 40.0, "speed": 4.6, "detect": 14.0, "range": 2.4, "dmg": 11.0, "windup": 0.38, "attack": "lunge", "poise": 0.0, "coins": 3, "lurk": true},
+		"hp": 40.0, "speed": 4.6, "detect": 14.0, "range": 2.4, "dmg": 11.0, "windup": 0.38, "attack": "lunge", "poise": 0.0, "coins": 3, "lurk": true, "elem": "water"},
 	# 灯奴僧：拖着灯链的僧人骸骨，蓄力后链子横扫一整圈
 	"chainmonk": {"name": "灯奴僧", "model": "skel_mage", "weapon": "skel_staff", "wlen": 30.0, "tint": Color(0.7, 0.9, 1.1), "k": 1.15,
-		"hp": 150.0, "speed": 2.7, "detect": 13.0, "range": 3.6, "dmg": 16.0, "windup": 0.9, "attack": "chain", "poise": 40.0, "coins": 7, "head": "skel_minion"},
+		"hp": 150.0, "speed": 2.7, "detect": 13.0, "range": 3.6, "dmg": 16.0, "windup": 0.9, "attack": "chain", "poise": 40.0, "coins": 7, "head": "skel_minion", "elem": "water"},
 	# 阿七（第四层拔刀）：续命司的刀法，快刀加突刺
 	"ronin": {"name": "阿七", "model": "barbarian", "weapon": "sword", "wlen": 34.0, "tint": Color(1.15, 0.85, 0.65), "k": 1.0,
 		"hp": 420.0, "speed": 4.8, "detect": 30.0, "range": 2.5, "dmg": 15.0, "windup": 0.42, "attack": "slash", "poise": 55.0, "coins": 25},
@@ -55,7 +67,7 @@ const TYPES := {
 		"hp": 150.0, "speed": 2.9, "detect": 13.0, "range": 2.8, "dmg": 19.0, "windup": 0.7, "attack": "heavy", "poise": 55.0, "coins": 8, "armor": 0.35},
 	# 披火骨：浑身着火的骨兵，死了留下一滩火
 	"flameskel": {"name": "披火骨", "model": "skel_warrior", "weapon": "skel_blade", "wlen": 30.0, "tint": Color(1.35, 0.75, 0.45), "k": 1.0,
-		"hp": 60.0, "speed": 4.2, "detect": 14.0, "range": 2.2, "dmg": 12.0, "windup": 0.5, "attack": "slash", "poise": 0.0, "coins": 4, "fire": true},
+		"hp": 60.0, "speed": 4.2, "detect": 14.0, "range": 2.2, "dmg": 12.0, "windup": 0.5, "attack": "slash", "poise": 0.0, "coins": 4, "fire": true, "elem": "fire"},
 	# 不夜将军的亲兵（幻影）：列阵冲一趟就散
 	"phantom": {"name": "亲兵", "model": "knight", "weapon": "axe2", "wlen": 40.0, "tint": Color(1.5, 1.2, 0.7), "mono": 1.0, "phantom": true, "k": 1.15,
 		"hp": 9999.0, "speed": 3.0, "detect": 40.0, "range": 2.6, "dmg": 16.0, "windup": 0.8, "attack": "charge", "poise": 999.0, "coins": 0},
@@ -83,10 +95,10 @@ const TYPES := {
 		"offhand": "lantern_h", "olen": 30.0, "aura": "heal"},
 	# 井鳗骨（青井）：在积水底下游着跟你，冒头咬一口又潜下去（潜着时打不着）
 	"eel": {"name": "井鳗骨", "model": "skel_rogue", "weapon": "dagger", "wlen": 20.0, "tint": Color(0.5, 0.95, 1.0), "mono": 0.65, "k": 0.95,
-		"hp": 48.0, "speed": 5.0, "detect": 16.0, "range": 2.6, "dmg": 13.0, "windup": 0.34, "attack": "lunge", "poise": 0.0, "coins": 4, "lurk": true, "dive": true},
+		"hp": 48.0, "speed": 5.0, "detect": 16.0, "range": 2.6, "dmg": 13.0, "windup": 0.34, "attack": "lunge", "poise": 0.0, "coins": 4, "lurk": true, "dive": true, "elem": "water"},
 	# 泼油俑（灯冢）：铜俑抱着灯油罐，站远了往你脚下扔，落地烧一摊火
 	"oiler": {"name": "泼油俑", "model": "knight", "weapon": "", "wlen": 0.0, "tint": Color(1.2, 0.84, 0.5), "mono": 0.7, "k": 1.05,
-		"hp": 70.0, "speed": 3.0, "detect": 16.0, "range": 12.0, "dmg": 7.0, "windup": 0.8, "attack": "lob", "poise": 0.0, "coins": 5, "keep": 8.0},
+		"hp": 70.0, "speed": 3.0, "detect": 16.0, "range": 12.0, "dmg": 7.0, "windup": 0.8, "attack": "lob", "poise": 0.0, "coins": 5, "keep": 8.0, "elem": "fire"},
 	# 殉灯俑（灯冢）：成对殉葬的铜俑，倒下一个，只要另一个还站着，几秒后又爬起来
 	"twin": {"name": "殉灯俑", "model": "skel_warrior", "weapon": "sword", "wlen": 30.0, "tint": Color(1.2, 0.9, 0.55), "mono": 0.6, "k": 1.0,
 		"hp": 62.0, "speed": 3.9, "detect": 14.0, "range": 2.3, "dmg": 13.0, "windup": 0.5, "attack": "slash", "poise": 0.0, "coins": 4, "twin": true},
@@ -163,6 +175,8 @@ var _rim0 := []                      # 激励前的描边（结束后还原）
 var _up_t := 0.0                     # 井鳗骨：冒出水面多久了（久了就潜回去）
 static var _twin_dead_t := -100.0    # 殉灯俑：上一只倒下的时间（一秒内打死一对 → 成就）
 const AURA_R := 7.0                  # 灯童回血、旗手激励的半径
+const SPORE_R := 1.9                 # 瘴菇骨喷出的那团瘴的半径
+const BELL_R := 9.0                  # 铜钟僧钟声推多远
 var charge_dir := Vector3.ZERO       # 亲兵：列阵冲锋的方向（定好了就不跟着主角转）
 var _rank_t := 9.0                   # 不夜将军：多久号令一次亲兵
 var _fire_t := 6.0                   # 不夜将军二阶段：多久点一次灯油
@@ -174,9 +188,17 @@ const HINTS := {"archer": "骨弩手 · 躲开红线", "charger": "冲阵骨 · 
 	"armored": "烛国甲士 · 铜甲挡刀，先打破韧", "flameskel": "披火骨 · 死后留火，别站进去", "digger": "续命司 · 活人",
 	"greyblade": "灰衣刀手 · 砍完就退，会闪", "greyguard": "灰衣盾兵 · 绕后或连砍破盾", "greybow": "灰衣弩手 · 贴上去", "officer": "灰衣军官 · 精英",
 	"lampkid": "引魂灯童 · 先打它，灯一亮旁边的回血", "eel": "井鳗骨 · 水下跟着你，冒头就砍", "oiler": "泼油俑 · 别站进橙圈",
-	"twin": "殉灯俑 · 成对的，要一起打死", "greyspear": "灰衣枪兵 · 枪长，侧闪或贴身", "greyflag": "灰衣旗手 · 先砍旗，旗一举旁边的发狠"}
+	"twin": "殉灯俑 · 成对的，要一起打死", "sporer": "瘴菇骨 · 别站进绿圈，贴上去砍",
+	"coffin": "抬棺骨 · 棺盖挡正面，碎了里面还有东西", "bellmonk": "铜钟僧 · 钟声往外推，翻滚穿过去", "greyspear": "灰衣枪兵 · 枪长，侧闪或贴身", "greyflag": "灰衣旗手 · 先砍旗，旗一举旁边的发狠"}
 var _trail: BladeTrail
 var dmg_scale := 1.0
+## 精英词缀（FoeAffix）：带了几条、金罩还剩多少
+var affixes: Array[String] = []
+var ward := 0.0
+var ward_max := 0.0
+var _affix_t := 1.0
+var _affix_ring: MeshInstance3D
+var _ward_fx: MeshInstance3D
 
 
 func setup_kind(k: String, hp_scale: float = 1.0, dmg_mult: float = 1.0) -> void:
@@ -248,6 +270,12 @@ func _ready() -> void:
 			rig.set_rim(Color(1.0, 0.8, 0.4), 0.4)
 		"greyflag":
 			rig.set_rim(Color(1.0, 0.45, 0.35), 0.35)
+		"sporer":
+			rig.set_rim(Color(0.55, 1.0, 0.3), 0.55)
+		"coffin":
+			rig.set_rim(Color(0.95, 0.85, 0.6), 0.35)
+		"bellmonk":
+			rig.set_rim(Color(1.0, 0.82, 0.4), 0.5)
 	# 精英和头目出刀带拖尾（颜色同时也是“危险”提示）
 	if max_poise > 0.0 and rig.weapon != null:
 		_trail = BladeTrail.new()
@@ -258,6 +286,7 @@ func _ready() -> void:
 		add_child(_trail)
 		var fc := fx_color()
 		_trail.set_colors(Color(1, 0.95, 0.9), fc)
+	FoeAffix.dress(self)
 	_home = global_position
 	_pose = Poses.idle(0.0)
 	add_to_group("foes")
@@ -287,7 +316,9 @@ func _physics_process(delta: float) -> void:
 		return
 	st_t += dt
 	_anim_t += dt
-	_cool = maxf(_cool - dt * (1.7 if _rally > 0.0 else 1.0), 0.0)
+	_cool = maxf(_cool - dt * (1.7 if _rally > 0.0 else 1.0) * (1.45 if affixes.has("frenzy") else 1.0), 0.0)
+	if not affixes.is_empty() and state != "lurk":
+		FoeAffix.tick(self, dt)
 	if _rally > 0.0:
 		_rally -= dt
 		if _rally <= 0.0 and _rim0.size() == 2:
@@ -614,6 +645,8 @@ func _st_chase(dt: float) -> void:
 				_begin_attack("volley" if randf() < 0.3 else "shot")
 			elif data["attack"] == "lob":
 				_begin_attack("lob")
+			elif data["attack"] in ["spore", "bell"]:
+				_begin_attack(String(data["attack"]))
 			else:
 				_begin_attack("rune")
 			return
@@ -698,6 +731,8 @@ func _choose_attack(_dist: float) -> String:
 			return "heavy"
 		"shield":
 			return "bash" if guard > 0.0 and randf() < 0.4 else "slash"
+		"coffin":
+			return "bash" if guard > 0.0 and randf() < 0.35 else "heavy"
 		"boss", "boss2":
 			return "boss_combo"
 		"chainmonk":
@@ -752,6 +787,10 @@ func _windup_time() -> float:
 			return 0.7
 		"boss_fire":
 			return 0.6
+		"spore":
+			return w
+		"bell":
+			return w
 	return w
 
 
@@ -771,7 +810,8 @@ func _begin_attack(kind_: String) -> void:
 		_atk_dir = charge_dir
 		face_to(_atk_dir)
 	var wt := _windup_time()
-	var red := Color(1.0, 0.15, 0.1, 0.55)
+	# 预警配色统一用 Vfx.DANGER（红刀斧、橙红箭、紫法术、橙火、绿毒、青水、金钟声、白紫雷）
+	var red: Color = Vfx.DANGER["melee"]
 	match _atk:
 		"slash", "boss_combo":
 			Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * (float(data["range"]) + 0.6), 2.6 * float(data["k"]), red, wt)
@@ -780,7 +820,7 @@ func _begin_attack(kind_: String) -> void:
 		"lunge":
 			Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * 3.2, 1.0, red, wt)
 		"rune":
-			Vfx.I.telegraph_circle(_atk_target, 1.7, Color(0.85, 0.25, 1.0, 0.6), wt + 0.55)
+			Vfx.I.telegraph_circle(_atk_target, 1.7, Vfx.DANGER["magic"], wt + 0.55)
 			# 法阵在落点慢慢亮起，光柱刚好在出手那一下打下来
 			Vfx.I.sheet("rune-cast", _atk_target, 3.0, Color(0.9, 0.7, 1.0, 0.95), 1.6, false, 0.0, 2.0 / (wt + 0.55))
 		"leap", "boss_leap":
@@ -802,9 +842,9 @@ func _begin_attack(kind_: String) -> void:
 					var a := randf() * TAU
 					_spikes.append(target.global_position + Vector3(cos(a), 0, sin(a)) * randf_range(1.5, 3.5))
 			for s in _spikes:
-				Vfx.I.telegraph_circle(s, 1.2, Color(0.75, 1.0, 0.6, 0.6) if kind != "boss4" else Color(0.45, 0.8, 1.0, 0.6), wt)
+				Vfx.I.telegraph_circle(s, 1.2, Vfx.DANGER["bone"] if kind != "boss4" else Vfx.DANGER["water"], wt)
 		"boss_summon":
-			Vfx.I.ground(global_position, "magic_01", Color(0.5, 1.0, 0.6, 0.8), 0.5, 5.0, wt + 0.3)
+			Vfx.I.ground(global_position, "magic_01", Vfx.DANGER["summon"], 0.5, 5.0, wt + 0.3)
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "起来！" if kind != "boss6" else "灰衣营——上！", Color(0.7, 1.0, 0.7) if kind != "boss6" else Color(0.85, 0.85, 0.9), 1.0)
 		"shot", "volley":
 			# 红线是箭的路线：开弓前就定了方向，横着一步就能躲
@@ -816,23 +856,23 @@ func _begin_attack(kind_: String) -> void:
 			for a in ([0.0] if _atk == "shot" else [-0.28, 0.0, 0.28]):
 				var d := ad.rotated(Vector3.UP, a)
 				_aim.append(d)
-				Vfx.I.telegraph_rect(global_position, global_position + d * 15.0, 0.45, Color(1.0, 0.3, 0.1, 0.5), wt)
+				Vfx.I.telegraph_rect(global_position, global_position + d * 15.0, 0.45, Vfx.DANGER["shot"], wt)
 			_atk_dir = ad
 			face_to(ad)
 		"charge":
 			Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * 15.0, 1.9, red, wt)
 			Feel.I.callout(head_top(), "冲!", Color(1.0, 0.5, 0.3), 0.8)
 		"blast":
-			Vfx.I.telegraph_circle(global_position, 2.8, Color(1.0, 0.5, 0.1, 0.65), wt)
+			Vfx.I.telegraph_circle(global_position, 2.8, Vfx.DANGER["fire"], wt)
 			Game.sfx("flame", -6.0, 0.1, 1.4)
 		"summon_s":
-			Vfx.I.ground(global_position, "magic_01", Color(0.5, 1.0, 0.6, 0.8), 0.5, 4.0, wt + 0.3)
+			Vfx.I.ground(global_position, "magic_01", Vfx.DANGER["summon"], 0.5, 4.0, wt + 0.3)
 			Vfx.I.sheet("spawn-cast", global_position, 3.0, Color(0.6, 1.0, 0.7, 0.9), 1.6, false, 0.0, 1.6)
 		"bash":
 			Vfx.I.telegraph_rect(global_position, global_position + _atk_dir * 3.0, 1.8, red, wt)
 		"chain", "boss_chain":
 			# 灯链横扫一整圈：脚下一圈青色预警，越涨越满
-			Vfx.I.telegraph_circle(global_position, _chain_r(), Color(0.4, 0.8, 1.0, 0.5) if kind != "boss5" else Color(1.0, 0.6, 0.2, 0.5), wt)
+			Vfx.I.telegraph_circle(global_position, _chain_r(), Vfx.DANGER["water"] if kind != "boss5" else Vfx.DANGER["fire"], wt)
 			Feel.I.callout(head_top(), "链!" if kind != "boss5" else "扫!", Color(0.6, 0.9, 1.0) if kind != "boss5" else Color(1.0, 0.75, 0.4), 0.8)
 		"boss_rank":
 			Vfx.I.ground(global_position, "magic_01", Color(1.0, 0.8, 0.4, 0.8), 0.5, 5.0, wt + 0.3)
@@ -845,11 +885,21 @@ func _begin_attack(kind_: String) -> void:
 		"lob":
 			_atk_target = target.global_position + target.velocity * 0.3 if target != null else global_position
 			_atk_target.y = 0.0
-			Vfx.I.telegraph_circle(_atk_target, 1.8, Color(1.0, 0.55, 0.15, 0.6), wt + FoeLob.FLIGHT)
+			Vfx.I.telegraph_circle(_atk_target, 1.8, Vfx.DANGER["fire"], wt + FoeLob.FLIGHT)
 		"aura":
 			var heal := String(data.get("aura", "")) == "heal"
 			Vfx.I.ground(global_position, "magic_01", Color(0.5, 1.0, 0.75, 0.7) if heal else Color(1.0, 0.35, 0.25, 0.7), 0.5, AURA_R * 2.0, wt + 0.3)
 			Feel.I.callout(head_top(), "灯亮了" if heal else "举旗!", Color(0.7, 1.0, 0.8) if heal else Color(1.0, 0.5, 0.35), 0.8)
+		"spore":
+			# 瘴菇骨：落点一圈绿，喷出去的瘴落地就是一滩毒
+			_atk_target = target.global_position + target.velocity * 0.35 if target != null else global_position
+			_atk_target.y = 0.0
+			Vfx.I.telegraph_circle(_atk_target, SPORE_R, Vfx.DANGER["poison"], wt + 0.25)
+		"bell":
+			# 铜钟僧：脚下一圈金光慢慢涨满，钟声出手时往外推一圈金环（只在环的前沿判定）
+			Vfx.I.telegraph_circle(global_position, 2.0, Vfx.DANGER["holy"], wt)
+			Vfx.I.ground(global_position, "magic_01", Vfx.DANGER["holy"], 0.5, BELL_R * 0.9, wt + 0.3)
+			Feel.I.callout(head_top(), "铛!", Color(1.0, 0.85, 0.45), 0.8)
 		"boss_tide":
 			Vfx.I.ground(global_position, "magic_01", Color(0.4, 0.8, 1.0, 0.8), 0.5, 6.0, wt + 0.3)
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "水来了——翻滚!", Color(0.6, 0.9, 1.0), 1.2)
@@ -865,10 +915,16 @@ func _st_windup(dt: float) -> void:
 	var gc := Color(1.0, 0.1, 0.05) if _atk != "blast" else Color(1.0, 0.55, 0.1) * 1.6
 	if _atk == "aura":
 		gc = Color(0.4, 1.0, 0.6) if String(data.get("aura", "")) == "heal" else Color(1.0, 0.4, 0.2)
+	elif _atk == "spore":
+		gc = Color(0.45, 1.0, 0.2)
+	elif _atk == "bell":
+		gc = Color(1.0, 0.8, 0.3)
 	rig.set_glow(gc * (0.25 + 0.6 * k) * pulse)
 	match _atk:
-		"aura":
+		"aura", "spore":
 			_pose = Poses.cast(k, _anim_t)
+		"bell":
+			_pose = Poses.windup("enemy_v", k, st_t)
 		"lob":
 			_pose = Poses.windup("enemy_v", k, st_t)
 		"thrust":
@@ -1183,6 +1239,54 @@ func _st_attack(dt: float) -> void:
 			if not _did_hit:
 				_did_hit = true
 				_do_aura()
+			if k >= 1.0:
+				_end_attack()
+		"spore":
+			var k := st_t / 0.4
+			_pose = Poses.cast(1.0, _anim_t)
+			move_with_knock(Vector3.ZERO, dt)
+			if not _did_hit:
+				_did_hit = true
+				# 菌盖一抖喷出一股绿雾，沿途几团烟，落点一下毒伤 + 留一滩瘴
+				var from := global_position + Vector3(0, 1.6 * float(data["k"]), 0)
+				for i in range(4):
+					var q := from.lerp(_atk_target + Vector3(0, 0.5, 0), (i + 1) / 4.0)
+					Vfx.I.pop(q, "smoke_04", Color(0.45, 0.85, 0.25, 0.7), 0.4, 1.4, 0.35 + i * 0.05, false)
+				Vfx.I.pop(_atk_target + Vector3(0, 0.5, 0), "smoke_04", Color(0.4, 0.8, 0.2, 0.85), 1.0, 3.6, 0.55, false)
+				Vfx.I.shock_ring(_atk_target, Vfx.ELEM_COLOR["poison"], 0.3, SPORE_R * 2.2, 0.3)
+				Game.sfx("flame", -6.0, 0.1, 0.6)
+				_area_hit(_atk_target, SPORE_R, float(data["dmg"]), HitInfo.Weight.LIGHT)
+				var fp := FirePool.new()
+				fp.elem = "poison"
+				fp.radius = SPORE_R * 0.85
+				fp.damage = 4.0 * dmg_scale
+				fp.life = 3.8
+				get_parent().add_child(fp)
+				fp.global_position = _atk_target
+			if k >= 1.0:
+				_end_attack()
+		"bell":
+			var k := st_t / 0.45
+			_pose = Poses.swing("enemy_v", 1.0, clampf(k / 0.35, 0, 1), clampf((k - 0.35) / 0.65, 0, 1))
+			move_with_knock(Vector3.ZERO, dt)
+			if not _did_hit and k >= 0.3:
+				_did_hit = true
+				# 钟杖往地上一顿：一圈金色声浪往外推，脚下一记佛光
+				var t := TideRing.new()
+				t.owner_foe = self
+				t.damage = float(data["dmg"]) * dmg_scale
+				t.color = Color(1.0, 0.82, 0.38)
+				t.elem = "holy"
+				t.speed = 7.0
+				t.max_r = BELL_R
+				get_parent().add_child(t)
+				t.global_position = Vector3(global_position.x, 0.0, global_position.z)
+				Vfx.I.shock_ring(global_position, Color(1.0, 0.9, 0.6), 0.3, 3.0, 0.25)
+				Vfx.I.pop(rig.blade_tip, "light_03", Color(1.0, 0.85, 0.45), 0.6, 3.0, 0.3)
+				Vfx.I.streaks(rig.blade_tip, Vector3.UP, Color(1.0, 0.85, 0.45), 6, 1.6, 0.22, PI, 0.1)
+				CamRig.I.shake(1)
+				Game.sfx("block", -2.0, 0.05, 0.55)
+				Game.sfx("boom", -9.0, 0.0, 1.6)
 			if k >= 1.0:
 				_end_attack()
 		"boss_tide":
@@ -1545,7 +1649,28 @@ func _area_hit(p: Vector3, r: float, dmg: float, w: int) -> void:
 func _hit_target(hh: Hero, dmg: float, w: int) -> void:
 	var info := HitInfo.make(self, hh, dmg * dmg_scale * randf_range(0.9, 1.1) * (1.25 if _rally > 0.0 else 1.0), w)
 	info.knock = 6.0 if w == HitInfo.Weight.LIGHT else 10.0
+	info.elem = _atk_elem()
 	Feel.I.on_hit(info)
+
+
+## 这一招算什么属性（挨打时冒的特效颜色）：法术紫、火橙、毒绿、水青、钟声金；普通刀斧没有属性
+func _atk_elem() -> String:
+	match _atk:
+		"rune":
+			return "magic"
+		"blast":
+			return "fire"
+		"spore":
+			return "poison"
+		"bell":
+			return "holy"
+		"chain", "boss_chain":
+			return "fire" if kind == "boss5" else "water"
+		"boss_spikes":
+			return "water" if kind == "boss4" else "bone"
+	if _atk in ["slash", "heavy", "lunge", "boss_combo"] and String(data.get("elem", "")) in ["magic", "holy", "poison"]:
+		return ""   # 法师、钟僧、毒菇近身挥杖算普通一下
+	return String(data.get("elem", ""))
 
 
 func take_hit(info: HitInfo) -> bool:
@@ -1555,6 +1680,8 @@ func take_hit(info: HitInfo) -> bool:
 		return false
 	if data.has("phantom"):
 		return false
+	if ward > 0.0 and alive and iframes <= 0.0:
+		FoeAffix.absorb(self, info)
 	var raw_dmg := info.damage
 	if data.has("armor") and _armor_down <= 0.0 and info.weight < HitInfo.Weight.ULT:
 		# 烛国甲士：铜甲挡掉大半，火星四溅
@@ -1710,6 +1837,31 @@ func die(impulse: Vector3) -> void:
 		fp.global_position = Vector3(global_position.x, 0, global_position.z)
 	if data.has("twin"):
 		_twin_died()
+	if kind == "sporer":
+		# 瘴菇骨死了：菌盖噗地散一小团瘴
+		Vfx.I.pop(chest(), "smoke_04", Color(0.45, 0.85, 0.25, 0.8), 0.8, 3.0, 0.5, false)
+		var sp := FirePool.new()
+		sp.elem = "poison"
+		sp.radius = 1.3
+		sp.damage = 3.0 * dmg_scale
+		sp.life = 2.8
+		sp.warn = 0.3
+		get_parent().add_child(sp)
+		sp.global_position = Vector3(global_position.x, 0, global_position.z)
+	if data.has("split") and not has_meta("split_done"):
+		# 抬棺骨：棺盖碎成木片，棺里爬出三只腐骨虫（不掉钱）
+		set_meta("split_done", true)
+		Vfx.I.chips(chest(), Vector3.UP + facing, Color(0.36, 0.24, 0.16), 18, 7.0, 0.14)
+		Vfx.I.sheet("soul-rise", global_position, 2.4, Color(0.75, 1.0, 0.7, 0.85), 1.6)
+		Feel.I.callout(head_top(), "棺里还有!", Color(0.85, 1.0, 0.7), 1.0)
+		Game.sfx("death", -6.0, 0.1, 0.7)
+		for i in range(3):
+			var a := TAU * i / 3.0 + randf() * 0.5
+			var m := _summon(String(data["split"]), global_position + Vector3(cos(a), 0, sin(a)) * 1.3)
+			if m != null:
+				m.hit_stun = 0.0
+	if not affixes.is_empty():
+		FoeAffix.on_death(self)
 	if kind == "greyflag" and _auras == 0 and not no_loot:
 		ArpgAch.unlock("flag_cut")
 	if kind == "bomber" and not _exploded:
@@ -1753,6 +1905,11 @@ func _apply_pose(dt: float) -> void:
 		# 旗手：旗杆一直竖着扛（抡旗杆打人时才放下来）
 		p = p.duplicate()
 		p["blade"] = Vector3(0.15, 1.0, 0.1)
+	if kind == "sporer":
+		# 瘴菇骨：左手把毒菇高高举过头
+		p = p.duplicate()
+		p["hand_l"] = Vector3(0.5, 0.6, -0.1)
+		p["shield"] = Vector3(0.15, 1.0, 0.1)
 	if kind == "lampkid":
 		# 灯童：左手把灯往前挑着
 		p = p.duplicate()

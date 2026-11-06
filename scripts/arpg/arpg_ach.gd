@@ -64,10 +64,15 @@ const LIST := [
 	["forge", "回炉", "在灯冢的熔铜炉里淬刃、铸甲或熔一件装备", false],
 	["cage_10", "破笼", "累计从灰衣营的木笼里放出 10 个人", false],
 	["side_act2", "山中别室", "许愿井、熔铜炉、木笼三种侧室都进过", false],
+	# 各层独有小怪、精英词缀
+	["a1_foes", "山下三怪", "瘴菇骨、抬棺骨、铜钟僧都斩过", false],
+	["affix_30", "斩将", "累计斩 30 只带词缀的精英", false],
 ]
 
 ## 第二幕扩充的新小怪（全都斩过：山中百态）
 const A2_FOES := ["lampkid", "eel", "oiler", "twin", "greyspear", "greyflag"]
+## 第一幕每层独有的小怪（全都斩过：山下三怪）
+const A1_FOES := ["sporer", "coffin", "bellmonk"]
 
 ## 累计数到了就解锁：统计键 → [[数量, 成就id], ...]
 const STAT_GOALS := {
@@ -76,6 +81,7 @@ const STAT_GOALS := {
 	"freed": [[10, "cage_10"]],
 	"k_lampkid": [[10, "lampkid_10"]],
 	"k_eel": [[15, "eel_15"]],
+	"k_affix": [[30, "affix_30"]],
 }
 
 static var on_unlock: Callable      # func(id: String, name: String, desc: String)
@@ -138,14 +144,20 @@ static func add(key: String, n: int = 1) -> void:
 
 ## 斩了一只敌人：第二幕新小怪记种类、记数
 static func killed(kind: String) -> void:
-	if not enabled or not A2_FOES.has(kind):
+	if not enabled:
 		return
-	add("k_" + kind)
-	var st: Dictionary = Game.save.get("ach_stat", {})
-	for k: String in A2_FOES:
-		if int(st.get("k_" + k, 0)) <= 0:
-			return
-	unlock("a2_foes")
+	for pair: Array in [[A2_FOES, "a2_foes"], [A1_FOES, "a1_foes"]]:
+		var lst: Array = pair[0]
+		if not lst.has(kind):
+			continue
+		add("k_" + kind)
+		var st: Dictionary = Game.save.get("ach_stat", {})
+		var all := true
+		for k: String in lst:
+			if int(st.get("k_" + k, 0)) <= 0:
+				all = false
+		if all:
+			unlock(String(pair[1]))
 
 
 ## 打的连击数（每次连击 +1 时调）

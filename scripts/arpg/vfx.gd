@@ -380,6 +380,57 @@ func slash(xf: Transform3D, radius: float, a0: float, a1: float, dur: float = 0.
 
 # ---------- 技能特效 ----------
 
+## 敌人预警的统一配色（地上的框、圈都按这个上色，玩家看颜色就知道是什么招）：
+## 红 = 近身刀斧（站开 / 翻滚），橙红细线 = 箭矢弹道（横跨一步），紫 = 法术落点，橙 = 火 / 爆炸 / 油，
+## 绿 = 毒瘴，青 = 水 / 灯链，金 = 钟声 / 佛光（往外推的圈，翻滚穿过），白紫 = 天雷，淡绿 = 召唤 / 光环（不伤人）
+const DANGER := {
+	"melee": Color(1.0, 0.15, 0.1, 0.55),
+	"shot": Color(1.0, 0.3, 0.1, 0.5),
+	"magic": Color(0.85, 0.25, 1.0, 0.6),
+	"fire": Color(1.0, 0.5, 0.12, 0.62),
+	"poison": Color(0.5, 1.0, 0.22, 0.55),
+	"water": Color(0.4, 0.8, 1.0, 0.55),
+	"holy": Color(1.0, 0.82, 0.3, 0.6),
+	"thunder": Color(0.85, 0.85, 1.0, 0.7),
+	"bone": Color(0.75, 1.0, 0.6, 0.6),
+	"summon": Color(0.5, 1.0, 0.6, 0.8),
+}
+## 每种属性挨打时的主色
+const ELEM_COLOR := {
+	"fire": Color(1.0, 0.5, 0.15), "poison": Color(0.55, 1.0, 0.3), "water": Color(0.45, 0.85, 1.0),
+	"magic": Color(0.85, 0.4, 1.0), "holy": Color(1.0, 0.85, 0.4), "thunder": Color(0.85, 0.85, 1.0), "bone": Color(0.9, 0.95, 0.8),
+}
+
+
+## 属性命中：主角被火 / 毒 / 水 / 法术 / 钟声 / 雷打中时，在红色火花之外再冒一团属性特效（一眼知道被什么打了）
+func elem_burst(pos: Vector3, elem: String, heavy: bool) -> void:
+	if not ELEM_COLOR.has(elem):
+		return
+	var c: Color = ELEM_COLOR[elem]
+	var s := 1.3 if heavy else 1.0
+	match elem:
+		"fire":
+			pop(pos, "flame_01", c, 0.5 * s, 1.8 * s, 0.3)
+			chips(pos, Vector3.UP, Color(1.0, 0.6, 0.2), 6, 5.0, 0.07)
+		"poison":
+			pop(pos, "smoke_04", Color(0.4, 0.85, 0.2, 0.8), 0.6 * s, 2.0 * s, 0.45, false)
+			pop(pos, "circle_05", c, 0.4, 1.4 * s, 0.25)
+		"water":
+			chips(pos, Vector3.UP * 1.4, c, 10, 6.0, 0.08)
+			shock_ring(pos - Vector3(0, pos.y - 0.05, 0), c, 0.3, 2.2 * s, 0.3)
+		"magic":
+			pop(pos, "magic_05", c, 0.5, 2.0 * s, 0.3)
+			pop(pos, "twirl_01", c, 0.4, 1.6 * s, 0.3)
+		"holy":
+			pop(pos, "light_03", c, 0.6, 2.4 * s, 0.3)
+			streaks(pos, Vector3.UP, c, 4, 1.4 * s, 0.2, PI, 0.1)
+		"thunder":
+			streaks(pos, Vector3.UP, c, 6, 1.8 * s, 0.16, PI, 0.1)
+			pop(pos, "spark_04", Color(0.9, 0.9, 1.0), 0.5, 2.0 * s, 0.18)
+		"bone":
+			chips(pos, Vector3.UP, c, 8, 6.0, 0.08)
+
+
 ## 地面上的矩形预警框（突进斩是青色、敌人重击是红色）：from → to，宽 w
 func telegraph_rect(from: Vector3, to: Vector3, w: float, c: Color, dur: float) -> MeshInstance3D:
 	var mi := _take()

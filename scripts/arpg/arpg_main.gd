@@ -897,7 +897,16 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 		_trial.main = self
 		_trial.floor_i = fl
 		arena.add_child(_trial)
+	_squad = {}
+	_hazard = null
 	waves = _make_waves(room_kind, fl)
+	if not _squad.is_empty() and String(_squad["hazard"]) != "" and not waves.is_empty() and not _args.has("nohazard"):
+		# 这个阵带环境机关（瘴气、骨刺、钟声……），伤害跟着层数涨
+		_hazard = RoomHazard.new()
+		_hazard.kind = String(_squad["hazard"])
+		_hazard.main = self
+		_hazard.dmg = 9.0 * (1.0 + fl * 0.18) * state.act_dmg()
+		arena.add_child(_hazard)
 	_wave_delay = 1.4
 	_room_done = waves.is_empty()
 	_hold_waves = false
@@ -924,6 +933,11 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 					hud.banner("天象 · %s" % om["name"], String(om["desc"]), 3.0))
 	hud.visible = true
 	var sub := "第 %d 层　第 %d / %d 间" % [gf + 1, state.run.row + 1, state.run.rows.size()]
+	if not _squad.is_empty():
+		# 战斗房报一下这间是什么阵（玩家一进门就知道这间和上一间不一样）
+		sub = "「%s」%s" % [_squad["name"], _squad["desc"]]
+		title = "%s · %s" % [state.floor_name(), _squad["name"]]
+		hud.zone_name = title
 	if room_kind != "tutorial":
 		hud.banner(title, sub, 2.4)
 	feel.screen_flash(Color(0, 0, 0, 1), 1.6)
@@ -1170,47 +1184,9 @@ func _tut_tick(dt: float) -> void:
 		_tut_wait = true
 
 
-## 战斗房的波次编成池（每层一组，前三个是第一波用的轻松编成）。
-## 幽林：小怪为主，开始见到骨弩手、爆骨鬼、盾骷髅；无名冢：骨刺客、招魂巫、冲阵骨登场；古寺：全种类混编、数量更多。
-const FIGHT_POOLS := [
-	[["crawler", 6, "bomber", 1], ["skeleton", 3, "crawler", 3], ["crawler", 4, "archer", 2],
-		["skeleton", 3, "archer", 2], ["skeleton", 2, "shield", 2, "crawler", 2], ["crawler", 4, "mage", 1, "archer", 1],
-		["skeleton", 3, "bomber", 3], ["skeleton", 2, "mage", 1, "crawler", 3]],
-	[["crawler", 7, "bomber", 2], ["skeleton", 3, "rogue", 2], ["rogue", 2, "archer", 2, "crawler", 2],
-		["shield", 3, "archer", 2], ["summoner", 1, "skeleton", 2, "rogue", 1], ["rogue", 2, "mage", 2, "crawler", 3],
-		["charger", 1, "shield", 2, "crawler", 2], ["bomber", 4, "skeleton", 2]],
-	[["crawler", 8, "bomber", 3], ["rogue", 3, "archer", 2], ["skeleton", 4, "bomber", 2],
-		["shield", 3, "archer", 3], ["charger", 2, "crawler", 4], ["summoner", 2, "skeleton", 3],
-		["mage", 2, "archer", 2, "shield", 2], ["rogue", 3, "charger", 1, "bomber", 2]],
-]
-## 第二幕：青井地宫（水骨从水里偷袭、灯奴僧甩链子、引魂灯童躲在后面给同伴回血、井鳗骨在水底跟着人）
-const ACT2_POOLS := [
-	[["drowned", 5, "crawler", 3], ["skeleton", 3, "drowned", 3], ["eel", 3, "crawler", 3],
-		["chainmonk", 1, "drowned", 4], ["chainmonk", 1, "skeleton", 2, "archer", 2], ["shield", 2, "drowned", 3, "lampkid", 1],
-		["chainmonk", 2, "crawler", 4], ["rogue", 2, "drowned", 3, "bomber", 2], ["eel", 3, "skeleton", 2, "lampkid", 1],
-		["chainmonk", 1, "eel", 2, "lampkid", 1, "archer", 1], ["eel", 4, "drowned", 2]],
-	# 烛国灯冢：烛国甲士（披甲，先破架势）、披火骨（死了留一摊火）、泼油俑（扔油罐）、殉灯俑（成对，要一起打死）
-	[["flameskel", 4, "crawler", 3], ["armored", 1, "skeleton", 3], ["twin", 2, "crawler", 3],
-		["armored", 2, "flameskel", 2], ["armored", 1, "flameskel", 2, "oiler", 1], ["shield", 2, "flameskel", 3, "archer", 1],
-		["armored", 2, "bomber", 2], ["charger", 2, "flameskel", 3], ["armored", 1, "summoner", 1, "crawler", 3],
-		["twin", 4, "oiler", 1], ["oiler", 2, "armored", 1, "twin", 2], ["twin", 2, "flameskel", 2, "oiler", 1]],
-	# 灰衣营：活人（刀手砍完就退、盾兵挡正面、弩手站远射、枪兵隔着几步扎、旗手一举旗旁边的发狠）
-	[["greyblade", 4, "crawler", 2], ["greyguard", 2, "greyblade", 2], ["greyspear", 2, "greyblade", 2],
-		["greyguard", 2, "greybow", 2], ["greyblade", 3, "greyguard", 1, "greybow", 1], ["armored", 1, "greyblade", 3],
-		["greyguard", 3, "greyblade", 2], ["greybow", 3, "greyblade", 2], ["greyblade", 4, "crawler", 3],
-		["greyflag", 1, "greyblade", 3, "greyspear", 1], ["greyspear", 3, "greybow", 1], ["greyflag", 1, "greyguard", 2, "greyspear", 2]],
-]
-const ACT2_LATE := [
-	[["chainmonk", 1, "samurai", 1, "drowned", 2], ["chainmonk", 2, "archer", 2, "lampkid", 1], ["samurai", 1, "eel", 3, "lampkid", 1]],
-	[["armored", 2, "samurai", 1], ["armored", 1, "flameskel", 3, "summoner", 1], ["samurai", 1, "armored", 1, "oiler", 2], ["twin", 4, "armored", 1]],
-	[["officer", 1, "greyblade", 2], ["greyguard", 2, "greybow", 1, "greyflag", 1], ["officer", 1, "greyspear", 2, "greyflag", 1]],
-]
-## 每层深处（第 4 排起）多加的精英波
-const LATE_WAVES := [
-	[["samurai", 1, "skeleton", 2], ["charger", 1, "crawler", 4]],
-	[["samurai", 1, "rogue", 2, "skeleton", 1], ["summoner", 1, "charger", 1, "archer", 2]],
-	[["samurai", 1, "summoner", 1, "shield", 2], ["samurai", 2, "archer", 2], ["charger", 2, "summoner", 1, "rogue", 2]],
-]
+## 战斗房的编成见 FoeSquads（每层四种“阵”，每间战斗房抽一种，同层不重样）；精英词缀见 FoeAffix。
+var _squad := {}          # 这间房的阵（空 = 不是战斗房）
+var _hazard: RoomHazard   # 这间房的环境机关
 
 
 ## 按房间类型配几波敌人：层数越深越多越硬
@@ -1225,17 +1201,23 @@ func _make_waves(kind: String, fl: int) -> Array:
 		return [tw, tw, tw]
 	match kind:
 		"fight":
-			# 每层一个编成池：第一波从前三个里挑（好打的），后两波从剩下的随机挑，深处再加一波精英
-			var pools: Array = FIGHT_POOLS if state.act == 1 else ACT2_POOLS
-			var pool: Array = pools[mini(fl, pools.size() - 1)]
-			var easy: Array = pool.slice(0, 3)
-			var rest: Array = pool.slice(3)
-			rest.shuffle()
-			var w := [easy[_rng.randi() % easy.size()], rest[0], rest[1]]
-			if state.run.row >= 3:
-				var lates: Array = LATE_WAVES if state.act == 1 else ACT2_LATE
-				var late: Array = lates[mini(fl, lates.size() - 1)]
-				w.append(late[_rng.randi() % late.size()])
+			# 每间战斗房抽一个“阵”（同一层先不重样）：阵定了小怪组合、词缀和房间机关
+			var zone := state.zone()
+			var key := "%d:%s" % [state.gfloor(), str(state.run.room_id())]
+			if _args.has("squad"):
+				_squad = FoeSquads.find(zone, String(_args["squad"]))
+			elif state.squads.has(key):
+				_squad = FoeSquads.find(zone, String(state.squads[key]))
+			else:
+				var used := []
+				for k2: String in state.squads:
+					if k2.begins_with("%d:" % state.gfloor()):
+						used.append(state.squads[k2])
+				_squad = FoeSquads.pick(zone, used, _rng)
+			if _squad.is_empty():
+				_squad = FoeSquads.themes(zone)[0]
+			state.squads[key] = _squad["id"]
+			var w := FoeSquads.make_waves(_squad, state.run.row >= 3, _rng)
 			# 第一幕带走了铁伯的头盔：第二幕第一间战斗房，第一波不敢上来
 			if state.act == 2 and state.flags.has("a1_iron_helm") and not state.flags.has("helm_used"):
 				state.flags["helm_used"] = true
@@ -1245,17 +1227,8 @@ func _make_waves(kind: String, fl: int) -> Array:
 						hud.banner("铁伯的头盔", "守过门的盔，这一波骨头不敢上前", 2.2))
 			return w
 		"elite":
-			if state.act == 2 and state.zone() == "camp":
-				return [["greyguard", 2, "greyblade", 3], ["officer", 1, "greybow", 1, "greyspear", 2], ["officer", 1, "greyguard", 2, "greyflag", 1, "greybow", 1]]
-			if state.act == 2 and state.zone() == "vault":
-				return [["armored", 2, "flameskel", 3], ["samurai", 1, "armored", 1, "oiler", 2], ["armored", 2, "samurai", 1, "twin", 2]]
-			if state.act == 2:
-				return [["chainmonk", 2, "drowned", 3], ["samurai", 1, "chainmonk", 1, "lampkid", 1, "archer", 2], ["samurai", 2, "eel", 3, "lampkid", 1]]
-			if fl >= 2:
-				return [["shield", 3, "archer", 3], ["samurai", 2, "bomber", 3], ["samurai", 2, "summoner", 1, "charger", 1]]
-			if fl >= 1:
-				return [["skeleton", 3, "rogue", 2, "archer", 1], ["samurai", 1 + mini(fl, 1), "bomber", 3], ["samurai", 2, "summoner", 1, "rogue", 2]]
-			return [["skeleton", 4, "mage", 2], ["samurai", 1 + fl, "crawler", 4], ["samurai", 2, "archer", 2, "shield", 1]]
+			# 每层一组精英编成；领头的（每波第一种里的第一只）带词缀，见 _affix_for
+			return (FoeSquads.ELITE.get(state.zone(), FoeSquads.ELITE["forest"]) as Array).duplicate(true)
 		"boss":
 			return [[state.boss_kind(), 1]]
 		"trial":
@@ -1272,6 +1245,7 @@ func _next_wave() -> void:
 		return
 	var w: Array = waves[wave_i]
 	hud.wave_text = "第 %d 波 / 共 %d 波" % [wave_i + 1, waves.size()]
+	var aff_slot := _affix_slot(w)
 	if _trial != null:
 		_trial.begin(wave_i)
 	var pts := arena.spawn_points.duplicate()
@@ -1293,9 +1267,51 @@ func _next_wave() -> void:
 			pi += 1
 			if kind.begins_with("boss"):
 				p = Vector3(0, 0, -2.0)
-			_spawn_foe(kind, p, k * 0.12)
+			_spawn_foe(kind, p, k * 0.12, _affix_for(kind) if _args.has("affix") or (j == aff_slot and k == 0) else [])
 	if wave_i > 0:
 		Game.sfx("boss" if String(w[0]).begins_with("boss") else "danger", -6.0)
+
+
+## 这一波哪一种怪的第一只带词缀（返回在波次数组里的下标，-1 = 没有）：
+## 精英房每波都有一只；战斗房第 2 排起第二波之后有几率出一只，深处那一波必有一只。挑这一波里最“硬”的那种。
+func _affix_slot(w: Array) -> int:
+	if _args.has("affix"):
+		return 0
+	var chance := 0.0
+	if room_kind == "elite":
+		chance = 1.0
+	elif room_kind == "fight" and wave_i >= 1:
+		chance = 0.0 if state.run.row < 1 else 0.15 + 0.08 * state.run.row + (0.1 if state.act == 2 else 0.0)
+		if wave_i >= 3:
+			chance = 1.0
+	if chance <= 0.0 or _rng.randf() > chance:
+		return -1
+	var best := -1
+	var best_hp := -1.0
+	for j in range(0, w.size(), 2):
+		var k: String = w[j]
+		if not Foe.TYPES.has(k) or Foe.TYPES[k].has("aura") or Foe.TYPES[k].has("boss") or k in ["bomber", "lampkid"]:
+			continue
+		var hp := float(Foe.TYPES[k]["hp"])
+		if hp > best_hp:
+			best_hp = hp
+			best = j
+	return best
+
+
+## 抽词缀：阵里写了用阵的，精英房用这层的精英词缀池；第二幕的精英房带两条
+func _affix_for(kind: String) -> Array:
+	if _args.has("affix"):
+		return Array(String(_args["affix"]).split(","))
+	var pool: Array = FoeSquads.ELITE_AFFIX.get(state.zone(), ["stout"]) if room_kind != "fight" or _squad.is_empty() else _squad["affix"]
+	pool = pool.duplicate()
+	pool.shuffle()
+	var n := 2 if room_kind == "elite" and state.act == 2 and pool.size() >= 2 else 1
+	# 远程的不拿“狂”以外的近身词缀也无妨；只是“坚”放在小个子身上看不出来，换一条
+	var out := pool.slice(0, n)
+	if kind in ["archer", "greybow", "mage", "sporer"] and out.has("stout") and pool.size() > n:
+		out[out.find("stout")] = pool[n]
+	return out
 
 
 ## 刷怪点打分（越小越好）：8~16 米最好，太近容易贴脸，太远要跑
@@ -1307,7 +1323,7 @@ func _spawn_score(d: float) -> float:
 	return randf() * 0.5
 
 
-func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
+func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> void:
 	if delay > 0.0:
 		await get_tree().create_timer(delay).timeout
 	if mode != "room" or arena == null:
@@ -1327,6 +1343,8 @@ func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
 		f.data["speed"] = float(f.data["speed"]) * state.omen_val("speed")
 	if _trial != null:
 		_trial.mod_foe(f)
+	if not affix.is_empty() and not kind.begins_with("boss"):
+		FoeAffix.apply(f, affix)
 	add_child(f)
 	if _trial != null:
 		_trial.dress_foe(f)
@@ -1334,6 +1352,8 @@ func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
 	f.face_to(hero.global_position - p)
 	f.detect_mult = 1.6   # 波次刷的怪一出来就该找人，大房间里别在角落发呆
 	f.dropped.connect(_on_drop.bind(kind))
+	if not f.affixes.is_empty():
+		f.dropped.connect(func(_p: Vector3, _c: int, _j: int) -> void: ArpgAch.add("k_affix"))
 	if f.is_boss:
 		hud.boss = f
 		var sub: String = {"boss": "守在樱树下的无名剑客", "boss3": "无名冢下，万骨之主", "boss2": "古寺深处，一盏不灭的灯",
@@ -1359,7 +1379,7 @@ func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
 		ArpgAch.add("kills")
 		ArpgAch.killed(kind)
 		# 装备掉落：赤甲武士常掉，小怪偶尔掉
-		var chance := {"ronin": 0.6, "digger": 0.8, "officer": 0.5, "greyguard": 0.06, "greyspear": 0.05, "greyflag": 0.08, "oiler": 0.06, "twin": 0.03, "eel": 0.04, "lampkid": 0.06, "greyblade": 0.04, "greybow": 0.04, "armored": 0.12, "flameskel": 0.03, "chainmonk": 0.12, "drowned": 0.03, "samurai": 0.35, "charger": 0.15, "summoner": 0.1, "shield": 0.08, "mage": 0.06, "archer": 0.05,
+		var chance := {"sporer": 0.05, "coffin": 0.12, "bellmonk": 0.12, "ronin": 0.6, "digger": 0.8, "officer": 0.5, "greyguard": 0.06, "greyspear": 0.05, "greyflag": 0.08, "oiler": 0.06, "twin": 0.03, "eel": 0.04, "lampkid": 0.06, "greyblade": 0.04, "greybow": 0.04, "armored": 0.12, "flameskel": 0.03, "chainmonk": 0.12, "drowned": 0.03, "samurai": 0.35, "charger": 0.15, "summoner": 0.1, "shield": 0.08, "mage": 0.06, "archer": 0.05,
 			"skeleton": 0.04, "rogue": 0.04, "crawler": 0.015}
 		if _rng.randf() < float(chance.get(kind, 0.0)):
 			_drop_gear(pos, -1, 0.1 if kind == "samurai" else 0.0)

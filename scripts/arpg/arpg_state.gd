@@ -39,6 +39,7 @@ var flags := {}                          # 这一局的剧情选择（ronin_save
 var seen := {}                           # 这一局见过的剧情遭遇
 var curse := 0                           # 拿了地藏的钱：受伤 +10% 每层
 var secrets_done := {}                   # 已经打开过的隐藏房间（房间坐标）
+var squads := {}                         # 每间战斗房抽到的“阵”（"层号:房间坐标" → 阵 id，FoeSquads）
 var side_rooms := 0                      # 这一局拿完的侧室（藏宝 / 伏兵 / 灵泉 / 遗骸 / 小试炼）
 var boons: Array[String] = []
 var forged := 0            # 这一局在灯冢熔铜炉里铸过几层甲（每层生命 +FORGE_HP）

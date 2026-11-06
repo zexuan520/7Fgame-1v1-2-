@@ -238,6 +238,8 @@ func _draw_enemy_marks() -> void:
 			var dn := dv.normalized()
 			var pn := Vector2(-dn.y, dn.x)
 			var col := Color(1.0, 0.3, 0.25, 0.85) if a.kind != "samurai" else Color(1.0, 0.75, 0.3, 0.9)
+			if not a.affixes.is_empty():
+				col = Color(FoeAffix.color(a), 0.95)
 			draw_colored_polygon(PackedVector2Array([ep + dn * 11, ep - dn * 6 + pn * 8, ep - dn * 6 - pn * 8]), col)
 			continue
 		var w := 46.0 * (1.25 if a.kind == "samurai" else 1.0)
@@ -245,7 +247,19 @@ func _draw_enemy_marks() -> void:
 		var shown: float = _shown_hp.get(a, 1.0)
 		shown = move_toward(shown, k, 0.01) if shown > k else k
 		_shown_hp[a] = shown
-		if k >= 0.999 and a.bleed <= 0:
+		if not a.affixes.is_empty():
+			# 精英词缀：血条上方挂一排字（每个字一个颜色的小方块），金罩剩多少画一道金条
+			var tw := 23.0 * a.affixes.size()
+			var x0 := sp.x - tw * 0.5
+			for i in range(a.affixes.size()):
+				var d: Dictionary = FoeAffix.DEFS[a.affixes[i]]
+				var r := Rect2(x0 + i * 23.0, sp.y - 27, 21, 22)
+				draw_rect(r, Color(0.05, 0.03, 0.03, 0.85))
+				draw_rect(r, d["color"], false, 2.0)
+				draw_string(font, Vector2(r.position.x, r.position.y + 18), String(d["name"]), HORIZONTAL_ALIGNMENT_CENTER, 21, 18, d["color"])
+			if a.ward > 0.0:
+				draw_rect(Rect2(sp.x - w * 0.5, sp.y - 4, w * a.ward / maxf(a.ward_max, 1.0), 3), Color(1.0, 0.85, 0.35, 0.95))
+		if k >= 0.999 and a.bleed <= 0 and a.affixes.is_empty():
 			continue
 		var y := sp.y
 		draw_rect(Rect2(sp.x - w * 0.5, y, w, 4), Color(0.05, 0.01, 0.01, 0.85))
