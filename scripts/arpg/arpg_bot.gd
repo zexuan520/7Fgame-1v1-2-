@@ -47,7 +47,7 @@ func _physics_process(dt: float) -> void:
 		if _menu_t > 1.6:
 			_menu_t = 0.0
 			_tap("attack")
-		elif _menu_t > 0.8 and _menu_t - dt <= 0.8 and str(menu.get("title")) != "再战？":
+		elif _menu_t > 0.8 and _menu_t - dt <= 0.8 and not (str(menu.get("title")) in ["再战？", "龙椅底下"]):   # 龙椅底下：机器人总是下去打烛王
 			_tap("right")
 		return
 	_menu_t = 0.0

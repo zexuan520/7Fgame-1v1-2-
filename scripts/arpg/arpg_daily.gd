@@ -94,6 +94,8 @@ static func hub(main: ArpgMain) -> void:
 	var done_today := String(d.get("date", "")) == today()
 	main._npc("告示牌 · 每日挑战" + (" ✓" if done_today else ""), p, {"kit": "banner", "scale": 1.2}, func(n: ArpgNpc) -> void: open_board(main, n))
 	main.arena.spirit_fire(p + Vector3(0, 1.0, 0), C_BOARD, 0.9, 1.6, 5.0)
+	if main._args.has("dailyboard"):
+		main.get_tree().create_timer(1.5).timeout.connect(func() -> void: open_board(main))   # 测试：拍告示牌菜单
 
 
 static func describe(p: Dictionary) -> String:
