@@ -17,6 +17,7 @@ const HINTS := {
 	"finish": ["%finish 终结技", "「终」终结技", "敌人身上有出血（红色菱形）时引爆，层数越多越疼"],
 	"heal": ["%heal 药葫芦", "「药」药葫芦", "血不多了：喝一口回一大截，挨打会被打断"],
 	"portal": ["清场了", "清场了", "选一个心法，然后走进光门去下一间。路上的岔路自己挑"],
+	"go": ["%move WASD 移动", "左摇杆移动", "走进前面发光的门，往山上去"],
 }
 
 
@@ -75,6 +76,8 @@ func _process(dt: float) -> void:
 	if main._room_done:
 		if main.room_kind in ["fight", "elite", "trial"]:
 			show("portal")
+		elif main.room_kind == "start":
+			show("go")
 		return
 	show("move")
 	var near := 1e9

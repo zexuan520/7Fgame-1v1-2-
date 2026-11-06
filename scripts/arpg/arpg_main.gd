@@ -174,6 +174,20 @@ func _ready() -> void:
 			_choose_path(ex))
 	if _args.has("runinfo") and state != null:
 		get_tree().create_timer(1.2).timeout.connect(_open_run_info)
+	if _args.has("press"):
+		# 测试：在这些时刻按一下攻击键（标题、菜单、对话框都认）
+		for t: String in String(_args["press"]).split(","):
+			# 不受慢镜头/世界停顿影响（标题画面一直压着 world_pause）
+			get_tree().create_timer(float(t), true, false, true).timeout.connect(func() -> void:
+				var ev := InputEventAction.new()
+				ev.action = ArpgInput.act(0, "attack")
+				ev.pressed = true
+				Input.parse_input_event(ev)
+				get_tree().create_timer(0.08, true, false, true).timeout.connect(func() -> void:
+					var up := InputEventAction.new()
+					up.action = ArpgInput.act(0, "attack")
+					up.pressed = false
+					Input.parse_input_event(up)))
 	if _args.has("pause"):
 		get_tree().create_timer(1.5).timeout.connect(func() -> void: _open_pause())
 	if _args.has("achtest"):
@@ -739,7 +753,7 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 			_tut_next()
 		"start":
 			_open_portal()
-			if state.run.row == 0 and fl < ArpgStory.FLOOR_START.size() and not _args.has("demo") and not _args.has("lineup"):
+			if state.run.row == 0 and fl < ArpgStory.FLOOR_START.size() and not _args.has("demo") and not _args.has("lineup") and not _first_intro:
 				get_tree().create_timer(1.2).timeout.connect(func() -> void:
 					if mode == "room" and _menu == null:
 						_say(ArpgStory.FLOOR_START[fl]))
@@ -788,6 +802,8 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 				return
 			var lines: Array = ArpgStory.INTRO.slice(0, ArpgStory.INTRO.size() - 1)
 			lines.append(["", "（先往山上闯。倒下了会回到山门，在那里找拾骨婆点天赋、去兵器架换兵器。）"])
+			if room_kind == "start" and fl < ArpgStory.FLOOR_START.size():
+				lines.append_array(ArpgStory.FLOOR_START[fl])
 			var d := _say(lines)
 			d.finished.connect(func() -> void:
 				_hold_waves = false
