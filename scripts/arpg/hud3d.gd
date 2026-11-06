@@ -212,6 +212,18 @@ func _draw_player_panel(vs: Vector2) -> void:
 			sets.append(pair[1])
 	if not sets.is_empty():
 		draw_string(font, Vector2(x0, y0 + 66), "大成 " + "  ".join(sets), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, GOLD)
+	# 兵器状态：鸳鸯双刀的刀势、磨刀石、烟丸
+	var tags := []
+	if hero.edge > 0:
+		tags.append("刀势 ×%d" % hero.edge)
+	if hero.buffs.has("whet"):
+		tags.append("刃利 %d" % int(ceil(float(hero.buffs["whet"]))))
+	if hero.buffs.has("smoke"):
+		tags.append("烟遁")
+	if not tags.is_empty():
+		draw_string(font, Vector2(x0 + 140, y0 + 66), "  ".join(tags), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(1.0, 0.6, 0.55))
+	if TouchPad.active and hero.kit != null:
+		draw_string(font, Vector2(x0, y0 + 84), _arms_line(), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.75, 0.9, 0.9))
 	# 气力条
 	draw_rect(Rect2(x0, y0 + 22, w, 5), Color(0.02, 0.06, 0.07))
 	draw_rect(Rect2(x0, y0 + 22, w * e, 5), Color(1.0, 0.85, 0.4) if e >= 1.0 else TEAL)
@@ -270,6 +282,38 @@ func _draw_skills(vs: Vector2) -> void:
 		draw_string(pixel, c + Vector2(-20, 44), it[3], HORIZONTAL_ALIGNMENT_CENTER, 40, 12, Color(0.75, 0.8, 0.8))
 	# 普攻和翻滚提示
 	draw_string(pixel, Vector2(vs.x - 250, vs.y - 112), "%s 攻击  %s 翻滚" % [ArpgInput.key_name(hero.index, "attack"), ArpgInput.key_name(hero.index, "roll")], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.6, 0.7, 0.7))
+	if hero.kit == null:
+		return
+	# 兵器（主手 / 副手、换刃斩冷却）和道具
+	var k := hero.kit
+	var wy := vs.y - 140
+	draw_rect(Rect2(vs.x - 262, wy - 46, 250, 56), Color(PANEL, 0.5))
+	draw_string(font, Vector2(vs.x - 252, wy - 26), _arms_line(), HORIZONTAL_ALIGNMENT_LEFT, 236, 15, Color(0.85, 0.92, 0.92))
+	if not (k.arms[1] as Dictionary).is_empty():
+		var rdy := 1.0 - float(hero.cd["swap_strike"]) / Hero.SWAP_STRIKE_CD
+		draw_rect(Rect2(vs.x - 252, wy - 20, 120 * rdy, 2), Color(TEAL, 0.8))
+	var pl := "无道具"
+	var pc := Color(0.55, 0.6, 0.6)
+	if not k.props.is_empty():
+		var pr: Dictionary = k.props[clampi(k.prop_sel, 0, k.props.size() - 1)]
+		var d := ArpgArms.item(String(pr["id"]))
+		pl = "%s %s ×%d" % [ArpgInput.key_name(hero.index, "item"), d["name"], int(pr["n"])]
+		if k.props.size() > 1:
+			pl += "　%s 换（%d 种）" % [ArpgInput.key_name(hero.index, "item_next"), k.props.size()]
+		pc = d["color"]
+	draw_string(font, Vector2(vs.x - 252, wy - 2), pl, HORIZONTAL_ALIGNMENT_LEFT, 236, 15, pc)
+
+
+## “主 破阵枪　副 连弩　Q 换”
+func _arms_line() -> String:
+	var k := hero.kit
+	var a := String(ArpgData.weapon(String((k.arms[0] as Dictionary).get("base", hero.weapon_id)))["name"])
+	if (k.arms[1] as Dictionary).is_empty():
+		return "兵器 " + a
+	var b := String(ArpgData.weapon(String(k.arms[1]["base"]))["name"])
+	if TouchPad.active:
+		return "主 %s　副 %s" % [a, b]
+	return "主 %s　副 %s　%s 换" % [a, b, ArpgInput.key_name(hero.index, "swap")]
 
 
 static func _cn(n: int) -> String:

@@ -9,6 +9,8 @@ var damage := 6.0
 var life := 4.0
 var warn := 0.0
 var elem := "fire"
+var hurts_foes := false   # 主角扔的火油罐：烧敌人，不烧自己
+var hero: Actor           # 扔火的人（算伤害归属）
 var _t := 0.0
 var _tick := 0.0
 var _lit := false
@@ -72,7 +74,22 @@ func _process(dt: float) -> void:
 			_light()
 		return
 	_tick -= dt
-	if _tick <= 0.0:
+	if _tick <= 0.0 and hurts_foes:
+		_tick = 0.5
+		for f: Node in get_tree().get_nodes_in_group("foes"):
+			var a := f as Actor
+			if a == null or not a.alive:
+				continue
+			var d := a.global_position - global_position
+			d.y = 0
+			if d.length() < radius + a.radius * 0.5:
+				var info := HitInfo.make(hero if is_instance_valid(hero) else null, a, damage, HitInfo.Weight.LIGHT)
+				info.attacker = null
+				info.knock = 0.0
+				info.stun = 0.1
+				info.dir = d.normalized() if d.length() > 0.05 else Vector3.FORWARD
+				Feel.I.on_hit(info)
+	elif _tick <= 0.0:
 		_tick = 0.5
 		for h: Node in get_tree().get_nodes_in_group("heroes"):
 			var hh := h as Hero

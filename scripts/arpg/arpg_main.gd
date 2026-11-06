@@ -168,6 +168,38 @@ func _ready() -> void:
 				_open_skills()
 			else:
 				_open_branch(int(_args["skillmenu"]), false))
+	if _args.has("arms") and state != null:
+		# 测试：--arms=主手,副手（兵器 id），品质看 --armsq=N
+		var ws := String(_args["arms"]).split(",")
+		var q := int(_args.get("armsq", 0))
+		state.arms[0] = ArpgGear.weapon_item(ws[0], q)
+		state.weapon = ws[0]
+		if ws.size() > 1:
+			state.arms[1] = ArpgGear.weapon_item(ws[1], q)
+		hero.apply_stats(state.stats(), state.weapon)
+	if _args.has("props") and state != null:
+		# 测试：--props=fire_flask,thunder_talisman 塞道具（每种塞满）
+		state.props.clear()
+		for id: String in String(_args["props"]).split(","):
+			state.add_item(id, 9)
+	if _args.has("gearset") and state != null:
+		# 测试：--gearset=thunder 穿上一整套
+		for slot: String in ArpgData.GEAR_SLOTS:
+			for g: Dictionary in ArpgData.gear_pool(slot):
+				if String(g.get("set", "")) == String(_args["gearset"]) and (state.gear[slot] as Dictionary).is_empty():
+					state.gear[slot] = {"slot": slot, "base": g["id"], "rarity": 2, "affixes": [], "name": "精·" + String(g["name"])}
+		hero.apply_stats(state.stats(), state.weapon)
+	if _args.has("skin") and is_instance_valid(hero):
+		hero.apply_skin(String(_args["skin"]))   # 测试：只换这一次的皮肤，不写存档
+	if _args.has("keys"):
+		# 测试：--keys=swap@2.0,item@3.5,attack@4 在这些时刻按一下某个动作
+		for pair: String in String(_args["keys"]).split(","):
+			var aa := pair.split("@")
+			get_tree().create_timer(float(aa[1])).timeout.connect(func() -> void:
+				Input.action_press(ArpgInput.act(0, aa[0]))
+				get_tree().create_timer(0.06).timeout.connect(func() -> void: Input.action_release(ArpgInput.act(0, aa[0]))))
+	if _args.has("armsmenu"):
+		get_tree().create_timer(1.5).timeout.connect(_arms_menu_test.bind(String(_args["armsmenu"])))
 	if _args.has("givegear") and state != null:
 		# 测试：往行囊里塞几件装备，过一会儿打开行囊
 		for i in range(int(_args["givegear"])):
@@ -259,6 +291,21 @@ func _ready() -> void:
 	if not Game.loaded_reported:
 		Game.loaded_reported = true
 		get_tree().process_frame.connect(Zaohua.game_loaded, CONNECT_ONE_SHOT)
+
+
+## 测试：--armsmenu=rack|skins|shop|pick|bag 打开兵器架、衣箱、游商、捡兵器、行囊
+func _arms_menu_test(kind: String) -> void:
+	match kind:
+		"rack":
+			_open_weapons(null)
+		"skins":
+			_open_skins(null)
+		"shop":
+			_open_shop(null)
+		"pick":
+			_gain_weapon(ArpgGear.weapon_item("hammer", 3, [["crit", 0.05]]))
+		_:
+			_open_bag()
 
 
 func _parse_args() -> void:
@@ -603,6 +650,7 @@ func _enter_hub() -> void:
 	_build_arena("forest", 4242, HUB_SIZE)
 	_ensure_hero()
 	hero.reset_for_run()
+	hero.kit = null
 	hero.apply_stats(ArpgData.talent_stats(), String(Game.save.get("arpg_weapon", "sword")), true)
 	_place_hero(arena.entry_pos)
 	hud.visible = true
@@ -620,6 +668,7 @@ func _enter_hub() -> void:
 	var hz := HUB_SIZE.y * 0.5
 	_npc("拾骨婆 · 天赋", Vector3(-4.0, 0, 1.0), {"model": "skel_mage", "weapon": "skel_staff", "tint": Color(1.1, 0.95, 0.8)}, _open_talents)
 	_npc("兵器架", Vector3(4.0, 0, 1.0), {"kit": "sword_shield", "scale": 1.3}, _open_weapons)
+	_npc("衣箱 · 皮肤", Vector3(6.5, 0, 3.8), {"kit": "crates", "scale": 0.9}, _open_skins)
 	_make_portal(Vector3(0, 0, -hz + 2.5), "run", Color(1.0, 0.8, 0.45))
 	_npc("试刀 · 教学", Vector3(-4.5, 0, -3.5), {"kit": "sword_shield", "scale": 1.1}, func(_n: ArpgNpc) -> void: _start_tutorial())
 	_npc("功业碑 · 成就 %d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], Vector3(4.5, 0, -3.5), {"kit": "shrine", "scale": 1.1}, func(_n: ArpgNpc) -> void: _open_achievements())
@@ -906,33 +955,110 @@ func _hub_kite(base: Vector3) -> void:
 	root.add_child(lb)
 
 
-func _open_weapons(_n: ArpgNpc) -> void:
+func _open_weapons(_n: ArpgNpc, keep_index: int = -1) -> void:
 	var owned: Array = Game.save.get("arpg_weapons", ["sword"])
 	var cur := String(Game.save.get("arpg_weapon", "sword"))
+	var spare := bool(Game.save.get("arpg_spare", false))
+	var cur2 := String(Game.save.get("arpg_weapon2", ""))
+	var jade := int(Game.save["jade"])
 	var items := []
-	var ids := []
+	var acts := []
 	for id: String in ArpgData.WEAPONS:
 		var w: Dictionary = ArpgData.WEAPONS[id]
 		var have := owned.has(id)
-		var right := "使用中" if id == cur else ("换上" if have else "%d 魂玉" % int(w["price"]))
-		items.append({"title": w["name"], "desc": w["desc"], "right": right,
-			"enabled": have or int(Game.save["jade"]) >= int(w["price"]), "tag": "兵器"})
-		ids.append(id)
-	var m := _open_menu("兵器架", "换兵器就换了连招的手感。没有的用魂玉买下，永久留着。　　魂玉 %d" % int(Game.save["jade"]), items, "list", true)
+		var right := "主手" if id == cur else ("副手" if spare and id == cur2 else ("换上" if have else "%d 魂玉" % int(w["price"])))
+		items.append({"title": w["name"], "desc": String(w["desc"]) + "。" + String(w["trait"]), "right": right,
+			"enabled": id != cur and (have or jade >= int(w["price"])), "tag": "兵器", "color": ArpgArms.trail(id)[1].lerp(Color(0.95, 0.92, 0.85), 0.5)})
+		acts.append(["main", id])
+	# 备刃：出发时副手带第二把；双佩：第二个护符槽
+	if not spare:
+		items.append({"tag": "解锁", "tag_color": Color(1.0, 0.8, 0.4), "title": "备刃", "desc": "出发时副手多带一把兵器（局内按 %s 换手，贴身换手打出换刃斩）" % ArpgInput.key_name(0, "swap"),
+			"right": "%d 魂玉" % SPARE_PRICE, "enabled": jade >= SPARE_PRICE})
+		acts.append(["spare", ""])
+	else:
+		for id: String in ArpgData.WEAPONS:
+			if owned.has(id) and id != cur and id != cur2:
+				items.append({"tag": "副手", "tag_color": ArpgMenu.TEAL, "title": "副手换成 " + String(ArpgData.WEAPONS[id]["name"]), "desc": String(ArpgData.WEAPONS[id]["trait"]), "right": "带上"})
+				acts.append(["off", id])
+	if not ArpgState.charm2_open():
+		items.append({"tag": "解锁", "tag_color": Color(1.0, 0.8, 0.4), "title": "双佩", "desc": "多一个护符槽，可以同时戴两件护符", "right": "%d 魂玉" % CHARM2_PRICE, "enabled": jade >= CHARM2_PRICE})
+		acts.append(["charm2", ""])
+	var sub := "换兵器就换了一整套连招。没有的用魂玉买，局里捡到的兵器也会挂上来。　　魂玉 %d" % jade
+	var m := _open_menu("兵器架", sub, items, "list", true)
+	if keep_index >= 0:
+		m.index = mini(keep_index, items.size() - 1)
 	m.chosen.connect(func(i: int) -> void:
-		var id: String = ids[i]
-		if not owned.has(id):
-			Game.save["jade"] = int(Game.save["jade"]) - int(ArpgData.WEAPONS[id]["price"])
-			owned.append(id)
-			Game.save["arpg_weapons"] = owned
-		Game.save["arpg_weapon"] = id
+		var a: Array = acts[i]
+		var id := String(a[1])
+		match String(a[0]):
+			"main":
+				if not owned.has(id):
+					Game.save["jade"] = int(Game.save["jade"]) - int(ArpgData.WEAPONS[id]["price"])
+					owned.append(id)
+					Game.save["arpg_weapons"] = owned
+				Game.save["arpg_weapon"] = id
+				if String(Game.save.get("arpg_weapon2", "")) == id:
+					Game.save["arpg_weapon2"] = cur
+				feel.callout(hero.head_top(), String(ArpgData.WEAPONS[id]["name"]), Color(1.0, 0.85, 0.45), 1.1)
+			"off":
+				Game.save["arpg_weapon2"] = id
+				feel.callout(hero.head_top(), "副手：" + String(ArpgData.WEAPONS[id]["name"]), ArpgMenu.TEAL, 1.1)
+			"spare":
+				Game.save["jade"] = int(Game.save["jade"]) - SPARE_PRICE
+				Game.save["arpg_spare"] = true
+				feel.callout(hero.head_top(), "备刃", Color(1.0, 0.85, 0.45), 1.1)
+			"charm2":
+				Game.save["jade"] = int(Game.save["jade"]) - CHARM2_PRICE
+				Game.save["arpg_charm2"] = true
+				feel.callout(hero.head_top(), "双佩", Color(1.0, 0.85, 0.45), 1.1)
 		Game.write_save()
 		ArpgAch.check_save()
-		hero.apply_stats(ArpgData.talent_stats(), id, true)
+		hero.apply_stats(ArpgData.talent_stats(), String(Game.save.get("arpg_weapon", "sword")), true)
 		hud.jade = int(Game.save["jade"])
-		feel.callout(hero.head_top(), String(ArpgData.WEAPONS[id]["name"]), Color(1.0, 0.85, 0.45), 1.1)
 		_close_menu()
-		_open_weapons(_n))
+		_open_weapons(_n, i))
+
+
+const SPARE_PRICE := 30
+const CHARM2_PRICE := 50
+
+
+## 山门衣箱：换皮肤（只是外观）。魂玉买的买下永久留着，其余按成就、通关、斩敌数解锁
+func _open_skins(_n: ArpgNpc, keep_index: int = -1) -> void:
+	var cur := String(Game.save.get("arpg_skin", "qing"))
+	var jade := int(Game.save["jade"])
+	var items := []
+	for sk: Dictionary in ArpgArms.SKINS:
+		var id := String(sk["id"])
+		var why := ArpgArms.skin_why_not(id)
+		var u: Dictionary = sk["unlock"]
+		var buy := u.has("jade") and why != ""
+		var right := "穿着" if id == cur else ("换上" if why == "" else why)
+		items.append({"title": sk["name"], "desc": sk["desc"], "right": right, "tag": "皮肤", "tag_color": sk.get("rim", ArpgMenu.TEAL),
+			"enabled": id != cur and (why == "" or (buy and jade >= int(u["jade"]))), "color": (sk.get("rim", Color.WHITE) as Color).lerp(Color(0.95, 0.92, 0.85), 0.55)})
+	var m := _open_menu("衣箱 · 皮肤", "只换样子，不改数值。　　魂玉 %d" % jade, items, "list", true)
+	if keep_index >= 0:
+		m.index = keep_index
+	m.chosen.connect(func(i: int) -> void:
+		var sk: Dictionary = ArpgArms.SKINS[i]
+		var id := String(sk["id"])
+		var u: Dictionary = sk["unlock"]
+		if u.has("jade") and not ArpgArms.skin_owned(id):
+			Game.save["jade"] = int(Game.save["jade"]) - int(u["jade"])
+			var own: Array = Game.save.get("arpg_skins", [])
+			own.append(id)
+			Game.save["arpg_skins"] = own
+		Game.save["arpg_skin"] = id
+		Game.write_save()
+		hero.apply_skin(id)
+		hero.apply_stats(ArpgData.talent_stats(), String(Game.save.get("arpg_weapon", "sword")), true)
+		ArpgAch.unlock("skin_any")
+		vfx.shock_ring(hero.global_position, sk.get("rim", Color.WHITE), 0.3, 3.0, 0.4)
+		vfx.ghost(hero.rig, sk.get("rim", Color.WHITE), 0.4)
+		hud.jade = int(Game.save["jade"])
+		Game.sfx("reward", -4.0)
+		_close_menu()
+		_open_skins(_n, i))
 
 
 # ---------- 一局 ----------
@@ -980,6 +1106,7 @@ func _start_run(fresh_hero: bool = true, act: int = 1) -> void:
 					var rb := state.roll_boons(1, _rng)
 					if not rb.is_empty():
 						state.boons.append(String((rb[0] as Dictionary)["id"]))
+	hero.kit = state
 	hero.apply_stats(state.stats(), state.weapon, true)
 	hero.revives = state.revives
 	_run_t0 = _clock
@@ -1549,6 +1676,12 @@ func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
 			"skeleton": 0.04, "rogue": 0.04, "crawler": 0.015}
 		if _rng.randf() < float(chance.get(kind, 0.0)):
 			_drop_gear(pos, -1, 0.1 if kind == "samurai" else 0.0)
+		# 道具：小怪偶尔掉，精英常掉
+		if _rng.randf() < (0.2 if float(chance.get(kind, 0.0)) >= 0.3 else 0.025):
+			_drop_prop(pos, ArpgArms.random_item(_rng))
+		# 骨铃：斩杀回血
+		if is_instance_valid(hero) and hero.alive and hero.kill_heal > 0.0:
+			hero.hp = minf(hero.hp + hero.kill_heal, hero.max_hp)
 	if state != null and kind != "" and c > 0 and mode == "room":
 		var ups := state.gain_xp(c)
 		if ups > 0:
@@ -1605,6 +1738,8 @@ func _room_cleared() -> void:
 		return
 	if room_kind == "elite":
 		_drop_gear(hero.global_position + hero.facing * 1.5, -1, 0.25)
+		if _rng.randf() < 0.4:
+			_drop_weapon(hero.global_position + hero.facing * 1.5 + Vector3(0.8, 0, 0), -1, 0.2)
 		# 支线 · 刀匠的三样东西：青井地宫的精英身上掉寒铁（要先在山门见过刀匠）
 		# 烛国灯冢的精英房：铸灯炉里的烛铜
 		var smith_id: String = {"well": "iron", "vault": "bronze", "camp": "seal"}.get(state.zone(), "")
@@ -2097,6 +2232,10 @@ func _open_chest(n: ArpgNpc, min_rarity: int = 0) -> void:
 	_drop_gear(p, -1 if min_rarity <= 0 else min_rarity + (1 if _rng.randf() < 0.3 else 0), 0.15)
 	if _rng.randf() < 0.45:
 		_drop_gear(p + Vector3(0.6, 0, 0), -1, 0.0)
+	if _rng.randf() < 0.3:
+		_drop_weapon(p + Vector3(-0.6, 0, 0), -1, 0.15)
+	if _rng.randf() < 0.55:
+		_drop_prop(p + Vector3(0, 0, 0.6), ArpgArms.random_item(_rng))
 	_on_drop(p, 25 + state.floor_i() * 15, 1, "")
 
 
@@ -2389,11 +2528,14 @@ func _open_shop(_n: ArpgNpc) -> void:
 		if it["kind"] == "refill" and hero.gourds >= hero.max_gourds:
 			en = false
 		var desc := String(it["desc"])
+		if it["kind"] == "item" and state.add_item_room(String(it["id"])) == 0:
+			en = false
+			desc += "　（道具带满了）"
 		if it["kind"] == "whet" and state.whet > 0:
 			desc += "　已磨 %d 次（+%d%%）" % [state.whet, int(round(ArpgState.WHET_ATK * 100 * state.whet))]
 		items.append({"title": it["name"], "desc": desc, "right": "已售" if gone else "%d 铜钱" % pr, "enabled": en,
-			"tag": {"boon": "心法", "gear": "装备", "refill": "补给", "whet": "磨刀"}.get(it["kind"], ""),
-			"color": ArpgGear.color(it["item"]) if it["kind"] == "gear" else Color(0.95, 0.92, 0.85)})
+			"tag": {"boon": "心法", "gear": "装备", "refill": "补给", "whet": "磨刀", "weapon": "兵器", "item": "道具"}.get(it["kind"], ""),
+			"color": ArpgGear.color(it["item"]) if it["kind"] in ["gear", "weapon"] else Color(0.95, 0.92, 0.85)})
 	var m := _open_menu("游商", "“兵荒马乱的，什么都贵。”　　铜钱 %d" % state.coins, items, "list", true)
 	m.chosen.connect(func(i: int) -> void:
 		var it: Dictionary = stock[i]
@@ -2406,6 +2548,13 @@ func _open_shop(_n: ArpgNpc) -> void:
 				_take_boon(String(it["id"]))
 			"gear":
 				_gain_gear(it["item"])
+			"weapon":
+				_close_menu()
+				Game.sfx("coin")
+				_gain_weapon(it["item"])
+				return
+			"item":
+				state.add_item(String(it["id"]))
 			"refill":
 				hero.gourds = hero.max_gourds
 			"whet":
@@ -2729,7 +2878,93 @@ func _drop_gear(pos: Vector3, rarity: int = -1, luck: float = 0.0) -> void:
 	l.collected.connect(func(_k: String, _a: int) -> void: _gain_gear(it))
 
 
-## 捡到装备：那个部位空着就直接穿上，否则放进行囊（满了就换成铜钱）
+## 掉一把兵器（精英房、宝箱）
+func _drop_weapon(pos: Vector3, rarity: int = -1, luck: float = 0.0) -> void:
+	if state == null:
+		return
+	var it := ArpgGear.roll_weapon(_rng, rarity, luck + state.floor_i() * 0.08 + state.omen_val("luck", 0.0))
+	var l := Loot.new()
+	l.kind = "gear"
+	l.item = it
+	add_child(l)
+	l.global_position = pos + Vector3(0, 0.8, 0)
+	l.collected.connect(func(_k: String, _a: int) -> void: _gain_weapon(it))
+
+
+func _drop_prop(pos: Vector3, id: String) -> void:
+	if state == null:
+		return
+	var l := Loot.new()
+	l.kind = "prop"
+	l.item = {"id": id}
+	add_child(l)
+	l.global_position = pos + Vector3(0, 0.7, 0)
+	l.collected.connect(func(_k: String, _a: int) -> void: _gain_prop(id))
+
+
+## 捡到道具：叠上去或者占一格；三格都满了就换成铜钱
+func _gain_prop(id: String) -> void:
+	if state == null:
+		return
+	var d := ArpgArms.item(id)
+	var got := state.add_item(id)
+	if got > 0:
+		feel.callout(hero.head_top() + Vector3(0, 0.3, 0), String(d["name"]), d["color"], 1.1)
+		hud.banner(String(d["name"]), String(d["desc"]) + TouchPad.hint("（%s 使用）" % ArpgInput.key_name(0, "item"), "（「器」使用）"), 2.0)
+	else:
+		var c := state.add_coins(10)
+		feel.callout(hero.head_top() + Vector3(0, 0.3, 0), "%s（带满了，换 %d 铜钱）" % [d["name"], c], d["color"], 1.1)
+
+
+## 捡到兵器：副手空着就挂上；两手都有就问换哪一把。没见过的兵器同时挂上山门兵器架
+func _gain_weapon(it: Dictionary) -> void:
+	if state == null:
+		return
+	var wid := String(it["base"])
+	var owned: Array = Game.save.get("arpg_weapons", ["sword"])
+	var fresh := not owned.has(wid)
+	if fresh:
+		owned.append(wid)
+		Game.save["arpg_weapons"] = owned
+		Game.write_save()
+	ArpgAch.unlock("arms_pick")
+	if int(it["rarity"]) >= 4:
+		ArpgAch.unlock("gear_legend")
+	var tail := "（山门兵器架上也挂上了）" if fresh else ""
+	if (state.arms[1] as Dictionary).is_empty():
+		state.arms[1] = it
+		feel.callout(hero.head_top() + Vector3(0, 0.3, 0), String(it["name"]), ArpgGear.color(it), 1.3)
+		hud.banner(String(it["name"]), "挂在副手。" + TouchPad.hint("%s 换手" % ArpgInput.key_name(0, "swap"), "「换」换手") + tail, 2.4)
+		_check_arms_ach()
+		return
+	var items := []
+	for k in range(2):
+		var cur: Dictionary = state.arms[k]
+		items.append({"tag": "主手" if k == 0 else "副手", "title": "换掉 " + String(cur["name"]), "desc": ArpgGear.describe(cur), "color": ArpgGear.color(cur), "right": "换"})
+	var c := 20 + 15 * int(it["rarity"])
+	items.append({"tag": "不要", "title": "熔了换铜钱", "desc": "", "right": "%d 铜钱" % c})
+	var wd := ArpgData.weapon(wid)
+	var m := _open_menu("捡到 " + String(it["name"]), String(wd["desc"]) + "。" + ArpgGear.describe(it) + tail, items, "list", false)
+	m.chosen.connect(func(i: int) -> void:
+		if i < 2:
+			state.arms[i] = it
+			if i == 0:
+				state.weapon = wid
+			hero.apply_stats(state.stats(), state.weapon)
+			feel.callout(hero.head_top() + Vector3(0, 0.3, 0), String(it["name"]), ArpgGear.color(it), 1.3)
+			_check_arms_ach()
+		else:
+			state.add_coins(c)
+			Game.sfx("coin")
+		_close_menu())
+
+
+func _check_arms_ach() -> void:
+	if not (state.arms[1] as Dictionary).is_empty():
+		ArpgAch.unlock("arms_two")
+
+
+## 捡到装备：那个部位空着就直接穿上（护符先占第一格，有双佩再占第二格），否则放进行囊（满了就换成铜钱）
 func _gain_gear(it: Dictionary) -> void:
 	if state == null:
 		return
@@ -2737,10 +2972,16 @@ func _gain_gear(it: Dictionary) -> void:
 	var where := ""
 	if int(it["rarity"]) >= 4:
 		ArpgAch.unlock("gear_legend")
+	var free := ""
 	if (state.gear[slot] as Dictionary).is_empty():
-		state.gear[slot] = it
+		free = slot
+	elif slot == "charm" and ArpgState.charm2_open() and (state.gear["charm2"] as Dictionary).is_empty():
+		free = "charm2"
+	if free != "":
+		state.gear[free] = it
 		hero.apply_stats(state.stats(), state.weapon)
 		where = "（已装备）"
+		_check_set_ach()
 	elif state.bag.size() < ArpgGear.BAG_MAX:
 		state.bag.append(it)
 		where = TouchPad.hint("（放进行囊，Tab 查看）", "（放进行囊，右上角「囊」查看）")
@@ -2748,7 +2989,15 @@ func _gain_gear(it: Dictionary) -> void:
 		var c := state.add_coins(15 + 15 * int(it["rarity"]))
 		where = "（行囊满了，换成 %d 铜钱）" % c
 	feel.callout(hero.head_top() + Vector3(0, 0.3, 0), String(it["name"]), ArpgGear.color(it), 1.3)
-	hud.banner(String(it["name"]), ArpgGear.describe(it) + where, 2.2)
+	hud.banner(String(it["name"]), ArpgGear.slot_name(it) + "：" + ArpgGear.describe(it) + where, 2.2)
+
+
+## 套装成就：穿齐一套三件
+func _check_set_ach() -> void:
+	var n := ArpgArms.set_counts(state.gear)
+	for k: String in n:
+		if int(n[k]) >= 3:
+			ArpgAch.unlock("gear_set")
 
 
 func _open_bag(keep_index: int = -1) -> void:
@@ -2756,18 +3005,45 @@ func _open_bag(keep_index: int = -1) -> void:
 		return
 	var items := []
 	var acts := []
-	for slot: String in ["armor", "charm"]:
+	# 兵器：主手、副手（点主手 = 换手）
+	for k in range(2):
+		var w: Dictionary = state.arms[k]
+		if w.is_empty():
+			items.append({"tag": "副手", "title": "（空）", "desc": "精英房、宝箱、游商那里能弄到兵器", "enabled": false})
+		else:
+			items.append({"tag": "主手" if k == 0 else "副手", "tag_color": ArpgArms.trail(String(w["base"]))[1], "title": w["name"], "desc": ArpgGear.describe(w), "color": ArpgGear.color(w),
+				"right": "换手" if not (state.arms[1] as Dictionary).is_empty() else "", "enabled": not (state.arms[1] as Dictionary).is_empty()})
+		acts.append(["swap", k])
+	var slots: Array = ["armor", "helm", "boots", "charm"]
+	if ArpgState.charm2_open():
+		slots.append("charm2")
+	for slot: String in slots:
 		var it: Dictionary = state.gear[slot]
-		var sname := "护甲" if slot == "armor" else "护符"
+		var sname := String(ArpgData.SLOT_NAMES[slot])
 		if it.is_empty():
 			items.append({"tag": sname, "title": "（空）", "desc": "", "enabled": false})
 		else:
 			items.append({"tag": sname, "title": it["name"], "desc": ArpgGear.describe(it), "color": ArpgGear.color(it),
 				"right": "卸下", "enabled": state.bag.size() < ArpgGear.BAG_MAX})
 		acts.append(["unequip", slot])
+	# 套装进度
+	var sc := ArpgArms.set_counts(state.gear)
+	for sid: String in sc:
+		var gs: Dictionary = ArpgArms.GEAR_SETS[sid]
+		var n := int(sc[sid])
+		var d := "两件：%s；三件：%s（%s）" % [gs["d2"], gs["d3"], gs["pieces"]]
+		items.append({"tag": "套装", "tag_color": gs["color"], "title": "%s %d / 3" % [gs["name"], mini(n, 3)], "desc": d, "color": gs["color"], "enabled": false})
+		acts.append(["none", 0])
+	# 道具
+	for i in range(state.props.size()):
+		var pr: Dictionary = state.props[i]
+		var d := ArpgArms.item(String(pr["id"]))
+		items.append({"tag": "道具", "tag_color": d["color"], "title": "%s ×%d" % [d["name"], int(pr["n"])], "desc": d["desc"],
+			"right": "当前" if i == state.prop_sel else "选用", "enabled": i != state.prop_sel, "color": d["color"]})
+		acts.append(["prop", i])
 	for i in range(state.bag.size()):
 		var it: Dictionary = state.bag[i]
-		items.append({"tag": "行囊", "title": it["name"], "desc": ("护甲：" if it["slot"] == "armor" else "护符：") + ArpgGear.describe(it),
+		items.append({"tag": "行囊", "title": it["name"], "desc": ArpgGear.slot_name(it) + "：" + ArpgGear.describe(it),
 			"color": ArpgGear.color(it), "right": "换上"})
 		acts.append(["equip", i])
 	for r: int in ArpgGear.craftable(state.bag):
@@ -2782,16 +3058,25 @@ func _open_bag(keep_index: int = -1) -> void:
 	m.chosen.connect(func(i: int) -> void:
 		var a: Array = acts[i]
 		match String(a[0]):
+			"swap":
+				state.swap_arms()
+			"prop":
+				state.prop_sel = int(a[1])
 			"unequip":
 				state.bag.append(state.gear[a[1]])
 				state.gear[a[1]] = {}
 			"equip":
 				var it: Dictionary = state.bag[int(a[1])]
 				state.bag.remove_at(int(a[1]))
-				var old: Dictionary = state.gear[it["slot"]]
+				var slot := String(it["slot"])
+				# 护符：第一格有了、第二格空着就戴第二格
+				if slot == "charm" and not (state.gear["charm"] as Dictionary).is_empty() and ArpgState.charm2_open() and (state.gear["charm2"] as Dictionary).is_empty():
+					slot = "charm2"
+				var old: Dictionary = state.gear[slot]
 				if not old.is_empty():
 					state.bag.append(old)
-				state.gear[it["slot"]] = it
+				state.gear[slot] = it
+				_check_set_ach()
 			"craft":
 				var made := ArpgGear.craft(state.bag, int(a[1]), _rng)
 				state.bag.append(made)
@@ -2903,6 +3188,16 @@ func _open_run_info() -> void:
 	if state.omen != "":
 		var om: Dictionary = ArpgState.OMENS[state.omen]
 		items.append({"title": "天象 · %s" % om["name"], "desc": om["desc"], "tag": "天象"})
+	for k in range(2):
+		var w: Dictionary = state.arms[k]
+		if not w.is_empty():
+			items.append({"title": "%s · %s" % ["主手" if k == 0 else "副手", w["name"]], "desc": ArpgGear.describe(w), "tag": "兵器", "color": ArpgGear.color(w)})
+	var gsc := ArpgArms.set_counts(state.gear)
+	for sid: String in gsc:
+		var gs: Dictionary = ArpgArms.GEAR_SETS[sid]
+		var gn := int(gsc[sid])
+		items.append({"title": "套装「%s」" % gs["name"], "right": "%d / 3" % mini(gn, 3), "desc": "两件：%s；三件：%s" % [gs["d2"], gs["d3"]],
+			"color": gs["color"], "enabled": gn >= 2, "tag": "套装"})
 	var sc := ArpgData.school_counts(state.boons)
 	for k: String in ArpgData.SETS:
 		var n := int(sc.get(k, 0))

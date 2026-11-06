@@ -86,8 +86,10 @@ func _physics_process(dt: float) -> void:
 	if near == null:
 		if is_instance_valid(portal):
 			move = portal.global_position - hero.global_position
-	elif nd > 2.2:
+	elif nd > (6.0 if hero.weapon_id == "crossbow" else 2.2):
 		move = near.global_position - hero.global_position
+	elif hero.weapon_id == "crossbow" and nd < 3.5:
+		move = hero.global_position - near.global_position
 	# 卡在障碍上：原地不动超过 0.8 秒就往侧面绕一下
 	if move.length() > 0.5:
 		if hero.global_position.distance_to(_last_p) < 0.05:
@@ -133,7 +135,18 @@ func _physics_process(dt: float) -> void:
 	if nd > 3.5 and nd < 7.5 and hero.cd["dash"] <= 0.0:
 		_tap("dash")
 		return
-	if nd < 2.8 and _atk_t <= 0.0:
+	# 兵器、道具：成群的时候扔道具，副手冷却好了贴身换手打换刃斩
+	if hero.kit != null and _skill_t <= 0.0:
+		if not hero.kit.props.is_empty() and foes.size() >= 3 and nd < 6.0 and randf() < 0.02:
+			_skill_t = 0.8
+			_tap("item")
+			return
+		if not (hero.kit.arms[1] as Dictionary).is_empty() and hero.cd["swap_strike"] <= 0.0 and nd < 3.0 and randf() < 0.01:
+			_skill_t = 0.8
+			_tap("swap")
+			return
+	var reach := 9.0 if hero.weapon_id == "crossbow" else (3.6 if hero.weapon_id == "spear" else 2.8)
+	if nd < reach and _atk_t <= 0.0:
 		_atk_t = 0.11
 		_tap("attack")
 

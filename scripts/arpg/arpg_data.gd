@@ -8,19 +8,48 @@ extends RefCounted
 ##   insight 开局天赋点  xp 悟道获取加成  sk_<分支> 技能分支级数  duo_<id> 双修（见 ArpgSkills）
 ##   coin 铜钱加成  jade 魂玉加成  discount 商人折扣  keep 死亡魂玉带回加成  start_coins 开局铜钱  revive 倒下再起
 
-## 兵器：换的是连招手感（伤害、快慢、攻击范围）和人偶手里的模型
+## 兵器：每种兵器有自己的一套连招（ArpgArms.combo）、专属特性（trait，ArpgArms.TRAITS 说明）和人偶手里的模型。
+## dmg 乘到所有招式上（突进、光束、终结技也算），连招本身的伤害写在连招里。trail 是刀光颜色。
 const WEAPONS := {
-	"sword": {"name": "游侠剑", "desc": "四段连招，快慢适中", "model": "sword", "len": 34.0, "dmg": 1.0, "speed": 1.0, "reach": 1.0, "price": 0},
-	"greatsword": {"name": "斩马大剑", "desc": "慢而重，范围大，每一刀都是重击", "model": "sword2", "len": 46.0, "dmg": 1.45, "speed": 0.78, "reach": 1.22, "price": 30, "heavy": true},
-	"dagger": {"name": "双刃短匕", "desc": "极快，出血 +1，攻击范围小", "model": "dagger", "len": 22.0, "dmg": 0.68, "speed": 1.45, "reach": 0.8, "price": 25, "bleed": 1},
-	"axe": {"name": "裂骨斧", "desc": "会心伤害 +50%，第三段下劈震地", "model": "axe2", "len": 38.0, "dmg": 1.15, "speed": 0.9, "reach": 1.05, "price": 25, "crit_dmg": 0.5},
+	"sword": {"name": "游侠剑", "desc": "四段连招，快慢适中。第四段回旋斩叠出血", "trait": "均衡：突进斩冷却 -10%", "model": "sword", "len": 34.0, "dmg": 1.0, "price": 0},
+	"greatsword": {"name": "斩马大剑", "desc": "三段，慢而重，范围大；第三段跳劈震地", "trait": "霸体：出刀时挨打不会被打断、受伤 -15%", "model": "sword2", "len": 46.0, "dmg": 1.1, "price": 30},
+	"dagger": {"name": "双刃短匕", "desc": "五段，极快，攻击范围小；收势影刺叠两层出血", "trait": "背刺：从背后砍必定会心，出血 +1", "model": "dagger", "len": 22.0, "dmg": 0.9, "price": 25},
+	"axe": {"name": "裂骨斧", "desc": "三段，第三段下劈震地", "trait": "碎骨：会心伤害 +50%", "model": "axe2", "len": 38.0, "dmg": 1.0, "price": 25},
+	"spear": {"name": "破阵枪", "desc": "四段，前两段直刺够得远，第三段横扫，收势一枪扎穿一整排", "trait": "枪尖：2.4 米外的敌人伤害 +25%", "model": "spear", "len": 52.0, "dmg": 1.0, "price": 35},
+	"staff": {"name": "齐眉棍", "desc": "五段，大开大合，把敌人打飞；收势扫堂把一圈人扫晕", "trait": "棍扫：每一棍多回 3 点气力，击退更远", "model": "staff", "len": 44.0, "dmg": 1.0, "price": 30},
+	"twin": {"name": "鸳鸯双刀", "desc": "六段，两手轮着砍，最后两段旋身连斩", "trait": "刀势：连续砍中叠刀势，每层伤害 +4%（最多 10 层，1.5 秒没砍中就散）", "model": "twin_blade", "offhand": "twin_blade", "len": 28.0, "dmg": 0.95, "price": 40},
+	"hammer": {"name": "镇岳锤", "desc": "三段，最慢最重；后两锤砸地，第三锤震出三圈地波", "trait": "震荡：被砸中的敌人晕得更久（×1.8）", "model": "hammer", "len": 44.0, "dmg": 1.1, "price": 45},
+	"crossbow": {"name": "连弩", "desc": "远程：三发连射，第四段扇形连珠五箭；射击时略往后退", "trait": "游射：翻滚后的第一箭必定会心，弩箭穿透一个敌人", "model": "crossbow", "len": 30.0, "dmg": 1.0, "price": 45, "ranged": true},
 }
 
+## 装备部位：护甲、头冠、靴子、护符（护符可以戴两件，第二件要在兵器架解锁“双佩”）。
+## stats 里除了通用属性，还有装备专属的机制键（Hero.apply_stats 读）：
+##   thorns 近身挨打反弹伤害比例  hurt_energy 挨打回气  rage 生命低于一半时伤害加成  roll_bolt 翻滚落地放雷的伤害
+##   roll_far 翻滚距离  kill_heal 斩杀回血  crit_bolt 会心时落雷的几率  fire_proc 命中炸火的几率
+## set 是套装（ArpgArms.GEAR_SETS），同一套穿够两件、三件各有效果。
 const ARMORS := [
 	{"id": "leather", "name": "皮甲", "desc": "生命 +20", "stats": {"hp": 20.0}, "price": 30},
-	{"id": "chain", "name": "锁子甲", "desc": "受伤 -12%", "stats": {"dmg_taken": -0.12}, "price": 45},
+	{"id": "chain", "name": "锁子甲", "desc": "受伤 -12%", "stats": {"dmg_taken": -0.12}, "price": 45, "set": "iron"},
 	{"id": "shadow_cloak", "name": "影纱斗篷", "desc": "翻滚无敌 +0.08 秒、移速 +6%", "stats": {"iframes": 0.08, "move": 0.06}, "price": 40},
-	{"id": "oni_plate", "name": "鬼面铠", "desc": "生命 +35、受伤 -8%", "stats": {"hp": 35.0, "dmg_taken": -0.08}, "price": 70},
+	{"id": "oni_plate", "name": "鬼面铠", "desc": "生命 +35、受伤 -8%", "stats": {"hp": 35.0, "dmg_taken": -0.08}, "price": 70, "set": "oni"},
+	{"id": "thorn_mail", "name": "荆棘甲", "desc": "受伤 -6%，近身挨打时反弹 60% 伤害", "stats": {"dmg_taken": -0.06, "thorns": 0.6}, "price": 55},
+	{"id": "spirit_robe", "name": "灵纹袍", "desc": "气力获取 +15%，挨打时回 15 点气", "stats": {"energy": 0.15, "hurt_energy": 15.0}, "price": 45, "set": "thunder"},
+]
+
+const HELMS := [
+	{"id": "iron_helm", "name": "铁盔", "desc": "生命 +15、受伤 -4%", "stats": {"hp": 15.0, "dmg_taken": -0.04}, "price": 35, "set": "iron"},
+	{"id": "oni_mask", "name": "鬼面", "desc": "会心率 +6%", "stats": {"crit": 0.06}, "price": 40, "set": "oni"},
+	{"id": "straw_hat", "name": "斗笠", "desc": "移速 +5%、翻滚无敌 +0.04 秒", "stats": {"move": 0.05, "iframes": 0.04}, "price": 30},
+	{"id": "wolf_helm", "name": "狼首盔", "desc": "生命低于一半时伤害 +20%", "stats": {"rage": 0.2}, "price": 45},
+	{"id": "thunder_crown", "name": "雷纹冠", "desc": "光束斩伤害 +25%、气力获取 +10%", "stats": {"beam": 0.25, "energy": 0.1}, "price": 45, "set": "thunder"},
+]
+
+const BOOTS := [
+	{"id": "sandals", "name": "草鞋", "desc": "移速 +8%", "stats": {"move": 0.08}, "price": 25},
+	{"id": "iron_boots", "name": "铁靴", "desc": "受伤 -5%、生命 +10", "stats": {"dmg_taken": -0.05, "hp": 10.0}, "price": 35, "set": "iron"},
+	{"id": "thunder_boots", "name": "雷纹靴", "desc": "翻滚落地时放出一圈雷（伤害 12）", "stats": {"roll_bolt": 12.0}, "price": 45, "set": "thunder"},
+	{"id": "wind_boots", "name": "风行履", "desc": "突进斩冷却 -15%、翻滚距离 +20%", "stats": {"dash_cd": 0.15, "roll_far": 0.2}, "price": 40},
+	{"id": "oni_greaves", "name": "鬼纹胫甲", "desc": "伤害 +6%、移速 +3%", "stats": {"atk": 0.06, "move": 0.03}, "price": 40, "set": "oni"},
 ]
 
 const CHARMS := [
@@ -30,7 +59,26 @@ const CHARMS := [
 	{"id": "wind_bell", "name": "风铃", "desc": "突进斩冷却 -25%", "stats": {"dash_cd": 0.25}, "price": 40},
 	{"id": "coin_frog", "name": "金蟾", "desc": "铜钱 +40%", "stats": {"coin": 0.4}, "price": 30},
 	{"id": "red_thread", "name": "赤缘绳", "desc": "出血伤害 +40%", "stats": {"bleed_dmg": 0.4}, "price": 45},
+	{"id": "bone_bell", "name": "骨铃", "desc": "每斩杀一个敌人回 3 点生命", "stats": {"kill_heal": 3.0}, "price": 40},
+	{"id": "thunder_seal", "name": "雷符坠", "desc": "会心率 +4%，会心时 25% 机会引一道落雷", "stats": {"crit": 0.04, "crit_bolt": 0.25}, "price": 50, "set": "thunder"},
+	{"id": "jade_turtle", "name": "玄龟甲", "desc": "药葫芦 +1", "stats": {"gourds": 1}, "price": 45},
+	{"id": "fire_jade", "name": "火纹玉", "desc": "命中时 12% 机会在敌人身上炸开一团火", "stats": {"fire_proc": 0.12}, "price": 45},
 ]
+
+## 部位 → 装备表、中文名
+const GEAR_SLOTS := ["armor", "helm", "boots", "charm"]
+const SLOT_NAMES := {"armor": "护甲", "helm": "头冠", "boots": "靴子", "charm": "护符", "charm2": "护符·二"}
+
+
+static func gear_pool(slot: String) -> Array:
+	match slot:
+		"armor":
+			return ARMORS
+		"helm":
+			return HELMS
+		"boots":
+			return BOOTS
+	return CHARMS
 
 ## 心法：清房后三选一，商人那里也卖；同一种可以叠
 const BOONS := [
@@ -128,12 +176,10 @@ static func boon(id: String) -> Dictionary:
 
 
 static func gear(id: String) -> Dictionary:
-	for g: Dictionary in ARMORS:
-		if g["id"] == id:
-			return g.merged({"slot": "armor"})
-	for g: Dictionary in CHARMS:
-		if g["id"] == id:
-			return g.merged({"slot": "charm"})
+	for slot: String in GEAR_SLOTS:
+		for g: Dictionary in gear_pool(slot):
+			if g["id"] == id:
+				return g.merged({"slot": slot})
 	return {}
 
 

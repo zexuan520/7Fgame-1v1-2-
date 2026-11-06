@@ -49,6 +49,8 @@ static func run(phase: float, k: float) -> Dictionary:
 
 ## 挥刀：su/ac/rc 是前摇/判定/后摇里各自的进度 0~1（没到的那段是 0，过了的是 1）
 static func swing(kind: String, su: float, ac: float, rc: float) -> Dictionary:
+	if kind == "thrust" or kind == "shoot":
+		return _thrust(kind, su, ac, rc)
 	var w := ease_out(su)                 # 蓄到起手位置
 	var a := ease_out(ac)                 # 挥过去
 	var r := ease_in_out(rc)              # 收回来
@@ -107,6 +109,43 @@ static func swing(kind: String, su: float, ac: float, rc: float) -> Dictionary:
 	p["foot_r"] = Vector3(2.0 + step, 0, 1.0)
 	p["foot_l"] = Vector3(-2.5 - step * 0.3, 0, -0.8)
 	p["bob"] = float(p.get("bob", 0.0)) - 1.2 * a
+	return p
+
+
+## 直刺（枪、匕首收势）：前摇把手往回收、刃端平；判定时整条胳膊送出去，身子前倾。
+## 射击（连弩）：两手平端在胸前，判定时往后一顿（后坐）
+static func _thrust(kind: String, su: float, ac: float, rc: float) -> Dictionary:
+	var w := ease_out(su)
+	var a := ease_out(ac)
+	var r := ease_in_out(rc)
+	var p := {}
+	if kind == "shoot":
+		var kick := a * (1.0 - r)
+		p["blade"] = dirv(0, lerpf(-25.0, 0.0, w) + 6.0 * kick)
+		p["hand_r"] = dirv(-8, lerpf(-40.0, -2.0, w) + 4.0 * kick, 0.82 - 0.12 * kick)
+		p["hand_l"] = dirv(14, lerpf(-50.0, -6.0, w), 0.78 - 0.1 * kick)
+		p["lean"] = 0.05 - 0.12 * kick
+		p["twist"] = -0.2 * w
+		p["bob"] = -0.8
+		p["foot_r"] = Vector3(-1.5, 0, 0.8)
+		p["foot_l"] = Vector3(2.0, 0, -0.8)
+		return p
+	var ext := lerpf(0.75, 0.45, w)
+	var ph := lerpf(-25.0, -4.0, w)
+	if ac > 0.0:
+		ext = lerpf(0.45, 1.0, a)
+	if rc > 0.0:
+		ext = lerpf(1.0, 0.75, r)
+		ph = lerpf(-4.0, -25.0, r * 0.7)
+	p["blade"] = dirv(-4, ph)
+	p["hand_r"] = dirv(-12, ph * 0.6 - 4.0, ext)
+	p["hand_l"] = dirv(12, ph * 0.6 - 8.0, ext * 0.85)
+	p["twist"] = -0.35 * w * (1.0 - a) + 0.25 * a * (1.0 - r)
+	p["lean"] = 0.1 + 0.35 * a * (1.0 - r * 0.7) - 0.1 * w * (1.0 - a)
+	var step := 3.5 * a * (1.0 - r * 0.6)
+	p["foot_r"] = Vector3(2.0 + step, 0, 1.0)
+	p["foot_l"] = Vector3(-2.5 - step * 0.3, 0, -0.8)
+	p["bob"] = -0.6 - 1.4 * a
 	return p
 
 

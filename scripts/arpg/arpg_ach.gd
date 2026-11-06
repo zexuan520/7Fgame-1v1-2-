@@ -78,6 +78,13 @@ const LIST := [
 	["link_all", "七式俱通", "瞬狱、残月、焚血、天落、血步、风雷、归一七种连携都打出过", false],
 	["art_all", "四门秘技", "旋风、飞轮、震岳、分身四种秘技都学过", false],
 	["dual_any", "双修", "一局里凑成一种双修", false],
+	# 兵器、装备、道具、皮肤
+	["arms_pick", "称手", "在路上捡到一把兵器", false],
+	["arms_two", "左右开弓", "一局里同时带着两把兵器", false],
+	["swap_hit", "换刃", "换兵器的同时打出换刃斩，砍中敌人", false],
+	["gear_set", "成套", "穿齐一整套套装（三件）", false],
+	["prop_20", "百宝囊", "累计用掉 20 件道具", false],
+	["skin_any", "换身行头", "在山门衣箱换一身皮肤", false],
 ]
 
 ## 第二幕扩充的新小怪（全都斩过：山中百态）
@@ -93,6 +100,7 @@ const STAT_GOALS := {
 	"k_lampkid": [[10, "lampkid_10"]],
 	"k_eel": [[15, "eel_15"]],
 	"k_affix": [[30, "affix_30"]],
+	"prop_use": [[20, "prop_20"]],
 }
 
 static var on_unlock: Callable      # func(id: String, name: String, desc: String)

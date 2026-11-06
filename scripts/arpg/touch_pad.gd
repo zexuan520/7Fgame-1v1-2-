@@ -74,6 +74,12 @@ func _buttons(vs: Vector2) -> Array:
 		out.append(["art", "秘", a + Vector2(-206, -160), 38.0, Color(1.0, 0.7, 0.35)])
 	if _npc_near():
 		out.append(["interact", "互", a + Vector2(-250, -60), 40.0, Color(1.0, 0.95, 0.8)])
+	# 换兵器、道具：这一局带着副手 / 道具时才出现
+	if _hero_ok() and hero.kit != null:
+		if not (hero.kit.arms[1] as Dictionary).is_empty():
+			out.append(["swap", "换", a + Vector2(-120, -232), 32.0, Color(0.6, 1.0, 0.95)])
+		if not hero.kit.props.is_empty():
+			out.append(["item", "器", a + Vector2(-336, 20), 32.0, Color(1.0, 0.7, 0.4)])
 	return out
 
 
@@ -282,6 +288,8 @@ func _ready_k(n: String) -> float:
 			return minf(hero.energy / hero.beam_cost, 1.0)
 		"heal":
 			return 1.0 if hero.gourds > 0 else 0.0
+		"swap":
+			return 1.0 - float(hero.cd["swap_strike"]) / Hero.SWAP_STRIKE_CD
 	return 1.0
 
 
@@ -308,6 +316,10 @@ func _draw_button(b: Array, k: float, down: bool) -> void:
 	draw_string(font, c + Vector2(-r, fs * 0.36), String(b[1]), HORIZONTAL_ALIGNMENT_CENTER, r * 2, fs, col if ready else Color(0.55, 0.6, 0.6))
 	if String(b[0]) == "heal" and _hero_ok():
 		draw_string(font, c + Vector2(r * 0.35, r * 0.95), str(hero.gourds), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.8, 1.0, 0.85))
+	if String(b[0]) == "item" and _hero_ok() and hero.kit != null and not hero.kit.props.is_empty():
+		var pr: Dictionary = hero.kit.props[clampi(hero.kit.prop_sel, 0, hero.kit.props.size() - 1)]
+		draw_string(font, c + Vector2(r * 0.35, r * 0.95), str(int(pr["n"])), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1.0, 0.85, 0.7))
+		draw_string(font, c + Vector2(-r * 1.6, -r - 6), String(ArpgArms.item(String(pr["id"]))["name"]), HORIZONTAL_ALIGNMENT_CENTER, r * 3.2, 13, Color(1.0, 0.85, 0.7, 0.85))
 
 
 func _draw_rotate_hint(vs: Vector2) -> void:

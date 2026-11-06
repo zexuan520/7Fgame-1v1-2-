@@ -18,6 +18,8 @@ const HINTS := {
 	"heal": ["%heal 药葫芦", "「药」药葫芦", "血不多了：喝一口回一大截，挨打会被打断"],
 	"portal": ["清场了", "清场了", "选一个心法，然后走进光门去下一间。路上的岔路自己挑"],
 	"go": ["%move WASD 移动", "左摇杆移动", "走进前面发光的门，往山上去"],
+	"item": ["%item 用道具　%item_next 换一种", "「器」用道具", "火油罐、雷符、烟丸……最多带三种。捡到、开箱、游商那里都有"],
+	"swap": ["%swap 换兵器", "「换」换兵器", "身上带着两把兵器。贴着敌人换手，新兵器直接打出收势一击（换刃斩）"],
 }
 
 
@@ -43,7 +45,7 @@ func show(id: String) -> bool:
 	var h: Array = HINTS[id]
 	var title := String(h[1]) if TouchPad.active else String(h[0])
 	if not TouchPad.active:
-		for k: String in ["move", "attack", "roll", "dash", "beam", "finish", "heal"]:
+		for k: String in ["move", "attack", "roll", "dash", "beam", "finish", "heal", "swap", "item_next", "item"]:
 			title = title.replace("%" + k + " ", ArpgInput.key_name(0, k) + " " if k != "move" else "")
 	main.hud.banner(title, String(h[2]), 3.6)
 	Game.sfx("ui_back", -6.0)
@@ -100,3 +102,8 @@ func _process(dt: float) -> void:
 		show("heal")
 	if near > 4.0 and near < 9.0 and _room_t > 8.0 and hero.cd["dash"] <= 0.0:
 		show("dash")
+	if hero.kit != null and _room_t > 14.0:
+		if not hero.kit.props.is_empty():
+			show("item")
+		if not (hero.kit.arms[1] as Dictionary).is_empty() and near < 5.0:
+			show("swap")

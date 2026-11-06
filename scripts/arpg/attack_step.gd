@@ -19,10 +19,20 @@ extends Resource
 @export var crit_chance := 0.12
 @export var slash_radius := 2.3       # 刀光半径
 @export var slash_tilt := 0.0         # 刀光平面倾斜（弧度，正 = 右边高）
+## 兵器专属效果（ArpgArms 按兵器配）：quake 震地一圈（fx_r 半径）/ pierce 一条直线都扎穿（fx_r 长度）/
+## bolt 射一支弩箭 / spread 扇形连射五支 / sweep 扫堂（晕得更久）
+@export var fx := ""
+@export var fx_r := 0.0
 
 
 func total() -> float:
 	return startup + active + recovery
+
+
+func with_fx(kind: String, r: float = 0.0) -> AttackStep:
+	fx = kind
+	fx_r = r
+	return self
 
 
 static func make(lbl: String, sw: String, dmg: float, su: float, ac: float, rc: float, ca: float, lunge_m: float, rch: float, arc_deg: float, hv: bool, kn: float, bl: int, tilt: float = 0.0) -> AttackStep:

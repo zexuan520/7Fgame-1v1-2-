@@ -33,8 +33,11 @@ var coins := 0
 var jade := 0
 var kills := 0
 var rooms := 0
-var weapon := "sword"
-var gear := {"armor": {}, "charm": {}}   # 身上穿的装备（ArpgGear 字典，空字典表示没穿）
+var weapon := "sword"                     # 主手兵器 id（= arms[0].base）
+var arms: Array = [{}, {}]               # 主手、副手兵器（ArpgGear 兵器字典，副手空着就是 {}）；Q 换手
+var gear := {"armor": {}, "helm": {}, "boots": {}, "charm": {}, "charm2": {}}   # 身上穿的装备（ArpgGear 字典，空字典表示没穿）
+var props: Array = []                    # 道具：[{"id", "n"}...]，最多 ArpgArms.ITEM_KINDS 种
+var prop_sel := 0                        # 当前选中的道具
 var bag: Array = []                      # 行囊里的装备
 var flags := {}                          # 这一局的剧情选择（ronin_saved、sakura_blade ...）
 var seen := {}                           # 这一局见过的剧情遭遇
@@ -66,6 +69,17 @@ static func start_new(act_: int = 1) -> ArpgState:
 	s.seed_value = randi() if not OS.get_cmdline_user_args().has("--seed0") else 12345   # --seed0：测试时固定房间
 	s.run = Run.create(0, s.seed_value)
 	s.weapon = String(Game.save.get("arpg_weapon", "sword"))
+	if not ArpgData.WEAPONS.has(s.weapon):
+		s.weapon = "sword"
+	s.arms[0] = ArpgGear.weapon_item(s.weapon)
+	# 兵器架“备刃”：出发时副手带上第二把
+	var w2 := String(Game.save.get("arpg_weapon2", ""))
+	if bool(Game.save.get("arpg_spare", false)) and w2 != "" and w2 != s.weapon and ArpgData.WEAPONS.has(w2):
+		s.arms[1] = ArpgGear.weapon_item(w2)
+	# 开局送一样道具，让人知道有这回事
+	var irng := RandomNumberGenerator.new()
+	irng.seed = s.seed_value + 77
+	s.add_item(ArpgArms.random_item(irng))
 	var st := ArpgData.talent_stats()
 	s.coins = int(ArpgData.stat(st, "start_coins"))
 	s.revives = int(ArpgData.stat(st, "revive"))
@@ -184,13 +198,11 @@ func room_type() -> String:
 ## 所有加成：天赋 + 兵器 + 护甲 + 护符 + 心法
 func stats() -> Dictionary:
 	var st := ArpgData.talent_stats()
-	var w := ArpgData.weapon(weapon)
-	if w.has("bleed"):
-		ArpgData.add_stats(st, {"bleed": w["bleed"]})
-	if w.has("crit_dmg"):
-		ArpgData.add_stats(st, {"crit_dmg": w["crit_dmg"]})
+	ArpgData.add_stats(st, ArpgArms.weapon_stats(weapon))
+	ArpgData.add_stats(st, ArpgGear.stats(arms[0]))
 	for slot: String in gear:
 		ArpgData.add_stats(st, ArpgGear.stats(gear[slot]))
+	ArpgData.add_stats(st, ArpgArms.set_stats(gear))
 	if curse > 0:
 		ArpgData.add_stats(st, {"dmg_taken": 0.1 * curse})
 	for b: String in boons:
@@ -228,6 +240,54 @@ static func difficulty() -> int:
 
 const WHET_ATK := 0.06
 const FORGE_HP := 20.0
+
+
+## 换手：主手和副手对调
+func swap_arms() -> void:
+	if (arms[1] as Dictionary).is_empty():
+		return
+	var a: Dictionary = arms[0]
+	arms[0] = arms[1]
+	arms[1] = a
+	weapon = String(arms[0]["base"])
+
+
+## 第二个护符槽（兵器架“双佩”解锁）
+static func charm2_open() -> bool:
+	return bool(Game.save.get("arpg_charm2", false))
+
+
+## 捡到道具：已经有这种就叠上去（到上限为止），没有就占一格。返回实际放进去几个
+func add_item(id: String, n: int = 1) -> int:
+	var mx := int(ArpgArms.item(id).get("max", 3))
+	for it: Dictionary in props:
+		if String(it["id"]) == id:
+			var add := mini(n, mx - int(it["n"]))
+			it["n"] = int(it["n"]) + add
+			return add
+	if props.size() >= ArpgArms.ITEM_KINDS:
+		return 0
+	props.append({"id": id, "n": mini(n, mx)})
+	return mini(n, mx)
+
+
+## 还能再放几个这种道具（不改动）
+func add_item_room(id: String) -> int:
+	var mx := int(ArpgArms.item(id).get("max", 3))
+	for it: Dictionary in props:
+		if String(it["id"]) == id:
+			return mx - int(it["n"])
+	return mx if props.size() < ArpgArms.ITEM_KINDS else 0
+
+
+func use_item(id: String) -> void:
+	for i in range(props.size()):
+		if String(props[i]["id"]) == id:
+			props[i]["n"] = int(props[i]["n"]) - 1
+			if int(props[i]["n"]) <= 0:
+				props.remove_at(i)
+			break
+	prop_sel = clampi(prop_sel, 0, maxi(props.size() - 1, 0))
 
 
 ## 磨刀一次的价钱：越磨越贵（第三层铜钱多了也有地方花）
@@ -302,13 +362,25 @@ func shop_stock() -> Array:
 	var items := []
 	for b: Dictionary in roll_boons(2, rng):
 		items.append({"kind": "boon", "id": b["id"], "name": b["name"], "desc": b["desc"], "price": 45 + run.row * 3})
-	for slot: String in ["armor", "charm"]:
+	# 装备两件（四个部位里随机两个）、兵器一把、道具两样
+	var slots: Array = ArpgData.GEAR_SLOTS.duplicate()
+	for i in range(2):
+		var slot := String(slots.pop_at(rng.randi_range(0, slots.size() - 1)))
 		# 越往后货越好（也越贵）：第一层 良~精，第二层 精~珍，第三层 精~传
 		var fl := floor_i()
 		var it := ArpgGear.roll(rng, rng.randi_range(1 + mini(fl, 1), mini(2 + fl, 4)), 0.0, slot)
 		var base := ArpgData.gear(String(it["base"]))
-		items.append({"kind": "gear", "item": it, "name": it["name"], "desc": ("护甲：" if slot == "armor" else "护符：") + ArpgGear.describe(it),
+		items.append({"kind": "gear", "item": it, "name": it["name"], "desc": ArpgGear.slot_name(it) + "：" + ArpgGear.describe(it),
 			"price": int(base["price"]) + 25 * int(it["rarity"])})
+	var wi := ArpgGear.roll_weapon(rng, rng.randi_range(1, mini(2 + floor_i(), 4)))
+	var wd := ArpgData.weapon(String(wi["base"]))
+	items.append({"kind": "weapon", "item": wi, "name": wi["name"], "desc": "兵器：" + String(wd["desc"]) + "。" + ArpgGear.describe(wi),
+		"price": 40 + int(wd["price"]) + 25 * int(wi["rarity"])})
+	var ks := ArpgArms.ITEMS.keys()
+	for i in range(2):
+		var iid := String(ks.pop_at(rng.randi_range(0, ks.size() - 1)))
+		var idef := ArpgArms.item(iid)
+		items.append({"kind": "item", "id": iid, "name": idef["name"], "desc": "道具：" + String(idef["desc"]), "price": int(idef["price"])})
 	items.append({"kind": "refill", "id": "refill", "name": "补药", "desc": "补满药葫芦", "price": 20})
 	items.append({"kind": "whet", "id": "whet", "name": "磨刀", "desc": "这一局伤害 +6%（可以一直磨，越磨越贵）", "price": 0})
 	shop_cache[key] = items
