@@ -1307,7 +1307,8 @@ func _dress_camp() -> void:
 		add_child(l)
 		l.position = fp + Vector3(0, 1.0, 0)
 		_flame(fp + Vector3(0, 0.3, 0))
-		spirit_fire(fp + Vector3(0, 0.05, 0), Color(1.0, 0.6, 0.25), 1.3, 0.0, 0.1)
+		_flame(fp + Vector3(0.18, 0.25, 0.1))
+		_flame(fp + Vector3(-0.15, 0.25, -0.1))
 		_smoke_column(fp + Vector3(0, 1.2, 0))
 		kit("bench", fp + Vector3(0, 0, 1.8), 0.0, 0.9, true)
 	# 木笼（续命司抓来的人关在里面，空着门）
