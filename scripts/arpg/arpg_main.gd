@@ -55,6 +55,9 @@ var _shot_n := 0
 var _rng := RandomNumberGenerator.new()
 var ach_toast: AchToast
 var _run_t0 := 0.0             # 这一局出发时的 _clock（成就“一气呵成”）
+var _first_intro := false     # 第一次玩：第一间房先说开场白
+var _boss_retry := false       # 游历难度重打头目：不再放登场对话
+var hints: ArpgHints
 var _room_hits0 := 0           # 进这间房时挨过几下（成就“片叶不沾身”“毫发无伤”）
 
 
@@ -63,6 +66,8 @@ func _ready() -> void:
 	Foe.tokens = 0
 	_rng.randomize()
 	_parse_args()
+	if _args.has("diff"):
+		Game.save["arpg_diff"] = clampi(int(_args["diff"]), 0, 1)   # 测试：不写存档，只改这次
 	_setup_world()
 	apply_quality(_initial_quality())
 	if _args.has("shot"):
@@ -131,6 +136,10 @@ func _ready() -> void:
 	if _args.has("outro"):
 		# 测试：直接当作头目已经打倒
 		get_tree().create_timer(1.0).timeout.connect(func() -> void: _room_cleared())
+	if _args.has("boons") and state != null:
+		# 测试：开局塞几个心法（看流派大成）
+		for id: String in String(_args["boons"]).split(","):
+			_take_boon(id)
 	if _args.has("givegear") and state != null:
 		# 测试：往行囊里塞几件装备，过一会儿打开行囊
 		for i in range(int(_args["givegear"])):
@@ -155,6 +164,16 @@ func _ready() -> void:
 			t2.pressed = true
 			t2.position = Vector2(vs.x - 118, vs.y - 112)
 			send.call(t2))
+	if _args.has("pathtest") and state != null:
+		# 测试：直接打开分岔路菜单（看路线图）
+		get_tree().create_timer(1.2).timeout.connect(func() -> void:
+			var ex := state.run.exits()
+			while ex.size() < 2 and state.run.row < state.run.rows.size() - 2:
+				state.run.advance(int(ex[0][0]))
+				ex = state.run.exits()
+			_choose_path(ex))
+	if _args.has("runinfo") and state != null:
+		get_tree().create_timer(1.2).timeout.connect(_open_run_info)
 	if _args.has("pause"):
 		get_tree().create_timer(1.5).timeout.connect(func() -> void: _open_pause())
 	if _args.has("achtest"):
@@ -325,6 +344,9 @@ func _setup_world() -> void:
 	ArpgAch.enabled = not _args.has("noach")
 	ArpgAch.on_unlock = func(_id: String, n: String, d: String) -> void: ach_toast.push(n, d)
 	ArpgAch.check_save(true)   # 旧存档里已经做到的，悄悄补上
+	hints = ArpgHints.new()
+	hints.main = self
+	add_child(hints)
 
 
 func _apply_zone_env(info: Dictionary) -> void:
@@ -334,7 +356,7 @@ func _apply_zone_env(info: Dictionary) -> void:
 	_zone_info = info
 	env.ambient_light_energy = float(info["amb_e"]) * (1.0 if quality >= 1 else LOW_AMBIENT)
 	env.fog_light_color = info["fog"]
-	env.fog_density = info["fog_d"]
+	env.fog_density = float(info["fog_d"]) * (state.omen_val("fog") if state != null and mode != "hub" else 1.0)
 	env.fog_sky_affect = 1.0
 	env.fog_depth_begin = 15.0
 	env.fog_depth_end = 34.0
@@ -446,8 +468,40 @@ func _enter_title() -> void:
 		_title.queue_free()
 		_title = null
 		Game.sfx("door")
-		feel.screen_flash(Color(0, 0, 0, 1), 0.0)
-		_enter_hub())
+		if not Game.save.has("arpg_diff"):
+			_pick_difficulty(_after_title)
+		else:
+			_after_title())
+
+
+## 标题之后：第一次玩直接上山开打（开场白在第一间房里说，按键在打的时候即时提示），以后回山门
+func _after_title() -> void:
+	feel.screen_flash(Color(0, 0, 0, 1), 0.0)
+	if not bool(Game.save.get("arpg_intro", false)) and int(Game.save.get("runs", 0)) == 0:
+		Game.save["arpg_intro"] = true
+		Game.write_save()
+		_first_intro = true
+		_start_run()
+		_enter_room()
+	else:
+		_enter_hub()
+
+
+## 选难度（第一次开始时，或暂停菜单里）
+func _pick_difficulty(then: Callable) -> void:
+	var items := []
+	for i in range(2):
+		items.append({"title": ArpgState.DIFF_NAMES[i], "desc": ArpgState.DIFF_DESC[i], "tag": "推荐" if i == 0 else "挑战",
+			"color": Color(0.5, 1.0, 0.75) if i == 0 else Color(1.0, 0.45, 0.35), "glyph": ArpgState.DIFF_NAMES[i].substr(0, 1)})
+	var m := _open_menu("选择难度", "之后可以在暂停菜单里改", items, "cards", false)
+	m.index = ArpgState.difficulty()
+	m.chosen.connect(func(i: int) -> void:
+		Game.save["arpg_diff"] = i
+		Game.write_save()
+		_close_menu()
+		if state != null and is_instance_valid(hero):
+			hero.apply_stats(state.stats(), state.weapon)
+		then.call())
 
 
 # ---------- 山门（局外：天赋、兵器、出发） ----------
@@ -607,6 +661,8 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	_clear_scene()
 	_ensure_hero()
 	_tel = {"t": 0.0, "dmg0": hero.dmg_total}
+	if hints != null:
+		hints.room_entered()
 	room_kind = kind if kind != "" else state.room_type()
 	_room_hits0 = hero.hits_taken
 	if room_kind != "tutorial":
@@ -647,6 +703,16 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 	hud.zone_name = title
 	hud.wave_text = ""
 	hud.seals = []
+	hud.omen = ""
+	if state.omen != "" and room_kind != "tutorial":
+		var om: Dictionary = ArpgState.OMENS[state.omen]
+		hud.omen = "天象 · %s" % om["name"]
+		hud.omen_color = om["color"]
+		if state.rooms == 1:
+			# 一局的第一间：报一下这局的天象
+			get_tree().create_timer(2.8).timeout.connect(func() -> void:
+				if mode == "room":
+					hud.banner("天象 · %s" % om["name"], String(om["desc"]), 3.0))
 	hud.visible = true
 	var sub := "第 %d 层　第 %d / %d 间" % [fl + 1, state.run.row + 1, state.run.rows.size()]
 	if room_kind != "tutorial":
@@ -698,7 +764,8 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 			_open_portal()
 		"boss":
 			# 头目先说话，说完再出手
-			_hold_waves = not _args.has("demo")
+			_hold_waves = not _args.has("demo") and not _boss_retry
+			_boss_retry = false
 			if _hold_waves:
 				get_tree().create_timer(1.3).timeout.connect(_boss_intro.bind(fl))
 		"shop":
@@ -712,6 +779,19 @@ func _enter_room(kind: String = "", zone_override: String = "") -> void:
 			var kits := {"blood_altar": "skull_candle", "wounded_ronin": "tent", "gambler": "table", "hermit": "well"}
 			_npc(String(ev["name"]), mid, {"kit": kits.get(ev["id"], "grave_a"), "scale": 1.1}, _open_event)
 			_open_portal()
+	# 第一次玩：第一间房先听拾骨婆的开场白，说完再刷怪
+	if _first_intro:
+		_first_intro = false
+		_hold_waves = true
+		get_tree().create_timer(1.4).timeout.connect(func() -> void:
+			if mode != "room":
+				return
+			var lines: Array = ArpgStory.INTRO.slice(0, ArpgStory.INTRO.size() - 1)
+			lines.append(["", "（先往山上闯。倒下了会回到山门，在那里找拾骨婆点天赋、去兵器架换兵器。）"])
+			var d := _say(lines)
+			d.finished.connect(func() -> void:
+				_hold_waves = false
+				_wave_delay = 0.4))
 	# 没有战斗的房间：侧门一进来就开着
 	if _room_done:
 		for sr: SideRoom in side_rooms:
@@ -937,6 +1017,8 @@ func _next_wave() -> void:
 	for j in range(0, w.size(), 2):
 		var kind: String = w[j]
 		var n: int = w[j + 1]
+		if not kind.begins_with("boss") and state != null:
+			n = maxi(1, int(round(n * state.omen_val("count"))))   # 天象：血月、骨潮多刷
 		for k in range(n):
 			var p: Vector3 = pts[pi % pts.size()] + Vector3(randf_range(-0.6, 0.6), 0, randf_range(-0.6, 0.6))
 			pi += 1
@@ -966,7 +1048,12 @@ func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
 	var f := Foe.new()
 	# 越往后的房间越硬；头目不吃“第几间”的加成（它总在最后一间，原来白白多了 28% 血、21% 伤害，是整层最大的难度尖刺）
 	var rk := 0 if kind.begins_with("boss") else row
-	f.setup_kind(kind, 1.0 + fl * 0.35 + rk * 0.04, 1.0 + fl * 0.18 + rk * 0.03)
+	var om_hp := state.omen_val("hp") if state != null and not kind.begins_with("boss") else 1.0
+	var om_dmg := state.omen_val("dmg") if state != null else 1.0
+	f.setup_kind(kind, (1.0 + fl * 0.35 + rk * 0.04) * om_hp, (1.0 + fl * 0.18 + rk * 0.03) * om_dmg)
+	if state != null and state.omen_val("speed") != 1.0:
+		f.data = f.data.duplicate()
+		f.data["speed"] = float(f.data["speed"]) * state.omen_val("speed")
 	if _trial != null:
 		_trial.mod_foe(f)
 	add_child(f)
@@ -980,7 +1067,12 @@ func _spawn_foe(kind: String, p: Vector3, delay: float) -> void:
 		hud.boss = f
 		var sub: String = {"boss": "守在樱树下的无名剑客", "boss3": "无名冢下，万骨之主", "boss2": "古寺深处，一盏不灭的灯"}.get(kind, "")
 		hud.banner(f.display_name, sub, 2.6)
-		cam_rig.punch_zoom(0.4, 0.8)
+		# 登场：镜头特写头目、上下黑边、脚下一圈本色冲击
+		cam_rig.close_up(f, 1.9, 0.6)
+		hud.cinema(2.2)
+		vfx.shock_ring(f.global_position, f.fx_color(), 0.5, 7.0, 0.6)
+		vfx.sheet("spawn-cast", f.global_position, 4.5, Color.WHITE, 1.6, false, 0.0, 1.4)
+		cam_rig.shake(1, 1.0)
 
 
 func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
@@ -1016,6 +1108,8 @@ func _loot(pos: Vector3, kind: String, amount: int) -> void:
 func _room_cleared() -> void:
 	_room_done = true
 	_tel_print("clear")
+	if state != null and state.omen_val("heal", 0.0) > 0.0 and room_kind in ["fight", "elite", "trial"] and is_instance_valid(hero):
+		_heal(state.omen_val("heal", 0.0))   # 天象：清明
 	hud.wave_text = "清场"
 	Game.sfx("door")
 	var clean := is_instance_valid(hero) and hero.hits_taken == _room_hits0
@@ -1322,7 +1416,7 @@ func _offer_boons(n: int, then_portal: String) -> void:
 	var items := []
 	for b: Dictionary in offer:
 		var have := state.boons.count(String(b["id"]))
-		items.append({"title": b["name"], "desc": b["desc"], "tag": "%s 心法" % b["school"], "color": ArpgData.SCHOOL_COLORS.get(b["school"], ArpgMenu.TEAL),
+		items.append({"title": b["name"], "desc": b["desc"], "tag": _school_tag(String(b["school"])), "color": ArpgData.SCHOOL_COLORS.get(b["school"], ArpgMenu.TEAL),
 			"right": ("已有 %d" % have) if have > 0 else "", "glyph": String(b["name"]).substr(0, 1)})
 	var m := _open_menu("心法", "三选一，留在身上直到这一局结束", items, "cards", false)
 	m.chosen.connect(func(i: int) -> void:
@@ -1331,10 +1425,30 @@ func _offer_boons(n: int, then_portal: String) -> void:
 		_open_portal(then_portal))
 
 
+## 心法卡片上的流派标签：“血 心法 2/3”，凑够了写“已大成”
+func _school_tag(sc: String) -> String:
+	var n := int(ArpgData.school_counts(state.boons).get(sc, 0))
+	if n >= ArpgData.SET_NEED:
+		return "%s · 已大成" % sc
+	return "%s 心法 %d/%d" % [sc, n, ArpgData.SET_NEED]
+
+
 func _take_boon(id: String) -> void:
+	var b := ArpgData.boon(id)
+	var sc := String(b.get("school", ""))
+	var before := int(ArpgData.school_counts(state.boons).get(sc, 0))
 	state.boons.append(id)
 	hero.apply_stats(state.stats(), state.weapon)
-	var b := ArpgData.boon(id)
+	if before == ArpgData.SET_NEED - 1 and ArpgData.SETS.has(sc):
+		# 流派大成：大横幅 + 本色冲击
+		var st: Dictionary = ArpgData.SETS[sc]
+		get_tree().create_timer(0.5).timeout.connect(func() -> void:
+			hud.banner("%s · 大成「%s」" % [sc, st["name"]], String(st["desc"]), 4.0)
+			Game.sfx("reward")
+			feel.screen_flash(Color(ArpgData.SCHOOL_COLORS.get(sc, Color.WHITE), 0.35), 2.0)
+			for j in range(3):
+				vfx.shock_ring(hero.global_position, ArpgData.SCHOOL_COLORS.get(sc, Color.WHITE), 0.35 + j * 0.15, 4.0 + j * 2.0, 0.5))
+		ArpgAch.unlock("set_any")
 	feel.callout(hero.head_top(), String(b.get("name", "")), ArpgData.SCHOOL_COLORS.get(b.get("school", ""), Color.WHITE), 1.2)
 	vfx.shock_ring(hero.global_position, ArpgData.SCHOOL_COLORS.get(b.get("school", ""), Color.WHITE), 0.3, 3.5, 0.45)
 
@@ -1468,7 +1582,7 @@ func _offer_boons_then(n: int) -> void:
 	var offer := state.roll_boons(3, _rng)
 	var items := []
 	for b: Dictionary in offer:
-		items.append({"title": b["name"], "desc": b["desc"], "tag": "%s 心法" % b["school"], "color": ArpgData.SCHOOL_COLORS.get(b["school"], ArpgMenu.TEAL)})
+		items.append({"title": b["name"], "desc": b["desc"], "tag": _school_tag(String(b["school"])), "color": ArpgData.SCHOOL_COLORS.get(b["school"], ArpgMenu.TEAL)})
 	var m := _open_menu("心法", "三选一" + ("（还有 %d 次）" % (n - 1) if n > 1 else ""), items, "cards", false)
 	m.chosen.connect(func(i: int) -> void:
 		_take_boon(String(offer[i]["id"]))
@@ -1544,22 +1658,7 @@ func _step_portal() -> void:
 	Game.sfx("door")
 	match _portal_kind:
 		"run":
-			if mode == "hub" and not bool(Game.save.get("arpg_tutorial", false)) and not _args.has("demo"):
-				_going = false
-				var items := [{"title": "先试试刀", "desc": "一间练习房，一步一步学会移动、翻滚、连招和三个招式（约两分钟）", "tag": "推荐"},
-					{"title": "直接出发", "desc": "已经会了，直接上山"}]
-				var mn := _open_menu("第一次上山", "拾骨婆：“先在院子里比划两下？”", items, "cards", false)
-				mn.chosen.connect(func(i: int) -> void:
-					_close_menu()
-					if i == 0:
-						_start_tutorial()
-					else:
-						Game.save["arpg_tutorial"] = true
-						Game.write_save()
-						_going = true
-						_start_run()
-						_fade_then(func() -> void: _enter_room()))
-				return
+			# 不再问“要不要先教学”：按键在第一局里遇到时即时提示（ArpgHints），想系统练的去山门“试刀”
 			_start_run()
 			_fade_then(func() -> void: _enter_room())
 		"floor":
@@ -1589,7 +1688,11 @@ func _choose_path(ex: Array) -> void:
 		items.append({"title": ArpgState.TYPE_NAMES.get(t, t), "desc": ArpgState.TYPE_DESC.get(t, ""), "tag": "岔路",
 			"color": _type_color(t), "glyph": String(ArpgState.TYPE_NAMES.get(t, t)).substr(0, 1)})
 	var m := _open_menu("分岔路", "第 %d 层　第 %d / %d 间　·　往哪走？" % [state.floor_i() + 1, state.run.row + 2, state.run.rows.size()], items, "cards", true)
-	m.extra_draw = _draw_map
+	var r0 := state.run.row
+	m.extra_draw = func(c: Control, vs: Vector2) -> void:
+		c.set("cards_top_min", _map_top(vs) + _map_h(vs) + 16)   # 卡片让到路线图下面
+		if state.run.row == r0:   # 选完以后菜单还会多画一帧，那时 row 已经变了
+			_draw_map(c, vs, ex)
 	m.chosen.connect(func(i: int) -> void:
 		state.run.advance(int(ex[i][0]))
 		_close_menu()
@@ -1605,29 +1708,67 @@ func _type_color(t: String) -> Color:
 		"event": Color(0.75, 0.6, 1.0), "boss": Color(0.95, 0.25, 0.4), "start": Color(0.6, 0.9, 0.9)}.get(t, ArpgMenu.TEAL)
 
 
-## 菜单上方画一条小地图：每列的房间点、走过的路
-func _draw_map(c: Control, vs: Vector2) -> void:
+## 路线图的位置：标题和副标题是固定像素排的，所以至少从 165 开始；矮屏（触屏 576 高）画扁一点
+func _map_top(vs: Vector2) -> float:
+	return maxf(vs.y * 0.16 + 50, 165.0)
+
+
+func _map_h(vs: Vector2) -> float:
+	return 66.0 if vs.y >= 650 else 52.0
+
+
+## 菜单上方画整层路线图：每个房间一个带字的圆点（战 / 精 / 商 / 歇 / 奇 / 首 …），走过的路亮，
+## 分岔路菜单里选中哪张卡，就把从那里能走到的房间和路描金（ex = 这一步能去的出口）
+func _draw_map(c: Control, vs: Vector2, ex: Array = [], top: float = -1.0) -> void:
 	var rows: Array = state.run.rows
-	var x0 := vs.x * 0.22
-	var w := vs.x * 0.56
-	var y0 := vs.y * 0.16 + 58
-	var h := 40.0
+	var x0 := vs.x * 0.2
+	var w := vs.x * 0.6
+	var y0 := _map_top(vs) if top < 0.0 else top
+	var h := _map_h(vs)
 	var pos := func(r: int, i: int) -> Vector2:
 		var n: int = (rows[r] as Array).size()
 		return Vector2(x0 + w * r / float(rows.size() - 1), y0 + h * ((i + 0.5) / float(n)))
+	# 选中的出口往后能走到哪些房间
+	var reach := {}
+	var sel := int(c.get("index")) if c.get("index") != null else -1
+	if sel >= 0 and sel < ex.size():
+		var front := [int(ex[sel][0])]
+		var r := state.run.row + 1
+		while r < rows.size() and not front.is_empty():
+			var nxt := []
+			for i: int in front:
+				if i >= (rows[r] as Array).size():
+					continue
+				reach[Vector2i(r, i)] = true
+				if r + 1 < rows.size():
+					for j: int in rows[r][i]["next"]:
+						if not nxt.has(j):
+							nxt.append(j)
+			front = nxt
+			r += 1
+	c.draw_rect(Rect2(x0 - 24, y0 - 10, w + 48, h + 20), Color(0.02, 0.04, 0.05, 0.75))
 	for r in range(rows.size() - 1):
 		for i in range((rows[r] as Array).size()):
 			for j: int in rows[r][i]["next"]:
-				c.draw_line(pos.call(r, i), pos.call(r + 1, j), Color(0.5, 0.7, 0.7, 0.3), 1.0)
+				var lit := (reach.has(Vector2i(r, i)) or (r == state.run.row and i == state.run.col)) and reach.has(Vector2i(r + 1, j))
+				var walked := bool(rows[r][i]["visited"]) and bool(rows[r + 1][j]["visited"])
+				c.draw_line(pos.call(r, i), pos.call(r + 1, j), Color(ArpgMenu.GOLD, 0.85) if lit else Color(0.6, 0.85, 0.85, 0.6 if walked else 0.18), 2.0 if lit else 1.0)
+	var font: Font = c.get("font") if c.get("font") != null else Game.font
 	for r in range(rows.size()):
 		for i in range((rows[r] as Array).size()):
 			var nd: Dictionary = rows[r][i]
 			var p: Vector2 = pos.call(r, i)
-			var col := _type_color(String(nd["type"]))
+			var t := String(nd["type"])
+			var col := _type_color(t)
 			var here := r == state.run.row and i == state.run.col
-			c.draw_circle(p, 7.0 if here else 4.5, Color(col, 1.0 if bool(nd["visited"]) or here else 0.45))
+			var on := bool(nd["visited"]) or here or reach.has(Vector2i(r, i)) or ex.is_empty()
+			var rad := 10.0 if here else 9.0
+			c.draw_circle(p, rad, Color(0.03, 0.05, 0.06, 0.95))
+			c.draw_arc(p, rad, 0, TAU, 20, Color(col, 1.0 if on else 0.35), 1.5)
+			var g := String(ArpgState.TYPE_NAMES.get(t, "?")).substr(0, 1)
+			c.draw_string(font, p + Vector2(-5.5, 4.5), g, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(col, 1.0 if on else 0.4))
 			if here:
-				c.draw_arc(p, 11.0, 0, TAU, 20, ArpgMenu.GOLD, 1.5)
+				c.draw_arc(p, 14.0, 0, TAU, 24, ArpgMenu.GOLD, 2.0)
 
 
 # ---------- 剧情对话 ----------
@@ -1654,7 +1795,7 @@ func _say(lines: Array) -> DialogBox:
 func _drop_gear(pos: Vector3, rarity: int = -1, luck: float = 0.0) -> void:
 	if state == null:
 		return
-	var it := ArpgGear.roll(_rng, rarity, luck + state.floor_i() * 0.08)
+	var it := ArpgGear.roll(_rng, rarity, luck + state.floor_i() * 0.08 + state.omen_val("luck", 0.0))
 	var l := Loot.new()
 	l.kind = "gear"
 	l.item = it
@@ -1766,9 +1907,11 @@ func _open_pause(sel: int = 0) -> void:
 	var items := [{"title": "继续"},
 		{"title": "音乐音量", "right": pct.call("music"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
 		{"title": "音效音量", "right": pct.call("sfx"), "desc": TouchPad.hint("按确认键切换", "点一下切换")},
-		{"title": "画质", "right": QUALITY_NAMES[quality], "desc": "低：关阴影和辉光，降低渲染分辨率，适合网页和轻薄本"}]
+		{"title": "画质", "right": QUALITY_NAMES[quality], "desc": "低：关阴影和辉光，降低渲染分辨率，适合网页和轻薄本"},
+		{"title": "难度", "right": ArpgState.DIFF_NAMES[ArpgState.difficulty()], "desc": ArpgState.DIFF_DESC[ArpgState.difficulty()]}]
 	items.append({"title": "成就", "right": "%d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], "desc": "看看做到了哪些"})
 	if mode == "room":
+		items.append({"title": "这一局", "desc": "路线图、天象、心法和流派进度"})
 		items.append({"title": "放弃这一局", "desc": "回到山门，魂玉带回六成"})
 	var m := _open_menu("暂停", "", items, "list", true)
 	m.index = sel
@@ -1799,19 +1942,46 @@ func _on_pause_chosen(i: int) -> void:
 			Game.sfx("coin")
 			_open_pause(i)
 		4:
-			_open_achievements(true)
+			Game.save["arpg_diff"] = 1 - ArpgState.difficulty()
+			Game.write_save()
+			if state != null and is_instance_valid(hero):
+				hero.apply_stats(state.stats(), state.weapon)
+			Game.sfx("coin")
+			_open_pause(i)
 		5:
+			_open_achievements(true)
+		6:
+			_open_run_info()
+		7:
 			_close_menu()
 			_game_over(false)
 		_:
 			_close_menu()
 
 
+## 暂停菜单“这一局”：上面画整层路线图，下面列天象、心法流派进度
+func _open_run_info() -> void:
+	var items := []
+	if state.omen != "":
+		var om: Dictionary = ArpgState.OMENS[state.omen]
+		items.append({"title": "天象 · %s" % om["name"], "desc": om["desc"], "tag": "天象"})
+	var sc := ArpgData.school_counts(state.boons)
+	for k: String in ArpgData.SETS:
+		var n := int(sc.get(k, 0))
+		var st: Dictionary = ArpgData.SETS[k]
+		items.append({"title": "%s「%s」" % [k, st["name"]], "right": "已大成" if n >= ArpgData.SET_NEED else "%d / %d" % [n, ArpgData.SET_NEED],
+			"desc": st["desc"], "color": ArpgData.SCHOOL_COLORS.get(k, ArpgMenu.TEAL), "enabled": n >= ArpgData.SET_NEED})
+	var m := _open_menu("这一局", "第 %d 层　第 %d / %d 间　心法 %d 个" % [state.floor_i() + 1, state.run.row + 1, state.run.rows.size(), state.boons.size()], items, "list", true)
+	m.extra_draw = func(c: Control, vs: Vector2) -> void: _draw_map(c, vs, [], vs.y - 150.0)   # 列表下面
+	m.chosen.connect(func(_i: int) -> void: _open_pause(6))
+	m.cancelled.connect(func() -> void: _open_pause(6), CONNECT_DEFERRED)
+
+
 ## 成就列表（山门功业碑、暂停菜单）。from_pause 时返回回到暂停菜单
 func _open_achievements(from_pause: bool = false) -> void:
 	var m := _open_menu("功业碑", "已达成 %d / %d　　成就跨局永久保存" % [ArpgAch.count(), ArpgAch.LIST.size()], ArpgAch.menu_items(), "list", true)
 	if from_pause:
-		m.cancelled.connect(func() -> void: _open_pause(4), CONNECT_DEFERRED)
+		m.cancelled.connect(func() -> void: _open_pause(5), CONNECT_DEFERRED)
 
 
 func _close_menu() -> void:
@@ -1830,7 +2000,32 @@ func _on_hero_died(_a: Actor) -> void:
 		return
 	hud.banner("败", "残刃折于此地", 2.5)
 	feel.screen_flash(Color(0.5, 0.0, 0.0, 0.6), 0.8)
+	var fl := state.floor_i()
+	if room_kind == "boss" and ArpgState.difficulty() == 0 and not state.boss_retry.has(fl):
+		get_tree().create_timer(2.2).timeout.connect(_offer_boss_retry)
+		return
 	get_tree().create_timer(2.2).timeout.connect(func() -> void: _game_over(false))
+
+
+## 游历难度：倒在头目面前，可以回满血、补满药再打一次（每层一次）
+func _offer_boss_retry() -> void:
+	if mode != "room":
+		return
+	var items := [{"title": "再战一次", "desc": "回满生命、补满药葫芦，从头目登场重来（这一层只有一次）", "tag": "游历"},
+		{"title": "就此作罢", "desc": "回到山门，魂玉带回六成"}]
+	var m := _open_menu("再战？", "%s还站着" % hud.zone_name, items, "cards", false)
+	m.chosen.connect(func(i: int) -> void:
+		_close_menu()
+		if i == 1:
+			_game_over(false)
+			return
+		state.boss_retry[state.floor_i()] = true
+		_ensure_hero()
+		hero.reset_for_run()
+		hero.apply_stats(state.stats(), state.weapon, true)
+		hero.revives = 0
+		_boss_retry = true
+		_fade_then(func() -> void: _enter_room("boss")))
 
 
 func _game_over(won: bool, ending: String = "") -> void:

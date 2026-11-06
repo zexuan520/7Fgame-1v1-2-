@@ -28,6 +28,9 @@ var _kick := Vector3.ZERO              # 定向冲击：镜头顺着打击方向
 var _kick_v := Vector3.ZERO
 var _roll := 0.0                       # 镜头滚转（重击时歪一下）
 var _roll_v := 0.0
+var _shot: Node3D                      # 特写：镜头暂时对准它（头目登场、变身、倒下）
+var _shot_left := 0.0                  # 特写剩余时间（真实秒，不受慢镜头影响）
+var _shot_zoom := 0.0
 
 
 func _ready() -> void:
@@ -67,13 +70,24 @@ func punch_zoom(amount: float, hold: float = 0.12) -> void:
 	_zoom_hold = maxf(_zoom_hold, hold)
 
 
+## 特写：镜头对准 node 拉近 zoom（0~1），持续 dur 真实秒，之后回到主角
+func close_up(node: Node3D, dur: float, zoom: float = 0.6) -> void:
+	_shot = node
+	_shot_left = dur
+	_shot_zoom = zoom
+
+
 func _process(dt: float) -> void:
 	_t += dt
-	if is_instance_valid(target):
-		var goal := target.global_position + lead_dir * lead
+	_shot_left = maxf(_shot_left - dt / maxf(Engine.time_scale, 0.01), 0.0)
+	var shooting := _shot_left > 0.0 and is_instance_valid(_shot)
+	if shooting:
+		punch_zoom(_shot_zoom, 0.05)
+	if is_instance_valid(target) or shooting:
+		var goal := (_shot.global_position if shooting else target.global_position + lead_dir * lead)
 		goal.x = clampf(goal.x, bounds.position.x, bounds.end.x)
 		goal.z = clampf(goal.z, bounds.position.y, bounds.end.y)
-		_focus = _focus.lerp(goal, 1.0 - exp(-follow_speed * dt))
+		_focus = _focus.lerp(goal, 1.0 - exp(-(follow_speed * (0.6 if shooting else 1.0)) * dt / maxf(Engine.time_scale, 0.3)))
 	if _zoom_hold > 0.0:
 		_zoom_hold -= dt
 		_zoom = lerpf(_zoom, _zoom_target, 1.0 - exp(-30.0 * dt))

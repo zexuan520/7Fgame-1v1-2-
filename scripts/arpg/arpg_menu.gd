@@ -20,6 +20,7 @@ var index := 0
 var font: Font
 var _t := 0.0
 var _cool := 0.15            # 打开后一小会儿不吃按键（免得攻击键连按直接选掉）
+var cards_top_min := 0.0    # 卡片最高只能到这个 y（上面画了路线图时往下让）
 var extra_draw: Callable     # 额外画点东西（分岔路地图）
 var _hits: Array = []        # 触屏：每帧画出来的 [Rect2, 选项序号]；-1 关闭，-2 上一页，-3 下一页
 
@@ -174,11 +175,11 @@ func _draw_list(vs: Vector2) -> void:
 func _draw_cards(vs: Vector2) -> void:
 	var n := items.size()
 	var cw := 240.0
-	var ch := 300.0
+	var ch := 300.0 if vs.y >= 650 else 268.0   # 触屏矮屏：别压到底下的操作提示
 	var gap := 36.0
 	var total := n * cw + (n - 1) * gap
 	var x := (vs.x - total) * 0.5
-	var y := vs.y * 0.5 - ch * 0.5 + 30
+	var y := maxf(vs.y * 0.5 - ch * 0.5 + 30, cards_top_min)
 	for i in range(n):
 		var it: Dictionary = items[i]
 		var sel := i == index

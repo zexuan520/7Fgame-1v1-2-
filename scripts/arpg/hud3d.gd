@@ -17,6 +17,8 @@ var portrait_vp: SubViewport
 var portrait_cam: Camera3D
 var portrait_rect: TextureRect
 var zone_name := ""
+var omen := ""                   # 这一局的天象（区域名下面一行小字）
+var omen_color := Color.WHITE
 var wave_text := ""
 var seals: Array = []            # 试炼房四枚印：0 没开始 / 1 进行中 / 2 得印 / 3 失手
 var coins := 0
@@ -25,11 +27,15 @@ var boss: Foe
 var _banner := ""
 var _banner_t := 0.0
 var _banner_sub := ""
+static var I: Hud3D
+var _bars := 0.0                  # 电影黑边：剩余真实秒
+var _bars_k := 0.0                # 黑边当前高度 0~1
 var _hp_show := 1.0               # 血条掉血时慢慢跟上的白色残影
 var _shown_hp := {}
 
 
 func _ready() -> void:
+	I = self
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	font = Feel.I.font if Feel.I != null else Game.font
@@ -56,6 +62,11 @@ func _ready() -> void:
 	add_child(portrait_rect)
 
 
+## 上下电影黑边（头目登场、变身、倒下的特写）
+func cinema(dur: float) -> void:
+	_bars = maxf(_bars, dur)
+
+
 func banner(text: String, sub: String = "", t: float = 2.2) -> void:
 	_banner = text
 	_banner_sub = sub
@@ -63,6 +74,9 @@ func banner(text: String, sub: String = "", t: float = 2.2) -> void:
 
 
 func _process(dt: float) -> void:
+	var rdt := dt / maxf(Engine.time_scale, 0.01)
+	_bars = maxf(_bars - rdt, 0.0)
+	_bars_k = move_toward(_bars_k, 1.0 if _bars > 0.0 else 0.0, rdt * 4.0)
 	_banner_t = maxf(_banner_t - dt, 0.0)
 	if is_instance_valid(hero):
 		var k := hero.hp / hero.max_hp
@@ -81,6 +95,10 @@ func _process(dt: float) -> void:
 
 func _draw() -> void:
 	var vs := get_viewport_rect().size
+	if _bars_k > 0.001:
+		var bh := vs.y * 0.1 * _bars_k
+		draw_rect(Rect2(0, 0, vs.x, bh), Color(0, 0, 0, 0.92))
+		draw_rect(Rect2(0, vs.y - bh, vs.x, bh), Color(0, 0, 0, 0.92))
 	_draw_enemy_marks()
 	if is_instance_valid(hero):
 		_draw_player_panel(vs)
@@ -95,6 +113,8 @@ func _draw() -> void:
 		_draw_seals()
 	draw_string(font, Vector2(vs.x - 220, 44), "铜钱 %d" % coins, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(1.0, 0.85, 0.45))
 	draw_string(font, Vector2(vs.x - 220, 70), "魂玉 %d" % jade, HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(0.55, 1.0, 0.85))
+	if omen != "":
+		draw_string(font, Vector2(vs.x - 220, 94), omen, HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(omen_color, 0.9))
 	if _banner_t > 0.0:
 		var a := clampf(_banner_t / 0.4, 0.0, 1.0)
 		var y := vs.y * 0.3
@@ -138,6 +158,14 @@ func _draw_player_panel(vs: Vector2) -> void:
 	draw_rect(Rect2(x0, y0 + 6, w * hero.hp / hero.max_hp, 9), Color(0.78, 0.12, 0.14))
 	draw_rect(Rect2(x0, y0 + 6, w, 9), Color(GOLD, 0.6), false, 1.0)
 	draw_string(font, Vector2(x0 + w - 70, y0 - 4), "%d / %d" % [int(hero.hp), int(hero.max_hp)], HORIZONTAL_ALIGNMENT_RIGHT, 70, 15, Color(0.9, 0.85, 0.8))
+	if hero.golden:
+		draw_rect(Rect2(x0 - 3, y0 + 3, w + 6, 15), Color(1.0, 0.85, 0.4, 0.9), false, 2.0)   # 金身
+	var sets := []
+	for pair: Array in [[hero.set_shura, "修罗场"], [hero.set_blood, "血涌"], [hero.set_wind, "御风"], [hero.set_light, "天光"], [hero.set_guard, "金身"]]:
+		if pair[0]:
+			sets.append(pair[1])
+	if not sets.is_empty():
+		draw_string(font, Vector2(x0, y0 + 66), "大成 " + "  ".join(sets), HORIZONTAL_ALIGNMENT_LEFT, -1, 13, GOLD)
 	# 气力条
 	draw_rect(Rect2(x0, y0 + 22, w, 5), Color(0.02, 0.06, 0.07))
 	draw_rect(Rect2(x0, y0 + 22, w * e, 5), Color(1.0, 0.85, 0.4) if e >= 1.0 else TEAL)

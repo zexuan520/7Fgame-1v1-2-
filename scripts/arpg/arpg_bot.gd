@@ -43,7 +43,7 @@ func _physics_process(dt: float) -> void:
 		if _menu_t > 1.6:
 			_menu_t = 0.0
 			_tap("attack")
-		elif _menu_t > 0.8 and _menu_t - dt <= 0.8:
+		elif _menu_t > 0.8 and _menu_t - dt <= 0.8 and str(menu.get("title")) != "再战？":
 			_tap("right")
 		return
 	_menu_t = 0.0

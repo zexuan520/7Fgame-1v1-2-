@@ -49,6 +49,27 @@ const BOONS := [
 	{"id": "gourd", "name": "药缘", "desc": "药葫芦 +1", "stats": {"gourds": 1}, "school": "守"},
 ]
 
+## 流派大成：同一流派的心法拿够 SET_NEED 个（同一个叠两次也算），触发一个质变效果
+const SET_NEED := 3
+const SETS := {
+	"修罗": {"id": "set_shura", "name": "修罗场", "desc": "会心一击的余劲会斩到身边 2.8 米内的其他敌人（40% 伤害）"},
+	"血": {"id": "set_blood", "name": "血涌", "desc": "敌人出血叠到 6 层时自己炸开，伤到周围的敌人"},
+	"风": {"id": "set_wind", "name": "御风", "desc": "翻滚后 1.2 秒内的下一刀必定会心，每次翻滚突进斩冷却 -0.8 秒"},
+	"光": {"id": "set_light", "name": "天光", "desc": "光束斩返还 40% 气力，命中的敌人叠 3 层出血"},
+	"守": {"id": "set_guard", "name": "金身", "desc": "每 10 秒凝一层金光，挡掉下一次伤害"},
+}
+
+
+## 这些心法里每个流派各有几个
+static func school_counts(boons: Array) -> Dictionary:
+	var out := {}
+	for b in boons:
+		var sc := String(boon(String(b)).get("school", ""))
+		if sc != "":
+			out[sc] = int(out.get(sc, 0)) + 1
+	return out
+
+
 const SCHOOL_COLORS := {"修罗": Color(1.0, 0.45, 0.35), "血": Color(0.95, 0.2, 0.3), "风": Color(0.45, 1.0, 0.8), "光": Color(1.0, 0.9, 0.5), "守": Color(0.5, 0.75, 1.0)}
 
 ## 天赋：三棵树（修罗攻 / 不动守 / 行者运），每棵三层，往这棵树里投够点数解锁下一层；用魂玉点，存档里永久保留

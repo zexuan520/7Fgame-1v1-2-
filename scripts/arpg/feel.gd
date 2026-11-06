@@ -113,7 +113,12 @@ func on_kill(f: Foe, impulse: Vector3) -> void:
 	var p := f.chest()
 	var last := get_tree().get_nodes_in_group("foes").filter(func(n: Node) -> bool: return n != f and (n as Actor).alive).is_empty()
 	if f.is_boss:
-		slowmo(0.15, 1.3)
+		# 倒下：先定格一瞬，再慢镜头、镜头特写、上下黑边
+		pause_world(0.3)
+		slowmo(0.15, 1.6)
+		CamRig.I.close_up(f, 2.2, 0.85)
+		if Hud3D.I != null:
+			Hud3D.I.cinema(2.6)
 		screen_flash(Color(1, 1, 1, 0.85), 1.6)
 		Vfx.I.boss_burst(p, f.fx_color())
 		CamRig.I.punch_zoom(0.9, 1.0)

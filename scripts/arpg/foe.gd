@@ -8,6 +8,8 @@ extends Actor
 
 ## 头目进二阶段时头上冒的字
 const RAGE_NAMES := {"boss": "剑鬼·狂", "boss3": "万骨·醒", "boss2": "残灯·燃"}
+## 头目半血变身时说的一句
+const RAGE_LINES := {"boss": "樱花……还没落完。", "boss3": "都起来！谁准你们躺下的！", "boss2": "灯不能灭……灯不能灭！"}
 
 signal dropped(pos: Vector3, coins: int, jade: int)
 
@@ -976,6 +978,11 @@ func take_hit(info: HitInfo) -> bool:
 		_boss_phase = 1
 		rig.set_rim(fx_color(), 0.9)
 		Feel.I.callout(head_top() + Vector3(0, 0.6, 0), String(RAGE_NAMES.get(kind, "狂")), Color(1.0, 0.4, 0.55), 1.5)
+		Feel.I.callout(head_top() + Vector3(0, 1.4, 0), "“%s”" % String(RAGE_LINES.get(kind, "")), Color(0.95, 0.92, 0.85), 2.2)
+		# 特写：镜头转过去、上下黑边
+		CamRig.I.close_up(self, 1.3, 0.55)
+		if Hud3D.I != null:
+			Hud3D.I.cinema(1.5)
 		Feel.I.screen_flash(Color(fx_color(), 0.4), 2.0)
 		# 进入狂暴：慢镜头一下，本色冲击环一圈圈推开
 		Feel.I.slowmo(0.3, 0.6)

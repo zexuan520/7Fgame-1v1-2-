@@ -63,6 +63,16 @@ var beam_mult := 1.0
 var finish_mult := 1.0
 var gourd_heal := 0.4
 var revives := 0
+## 流派大成（ArpgData.SETS）
+var set_shura := false
+var set_blood := false
+var set_wind := false
+var set_light := false
+var set_guard := false
+var _wind_t := 0.0               # 御风：翻滚后必会心的剩余时间
+var _guard_t := 0.0              # 金身：凝金光的计时
+var golden := false              # 金身：现在有一层金光
+const GUARD_EVERY := 10.0
 var weapon_id := "sword"
 var trail: BladeTrail
 const BASE_HP := 120.0
@@ -93,7 +103,7 @@ func apply_stats(st: Dictionary, wid: String, fill_hp: bool = false) -> void:
 	bleed_bonus = int(ArpgData.stat(st, "bleed"))
 	bleed_dmg = 1.0 + ArpgData.stat(st, "bleed_dmg")
 	lifesteal = ArpgData.stat(st, "lifesteal")
-	taken_mult = maxf(0.3, 1.0 + ArpgData.stat(st, "dmg_taken"))
+	taken_mult = maxf(0.3, 1.0 + ArpgData.stat(st, "dmg_taken")) * (1.0 - ArpgData.stat(st, "easy"))   # 游历难度另乘
 	beam_mult = 1.0 + ArpgData.stat(st, "beam")
 	finish_mult = 1.0 + ArpgData.stat(st, "finish")
 	gourd_heal = 0.4 + ArpgData.stat(st, "gourd_heal")
@@ -109,6 +119,13 @@ func apply_stats(st: Dictionary, wid: String, fill_hp: bool = false) -> void:
 	max_gourds = mg
 	if fill_hp:
 		revives = int(ArpgData.stat(st, "revive"))
+	set_shura = ArpgData.stat(st, "set_shura") > 0.0
+	set_blood = ArpgData.stat(st, "set_blood") > 0.0
+	set_wind = ArpgData.stat(st, "set_wind") > 0.0
+	set_light = ArpgData.stat(st, "set_light") > 0.0
+	set_guard = ArpgData.stat(st, "set_guard") > 0.0
+	if not set_guard:
+		golden = false
 
 
 ## 兵器决定连招：伤害倍率在 dmg_mult 里，这里改快慢和攻击范围
@@ -149,6 +166,9 @@ func reset_for_run() -> void:
 	step_i = -1
 	energy = 0.0
 	bleed = 0
+	golden = false
+	_guard_t = 0.0
+	_wind_t = 0.0
 	knock = Vector3.ZERO
 	for k: String in cd:
 		cd[k] = 0.0
@@ -233,6 +253,7 @@ func _physics_process(delta: float) -> void:
 	_update_ring()
 	if not alive:
 		return
+	_tick_sets(dt)
 	_read_buffer(delta)
 	if dt <= 0.0:
 		move_with_knock(Vector3.ZERO, 0.0)
@@ -495,7 +516,7 @@ func _do_hits(s: AttackStep) -> void:
 			if ang > s.arc * 0.5:
 				continue
 		_hit_set[a] = true
-		var crit := randf() < s.crit_chance + crit_bonus
+		var crit := randf() < s.crit_chance + crit_bonus or _wind_t > 0.0
 		var dmg := s.damage * dmg_mult * (crit_mult if crit else 1.0) * randf_range(0.92, 1.08)
 		var info := HitInfo.make(self, a, dmg, HitInfo.Weight.HEAVY if s.heavy else HitInfo.Weight.LIGHT)
 		info.crit = crit
@@ -507,9 +528,63 @@ func _do_hits(s: AttackStep) -> void:
 		if Feel.I.on_hit(info):
 			landed = true
 			_leech(info.damage)
+			if crit and set_shura:
+				_shura_splash(a, info.damage)
+			_check_blood(a)
+	if landed:
+		_wind_t = 0.0
 	if landed and not _called:
 		_called = true
 		Feel.I.callout(head_top() + Vector3(0.6, 0.3, 0), s.label, Color(0.75, 1.0, 1.0), 0.9 if step_i < 3 else 1.2)
+
+
+# ---------- 流派大成 ----------
+
+## 修罗场：会心的余劲斩到身边的其他敌人
+func _shura_splash(src: Actor, dmg: float) -> void:
+	for f: Node in get_tree().get_nodes_in_group("foes"):
+		var b := f as Actor
+		if b == null or b == src or not b.alive or b.global_position.distance_to(src.global_position) > 2.8:
+			continue
+		var info := HitInfo.make(self, b, dmg * 0.4, HitInfo.Weight.LIGHT)
+		info.attacker = null
+		info.dir = (b.global_position - src.global_position).normalized()
+		info.knock = 3.0
+		Vfx.I.cut_line(b.chest(), info.dir + Vector3(0, 0.6, 0), 2.2, Color(1, 0.9, 0.85), 0.2, 0.18, Color(1.0, 0.35, 0.3))
+		Feel.I.on_hit(info)
+
+
+## 血涌：出血叠到 6 层自己炸开
+func _check_blood(a: Actor) -> void:
+	if not set_blood or not is_instance_valid(a) or not a.alive or a.bleed < 6:
+		return
+	var stacks := a.bleed
+	a.bleed = 0
+	var c := a.chest()
+	Vfx.I.explosion(c, 0.9)
+	Vfx.I.streaks(c, Vector3.UP, Color(1.0, 0.2, 0.2), 6, 2.0, 0.22, PI, 0.18)
+	Game.sfx("execute", -6.0)
+	Feel.I.callout(a.head_top(), "血涌", Color(1.0, 0.3, 0.3), 0.9)
+	for f: Node in get_tree().get_nodes_in_group("foes"):
+		var b := f as Actor
+		if b == null or not b.alive or b.global_position.distance_to(a.global_position) > 2.6:
+			continue
+		var info := HitInfo.make(self, b, (10.0 + 9.0 * stacks) * dmg_mult * (1.0 if b == a else 0.6), HitInfo.Weight.HEAVY)
+		info.attacker = null
+		info.knock = 5.0
+		Feel.I.on_hit(info)
+
+
+## 金身：每 10 秒凝一层金光（在 _physics_process 里调用）
+func _tick_sets(dt: float) -> void:
+	_wind_t = maxf(_wind_t - dt, 0.0)
+	if set_guard and not golden and alive:
+		_guard_t += dt
+		if _guard_t >= GUARD_EVERY:
+			_guard_t = 0.0
+			golden = true
+			Vfx.I.shock_ring(global_position, Color(1.0, 0.85, 0.4), 0.3, 2.5, 0.4)
+			Feel.I.callout(head_top(), "金身", Color(1.0, 0.85, 0.45), 0.8)
 
 
 # ---------- 翻滚 ----------
@@ -541,6 +616,9 @@ func _st_roll(dt: float) -> void:
 	if k > 0.7 and _try_actions(["attack", "dash"]):
 		return
 	if k >= 1.0:
+		if set_wind:
+			_wind_t = 1.2
+			cd["dash"] = maxf(cd["dash"] - 0.8, 0.0)
 		_set_state("move")
 		_move = _roll_dir * move_speed * 0.7
 		_blend = 0.5
@@ -553,6 +631,16 @@ func take_hit(info: HitInfo) -> bool:
 	if invincible:
 		info.damage = 0.0
 	if state == "dash":
+		return false
+	if golden and iframes <= 0.0 and alive and info.damage > 0.0:
+		# 金身挡掉这一下
+		golden = false
+		_guard_t = 0.0
+		iframes = 0.4
+		Vfx.I.shock_ring(global_position, Color(1.0, 0.85, 0.4), 0.5, 3.5, 0.35)
+		Vfx.I.impact_flash(chest(), 2.0, Color(1.0, 0.85, 0.4))
+		Feel.I.callout(head_top(), "挡", Color(1.0, 0.85, 0.45), 0.8)
+		Game.sfx("parry", -2.0)
 		return false
 	var ok := super.take_hit(info)
 	if ok:
@@ -659,6 +747,7 @@ func _do_dash() -> void:
 			if Feel.I.on_hit(info):
 				gain_energy(8.0)
 				_leech(info.damage)
+				_check_blood(a)
 			n += 1
 	Game.sfx("slash_heavy", 0.0)
 	var base := Transform3D(Basis(Vector3.UP, rotation.y), global_position + Vector3(0, 0.9, 0))
@@ -691,7 +780,7 @@ func _st_dash(dt: float) -> void:
 # ---------- 光束斩 ----------
 
 func _start_beam() -> void:
-	energy = 0.0
+	energy = max_energy * 0.4 if set_light else 0.0   # 天光：返还 40%
 	energy_changed.emit()
 	var tgt := _auto_target(input_dir() if input_dir() != Vector3.ZERO else facing, 14.0)
 	if tgt != null:
@@ -748,10 +837,11 @@ func _fire_beam() -> void:
 			var info := HitInfo.make(self, a, 60.0 * dmg_mult * beam_mult * randf_range(0.95, 1.1), HitInfo.Weight.ULT)
 			info.dir = dir
 			info.knock = 12.0
-			info.bleed = 1
+			info.bleed = 3 if set_light else 1
 			info.crit = true
 			info.attacker = null
-			Feel.I.on_hit(info)
+			if Feel.I.on_hit(info):
+				_check_blood(a)
 	Feel.I.callout(head_top() + Vector3(0.6, 0.5, 0), "光束斩!", Color(0.85, 1.0, 1.0), 1.4)
 
 

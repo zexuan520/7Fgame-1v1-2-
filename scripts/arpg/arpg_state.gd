@@ -36,6 +36,8 @@ var side_rooms := 0                      # 这一局拿完的侧室（藏宝 / �
 var boons: Array[String] = []
 var whet := 0               # 这一局在游商那里磨过几次刀（每次伤害 +6%，铜钱的长期去处）
 var revives := 0
+var omen := ""              # 这一局的天象（OMENS 的键）
+var boss_retry := {}        # 游历难度：这一层头目已经重打过（层号 → true）
 var seed_value := 0
 var bought := {}            # 商人房间里已经买过的货：房间坐标 → [下标...]
 var shop_cache := {}        # 商人房间的货：房间坐标 → [货物...]
@@ -50,9 +52,31 @@ static func start_new() -> ArpgState:
 	var st := ArpgData.talent_stats()
 	s.coins = int(ArpgData.stat(st, "start_coins"))
 	s.revives = int(ArpgData.stat(st, "revive"))
+	var ks := OMENS.keys()
+	s.omen = String(ks[randi() % ks.size()])
+	for a: String in OS.get_cmdline_user_args():
+		if a.begins_with("--omen="):
+			s.omen = a.substr(7) if OMENS.has(a.substr(7)) else ""
 	s.remap()
 	cur = s
 	return s
+
+
+## 天象：每局开局随机一个，整局生效。count/hp/dmg/speed 改敌人（头目不改数量），stats 加到主角身上
+const OMENS := {
+	"blood_moon": {"name": "血月", "desc": "敌人多三成，铜钱 +50%", "count": 1.3, "stats": {"coin": 0.5}, "color": Color(1.0, 0.35, 0.3)},
+	"bone_tide": {"name": "骨潮", "desc": "敌人多四成，但血少两成：砍个痛快", "count": 1.4, "hp": 0.8, "color": Color(0.85, 0.9, 0.75)},
+	"fog": {"name": "浓雾", "desc": "雾更浓，看不远；会心率 +12%", "stats": {"crit": 0.12}, "fog": 1.7, "color": Color(0.6, 0.75, 0.8)},
+	"gale": {"name": "疾风", "desc": "你和敌人都快 15%", "speed": 1.15, "stats": {"move": 0.15}, "color": Color(0.5, 1.0, 0.8)},
+	"lantern": {"name": "残灯", "desc": "敌人伤害 +15%，掉的装备更好", "dmg": 1.15, "luck": 0.35, "color": Color(1.0, 0.8, 0.4)},
+	"calm": {"name": "清明", "desc": "每清完一间战斗房，回复 12% 生命", "heal": 0.12, "color": Color(0.7, 0.9, 1.0)},
+}
+
+
+func omen_val(k: String, def: float = 1.0) -> float:
+	if omen == "" or not OMENS.has(omen):
+		return def
+	return float(OMENS[omen].get(k, def))
 
 
 ## 在原来的地图上换出新房间：一部分战斗房变成宝箱房、试炼房，每层第一个奇遇房变成剧情遭遇（故人）。
@@ -109,7 +133,28 @@ func stats() -> Dictionary:
 		ArpgData.add_stats(st, ArpgData.boon(b).get("stats", {}))
 	if whet > 0:
 		ArpgData.add_stats(st, {"atk": WHET_ATK * whet})
+	if omen != "" and OMENS.has(omen):
+		ArpgData.add_stats(st, OMENS[omen].get("stats", {}))
+	var sc := ArpgData.school_counts(boons)
+	for k: String in sc:
+		if int(sc[k]) >= ArpgData.SET_NEED and ArpgData.SETS.has(k):
+			st[String(ArpgData.SETS[k]["id"])] = 1.0
+	if difficulty() == 0:
+		ArpgData.add_stats(st, {"easy": EASY_TAKEN})
+	else:
+		ArpgData.add_stats(st, {"jade": HARD_JADE})
 	return st
+
+
+## 难度：0 游历（受伤 -35%，头目前倒下可以重打一次）/ 1 修罗（原数值，魂玉 +20%）。存在存档里，没选过算游历
+const DIFF_NAMES := ["游历", "修罗"]
+const DIFF_DESC := ["受伤 -35%，每层头目倒下后可以原地重打一次。第一次玩推荐", "原汁原味的数值，魂玉 +20%。想要挑战选这个"]
+const EASY_TAKEN := 0.35
+const HARD_JADE := 0.2
+
+
+static func difficulty() -> int:
+	return clampi(int(Game.save.get("arpg_diff", 0)), 0, 1)
 
 
 const WHET_ATK := 0.06
