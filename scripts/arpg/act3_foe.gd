@@ -59,7 +59,7 @@ const TYPES3 := {
 		"hp": 1250.0, "speed": 3.9, "detect": 40.0, "range": 4.6, "dmg": 22.0, "windup": 0.55, "attack": "boss", "poise": 160.0, "coins": 140, "boss": true,
 		"rage": "押灯将·箭雨", "rage_line": "箭——放！"},
 	"boss9": {"name": "长明帝", "model": "mage", "weapon": "staff", "wlen": 46.0, "tint": Color(1.3, 1.08, 0.62), "mono": 0.35, "k": 2.0,
-		"hp": 1300.0, "speed": 3.1, "detect": 40.0, "range": 3.4, "dmg": 23.0, "windup": 0.6, "attack": "boss", "poise": 170.0, "coins": 200, "boss": true,
+		"hp": 1500.0, "speed": 3.1, "detect": 40.0, "range": 3.4, "dmg": 26.0, "windup": 0.56, "attack": "boss", "poise": 170.0, "coins": 200, "boss": true,
 		"rage": "长明·燃寿", "rage_line": "朕……不想死。", "head": "barbarian"},
 }
 
@@ -128,7 +128,7 @@ func _ready() -> void:
 		"lampnode":
 			_build_lamp()
 	if kind == "boss9":
-		_t1 = 9.0
+		_t1 = 6.0
 		_t2 = 4.0
 
 
