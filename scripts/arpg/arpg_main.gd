@@ -533,8 +533,12 @@ func _pick_difficulty(then: Callable) -> void:
 
 # ---------- 山门（局外：天赋、兵器、出发） ----------
 
+var _hag_tag := 0   # 拾骨婆天赋标语这次用哪一句，每回山门换一句
+
+
 func _enter_hub() -> void:
 	mode = "hub"
+	_hag_tag = randi() % ArpgStory.HAG_TAGS.size()
 	state = null
 	_clear_scene()
 	_build_arena("forest", 4242, HUB_SIZE)
@@ -567,6 +571,19 @@ func _enter_hub() -> void:
 			Game.save["arpg_intro"] = true
 			Game.write_save()
 			_say(ArpgStory.INTRO))
+	# 拾骨婆的碎念：死得够多了，回来时她多说一句自己的事（隐藏剧情）
+	elif ArpgStory.next_mutter() >= 0 and not _args.has("demo"):
+		var mi := ArpgStory.next_mutter()
+		get_tree().create_timer(1.0).timeout.connect(func() -> void:
+			if mode != "hub":
+				return
+			Game.save["arpg_mutter"] = mi + 1
+			Game.write_save()
+			var ml := [["", "拾骨婆把魂玉一颗一颗数进你手里，嘴里念叨着。" if mi == 0 else "拾骨婆数着魂玉，又念叨起来。"],
+				["拾骨婆", ArpgStory.MUTTERS[mi], ArpgStory.C_HAG]]
+			if mi == ArpgStory.MUTTERS.size() - 1:
+				ml.append(["", "她说完，像什么都没说过一样，接着数。"])
+			_say(ml))
 
 
 func _npc(label: String, p: Vector3, spec: Dictionary, cb: Callable) -> ArpgNpc:
@@ -604,7 +621,7 @@ func _open_talents(_n: ArpgNpc, keep_index: int = -1) -> void:
 					"right": "已满" if why == "已满" else "%d 魂玉" % int(ArpgData.TALENT_COSTS[tier_i]),
 					"enabled": why == "", "color": Color(0.95, 0.92, 0.85)})
 				refs.append([nd["id"], tier_i])
-	var m := _open_menu("拾骨婆 · 天赋", "“骨头记得你挨过的每一刀。”　　魂玉 %d" % int(Game.save["jade"]), items, "list", true)
+	var m := _open_menu("拾骨婆 · 天赋", "%s　　魂玉 %d" % [ArpgStory.HAG_TAGS[_hag_tag], int(Game.save["jade"])], items, "list", true)
 	if keep_index >= 0:
 		m.index = keep_index
 	m.chosen.connect(func(i: int) -> void:
@@ -1192,6 +1209,9 @@ func _boss_intro(fl: int) -> void:
 	for f: String in extra:
 		if state.flags.has(f):
 			lines.append_array(extra[f])
+	var om: Dictionary = ArpgStory.BOSS_PRE_OMEN.get(key, {})
+	if om.has(state.omen):
+		lines.append_array(om[state.omen])
 	var d := _say(lines)
 	d.finished.connect(func() -> void:
 		if key == "boss2" and state.flags.has("ronin_saved"):
