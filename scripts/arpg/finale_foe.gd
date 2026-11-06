@@ -2,16 +2,16 @@ class_name FinaleFoe
 extends Act3Foe
 ## 终章隐藏头目 · 烛王（boss10）：烛国最后的王，把第八盏灯点在自己胸口，以国为薪。
 ##   一阶段：大剑连斩、跳劈、刀气；隔一阵叫两个烛国甲士；隔一阵“灯涌”——胸口的灯往外推两圈火浪（翻滚穿过去），
-##          推完灯露在外面，他自己也站不稳：三秒内挨打伤害 +60%（这是打他的窗口）
+##          推完灯露在外面，他自己也站不稳：三秒内挨打伤害 +50%（这是打他的窗口）
 ##   半血“燃国”：七盏灯的回响轮着来（长明帝的光柱、焦明的天火、霍长风的幽骑列阵），灯涌更勤，叫人时多一个披火骨
 
 const KING := {"name": "烛王", "model": "knight", "weapon": "sword2", "wlen": 56.0, "tint": Color(0.72, 0.56, 0.44), "mono": 0.45, "k": 2.15,
-	"hp": 1750.0, "speed": 3.4, "detect": 40.0, "range": 3.4, "dmg": 27.0, "windup": 0.55, "attack": "boss", "poise": 180.0, "coins": 260, "boss": true,
+	"hp": 2500.0, "speed": 3.5, "detect": 40.0, "range": 3.4, "dmg": 30.0, "windup": 0.5, "attack": "boss", "poise": 180.0, "coins": 260, "boss": true,
 	"rage": "第八灯·燃国", "rage_line": "烛国——都起来！", "head": "barbarian"}
 const MINE := ["k_surge", "k_summon"]
 const ECHOES := ["e_pillar", "f_rain", "h_rank"]
 const EXPOSE_T := 3.0
-const EXPOSE_K := 1.6
+const EXPOSE_K := 1.5
 const C_LAMP := Color(1.0, 0.5, 0.22)
 
 var _k_surge := 9.0          # 下一次灯涌
