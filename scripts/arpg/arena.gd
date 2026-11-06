@@ -27,6 +27,9 @@ var _solid := []                   # 不能走的格子（地面坐标矩形）�
 var _placed: Array[Vector3] = []   # _free_spot 找过的位置（互相隔开）
 ## 侧墙上开的门（通侧室）：[{side: -1 左 / 1 右, z: 门中心, w: 门宽}]，build 之前填好
 var doors: Array = []
+## 布局模板（RoomLayouts 的 id，战斗房 / 精英房由 ArpgMain 挑），build 之前填好；"" = 老的随机摆法
+var layout_id := ""
+var layout_spawns: Array = []      # 模板指定的刷怪区：[中心, 半径]
 ## 画质档（ArpgMain.apply_quality 设）：0 低档时漂浮光尘、雾片、落花减半
 static var lod := 2
 
@@ -72,6 +75,8 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 	# 门口留出空地：摆设、刷怪点都别放这里
 	for dr: Dictionary in doors:
 		_solid.append(_door_clear_rect(dr))
+	if layout_id != "":
+		RoomLayouts.apply(self, layout_id)
 	_lp = LoadProf.t()
 	match zone:
 		"forest":
@@ -174,6 +179,27 @@ func _kz() -> float:
 
 func _ka() -> float:
 	return size.x * size.y / 660.0
+
+
+## 布局模板：场内这块地离后墙多远（后排有房子的区域要更远）
+func _layout_back() -> float:
+	return 5.0
+
+
+## 布局模板：这块地方能不能摆（子类挡掉小溪、路、柱廊这些区域自己的结构）
+func _layout_ok(_r: Rect2) -> bool:
+	return true
+
+
+## 区域自己的固定障碍点：有布局模板时，压到模板件上的就不摆了
+func _spots_ok(spots: Array) -> Array:
+	if layout_id == "":
+		return spots
+	return spots.filter(func(p: Vector3) -> bool:
+		for r: Rect2 in _solid:
+			if r.has_point(Vector2(p.x, p.z)):
+				return false
+		return true)
 
 
 ## 找一块空地：离墙 margin 米，避开中间那条入口→出口的路（半宽 lane）、入口出口附近、
@@ -994,7 +1020,7 @@ func _dress_forest() -> void:
 		var fp := _free_spot(4.5)
 		if fp != Vector3.INF:
 			spots.append(fp)
-	for s: Vector3 in spots:
+	for s: Vector3 in _spots_ok(spots):
 		var r := rng.randf()
 		if r < 0.35:
 			kit("pillar", s, rng.randf() * TAU, 1.0, true)
@@ -1079,7 +1105,7 @@ func _dress_grave() -> void:
 		var fp := _free_spot(4.0)
 		if fp != Vector3.INF:
 			spots.append(fp)
-	for s: Vector3 in spots:
+	for s: Vector3 in _spots_ok(spots):
 		var r := rng.randf()
 		if r < 0.4:
 			kit("coffin", s, rng.randf() * TAU, 1.0, true)
@@ -1301,7 +1327,7 @@ func _dress_well() -> void:
 		var fp := _free_spot(4.5)
 		if fp != Vector3.INF:
 			spots.append(fp)
-	for s0: Vector3 in spots:
+	for s0: Vector3 in _spots_ok(spots):
 		var r := rng.randf()
 		if r < 0.35:
 			kit("column", s0, 0.0, 1.6, true)
@@ -1492,7 +1518,7 @@ func _dress_camp() -> void:
 		var p0 := _free_spot(4.5)
 		if p0 != Vector3.INF:
 			spots.append(p0)
-	for s0: Vector3 in spots:
+	for s0: Vector3 in _spots_ok(spots):
 		var r := rng.randf()
 		if r < 0.3:
 			kit("sword_shield", s0, rng.randf_range(-0.4, 0.4), 1.2, true)
@@ -1669,7 +1695,7 @@ func _dress_vault() -> void:
 		var fp := _free_spot(4.5)
 		if fp != Vector3.INF:
 			spots.append(fp)
-	for s0: Vector3 in spots:
+	for s0: Vector3 in _spots_ok(spots):
 		var r := rng.randf()
 		if r < 0.3:
 			kit("crates", s0, rng.randf() * TAU, 1.0, true)
@@ -1976,6 +2002,13 @@ func _make_spawns() -> void:
 	while spawn_points.size() < want and tries < 800:
 		tries += 1
 		var p := Vector3(rng.randf_range(-size.x * 0.5 + 2.0, size.x * 0.5 - 2.0), 0, rng.randf_range(-size.y * 0.5 + 2.0, size.y * 0.5 - 4.0))
+		if not layout_spawns.is_empty() and spawn_points.size() < want / 2 and tries < 400:
+			# 前一半刷怪点落在布局模板指定的刷怪区里
+			var hs: Array = layout_spawns[tries % layout_spawns.size()]
+			var ang := rng.randf() * TAU
+			p = Vector3(hs[0]) + Vector3(cos(ang), 0, sin(ang)) * rng.randf_range(0.0, float(hs[1]))
+			if absf(p.x) > size.x * 0.5 - 2.0 or absf(p.z) > size.y * 0.5 - 2.0:
+				continue
 		if p.distance_to(entry_pos) < 7.0:
 			continue
 		var ok := true

@@ -34,6 +34,30 @@ func _dress_more() -> void:
 			_dress_palace()
 
 
+func _layout_back() -> float:
+	return 7.5 if ZONES3.has(zone) else super._layout_back()
+
+
+## 布局模板别压到小溪、驿道两边的灯笼和驿亭、宫里的两排柱子和香炉上
+func _layout_ok(r: Rect2) -> bool:
+	var c := r.get_center()
+	match zone:
+		"liuxi":
+			return absf(c.y - _stream_z(c.x)) > 3.0 + r.size.y * 0.5
+		"post":
+			var road := 5.5 * _kx()
+			if absf(absf(c.x) - (road + 1.0)) < 1.6 + r.size.x * 0.5:
+				return false
+			if absf(absf(c.x) - (road + 4.5)) < 2.8 + r.size.x * 0.5 and absf(c.y - 1.5 * _kz()) < 2.8 + r.size.y * 0.5:
+				return false
+		"palace":
+			var cx := 7.5 * _kx()
+			for x: float in [cx, cx + 4.0]:
+				if absf(absf(c.x) - x) < 1.6 + r.size.x * 0.5:
+					return false
+	return true
+
+
 ## 头目房（48×36）：比战斗房小、比小房大
 func _is_boss_room() -> bool:
 	return size.x > 44.0 and size.x < 52.0
@@ -172,7 +196,7 @@ func _dress_liuxi() -> void:
 		var p0 := _free_spot(4.5)
 		if p0 != Vector3.INF and absf(p0.z - _stream_z(p0.x)) > 2.5:
 			spots.append(p0)
-	for s0: Vector3 in spots:
+	for s0: Vector3 in _spots_ok(spots):
 		var r := rng.randf()
 		if r < 0.25:
 			kit("well", s0, rng.randf() * TAU, 1.0, true)
@@ -337,7 +361,7 @@ func _dress_post() -> void:
 		var p0 := _free_spot(4.5, 3.0, road + 1.5)
 		if p0 != Vector3.INF:
 			spots.append(p0)
-	for s0: Vector3 in spots:
+	for s0: Vector3 in _spots_ok(spots):
 		var r := rng.randf()
 		if r < 0.4:
 			kit("crates", s0, rng.randf() * TAU, 1.0, true)

@@ -114,7 +114,7 @@ static func apply(a: Arena) -> void:
 		_banks(a, BANK[zid], parts)
 	tm.append(Time.get_ticks_msec() - t0)
 	var big := a.size.x >= 40.0
-	if big and OUTCROP.has(zid):
+	if big and OUTCROP.has(zid) and a.layout_id == "":   # 有布局模板时场中不再堆石丛
 		_outcrops(a, OUTCROP[zid])
 	tm.append(Time.get_ticks_msec() - t0)
 	if big and PROPS.has(zid):

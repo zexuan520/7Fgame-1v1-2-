@@ -111,5 +111,21 @@ func _run() -> void:
 				a.free()
 			_check(bad_exit.is_empty() and worst >= 0.9, "%s · %s：出口%s，刷怪点最少 %d%% 走得到%s" % [z, k[0],
 				"都走得到" if bad_exit.is_empty() else "走不到（种子 %s）" % str(bad_exit), int(worst * 100.0), "（种子 %d）" % worst_seed if worst < 1.0 else ""])
+	# 布局模板：每个区域的战斗房 × 12 个模板 × 两个种子
+	for z: String in zones:
+		var room: Vector2 = kinds[zones[z]][0][1]
+		var bad := []
+		for lid: String in RoomLayouts.ids():
+			for sd: int in SEEDS.slice(0, 2):
+				var a: Arena = Arena3.new() if Arena3.ZONES3.has(z) else Arena.new()
+				a.layout_id = lid
+				add_child(a)
+				a.build(z, sd, room)
+				var r := _reach(a)
+				var frac := float(r["spawn_ok"]) / maxf(float(r["spawn_n"]), 1.0)
+				if not bool(r["exit"]) or bool(r["entry_blocked"]) or frac < 0.9:
+					bad.append("%s/%d(%d%%)" % [lid, sd, int(frac * 100.0)])
+				a.free()
+		_check(bad.is_empty(), "%s · 12 个布局模板：%s" % [z, "出口和刷怪点都走得到" if bad.is_empty() else "有问题 " + ", ".join(bad)])
 	print("\n" + ("全部测试通过" if failures == 0 else "有 %d 项没通过" % failures))
 	get_tree().quit(1 if failures > 0 else 0)

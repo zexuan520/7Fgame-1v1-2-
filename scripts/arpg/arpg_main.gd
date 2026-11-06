@@ -640,6 +640,25 @@ func _apply_zone_env(info: Dictionary) -> void:
 	sun.light_energy = info["sun_e"]
 
 
+## 战斗房 / 精英房挑一个布局模板（RoomLayouts），最近四间用过的不挑
+var _recent_layouts: Array = []
+
+
+func _pick_layout(kind: String, room_seed: int) -> String:
+	if not kind in ["fight", "elite"] or _args.has("nolayout"):
+		return ""
+	if _args.has("layout"):
+		return String(_args["layout"])
+	var r := RandomNumberGenerator.new()
+	r.seed = room_seed * 31 + 7
+	var id := RoomLayouts.pick(r, _recent_layouts)
+	if id != "":
+		_recent_layouts.append(id)
+		if _recent_layouts.size() > 4:
+			_recent_layouts.pop_front()
+	return id
+
+
 ## 换场景：清掉旧房间里的一切（敌人、掉落、光门、互动物）
 func _clear_scene() -> void:
 	Foe.tokens = 0
@@ -668,9 +687,10 @@ func _clear_scene() -> void:
 	_going = false
 
 
-func _build_arena(zone_id: String, seed_value: int, sz: Vector2, side_plans: Array = []) -> void:
+func _build_arena(zone_id: String, seed_value: int, sz: Vector2, side_plans: Array = [], layout: String = "") -> void:
 	arena = Arena3.new() if Arena3.ZONES3.has(zone_id) else Arena.new()
 	arena.doors = side_plans
+	arena.layout_id = layout
 	add_child(arena)
 	var _bt := Time.get_ticks_msec()
 	var _lp := LoadProf.t()
@@ -1439,7 +1459,8 @@ func _enter_room_body(kind: String = "", zone_override: String = "") -> void:
 	elif room_kind == "boss":
 		sz = ACT3_BOSS if a3 else (ACT2_BOSS if a2 else BOSS_ROOM)
 	var plans := [] if _args.has("noside") else SideRoom.plan(room_kind, sz, _rng, String(_args.get("side", "")) if _args.get("side", "1") != "1" else "", zone_id)
-	_build_arena(zone_id, state.seed_value + fl * 1000 + state.run.row * 37 + state.run.col * 7 + (500 if room_kind == "secret" else 0) + (700 if room_kind == "realm" else 0), sz, plans)
+	var room_seed := state.seed_value + fl * 1000 + state.run.row * 37 + state.run.col * 7 + (500 if room_kind == "secret" else 0) + (700 if room_kind == "realm" else 0)
+	_build_arena(zone_id, room_seed, sz, plans, _pick_layout(room_kind, room_seed))
 	_place_hero(arena.entry_pos)
 	state.rooms += 1
 	if hints != null:
