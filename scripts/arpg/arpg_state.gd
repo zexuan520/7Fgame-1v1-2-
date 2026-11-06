@@ -140,7 +140,7 @@ func remap() -> void:
 			if nd["type"] == "fight":
 				nd["type"] = "story"
 				break
-	# 第三幕：一层多两列房间，再加一条分岔支线（ArpgRoutes）
+	# 三幕都一样：一层多两列房间，再加一条分岔支线（ArpgRoutes）
 	ArpgRoutes.expand(self)
 
 
@@ -248,8 +248,8 @@ func stat_parts() -> Array:
 		add.call("境况", "熔铜炉铸甲 ×%d" % forged, {"hp": FORGE_HP * forged})
 	if omen != "" and OMENS.has(omen):
 		add.call("境况", "天象·%s" % OMENS[omen]["name"], OMENS[omen].get("stats", {}))
-	if act == 3:
-		# 第三幕：带着的石门灯、喂过的驿马、支线尽头拿的加成（数值照 Act3.run_stats 算，这里只起个名字）
+	if act == 3 and (flags.has("lamp_carried") or flags.has("stable_fed")):
+		# 第三幕：带着的石门灯、喂过的驿马（数值照 Act3.run_stats 算，这里只起个名字）
 		var a3 := {}
 		Act3.run_stats(self, a3)
 		var got := []
@@ -257,9 +257,9 @@ func stat_parts() -> Array:
 			got.append("石门灯")
 		if flags.has("stable_fed"):
 			got.append("驿马")
-		if not (flags.get("route_stats", {}) as Dictionary).is_empty():
-			got.append("支线所得")
 		add.call("境况", "路上·%s" % "、".join(got), a3)
+	if not (flags.get("route_stats", {}) as Dictionary).is_empty():
+		add.call("境况", "支线所得", flags["route_stats"])   # 分岔支线尽头拿的加成（ArpgRoutes）
 	var sc := ArpgData.school_counts(boons)
 	for k: String in sc:
 		if int(sc[k]) >= ArpgData.SET_NEED and ArpgData.SETS.has(k):
