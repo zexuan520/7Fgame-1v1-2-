@@ -138,7 +138,7 @@ func _draw_brush(c: Vector2, w: float, h: float, a: float) -> void:
 		bot.append(Vector2(x, c.y + h * 0.5 * taper + j2 * taper))
 	bot.reverse()
 	var poly := top + bot
-	draw_colored_polygon(poly, Color(0.42, 0.04, 0.06, 0.5 * a))   # 一笔暗朱砂，衬白字
+	draw_colored_polygon(poly, Color(0.55, 0.06, 0.08, 0.72 * a))   # 一笔暗朱砂，衬白字
 
 
 ## 朱红方印，里面一个“刃”字；落下时从大缩到正常、带一点旋转
