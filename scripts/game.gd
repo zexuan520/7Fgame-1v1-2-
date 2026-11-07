@@ -51,7 +51,7 @@ func _ready() -> void:
 	pixel.antialiasing = TextServer.FONT_ANTIALIASING_NONE
 	pixel.hinting = TextServer.HINTING_NONE
 	pixel.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
-	pixel.oversampling = 1.0
+	pixel.oversampling = 0.0   # 0 = 跟着窗口缩放重新栅格化（窗口比 1280×720 小时，固定 1 倍会被缩掉整行像素：I 变 T、E 变 F）
 	font = pixel
 	_setup_inputs()
 	load_save()

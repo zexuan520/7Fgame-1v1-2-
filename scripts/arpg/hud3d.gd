@@ -288,7 +288,12 @@ func _draw_skills(vs: Vector2) -> void:
 			draw_arc(c, 31 + 2 * pul, 0, TAU, 48, Color(lg, 0.6 + 0.4 * pul), 3.0, true)
 			draw_string(font, c + Vector2(-20, -34), "连携", HORIZONTAL_ALIGNMENT_CENTER, 40, 13, lg.lightened(0.3))
 		draw_string(font, c + Vector2(-13, 9), it[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 26, col if ready else Color(0.5, 0.55, 0.55))
-		draw_string(pixel, c + Vector2(-20, 44), it[3], HORIZONTAL_ALIGNMENT_CENTER, 40, 12, Color(0.75, 0.8, 0.8))
+		# 按键名垫一个小键帽，小屏上也一眼认得出
+		var kw := maxf(pixel.get_string_size(String(it[3]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 8, 16)
+		var kr := Rect2(c.x - kw / 2, c.y + 31, kw, 17)
+		draw_rect(kr, Color(PANEL, 0.85))
+		draw_rect(kr, Color(GOLD, 0.35), false, 1.0)
+		draw_string(pixel, c + Vector2(-20, 44), it[3], HORIZONTAL_ALIGNMENT_CENTER, 40, 12, Color(0.85, 0.9, 0.9))
 	# 普攻和翻滚提示
 	draw_string(pixel, Vector2(vs.x - 250, vs.y - 112), "%s 攻击  %s 翻滚" % [ArpgInput.key_name(hero.index, "attack"), ArpgInput.key_name(hero.index, "roll")], HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.6, 0.7, 0.7))
 	if hero.kit == null:
