@@ -72,6 +72,7 @@ func setup(model_id: String, weapon_id: String = "", wlen: float = 30.0, tint: C
 	add_child(body)
 	mat = toon_material()
 	mat.set_shader_parameter("tint", Vector3(tint.r, tint.g, tint.b))
+	mat.set_shader_parameter("face_mul", 0.5)   # 角色的体素面明暗减半：人要比场景亮、比场景“跳”
 	mat.next_pass = outline_material()
 	if model == null:
 		return

@@ -13,9 +13,7 @@ const PANEL := Color(0.03, 0.05, 0.06, 0.72)
 var hero: Hero
 var font: Font
 var pixel: Font
-var portrait_vp: SubViewport
-var portrait_cam: Camera3D
-var portrait_rect: TextureRect
+var _orb_t := 0.0                # 血玉徽记的液面晃动
 var zone_name := ""
 var omen := ""                   # 这一局的天象（区域名下面一行小字）
 var omen_color := Color.WHITE
@@ -27,6 +25,7 @@ var boss: Foe
 var _banner := ""
 var _banner_t := 0.0
 var _banner_sub := ""
+var _banner_full := 0.0
 static var I: Hud3D
 var _bars := 0.0                  # 电影黑边：剩余真实秒
 var _bars_k := 0.0                # 黑边当前高度 0~1
@@ -49,26 +48,8 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	font = Feel.I.font if Feel.I != null else Game.font
 	pixel = Game.font
-	# 头像：一个小视口，镜头对着主角的脸
-	portrait_vp = SubViewport.new()
-	portrait_vp.size = Vector2i(128, 128)
-	portrait_vp.transparent_bg = false
-	portrait_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	add_child(portrait_vp)
-	portrait_cam = Camera3D.new()
-	portrait_cam.fov = 24.0
-	portrait_cam.cull_mask = 0xFFFFF
-	portrait_vp.add_child(portrait_cam)
-	portrait_rect = TextureRect.new()
-	portrait_rect.texture = portrait_vp.get_texture()
-	portrait_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	portrait_rect.size = Vector2(104, 104)
-	var m := ShaderMaterial.new()
-	var sh := Shader.new()
-	sh.code = "shader_type canvas_item;\nvoid fragment(){ vec2 d = UV - 0.5; float r = length(d); vec4 c = texture(TEXTURE, UV); c.rgb = c.rgb * 1.15 + vec3(0.02, 0.05, 0.06); COLOR = vec4(c.rgb, smoothstep(0.5, 0.47, r)); }"
-	m.shader = sh
-	portrait_rect.material = m
-	add_child(portrait_rect)
+	# 2026-11-07：原来左下角是一个小视口实时拍主角的脸——每帧多渲染一遍整个场景（手机上很贵），
+	# 拍出来又常常是兜帽里面一团看不清的方块。换成画出来的“血玉”徽记：圆里一汪血按生命高低涨落，中间一把断刃。
 
 
 ## 上下电影黑边（头目登场、变身、倒下的特写）
@@ -88,6 +69,7 @@ func banner(text: String, sub: String = "", t: float = 2.2) -> void:
 	_banner = text
 	_banner_sub = sub
 	_banner_t = t
+	_banner_full = t
 
 
 func _process(dt: float) -> void:
@@ -106,15 +88,7 @@ func _process_body(dt: float) -> void:
 	if is_instance_valid(hero):
 		var k := hero.hp / hero.max_hp
 		_hp_show = move_toward(_hp_show, k, dt * 0.5) if _hp_show > k else k
-		# 头像镜头：放在主角脸前方偏上
-		if hero.alive and hero.rig != null and hero.rig.parts.has("head"):
-			var head: Node3D = hero.rig.parts["head"]
-			var hp := head.global_position + Vector3(0, 0.24, 0)
-			var fwd := hero.facing
-			portrait_cam.global_position = hp + fwd * 1.5 + Vector3(0, 0.12, 0) + fwd.cross(Vector3.UP) * 0.35
-			portrait_cam.look_at(hp, Vector3.UP)
-	var vs := get_viewport_rect().size
-	portrait_rect.position = Vector2(30, _panel_y(vs) - 52)
+	_orb_t += rdt
 	queue_redraw()
 
 
@@ -143,21 +117,39 @@ func _draw() -> void:
 	if _link_t > 0.0:
 		_draw_link(vs)
 	if _banner_t > 0.0:
-		var a := clampf(_banner_t / 0.4, 0.0, 1.0)
-		var y := vs.y * 0.3
-		draw_rect(Rect2(0, y - 46, vs.x, 80), Color(0, 0, 0, 0.45 * a))
-		draw_line(Vector2(vs.x * 0.2, y - 46), Vector2(vs.x * 0.8, y - 46), Color(GOLD, 0.7 * a), 1.0)
-		draw_line(Vector2(vs.x * 0.2, y + 34), Vector2(vs.x * 0.8, y + 34), Color(GOLD, 0.7 * a), 1.0)
-		draw_string(font, Vector2(0, y), _banner, HORIZONTAL_ALIGNMENT_CENTER, vs.x, 40, Color(0.95, 0.92, 0.85, a))
-		if _banner_sub != "":
-			draw_string(font, Vector2(0, y + 26), _banner_sub, HORIZONTAL_ALIGNMENT_CENTER, vs.x, 18, Color(0.6, 0.9, 0.9, a))
+		_draw_banner(vs)
+
+
+## 横幅（2026-11-07 改）：原来是屏幕三成高处一整条黑带，正好压在战场上；现在挪到上方、两头渐隐的墨带，
+## 字先放大再落定，左右两枚菱形，少挡视线也更有“题字”的味道
+func _draw_banner(vs: Vector2) -> void:
+	var a := clampf(_banner_t / 0.4, 0.0, 1.0)
+	var y := vs.y * (0.26 if is_instance_valid(boss) and boss.alive else 0.17)   # 头目战让开顶上的血条
+	var bw := minf(vs.x * 0.62, 760.0)
+	var x0 := (vs.x - bw) * 0.5
+	# 墨带：中间浓、两头淡（分 12 段画渐变）
+	for i in range(12):
+		var t0 := float(i) / 12.0
+		var k := 1.0 - absf(t0 + 1.0 / 24.0 - 0.5) * 2.0
+		draw_rect(Rect2(x0 + bw * t0, y - 40, bw / 12.0 + 1.0, 70), Color(0.01, 0.015, 0.02, 0.62 * a * sqrt(k)))
+	var gl := Color(GOLD, 0.8 * a)
+	draw_line(Vector2(x0 + bw * 0.12, y - 40), Vector2(x0 + bw * 0.88, y - 40), gl, 1.0)
+	draw_line(Vector2(x0 + bw * 0.12, y + 30), Vector2(x0 + bw * 0.88, y + 30), gl, 1.0)
+	for sx: float in [x0 + bw * 0.1, x0 + bw * 0.9]:
+		var p := Vector2(sx, y - 5)
+		draw_colored_polygon(PackedVector2Array([p + Vector2(0, -7), p + Vector2(7, 0), p + Vector2(0, 7), p + Vector2(-7, 0)]), gl)
+	var age := maxf(_banner_full - _banner_t, 0.0)
+	var pop := 1.0 + 0.35 * maxf(0.0, 1.0 - age / 0.2)
+	draw_string(font, Vector2(0, y + 4), _banner, HORIZONTAL_ALIGNMENT_CENTER, vs.x, int(36 * pop), Color(0.97, 0.93, 0.84, a))
+	if _banner_sub != "":
+		draw_string(font, Vector2(0, y + 24), _banner_sub, HORIZONTAL_ALIGNMENT_CENTER, vs.x, 16, Color(0.65, 0.92, 0.9, a))
 
 
 func _draw_link(vs: Vector2) -> void:
 	var age := LINK_SHOW - _link_t
 	var a := clampf(_link_t / 0.35, 0.0, 1.0) * clampf(age / 0.06, 0.0, 1.0)
 	var pop := 1.0 + 0.6 * maxf(0.0, 1.0 - age / 0.18)
-	var y := vs.y * 0.19
+	var y := vs.y * (0.38 if _banner_t > 0.0 else 0.19)   # 和横幅同时出现时往下让开，不叠字
 	var w := 380.0
 	var x := (vs.x - w) * 0.5
 	draw_rect(Rect2(x, y - 34, w, 58), Color(0, 0, 0, 0.5 * a))
@@ -180,8 +172,8 @@ func _draw_player_panel(vs: Vector2) -> void:
 	# 底板
 	draw_rect(Rect2(c.x, top, 330, 78), PANEL)
 	draw_line(Vector2(c.x, top), Vector2(c.x + 330, top), Color(GOLD, 0.5), 1.0)
-	# 头像框：外圈金、内圈青
-	draw_circle(c, 58, Color(0.02, 0.03, 0.04))
+	# 血玉徽记：外圈金、里面一汪血按生命涨落，中间一把断刃
+	_draw_orb(c, 54.0)
 	draw_arc(c, 56, 0, TAU, 64, GOLD, 2.5, true)
 	draw_arc(c, 61, 0, TAU, 64, Color(GOLD, 0.35), 1.0, true)
 	# 气力环（头像外圈）
@@ -204,10 +196,18 @@ func _draw_player_panel(vs: Vector2) -> void:
 		if points > 0:
 			var blink := 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.008)
 			draw_string(font, Vector2(c.x + 76, top - 8), "天赋点 %d　%s" % [points, TouchPad.hint("Esc → 技能分支", "暂停 → 技能分支")], HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.85, 0.4, blink))
-	draw_rect(Rect2(x0, y0 + 6, w, 9), Color(0.08, 0.02, 0.03))
-	draw_rect(Rect2(x0, y0 + 6, w * _hp_show, 9), Color(0.95, 0.85, 0.8, 0.8))
-	draw_rect(Rect2(x0, y0 + 6, w * hero.hp / hero.max_hp, 9), Color(0.78, 0.12, 0.14))
-	draw_rect(Rect2(x0, y0 + 6, w, 9), Color(GOLD, 0.6), false, 1.0)
+	draw_rect(Rect2(x0, y0 + 5, w, 11), Color(0.08, 0.02, 0.03))
+	draw_rect(Rect2(x0, y0 + 5, w * _hp_show, 11), Color(0.95, 0.85, 0.8, 0.8))
+	var hk := hero.hp / hero.max_hp
+	var hc := Color(0.8, 0.12, 0.14)
+	if hk < 0.3:
+		hc = hc.lerp(Color(1.0, 0.35, 0.3), 0.3 + 0.3 * sin(_orb_t * 9.0))
+	draw_rect(Rect2(x0, y0 + 5, w * hk, 11), hc)
+	draw_rect(Rect2(x0, y0 + 5, w * hk, 3), Color(1.0, 0.6, 0.55, 0.5))   # 上沿高光
+	for i in range(1, int(hero.max_hp / 20.0)):
+		var tx := x0 + w * (i * 20.0) / hero.max_hp
+		draw_line(Vector2(tx, y0 + 6), Vector2(tx, y0 + 15), Color(0, 0, 0, 0.35), 1.0)   # 每 20 点一格
+	draw_rect(Rect2(x0, y0 + 5, w, 11), Color(GOLD, 0.6), false, 1.0)
 	draw_string(font, Vector2(x0 + w - 70, y0 - 4), "%d / %d" % [int(hero.hp), int(hero.max_hp)], HORIZONTAL_ALIGNMENT_RIGHT, 70, 15, Color(0.9, 0.85, 0.8))
 	if hero.golden:
 		draw_rect(Rect2(x0 - 3, y0 + 3, w + 6, 15), Color(1.0, 0.85, 0.4, 0.9), false, 2.0)   # 金身
@@ -242,6 +242,56 @@ func _draw_player_panel(vs: Vector2) -> void:
 		var col := Color(0.4, 1.0, 0.6) if i < hero.gourds else Color(0.2, 0.25, 0.25)
 		draw_circle(gp, 6, col)
 		draw_circle(gp + Vector2(0, -8), 4, col)
+
+
+func _draw_orb(c: Vector2, r: float) -> void:
+	draw_circle(c, r + 4, Color(0.02, 0.025, 0.035))
+	var k := clampf(hero.hp / hero.max_hp, 0.0, 1.0)
+	var low := k < 0.3
+	# 液面：一条正弦波，水位 = 生命；低血时一闪一闪
+	var lvl := c.y + r - 2.0 * r * k
+	var pts := PackedVector2Array()
+	var steps := 40
+	for i in range(steps + 1):
+		var x := c.x - r + 2.0 * r * float(i) / steps
+		var y := lvl + sin(float(i) * 0.5 + _orb_t * 3.0) * 2.2 * (1.0 if k < 0.999 else 0.0)
+		var dx := x - c.x
+		var half := sqrt(maxf(r * r - dx * dx, 0.0))
+		pts.append(Vector2(x, clampf(y, c.y - half, c.y + half)))
+	for i in range(steps, -1, -1):
+		var x := c.x - r + 2.0 * r * float(i) / steps
+		var dx := x - c.x
+		pts.append(Vector2(x, c.y + sqrt(maxf(r * r - dx * dx, 0.0))))
+	var blood := Color(0.62, 0.05, 0.08)
+	if low:
+		blood = blood.lerp(Color(1.0, 0.2, 0.2), 0.35 + 0.35 * sin(_orb_t * 9.0))
+	if k > 0.001:
+		draw_colored_polygon(pts, blood)
+		# 液面一道亮线
+		var top := PackedVector2Array()
+		for i in range(steps + 1):
+			top.append(pts[i])
+		draw_polyline(top, Color(1.0, 0.55, 0.5, 0.8), 1.5, true)
+	# 玻璃高光
+	draw_arc(c + Vector2(-6, -8), r * 0.72, PI * 1.05, PI * 1.45, 16, Color(1, 1, 1, 0.22), 4.0, true)
+	# 断刃：斜着一把刀，刀尖断成锯齿（游戏名“残刃”）
+	var ang := -PI * 0.25
+	var u := Vector2(cos(ang), sin(ang))
+	var v := Vector2(-u.y, u.x)
+	var base := c - u * r * 0.62
+	var blade_w := 5.5
+	var tip := base + u * r * 1.05
+	var bl := PackedVector2Array([base + v * blade_w * 0.8, base - v * blade_w * 0.8,
+		tip - v * blade_w - u * 3.0, tip - v * 2.0 + u * 4.0, tip + v * 1.0 - u * 2.0, tip + v * blade_w + u * 3.0])
+	draw_colored_polygon(bl, Color(0.86, 0.9, 0.92))
+	draw_polyline(PackedVector2Array([base + v * 1.0, tip + v * 1.0 - u * 4.0]), Color(1, 1, 1, 0.9), 1.5, true)
+	# 刀镡和刀柄
+	var gd := base
+	draw_colored_polygon(PackedVector2Array([gd + v * 13 - u * 2, gd + v * 13 + u * 3, gd - v * 13 + u * 3, gd - v * 13 - u * 2]), GOLD)
+	draw_line(gd - u * 3, gd - u * 22, Color(0.32, 0.12, 0.1), 7.0)
+	for i in range(3):
+		draw_line(gd - u * (7 + i * 5) - v * 3.5, gd - u * (9 + i * 5) + v * 3.5, Color(0.75, 0.6, 0.35), 1.5)
+	draw_circle(gd - u * 24, 3.5, GOLD)
 
 
 func _draw_skills(vs: Vector2) -> void:
@@ -406,21 +456,42 @@ func _draw_enemy_marks() -> void:
 func _draw_boss(vs: Vector2) -> void:
 	if not is_instance_valid(boss) or not boss.alive:
 		return
+	# 2026-11-07 重画：名字两边金线和菱形、血条加厚加暗框、每 10% 一道刻度、掉血那一截先白后红慢慢退、
+	# 半血以下血条泛暗红呼吸；架势条贴在底下
 	var w := vs.x * 0.5
 	var x := (vs.x - w) * 0.5
-	var y := 70.0
-	draw_string(font, Vector2(0, y - 12), boss.display_name, HORIZONTAL_ALIGNMENT_CENTER, vs.x, 24, Color(1.0, 0.75, 0.82))
-	draw_rect(Rect2(x - 2, y - 2, w + 4, 14), Color(0, 0, 0, 0.6))
+	var y := 74.0
+	var nm := boss.display_name
+	var nw := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x
+	draw_string(font, Vector2(0, y - 14), nm, HORIZONTAL_ALIGNMENT_CENTER, vs.x, 24, Color(1.0, 0.82, 0.86))
+	var cx := vs.x * 0.5
+	for sgn: float in [-1.0, 1.0]:
+		var e0 := cx + sgn * (nw * 0.5 + 14.0)
+		var e1 := cx + sgn * (nw * 0.5 + 120.0)
+		draw_line(Vector2(e0, y - 22), Vector2(e1, y - 22), Color(GOLD, 0.7), 1.0)
+		var p := Vector2(e0 + sgn * 2.0, y - 22)
+		draw_colored_polygon(PackedVector2Array([p + Vector2(0, -4), p + Vector2(4, 0), p + Vector2(0, 4), p + Vector2(-4, 0)]), GOLD)
+	draw_rect(Rect2(x - 4, y - 4, w + 8, 20), Color(0, 0, 0, 0.7))
 	var k := boss.hp / boss.max_hp
 	var shown: float = _shown_hp.get(boss, 1.0)
 	shown = move_toward(shown, k, 0.004) if shown > k else k
 	_shown_hp[boss] = shown
-	draw_rect(Rect2(x, y, w * shown, 10), Color(1.0, 0.9, 0.85, 0.7))
-	draw_rect(Rect2(x, y, w * k, 10), Color(0.7, 0.08, 0.2))
-	draw_rect(Rect2(x, y, w, 10), Color(GOLD, 0.7), false, 1.0)
-	draw_rect(Rect2(x, y + 13, w * boss.poise / maxf(boss.max_poise, 1.0), 3), Color(1.0, 0.8, 0.4, 0.8))
+	draw_rect(Rect2(x, y, w * shown, 12), Color(1.0, 0.92, 0.85, 0.75))
+	var bc := Color(0.72, 0.07, 0.18)
+	if k < 0.5:
+		bc = bc.lerp(Color(0.95, 0.15, 0.2), 0.25 + 0.25 * sin(_orb_t * 5.0))
+	draw_rect(Rect2(x, y, w * k, 12), bc)
+	draw_rect(Rect2(x, y, w * k, 3), Color(1.0, 0.55, 0.6, 0.55))   # 上沿高光
+	for i in range(1, 10):
+		var tx := x + w * i / 10.0
+		draw_line(Vector2(tx, y + 1), Vector2(tx, y + 11), Color(0, 0, 0, 0.45), 1.0)
+	draw_rect(Rect2(x - 1, y - 1, w + 2, 14), Color(GOLD, 0.85), false, 1.0)
+	for ex: float in [x - 8, x + w + 8]:
+		var p := Vector2(ex, y + 6)
+		draw_colored_polygon(PackedVector2Array([p + Vector2(0, -7), p + Vector2(6, 0), p + Vector2(0, 7), p + Vector2(-6, 0)]), GOLD)
+	draw_rect(Rect2(x, y + 15, w * boss.poise / maxf(boss.max_poise, 1.0), 3), Color(1.0, 0.8, 0.4, 0.85))
 	if boss.bleed > 0:
-		draw_string(font, Vector2(x + w + 10, y + 11), "出血 ×%d" % boss.bleed, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1.0, 0.35, 0.35))
+		draw_string(font, Vector2(x + w + 18, y + 12), "出血 ×%d" % boss.bleed, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1.0, 0.35, 0.35))
 
 
 ## 试炼四枚印：方块里写“疾守狂乱”，得印金色、进行中闪、失手灰

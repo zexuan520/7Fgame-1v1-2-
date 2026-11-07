@@ -42,9 +42,35 @@ func ldt(dt: float) -> float:
 	return dt
 
 
+## 挨打顿帧时整个人偶左右打颤（只动 x/z，y 留给跳跃）：定住的那几帧不再是“卡住”，而是“被砍得一哆嗦”
+var _shiver := 0.0
+var _shiver_amp := 0.0
+
+
+func shiver(t: float, amp: float = 0.06) -> void:
+	_shiver = maxf(_shiver, t)
+	_shiver_amp = maxf(_shiver_amp if _shiver > 0.0 else 0.0, amp)
+
+
+func _tick_shiver(dt: float) -> void:
+	if rig == null:
+		return
+	if _shiver > 0.0:
+		_shiver -= dt
+		var k := clampf(_shiver / 0.08, 0.0, 1.0)
+		var ph := Time.get_ticks_msec() * 0.09
+		rig.position.x = sin(ph * 7.0) * _shiver_amp * k
+		rig.position.z = cos(ph * 5.3) * _shiver_amp * 0.6 * k
+	elif rig.position.x != 0.0 or rig.position.z != 0.0:
+		rig.position.x = 0.0
+		rig.position.z = 0.0
+		_shiver_amp = 0.0
+
+
 func tick_common(dt: float) -> float:
 	if rig != null:
 		rig.tick_flash(dt)
+	_tick_shiver(dt)
 	if Feel.I != null and Feel.I.world_pause > 0.0:
 		return 0.0
 	if freeze_t > 0.0:

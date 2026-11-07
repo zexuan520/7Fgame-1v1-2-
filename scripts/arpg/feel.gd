@@ -75,6 +75,8 @@ func on_hit(info: HitInfo) -> bool:
 	var extra := _frame_hits > 2        # 同一帧第三下以后：只出伤害数字、小火花，镜头不再推
 	var hs := _hitstop(info, w, hero_hit, killed)
 	tgt.freeze(hs)
+	if hs > 0.0 and not killed:
+		tgt.shiver(hs + 0.04, (0.05 if w == 0 else 0.09) * (0.5 if boss else 1.0) * (1.3 if info.crit else 1.0))
 	if info.attacker != null:
 		info.attacker.self_stop(hs * 0.9)
 	# 受击挤压：压扁再弹回
@@ -341,13 +343,20 @@ func _tick_combo(dt: float) -> void:
 
 ## 伤害数字 / 飘字
 func number(world_pos: Vector3, text: String, col: Color, scale: float = 1.0, crit: bool = false) -> void:
+	# 2026-11-07：数字加投影（往右下错 3 像素的深色），会心字描暖色粗边、斜一点；大数字按伤害再放大一点
 	var l := Label.new()
 	l.text = text
+	var big := clampf((float(text.to_int()) - 20.0) / 60.0, 0.0, 0.35) if text.is_valid_int() else 0.0
 	l.add_theme_font_override("font", font)
-	l.add_theme_font_size_override("font_size", int(26 * scale))
+	l.add_theme_font_size_override("font_size", int(26 * scale * (1.0 + big)))
 	l.add_theme_color_override("font_color", col)
-	l.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.04))
-	l.add_theme_constant_override("outline_size", 7)
+	l.add_theme_color_override("font_outline_color", Color(0.45, 0.12, 0.02) if crit else Color(0.05, 0.03, 0.04))
+	l.add_theme_constant_override("outline_size", 10 if crit else 7)
+	l.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.55))
+	l.add_theme_constant_override("shadow_offset_x", 3)
+	l.add_theme_constant_override("shadow_offset_y", 3)
+	if crit:
+		l.rotation = randf_range(-0.12, 0.12)
 	l.pivot_offset = Vector2(20, 16)
 	l.visible = false
 	add_child(l)

@@ -19,6 +19,7 @@ var rng := RandomNumberGenerator.new()
 var noise := FastNoiseLite.new()
 var occluders: Array = []          # 前景遮挡物：[节点(Node3D), 材质数组, AABB]
 var env_mat: ShaderMaterial
+var floor_mat: ShaderMaterial     # 主房间地面的材质（烘接触阴影要往里塞 AO 图）
 var glow_mat: ShaderMaterial
 var spawn_points: Array[Vector3] = []
 var exit_pos := Vector3.ZERO
@@ -35,8 +36,9 @@ static var lod := 2
 
 const ZONES := {
 	# 第一幕是评委、新人最先看到的：雾压轻、灯提亮，地面和角色拉开（原来雾 0.75、环境 1.15、日光 1.25，整片发青发灰）
-	"forest": {"bg": Color(0.03, 0.07, 0.08), "fog": Color(0.05, 0.14, 0.15), "fog_d": 0.42, "amb": Color(0.34, 0.55, 0.56), "amb_e": 1.4,
-		"sun": Color(0.75, 0.92, 0.95), "sun_e": 1.5, "spore": Color(0.55, 1.0, 0.85)},
+	# 2026-11-07：日光换成暖金（林间斜阳），暗部留青，冷暖一拉开第一幕就不再是一整片青灰
+	"forest": {"bg": Color(0.03, 0.07, 0.08), "fog": Color(0.06, 0.15, 0.15), "fog_d": 0.34, "amb": Color(0.34, 0.55, 0.6), "amb_e": 1.35,
+		"sun": Color(1.0, 0.84, 0.62), "sun_e": 1.55, "spore": Color(0.85, 1.0, 0.6)},
 	"temple": {"bg": Color(0.03, 0.04, 0.06), "fog": Color(0.06, 0.14, 0.18), "fog_d": 0.55, "amb": Color(0.4, 0.42, 0.55), "amb_e": 1.4,
 		"sun": Color(0.6, 0.72, 1.0), "sun_e": 1.2, "spore": Color(0.7, 0.9, 1.0), "foe_rim": Color(0.55, 0.9, 1.0)},
 	"grave": {"bg": Color(0.03, 0.05, 0.05), "fog": Color(0.07, 0.11, 0.1), "fog_d": 0.5, "amb": Color(0.42, 0.5, 0.46), "amb_e": 1.4,
@@ -62,6 +64,13 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 	rng.seed = seed_value
 	noise.seed = seed_value
 	noise.frequency = 0.08
+	stone_noise = FastNoiseLite.new()
+	stone_noise.noise_type = FastNoiseLite.TYPE_CELLULAR
+	stone_noise.seed = seed_value
+	stone_noise.frequency = 1.1
+	stone_noise.cellular_return_type = FastNoiseLite.RETURN_DISTANCE2_SUB
+	stone_val = stone_noise.duplicate()
+	stone_val.cellular_return_type = FastNoiseLite.RETURN_CELL_VALUE
 	env_mat = VoxActor.toon_material()
 	env_mat.set_shader_parameter("rim_strength", 0.12)
 	env_mat.set_shader_parameter("shadow_floor", 0.38)
@@ -105,6 +114,9 @@ func build(zone_id: String, seed_value: int, room_size: Vector2 = Vector2(30, 22
 	LoadProf.add("arena.atmosphere", _lp)
 	_clear_doorways()
 	_make_spawns()
+	_lp = LoadProf.t()
+	bake_floor_ao()
+	LoadProf.add("arena.ao", _lp)
 	if lod <= 1:
 		_lp = LoadProf.t()
 		_batch_static()
@@ -228,23 +240,65 @@ func _free_spot(gap: float = 3.5, margin: float = 3.0, lane: float = 2.5) -> Vec
 
 # ---------- 地面 ----------
 
+## 0~1 的格子哈希（同一格每次一样）：体素颗粒感、零星小花和石子
+static func _hash2(x: float, z: float) -> float:
+	return fposmod(sin(x * 127.1 + z * 311.7) * 43758.5453, 1.0)
+
+
+## 这一格是不是草地（_floor_color 顺手标出来，_floor_patch 在草地上长草丛体素）
+var _fc_grass := false
+var stone_noise: FastNoiseLite      # 不规则石板：细胞噪声的“两近点距离差”= 石缝
+var stone_val: FastNoiseLite        # 同一套细胞的“格值”= 每块石头深浅
+
+
 func _floor_color(x: float, z: float) -> Color:
+	_fc_grass = false
 	var n := noise.get_noise_2d(x * 3.0, z * 3.0)
 	var n2 := noise.get_noise_2d(x * 13.0 + 100.0, z * 13.0)
 	match zone:
 		"forest":
-			# 石板路 + 苔藓 + 泥土
-			var tile := (int(floor(x / 1.2)) + int(floor(z / 1.2))) % 2 == 0
-			var path := absf(x * 0.25 + sin(z * 0.3) * 1.5) < 2.6
-			var base := Color(0.16, 0.2, 0.17).lerp(Color(0.22, 0.3, 0.2), n * 0.5 + 0.5)
-			if path:
-				base = Color(0.3, 0.32, 0.3) if tile else Color(0.26, 0.28, 0.27)
-				var gx := fposmod(x + floor(z / 1.2) * 0.5, 1.2) < FV * 0.6 or fposmod(z, 1.2) < FV * 0.6
-				if gx and n2 > -0.3:
-					base = Color(0.17, 0.2, 0.17)
-			if n2 > 0.35:
-				base = base.lerp(Color(0.12, 0.26, 0.18), 0.6)
-			return base * (0.9 + n2 * 0.15)
+			# 2026-11-07 重画：原来大半个房间是 1.2 米方砖，像一张空网格。现在是林间草地：
+			# 深浅两种草色大块交替 + 黄绿斑 + 每格明暗抖一点（体素颗粒感），一条弯土路从入口通到出口，
+			# 中间散着几片残破的石板（细胞噪声切成不规则石块，缝里长苔），草里点着小花和落叶
+			_fc_grass = true
+			# 每格一个哈希，后面的零星小花、石子、颗粒深浅都从它派生（少调几次函数：十几万格，进房时间要紧）
+			var h := fposmod(sin(x * 127.1 + z * 311.7) * 43758.5453, 1.0)
+			var big := noise.get_noise_2d(x * 0.55 + 200.0, z * 0.55)
+			var c := Color(0.12, 0.2, 0.12).lerp(Color(0.18, 0.27, 0.14), n * 0.5 + 0.5)
+			if big > 0.2:
+				c = c.lerp(Color(0.25, 0.28, 0.13), minf((big - 0.2) * 2.5, 0.6))
+			elif big < -0.3:
+				c = c.lerp(Color(0.08, 0.15, 0.1), minf((-big - 0.3) * 3.0, 0.8))
+			var px := x - sin(z * 0.22) * 2.2 - sin(z * 0.07 + 1.0) * 1.4
+			var apx := absf(px)
+			var pw := 1.6 + 0.35 * sin(z * 0.5 + 2.0) + n2 * 0.25
+			if apx < pw:
+				_fc_grass = false
+				c = Color(0.3, 0.23, 0.16).lerp(Color(0.35, 0.27, 0.18), n2 * 0.5 + 0.5)
+				if h > 0.96:
+					c = Color(0.42, 0.4, 0.36) * (0.85 + fposmod(h * 31.7, 1.0) * 0.3)
+			elif apx < pw + 0.35 and h > 0.45:
+				_fc_grass = false
+				c = c.lerp(Color(0.27, 0.22, 0.15), 0.6)
+			else:
+				var ruin := noise.get_noise_2d(x * 0.35 - 80.0, z * 0.35)
+				if ruin > 0.36:
+					# 残石板：不规则石块（整块深浅不一，少数整块长满苔），缝里一道暗线；边上被草吃掉
+					var seam := stone_noise.get_noise_2d(x, z)
+					var sv := stone_val.get_noise_2d(x, z)
+					if seam > -0.9 and ruin - 0.36 > (sv * 0.5 + 0.5) * 0.08:
+						_fc_grass = false
+						c = Color(0.31, 0.33, 0.31).lerp(Color(0.42, 0.42, 0.38), sv * 0.5 + 0.5)
+						if sv > 0.55:
+							c = c.lerp(Color(0.2, 0.3, 0.16), 0.6)
+					elif seam <= -0.9:
+						c = c * 0.6
+			if _fc_grass:
+				if h > 0.997:
+					c = [Color(0.9, 0.88, 0.75), Color(0.95, 0.78, 0.3), Color(0.7, 0.55, 0.95), Color(0.95, 0.5, 0.45)][int(h * 4000.0) % 4]
+				elif h > 0.72 and noise.get_noise_2d(x * 1.3 + 9.0, z * 1.3) > 0.5:
+					c = [Color(0.42, 0.24, 0.1), Color(0.48, 0.34, 0.12), Color(0.36, 0.17, 0.09)][int(h * 300.0) % 3]
+			return c * (0.97 + fposmod(h * 7.31, 1.0) * 0.06)
 		"grave":
 			# 墓园：黑土 + 枯草 + 一条碎石板路（从入口通到出口）
 			var soil := Color(0.16, 0.15, 0.13).lerp(Color(0.2, 0.22, 0.16), n * 0.5 + 0.5)
@@ -386,6 +440,7 @@ func _floor_patch(x0: float, z0: float, nx: int, nz: int, main_room: bool, tint:
 	var px := PackedByteArray()
 	px.resize(nx * nz * 3)
 	var bumps := VoxelGrid.new(rng.randi())
+	var tuft_cut := 0.993 if lod == 0 else 0.982
 	for iz in range(nz):
 		var z := z0 + iz * FV
 		var row := iz * nx * 3
@@ -396,8 +451,14 @@ func _floor_patch(x0: float, z0: float, nx: int, nz: int, main_room: bool, tint:
 				c = c * tint
 				if fposmod(x, 1.0) < FV * 0.6 or fposmod(z, 1.0) < FV * 0.6:
 					c = c * 0.72
+			# 草丛：草地上零星长一簇（体素，一两格高），整片地面有了真的高低，不再是一张平贴图
+			elif _fc_grass and fposmod(sin(x * 394.2 + z * 838.5) * 43758.5453, 1.0) > tuft_cut:
+				var gh := 1 if lod == 0 else 1 + int(fposmod(sin(z * 127.1 + x * 622.0) * 43758.5453, 1.0) * 2.5)
+				var gc := c * 1.02 + Color(0.0, 0.015, 0.0)
+				for y in range(1, gh + 1):
+					bumps.cells[Vector3i(ix, y, iz)] = gc * (1.0 + 0.08 * y)
 			# 草丛 / 碎石凸起（只在边上，不挡路）
-			elif zone == "forest":
+			if main_room and zone == "forest":
 				var edge := maxf(absf(x) - size.x * 0.5 + 3.0, absf(z) - size.y * 0.5 + 3.0)
 				if edge > 0.0 and noise.get_noise_2d(x * 9.0, z * 9.0) > 0.4:
 					var h := 2 + int(rng.randf() * 3.0)
@@ -417,6 +478,9 @@ func _floor_patch(x0: float, z0: float, nx: int, nz: int, main_room: bool, tint:
 	mat.shader = load("res://shaders/arpg/floor.gdshader")
 	mat.set_shader_parameter("floor_tex", ImageTexture.create_from_image(img))
 	mat.set_shader_parameter("floor_rect", Vector4(x0, z0, nx * FV, nz * FV))
+	mat.set_shader_parameter("texel", Vector2(1.0 / nx, 1.0 / nz))
+	if main_room:
+		floor_mat = mat
 	# 分块：每块约 10 米见方
 	var cx := maxi(1, int(ceil(nx * FV / 10.0)))
 	var cz := maxi(1, int(ceil(nz * FV / 10.0)))
@@ -440,6 +504,79 @@ func _floor_patch(x0: float, z0: float, nx: int, nz: int, main_room: bool, tint:
 		bi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		bi.set_meta("floor", true)
 		add_child(bi)
+
+
+## 地面接触阴影：把房间里每件摆设（体素网格）的占地投到一张 0.25 米一格的 AO 图上，
+## 越高的件影子越深、往外晕得越远；GPU 线性插值成软边。墙角、柱脚、石头、房子底下都压暗，摆设不再像浮在贴图上。
+## 只看贴地的件（底面低于 0.4 米）；房间搭完以后（合批之前）烘一次，后来放的东西（裂墙、侧室）不重烘也不碍事。
+const AO_CELL := 0.25
+var _ao_n := 0
+
+
+func bake_floor_ao() -> void:
+	if floor_mat == null:
+		return
+	var rect: Vector4 = floor_mat.get_shader_parameter("floor_rect")
+	var nx := int(ceil(rect.z / AO_CELL))
+	var nz := int(ceil(rect.w / AO_CELL))
+	var ao := PackedFloat32Array()
+	ao.resize(nx * nz)
+	ao.fill(0.0)
+	var inv := global_transform.affine_inverse()
+	for n: Node in find_children("*", "MeshInstance3D", true, false):
+		var mi := n as MeshInstance3D
+		if mi.mesh == null or mi.has_meta("floor") or not mi.is_visible_in_tree():
+			continue
+		if mi.material_override != env_mat and not (mi.material_override is ShaderMaterial and (mi.material_override as ShaderMaterial).shader == env_mat.shader):
+			continue
+		var bb: AABB = (inv * mi.global_transform) * mi.get_aabb()
+		if bb.position.y > 0.4 or bb.size.y < 0.08:
+			continue
+		var h := minf(bb.size.y, 4.0)
+		var k := clampf(0.18 + h * 0.16, 0.18, 0.62)
+		var spread := clampf(0.35 + h * 0.3, 0.35, 1.6)
+		var x0 := bb.position.x
+		var x1 := bb.end.x
+		var z0 := bb.position.z
+		var z1 := bb.end.z
+		# 占地太大（墙、整片地形）只取边：中间本来就被盖住
+		var ix0 := clampi(int(floor((x0 - spread - rect.x) / AO_CELL)), 0, nx - 1)
+		var ix1 := clampi(int(ceil((x1 + spread - rect.x) / AO_CELL)), 0, nx - 1)
+		var iz0 := clampi(int(floor((z0 - spread - rect.y) / AO_CELL)), 0, nz - 1)
+		var iz1 := clampi(int(ceil((z1 + spread - rect.y) / AO_CELL)), 0, nz - 1)
+		if (ix1 - ix0) * (iz1 - iz0) > 40000:
+			continue
+		_ao_n += 1
+		# 体素件四周往里缩一点：模型的包围盒比实际占地大（树冠、伸出去的屋檐），只让中间七成算“压在地上”
+		var sx := (x1 - x0) * 0.15
+		var sz := (z1 - z0) * 0.15
+		x0 += sx
+		x1 -= sx
+		z0 += sz
+		z1 -= sz
+		for iz in range(iz0, iz1 + 1):
+			var z := rect.y + (iz + 0.5) * AO_CELL
+			var dz := maxf(maxf(z0 - z, z - z1), 0.0)
+			for ix in range(ix0, ix1 + 1):
+				var x := rect.x + (ix + 0.5) * AO_CELL
+				var dx := maxf(maxf(x0 - x, x - x1), 0.0)
+				var d := sqrt(dx * dx + dz * dz)
+				if d >= spread:
+					continue
+				var f := 1.0 - d / spread
+				var v := k * f * f
+				var o := iz * nx + ix
+				ao[o] = 1.0 - (1.0 - ao[o]) * (1.0 - v)
+	var px := PackedByteArray()
+	px.resize(nx * nz)
+	for i in range(nx * nz):
+		px[i] = clampi(int((1.0 - minf(ao[i], 0.7)) * 255.0), 0, 255)
+	var img := Image.create_from_data(nx, nz, false, Image.FORMAT_L8, px)
+	floor_mat.set_shader_parameter("ao_tex", ImageTexture.create_from_image(img))
+	floor_mat.set_shader_parameter("ao_rect", Vector4(rect.x, rect.y, nx * AO_CELL, nz * AO_CELL))
+	floor_mat.set_shader_parameter("ao_on", 1.0)
+	if LoadProf.on:
+		print("floor ao: %d 件, %dx%d" % [_ao_n, nx, nz])
 
 
 # ---------- 边界和碰撞 ----------
@@ -1936,8 +2073,23 @@ func _shaft(pos: Vector3, c: Color, w: float) -> void:
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
-	mi.position = pos + Vector3(0, 4.0, 0)
-	mi.rotation = Vector3(0, 0, 0.35)
+	mi.position = pos + Vector3(-1.2, 4.0, 0)
+	mi.rotation = Vector3(0, 0, -0.32)
+	# 光落到地上的一摊暖光（叠加，贴地）：光柱有了落点，像真从树缝里漏下来的
+	var g := MeshInstance3D.new()
+	var gq := QuadMesh.new()
+	gq.size = Vector2(w * 1.8, w * 1.3)
+	g.mesh = gq
+	var gm := ShaderMaterial.new()
+	gm.shader = m.shader
+	gm.set_shader_parameter("tex", load("res://assets/fx/lm_circle_a.png"))
+	gm.set_shader_parameter("color", Color(c.r, c.g, c.b, c.a * 1.1))
+	gm.set_shader_parameter("energy", 1.0)
+	g.material_override = gm
+	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(g)
+	g.position = pos + Vector3(0.2, 0.03, 0)
+	g.rotation = Vector3(-PI / 2, 0, 0)
 
 
 func _smoke_column(p: Vector3) -> void:
@@ -2025,9 +2177,14 @@ func _atmosphere() -> void:
 			fl.omni_attenuation = 1.2
 			add_child(fl)
 			fl.position = p
-	if zone == "forest":
-		for i in range(int(round(4.0 * sqrt(_ka())))):
-			_shaft(Vector3(rng.randf_range(-size.x * 0.4, size.x * 0.4), 0, rng.randf_range(-size.y * 0.4, size.y * 0.2)), Color(0.5, 1.0, 0.9, 0.09), rng.randf_range(1.5, 2.5))
+	# 光柱：每区都有几束斜光（颜色跟日光走），幽林最多。原来只有幽林四束、青色、几乎看不见
+	var nshaft := int(round((6.0 if zone == "forest" else 3.0) * sqrt(_ka())))
+	if lod == 0:
+		nshaft = (nshaft + 1) / 2
+	var sc: Color = info["sun"]
+	var sa := 0.13 if zone == "forest" else 0.09
+	for i in range(nshaft):
+		_shaft(Vector3(rng.randf_range(-size.x * 0.4, size.x * 0.4), 0, rng.randf_range(-size.y * 0.4, size.y * 0.25)), Color(sc.r, sc.g * 0.95, sc.b * 0.8, sa), rng.randf_range(1.6, 2.8))
 
 
 func _make_spawns() -> void:

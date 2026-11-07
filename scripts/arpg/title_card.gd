@@ -82,8 +82,21 @@ func _draw() -> void:
 	for i in range(7):
 		var k := float(i) / 7.0
 		draw_rect(Rect2(0, y - 130 + k * 16, vs.x * (0.6 - k * 0.07), 330 - k * 32), Color(0.0, 0.0, 0.02, 0.08 * a))
-	draw_string(font, Vector2(x0, y + 5), "残刃归途", HORIZONTAL_ALIGNMENT_CENTER, w, 104, Color(0.0, 0.0, 0.0, 0.6 * a))
-	draw_string(font, Vector2(x0, y), "残刃归途", HORIZONTAL_ALIGNMENT_CENTER, w, 104, Color(0.98, 0.94, 0.87, a))
+	# 2026-11-07：字后面一笔横扫的墨迹（毛边），四个字一个接一个落下来，右上角盖一枚朱红印
+	_draw_brush(Vector2(cx, y - 34), w * 0.78, 96.0, a)
+	var title := "残刃归途"
+	var tw := font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 104).x
+	var tx := cx - tw * 0.5
+	for i in range(title.length()):
+		var ch := title.substr(i, 1)
+		var k := clampf((_t - 0.15 - i * 0.16) / 0.35, 0.0, 1.0)
+		var e := 1.0 - pow(1.0 - k, 3.0)
+		var dy := (1.0 - e) * -26.0
+		var cw := font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 104).x
+		draw_string(font, Vector2(tx, y + 5 + dy), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 104, Color(0.0, 0.0, 0.0, 0.6 * e))
+		draw_string(font, Vector2(tx, y + dy), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 104, Color(0.98, 0.94, 0.87, e))
+		tx += cw
+	_draw_seal(Vector2(cx + tw * 0.5 + 26, y - 74), clampf((_t - 0.95) / 0.25, 0.0, 1.0))
 	draw_line(Vector2(cx - w * 0.3, y + 32), Vector2(cx + w * 0.3, y + 32), gold, 1.5)
 	draw_string(font, Vector2(x0, y + 68), "归乡　·　入山　·　出山", HORIZONTAL_ALIGNMENT_CENTER, w, 24, Color(0.95, 0.82, 0.62, a))
 	draw_string(font, Vector2(x0, y + 100), "三幕九层 · 斜俯视体素动作肉鸽", HORIZONTAL_ALIGNMENT_CENTER, w, 16, Color(0.75, 0.82, 0.85, a * 0.85))
@@ -104,6 +117,44 @@ func _draw() -> void:
 	var keys := TouchPad.hint("WASD 移动　J 攻击　空格 翻滚　K 突进斩　I 光束斩　E 终结技　U 喝药　F 互动", "请横屏游玩　左手摇杆移动　右手：斩 攻击　滚 翻滚　突 突进斩　光 光束斩　终 终结技　药 喝药")
 	draw_string(font, Vector2(0, vs.y * 0.94), keys, HORIZONTAL_ALIGNMENT_CENTER, vs.x, 16, Color(0.65, 0.75, 0.75, a))
 	draw_string(font, Vector2(0, vs.y * 0.08), "魂玉 %d" % int(Game.save.get("jade", 0)), HORIZONTAL_ALIGNMENT_RIGHT, vs.x - 30, 18, Color(0.55, 1.0, 0.85, a))
+
+
+## 墨迹：一条两头尖、上下边毛糙的横笔（多边形，边缘用正弦叠出飞白的锯齿）
+func _draw_brush(c: Vector2, w: float, h: float, a: float) -> void:
+	var k := clampf((_t - 0.05) / 0.5, 0.0, 1.0)
+	var ww := w * (1.0 - pow(1.0 - k, 3.0))
+	if ww < 8.0:
+		return
+	var top := PackedVector2Array()
+	var bot := PackedVector2Array()
+	var n := 36
+	for i in range(n + 1):
+		var u := float(i) / n
+		var x := c.x - w * 0.5 + ww * u
+		var taper := maxf(sin(PI * u), 0.08) * (1.0 - 0.35 * u)
+		var j1 := sin(u * 53.0) * 4.0 + sin(u * 131.0) * 2.5
+		var j2 := sin(u * 47.0 + 1.3) * 4.0 + sin(u * 117.0) * 3.0
+		top.append(Vector2(x, c.y - h * 0.5 * taper + j1 * taper))
+		bot.append(Vector2(x, c.y + h * 0.5 * taper + j2 * taper))
+	bot.reverse()
+	var poly := top + bot
+	draw_colored_polygon(poly, Color(0.42, 0.04, 0.06, 0.5 * a))   # 一笔暗朱砂，衬白字
+
+
+## 朱红方印，里面一个“刃”字；落下时从大缩到正常、带一点旋转
+func _draw_seal(p: Vector2, k: float) -> void:
+	if k <= 0.0:
+		return
+	var e := 1.0 - pow(1.0 - k, 3.0)
+	var s := 46.0 * (1.0 + (1.0 - e) * 0.8)
+	var ang := -0.12
+	var xf := Transform2D(ang, p)
+	draw_set_transform_matrix(xf)
+	var col := Color(0.72, 0.1, 0.08, 0.92 * e)
+	draw_rect(Rect2(-s * 0.5, -s * 0.5, s, s), col)
+	draw_rect(Rect2(-s * 0.5 + 3, -s * 0.5 + 3, s - 6, s - 6), Color(1.0, 0.9, 0.82, 0.85 * e), false, 1.5)
+	draw_string(font, Vector2(-s * 0.5, s * 0.22), "刃", HORIZONTAL_ALIGNMENT_CENTER, s, int(s * 0.62), Color(1.0, 0.93, 0.85, e))
+	draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
 ## 父节点是 CanvasLayer，锚点铺满不生效（尺寸是 0，点不到）；每帧按视口大小摆好，触屏点击才收得到

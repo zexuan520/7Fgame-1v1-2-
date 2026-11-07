@@ -17,6 +17,12 @@ uniform vec3 swap_color : source_color = vec3(0.2, 0.25, 0.4);
 uniform float mono = 0.0;             // 去色（铜像、石像：先变灰再乘 tint）
 uniform float swap_glow = 0.0;        // 换色那块自己亮一点（金身：不管什么颜色的灯照着都保住金色）
 uniform float light_neutral = 0.0;    // 灯光去色 0~1：彩色灯照上来按亮度算，不染色（金身在青光下不发绿）
+uniform float face_mul = 1.0;         // 体素面明暗的强度倍数（角色 1，场景件 1）
+// 全局（ArpgMain._apply_zone_env 按区域设）：半球环境光（顶面吃天光、底面吃地面反光）+ 体素面明暗
+// 兼容渲染器的环境光是一整片平涂，同一块体素朝哪边都一样亮，方块就“糊”成一团；按世界法线分面压暗，块块分明
+global uniform vec4 hemi_sky;
+global uniform vec4 hemi_ground;
+global uniform float face_shade;
 
 void fragment() {
 	vec3 src = pow(COLOR.rgb, vec3(2.2));   // 顶点色按 sRGB 存，换成线性再算光照
@@ -31,10 +37,16 @@ void fragment() {
 	}
 	src = mix(src, vec3(dot(src, vec3(0.3, 0.55, 0.15))), mono);
 	vec3 base = src * tint;
+	vec3 wn = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	// 顶面最亮；左右侧面压一点、朝镜头的正面压多一点（斜俯视看得最多的是顶面和正面，两者拉开才有体积）
+	float fs = face_shade * face_mul;
+	float face = 1.0 - fs * (abs(wn.x) * 0.3 + max(wn.z, 0.0) * 0.48 + max(-wn.z, 0.0) * 0.4 + max(-wn.y, 0.0) * 0.7);
+	base *= face;
 	ALBEDO = mix(base, flash_color, flash);
+	vec3 hemi = mix(hemi_ground.rgb, hemi_sky.rgb, wn.y * 0.5 + 0.5);
 	float ndv = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
 	float rim = pow(1.0 - ndv, rim_power);
-	EMISSION = glow + swap_emit + rim_color * rim * rim_strength + flash_color * flash * 1.6;
+	EMISSION = glow + swap_emit + rim_color * rim * rim_strength + flash_color * flash * 1.6 + base * hemi * (1.0 - flash);
 	if (fade < 0.999) {
 		// 屏幕空间 4x4 抖动：不用透明排序也能“半透明”
 		int x = int(FRAGCOORD.x) % 4;

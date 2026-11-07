@@ -461,7 +461,8 @@ func apply_quality(q: int) -> void:
 	feel.post = post_rect.material
 	world_env.environment.tonemap_exposure = 1.05 if quality >= 1 else LOW_EXPOSURE
 	if not _zone_info.is_empty():
-		world_env.environment.ambient_light_energy = float(_zone_info["amb_e"]) * (1.0 if quality >= 1 else LOW_AMBIENT)
+		world_env.environment.ambient_light_energy = float(_zone_info["amb_e"]) * (1.0 if quality >= 1 else LOW_AMBIENT) * FLAT_AMB
+		_apply_hemi()
 	var vp := get_viewport()
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 	vp.scaling_3d_scale = [0.7, 0.85, 1.0][quality]
@@ -469,6 +470,8 @@ func apply_quality(q: int) -> void:
 		# 手机屏幕像素密度高（画布按设备像素算），3D 再降一些也看不出来
 		vp.scaling_3d_scale = [0.5, 0.65, 0.8][quality]
 	vp.msaa_3d = Viewport.MSAA_DISABLED if quality < 2 else Viewport.MSAA_2X
+	# 移轴微缩：高画质全开、中画质淡一些（网页默认中），设置里能关
+	_post_full.set_shader_parameter("tilt", (1.0 if quality >= 2 else 0.75) if bool(Game.settings.get("tilt_shift", true)) else 0.0)
 
 
 ## 灯光上限：兼容渲染器里每盏点光都要在它照到的每个像素上多算一遍，手机吃不消。
@@ -629,7 +632,8 @@ func _apply_zone_env(info: Dictionary) -> void:
 	env.background_color = info["bg"]
 	env.ambient_light_color = info["amb"]
 	_zone_info = info
-	env.ambient_light_energy = float(info["amb_e"]) * (1.0 if quality >= 1 else LOW_AMBIENT)
+	env.ambient_light_energy = float(info["amb_e"]) * (1.0 if quality >= 1 else LOW_AMBIENT) * FLAT_AMB
+	_apply_hemi()
 	env.fog_light_color = info["fog"]
 	env.fog_density = float(info["fog_d"]) * (state.omen_val("fog") if state != null and mode != "hub" else 1.0)
 	env.fog_sky_affect = 1.0
@@ -638,7 +642,54 @@ func _apply_zone_env(info: Dictionary) -> void:
 	env.fog_depth_curve = 1.3
 	sun.light_color = info["sun"]
 	sun.light_energy = info["sun_e"]
+	_apply_grade(arena.zone if arena != null else "")
 	Foe.zone_rim = info.get("foe_rim", Color(1.0, 0.55, 0.35))
+
+
+## 环境光拆成两份：平涂的只留 FLAT_AMB，剩下的走半球光（顶面吃天光、底面吃地面反光，toon / floor 着色器里加），
+## 再加体素面明暗 FACE_SHADE（正面、侧面压暗）。总亮度和以前差不多，但方块的顶面和侧面分开了，一块块立起来。
+const FLAT_AMB := 0.5
+const HEMI_SKY := 0.62
+const HEMI_GROUND := 0.14
+const FACE_SHADE := 0.55
+
+
+## 分区调色（post3d）：暗部冷色往上抬、亮部乘暖色；每区一组，冷暖对比各不相同。[暗部, 亮部, 饱和度]
+const GRADES := {
+	"forest": [Color(0.0, 0.05, 0.08), Color(1.1, 1.0, 0.86), 1.05],
+	"grave": [Color(0.02, 0.05, 0.05), Color(1.06, 1.02, 0.88), 0.98],
+	"temple": [Color(0.02, 0.03, 0.09), Color(1.1, 0.98, 0.84), 1.05],
+	"sakura": [Color(0.05, 0.02, 0.09), Color(1.08, 0.97, 1.0), 1.08],
+	"well": [Color(0.0, 0.04, 0.1), Color(1.0, 1.02, 1.05), 1.02],
+	"vault": [Color(0.07, 0.03, 0.0), Color(1.1, 0.96, 0.82), 1.05],
+	"camp": [Color(0.04, 0.03, 0.06), Color(1.1, 0.97, 0.86), 1.0],
+	"liuxi": [Color(0.05, 0.02, 0.04), Color(1.08, 0.98, 0.86), 1.05],
+	"post": [Color(0.02, 0.03, 0.08), Color(1.04, 1.0, 0.94), 1.0],
+	"palace": [Color(0.06, 0.02, 0.02), Color(1.1, 0.98, 0.84), 1.05],
+	"hub": [Color(0.01, 0.04, 0.08), Color(1.1, 1.0, 0.88), 1.05],
+}
+
+
+func _apply_grade(zone_id: String) -> void:
+	var g: Array = GRADES.get("hub" if mode == "hub" else zone_id, [Color(0.01, 0.04, 0.08), Color(1.06, 1.0, 0.9), 1.0])
+	var sh: Color = g[0]
+	var hi: Color = g[1]
+	_post_full.set_shader_parameter("shadow_tint", Vector3(sh.r, sh.g, sh.b))
+	_post_full.set_shader_parameter("highlight_tint", Vector3(hi.r, hi.g, hi.b))
+	_post_full.set_shader_parameter("saturation", float(g[2]))
+
+
+func _apply_hemi() -> void:
+	if _zone_info.is_empty():
+		return
+	var a: Color = _zone_info["amb"]
+	var e := float(_zone_info["amb_e"]) * (1.0 if quality >= 1 else LOW_AMBIENT)
+	var sky := a * e * HEMI_SKY
+	# 地面反光带一点暖色（地面多是土石），底面不至于死青
+	var gr: Color = a.lerp(Color(0.62, 0.48, 0.36), 0.5) * e * HEMI_GROUND
+	RenderingServer.global_shader_parameter_set("hemi_sky", Color(sky.r, sky.g, sky.b, 1.0))
+	RenderingServer.global_shader_parameter_set("hemi_ground", Color(gr.r, gr.g, gr.b, 1.0))
+	RenderingServer.global_shader_parameter_set("face_shade", FACE_SHADE)
 
 
 ## 战斗房 / 精英房挑一个布局模板（RoomLayouts），最近四间用过的不挑
@@ -774,11 +825,12 @@ func _enter_title_body() -> void:
 	_build_arena("sakura", 7, Vector2(30, 22))
 	_ensure_hero()
 	# 标题镜头：压低俯角、拉近，主角背对镜头站在发光大樱树前（原来是从正上方看一片空地砖）
-	_place_hero(Vector3(1.2, 0, -3.0), Vector3(-0.25, 0, -1))
+	# 2026-11-07：主角转过来侧对镜头（原来背对着，只看得见一个蓝兜帽后脑勺），镜头再近一点，人在画面右三分之一
+	_place_hero(Vector3(1.6, 0, -2.2), Vector3(-0.55, 0, 0.85))
 	hero.visible = true
 	_title_focus = Node3D.new()
 	add_child(_title_focus)
-	_title_focus.global_position = Vector3(-4.2, 0, -4.6)
+	_title_focus.global_position = Vector3(-3.2, 0, -3.8)
 	cam_rig.target = _title_focus
 	cam_rig.pitch_deg = TITLE_PITCH
 	cam_rig.distance = TITLE_DIST
@@ -878,8 +930,8 @@ func _omen_banner(om: Dictionary, tries: int) -> void:
 ## 第一轮 ×1.8/1.5 只加血：头目打到 25~40 秒，可零天赋修罗第一个头目两局全倒，所以血少加一点、伤害降一点
 const BOSS_HP_K := [1.6, 1.4, 1.15]
 const BOSS_DMG_K := [0.72, 0.78, 0.9]
-const TITLE_PITCH := 33.0
-const TITLE_DIST := 17.0
+const TITLE_PITCH := 30.0
+const TITLE_DIST := 14.5
 var _title_focus: Node3D
 
 
@@ -3817,7 +3869,7 @@ func _gain_gear(it: Dictionary) -> void:
 	else:
 		var c := state.add_coins(15 + 15 * int(it["rarity"]))
 		where = "（行囊满了，换成 %d 铜钱）" % c
-	feel.callout(hero.head_top() + Vector3(0, 0.3, 0), String(it["name"]), ArpgGear.color(it), 1.3)
+	# 只出横幅（原来头顶还叠一张同名大字，和横幅一上一下写两遍）
 	hud.banner(String(it["name"]), ArpgGear.slot_name(it) + "：" + ArpgGear.describe(it) + where, 2.2)
 	hints.show("gear")
 

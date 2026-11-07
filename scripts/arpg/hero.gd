@@ -318,6 +318,8 @@ func apply_skin(id: String) -> void:
 	rig.mat.set_shader_parameter("swap_glow", float(sk.get("swap_glow", 0.0)))
 	var gl: Color = sk.get("glow", Color(0, 0, 0))
 	rig.set_glow(gl)
+	if scarf != null:
+		scarf.set_color(sk.get("scarf", HeroScarf.DEFAULT_COLOR))
 	rig.apply(_pose if not _pose.is_empty() else Poses.idle(0.0))
 	rel._update_look()
 
@@ -380,6 +382,11 @@ func _ready_body() -> void:
 	apply_skin(String(Game.save.get("arpg_skin", "qing")))
 	add_to_group("heroes")
 	_make_foot_ring()
+	_make_lantern()
+	scarf = HeroScarf.new()
+	scarf.hero = self
+	add_child(scarf)
+	scarf.set_color(ArpgArms.skin(skin_id).get("scarf", HeroScarf.DEFAULT_COLOR))
 	rel.hero = self
 	rel.name = "Relics"
 	add_child(rel)
@@ -388,6 +395,23 @@ func _ready_body() -> void:
 	trail.rig = rig
 	add_child(trail)
 	_reset_trail()
+
+
+## 主角身边一团暖光：暗色场景里人站的地方最亮，一眼看到自己；地面、身边的敌人也被照出暖边（冷暖对比）。
+## 不投影；光照预算（ArpgMain._light_budget）按离主角远近排，它永远排第一
+var lantern: OmniLight3D
+var scarf: HeroScarf
+
+
+func _make_lantern() -> void:
+	lantern = OmniLight3D.new()
+	lantern.light_color = Color(1.0, 0.78, 0.5)
+	lantern.light_energy = 1.1
+	lantern.omni_range = 6.5
+	lantern.omni_attenuation = 1.6
+	lantern.shadow_enabled = false
+	lantern.position = Vector3(0, 2.4, 0.6)
+	add_child(lantern)
 
 
 func _make_foot_ring() -> void:
@@ -1223,7 +1247,8 @@ func _link_take(l: Dictionary) -> void:
 	# 连携：金字横条 + 本色闪屏 + 一小下停顿，脚下两圈本色冲击
 	Feel.I.pause_world(0.06)
 	Feel.I.screen_flash(Color(c, 0.3), 3.0)
-	Feel.I.callout(head_top() + Vector3(0, 0.6, 0), "连携 · " + String(l["name"]), c.lightened(0.25), 1.5)
+	if Hud3D.I == null:
+		Feel.I.callout(head_top() + Vector3(0, 0.6, 0), "连携 · " + String(l["name"]), c.lightened(0.25), 1.5)   # 有 HUD 时横条已经写了，头顶不再叠一张同样的大字
 	Vfx.I.shock_ring(global_position, c, 0.4, 4.5, 0.4)
 	Vfx.I.shock_ring(global_position, Color(1, 0.95, 0.8), 0.2, 2.6, 0.3)
 	Vfx.I.sheet("rune-cast", global_position, 3.4, c, 2.0, true, 0.0, 1.6)
@@ -1734,6 +1759,8 @@ func _start_roll() -> void:
 	_roll_dir = d.normalized()
 	face_to(_roll_dir)
 	_set_state("roll")
+	if scarf != null:
+		scarf.fling(-_roll_dir + Vector3(0, 0.8, 0), 1.6)
 	_blend = 0.6
 	iframes = roll_iframes
 	_ghost_t = 0.0
