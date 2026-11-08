@@ -1287,7 +1287,10 @@ func test_climb() -> void:
 	_check(main.background is BgBamboo, "换成竹林古寺的景")
 	await _beat_boss()
 	_check(main.enemies.is_empty() or main.enemies[0].kind == "jakko", "第二层头目是寂光")
-	_check(_find("door", "action", "climb") == null and _find("door", "action", "victory") != null, "再往上还没开，只有回破庙")
+	# 第三层（竹林古寺深处）加上之后，第二层头目后面也是“回城 / 继续登山”两扇门
+	var more := LevelData.FLOORS.size() > 2
+	_check((_find("door", "action", "climb") != null) == more and _find("door", "action", "victory") != null,
+		"第二层打完：回城门在，继续登山门%s" % ("在（还有第三层）" if more else "不在（再往上还没开）"))
 	_check(Story.has("jakko_0") and int(Game.save["boss_kills"]["jakko"]) == 1, "想起寂光的第一段身世")
 	jade = r.jade
 	var before := int(Game.save["jade"])

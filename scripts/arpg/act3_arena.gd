@@ -71,64 +71,109 @@ func _stream_z(x: float) -> float:
 
 
 func _floor_color(x: float, z: float) -> Color:
+	_fc_grass = false
 	var n := noise.get_noise_2d(x * 3.0, z * 3.0)
 	var n2 := noise.get_noise_2d(x * 13.0 + 100.0, z * 13.0)
+	# 每格一个哈希：零星的石子、花、颗粒深浅都从它派生（2026-11-08 地面重画加的）
+	var h := fposmod(sin(x * 127.1 + z * 311.7) * 43758.5453, 1.0)
+	var grain := 0.97 + fposmod(h * 7.31, 1.0) * 0.06
 	match zone:
 		"liuxi":
-			# 踩实的黄土 + 中间一条村路；两边稻田（一垄一垄）；一条小溪横穿，正中石桥
+			# 踩实的黄土 + 中间一条村路；两边稻田（一垄一垄，田埂上长草）；一条小溪横穿，正中石桥，河滩上铺卵石
 			var c := Color(0.36, 0.29, 0.21).lerp(Color(0.42, 0.34, 0.24), n * 0.5 + 0.5)
+			var big := noise.get_noise_2d(x * 0.5 + 60.0, z * 0.5)
+			if big > 0.25:
+				_fc_grass = true
+				c = c.lerp(Color(0.3, 0.36, 0.17), minf((big - 0.25) * 2.0, 0.6))   # 路边野草地
 			var paddy := absf(x) > size.x * 0.22 and absf(x) < size.x * 0.5 - 2.5 and z > -size.y * 0.5 + 5.0
 			if paddy:
+				_fc_grass = false
 				var dike := fposmod(z, 4.0) < 0.35 or fposmod(x, 6.0) < 0.35
 				if dike:
-					c = Color(0.38, 0.3, 0.2)
+					c = Color(0.38, 0.3, 0.2).lerp(Color(0.3, 0.36, 0.17), clampf(n2 + 0.3, 0.0, 0.7))
+					_fc_grass = n2 > 0.0
 				else:
 					var row := fposmod(x, 0.5) < 0.2
 					c = Color(0.3, 0.38, 0.16).lerp(Color(0.5, 0.48, 0.2), n * 0.5 + 0.5) * (1.12 if row else 0.82)
+					if not row and noise.get_noise_2d(x * 0.7, z * 0.7 + 90.0) > 0.35:
+						c = c.lerp(Color(0.25, 0.32, 0.36), 0.45)   # 田里的水面映着天
 			if absf(x) < 1.6:
+				_fc_grass = false
 				c = Color(0.46, 0.38, 0.28) * (0.92 + 0.08 * sin(floor(z / 0.6) * 12.9898))
+				if absf(absf(x) - 0.8) < 0.18:
+					c = c * 0.88   # 两道车辙
 			var sd := absf(z - _stream_z(x))
 			if sd < 1.7:
+				_fc_grass = false
 				if absf(x) < 1.9:
-					# 石桥：一块块青石板
 					var slab := int(floor(z / 0.7)) % 2 == 0
 					c = Color(0.42, 0.42, 0.42) if slab else Color(0.37, 0.37, 0.38)
 					if absf(absf(x) - 1.8) < FV:
 						c = Color(0.25, 0.24, 0.24)
 				elif sd < 1.25:
 					c = Color(0.2, 0.3, 0.36).lerp(Color(0.85, 0.55, 0.32), clampf(n2 * 1.5 - 0.3, 0.0, 0.45))
+					if h > 0.993:
+						c = c * 1.35   # 水面闪光
 				else:
-					c = Color(0.3, 0.27, 0.22)   # 河滩卵石
-			return c * (1.12 + n2 * 0.1)
+					# 河滩卵石：细胞噪声一颗一颗
+					var sv := stone_val.get_noise_2d(x * 3.0, z * 3.0)
+					c = Color(0.3, 0.27, 0.22).lerp(Color(0.48, 0.46, 0.42), sv * 0.5 + 0.5)
+					if stone_noise.get_noise_2d(x * 3.0, z * 3.0) < -0.8:
+						c = Color(0.2, 0.18, 0.15)
+			elif _fc_grass and h > 0.997:
+				c = [Color(0.9, 0.85, 0.6), Color(0.85, 0.5, 0.5), Color(0.75, 0.7, 0.95)][int(h * 3000.0) % 3]   # 野花
+			return c * (1.12 + n2 * 0.1) * grain
 		"post":
-			# 青石驿道（中间宽）积着水，两道车辙；两边泥地和枯草
+			# 青石驿道（中间宽，错缝铺，少数石板缺了露出泥、缝里冒草）积着水，两道车辙；两边泥地和枯草
 			var road := absf(x) < 5.5 * _kx()
 			var c := Color(0.2, 0.18, 0.16).lerp(Color(0.25, 0.23, 0.19), n * 0.5 + 0.5)
 			if n2 > 0.3:
 				c = c.lerp(Color(0.22, 0.27, 0.17), 0.5)
+			var big := noise.get_noise_2d(x * 0.5 - 40.0, z * 0.5)
+			if not road and big > 0.1:
+				_fc_grass = true
+				c = c.lerp(Color(0.33, 0.3, 0.17), minf((big - 0.1) * 2.0, 0.65))   # 枯草
 			if road:
 				var sx := int(floor(x / 0.9))
-				var sz := int(floor((z + (0.45 if sx % 2 == 0 else 0.0)) / 0.9))
-				var shade := 0.86 + 0.14 * sin(sx * 12.9898 + sz * 78.233)
-				c = Color(0.26, 0.28, 0.3) * shade
-				if fposmod(x, 0.9) < FV * 0.7 or fposmod(z + (0.45 if sx % 2 == 0 else 0.0), 0.9) < FV * 0.7:
-					c = Color(0.12, 0.13, 0.15)
+				var zo := 0.45 if sx % 2 == 0 else 0.0
+				var sz := int(floor((z + zo) / 0.9))
+				var tk := fposmod(sin(sx * 12.9898 + sz * 78.233) * 43758.5453, 1.0)
+				var edge := absf(x) / (5.5 * _kx())
+				if tk < 0.04 + maxf(edge - 0.8, 0.0) * 1.2:
+					# 缺了的石板：露出泥，长着草
+					c = Color(0.2, 0.2, 0.14) * (0.9 + n * 0.1)
+					_fc_grass = h > 0.5
+				else:
+					c = Color(0.26, 0.28, 0.3) * (0.86 + 0.14 * tk)
+					if fposmod(x, 0.9) < FV * 0.7 or fposmod(z + zo, 0.9) < FV * 0.7:
+						c = Color(0.12, 0.13, 0.15)
+						if n2 > 0.35:
+							c = Color(0.16, 0.22, 0.13)   # 缝里的草
+					elif tk > 0.93:
+						c = c * 0.82   # 换过的新旧石板
 				for rx: float in [-2.3, 2.3]:
 					if absf(x - rx) < 0.28:
 						c = c * 0.7
 			var wet := noise.get_noise_2d(x * 0.8 + 40.0, z * 0.8)
 			if wet > 0.22:
+				_fc_grass = false
 				c = c.lerp(Color(0.1, 0.14, 0.2), clampf((wet - 0.22) * 4.0, 0.0, 0.75))
 				if n2 > 0.45:
 					c = c.lerp(Color(0.55, 0.42, 0.3), 0.25)   # 水坑里映着灯笼
-			return c * (1.15 + n2 * 0.1)
+			elif h > 0.997 and not road:
+				c = Color(0.62, 0.36, 0.14)   # 落叶
+			return c * (1.15 + n2 * 0.1) * grain
 		"palace":
-			# 白玉方砖（金缝）+ 中间一道红毯（金边），红毯两边一圈圈云纹
+			# 白玉方砖（金缝，砖面有淡青的玉纹）+ 中间一道红毯（金边），红毯上隔一段一朵金团花
 			var tile := 2.0
 			var sx := int(floor(x / tile))
 			var sz := int(floor(z / tile))
 			var shade := 0.9 + 0.1 * sin(sx * 12.9898 + sz * 78.233)
 			var c := Color(0.62, 0.6, 0.56).lerp(Color(0.7, 0.68, 0.63), n * 0.5 + 0.5) * shade
+			# 玉纹：每块砖里几道弯弯的细纹（噪声的等值线），每块走向不同
+			var vein := noise.get_noise_2d(x * 1.4 + sx * 37.0, z * 1.4 + sz * 53.0)
+			if absf(vein) < 0.025:
+				c = c.lerp(Color(0.48, 0.55, 0.52), 0.5)
 			if fposmod(x, tile) < FV * 0.8 or fposmod(z, tile) < FV * 0.8:
 				c = Color(0.62, 0.48, 0.2)
 			elif absf(fposmod(x, tile) - 1.0) < 0.35 and absf(fposmod(z, tile) - 1.0) < 0.35 and (sx + sz) % 2 == 0:
@@ -139,7 +184,12 @@ func _floor_color(x: float, z: float) -> Color:
 					c = Color(0.75, 0.56, 0.2)
 				elif absf(x) < 1.6 and fposmod(z, 3.0) < 0.12:
 					c = Color(0.62, 0.42, 0.14)
-			return c * (1.05 + n2 * 0.06)
+				else:
+					var fz := fposmod(z, 3.0) - 1.5
+					var fr := Vector2(x, fz).length()
+					if fr < 0.7 and (absf(fr - 0.6) < 0.05 or (fr < 0.45 and fposmod(atan2(fz, x) * 8.0 / TAU, 1.0) < 0.3)):
+						c = Color(0.7, 0.5, 0.16)   # 团花
+			return c * (1.05 + n2 * 0.06) * grain
 	return super._floor_color(x, z)
 
 

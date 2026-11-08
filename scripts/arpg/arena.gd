@@ -300,44 +300,96 @@ func _floor_color(x: float, z: float) -> Color:
 					c = [Color(0.42, 0.24, 0.1), Color(0.48, 0.34, 0.12), Color(0.36, 0.17, 0.09)][int(h * 300.0) % 3]
 			return c * (0.97 + fposmod(h * 7.31, 1.0) * 0.06)
 		"grave":
-			# 墓园：黑土 + 枯草 + 一条碎石板路（从入口通到出口）
-			var soil := Color(0.16, 0.15, 0.13).lerp(Color(0.2, 0.22, 0.16), n * 0.5 + 0.5)
-			if n2 > 0.2:
-				soil = soil.lerp(Color(0.2, 0.27, 0.17), 0.6)
-			var path_w := 1.6 + sin(z * 0.4) * 0.3
-			if absf(x - sin(z * 0.25) * 1.2) < path_w:
-				var slab := (int(floor(z / 0.9)) + int(floor((x + 5.0) / 1.1))) % 3
-				soil = [Color(0.3, 0.3, 0.29), Color(0.27, 0.27, 0.27), Color(0.33, 0.32, 0.3)][slab]
-				if fposmod(z, 0.9) < FV * 0.8 or fposmod(x + 5.0, 1.1) < FV * 0.8:
-					soil = Color(0.14, 0.15, 0.13)
-			return soil * (0.9 + n2 * 0.12)
+			# 2026-11-08 重画（原来是一张均匀的黑土 + 一条方格石板路）：
+			# 黑土上大块枯草（发黄的草地长枯草丛体素）和湿泥洼交替，每格明暗抖一点；
+			# 一条弯的碎石板路从入口通到出口（细胞噪声切成不规则石块，边上被土吃掉），路边零星撒着纸钱、白骨碎和落叶
+			var h := fposmod(sin(x * 127.1 + z * 311.7) * 43758.5453, 1.0)
+			var big := noise.get_noise_2d(x * 0.5 + 300.0, z * 0.5)
+			var soil := Color(0.15, 0.14, 0.12).lerp(Color(0.19, 0.18, 0.15), n * 0.5 + 0.5)
+			if big > 0.15:
+				_fc_grass = true
+				soil = soil.lerp(Color(0.3, 0.28, 0.16), minf((big - 0.15) * 2.2, 0.75))
+			elif big < -0.35:
+				soil = soil.lerp(Color(0.09, 0.09, 0.09), minf((-big - 0.35) * 3.0, 0.7))
+			elif n2 > 0.35:
+				soil = soil.lerp(Color(0.2, 0.25, 0.15), 0.45)   # 一点青苔
+			var px := x - sin(z * 0.25) * 1.2 - sin(z * 0.09 + 2.0) * 0.8
+			var apx := absf(px)
+			var pw := 1.7 + sin(z * 0.4) * 0.3 + n2 * 0.2
+			if apx < pw + 0.3:
+				var seam := stone_noise.get_noise_2d(x * 1.1, z * 1.1)
+				var sv := stone_val.get_noise_2d(x * 1.1, z * 1.1)
+				var bite := (apx - pw + 0.3) / 0.6   # 路边 0~1：越往外越容易缺石
+				if apx < pw - 0.3 or sv * 0.5 + 0.5 > bite:
+					_fc_grass = false
+					if seam > -0.88:
+						soil = Color(0.27, 0.27, 0.26).lerp(Color(0.36, 0.35, 0.33), sv * 0.5 + 0.5)
+						if sv < -0.6:
+							soil = soil.lerp(Color(0.17, 0.2, 0.13), 0.5)   # 少数石板长满苔
+						elif h > 0.985:
+							soil = soil * 0.78   # 石面坑点
+					else:
+						soil = Color(0.1, 0.1, 0.09)
+			if not _fc_grass or h > 0.9:
+				if h > 0.9975:
+					soil = [Color(0.86, 0.82, 0.66), Color(0.8, 0.74, 0.5), Color(0.82, 0.8, 0.74)][int(h * 5000.0) % 3]   # 纸钱、骨碎
+				elif h > 0.975 and apx < pw + 2.5 and apx > pw - 0.5:
+					soil = soil.lerp(Color(0.36, 0.2, 0.1), 0.6)   # 路边落叶
+			return soil * (0.95 + fposmod(h * 7.31, 1.0) * 0.1)
 		"well":
-			# 湿石板：大块方砖 + 深缝，低洼处积着冰蓝的水（水面另有一层焦散，见 _water_plane）
-			var sx := int(floor(x / 1.5))
-			var sz := int(floor(z / 1.5))
-			var shade := 0.85 + 0.15 * sin(sx * 12.9898 + sz * 78.233)
-			var c := Color(0.2, 0.23, 0.26).lerp(Color(0.26, 0.29, 0.31), n * 0.5 + 0.5) * shade
-			if fposmod(x, 1.5) < FV * 0.8 or fposmod(z, 1.5) < FV * 0.8:
-				c = Color(0.07, 0.09, 0.12)
+			# 2026-11-08 重画（原来是 1.5 米方砖满铺）：湿石板换成大小不一的乱石铺地（细胞噪声），
+			# 石缝里长青苔；低洼处积着冰蓝的水（“湿”噪声和 _water_plane 的遮罩一样，别改）；中间一条错缝的青石道
+			var h := fposmod(sin(x * 127.1 + z * 311.7) * 43758.5453, 1.0)
 			var wet := noise.get_noise_2d(x * 1.1 + 40.0, z * 1.1)
+			var c: Color
+			if absf(x) < 1.8:
+				# 青石道：长条石错缝铺，两边一道浅色石沿
+				var row := int(floor(z / 0.75))
+				var off := 0.6 if row % 2 == 0 else 0.0
+				var col := int(floor((x + 1.8 + off) / 1.2))
+				var shade := 0.88 + 0.12 * sin(col * 12.9898 + row * 78.233)
+				c = Color(0.27, 0.31, 0.34) * shade
+				if fposmod(z, 0.75) < FV * 0.8 or fposmod(x + 1.8 + off, 1.2) < FV * 0.8:
+					c = Color(0.1, 0.12, 0.15)
+				if absf(absf(x) - 1.7) < FV:
+					c = Color(0.36, 0.4, 0.42)
+			else:
+				var seam := stone_noise.get_noise_2d(x * 0.8, z * 0.8)
+				var sv := stone_val.get_noise_2d(x * 0.8, z * 0.8)
+				c = Color(0.19, 0.22, 0.25).lerp(Color(0.27, 0.3, 0.32), sv * 0.5 + 0.5)
+				c = c * (0.92 + n * 0.08)
+				if seam < -0.86:
+					c = Color(0.06, 0.08, 0.1)
+					if n2 > 0.1:
+						c = Color(0.1, 0.18, 0.13)   # 缝里的青苔
+				elif sv > 0.75 and h > 0.6:
+					c = c * 0.85   # 风化的麻面
 			if wet > 0.18:
 				c = c.lerp(Color(0.08, 0.26, 0.34), clampf((wet - 0.18) * 4.0, 0.0, 0.85))
 			elif wet > 0.08:
-				c = c * 0.8
-			# 中间一条青石道（入口到出口），两边一道浅色石沿
-			if absf(x) < 1.8:
-				c = c.lerp(Color(0.27, 0.31, 0.34), 0.6)
-				if absf(absf(x) - 1.7) < FV:
-					c = c * 1.2
-			return c * (1.2 + n2 * 0.12)
+				c = c * 0.78   # 水边一圈湿印
+			elif h > 0.996:
+				c = Color(0.42, 0.46, 0.46)   # 碎石子
+			return c * (1.16 + n2 * 0.1) * (0.97 + fposmod(h * 7.31, 1.0) * 0.06)
 		"vault":
-			# 灯冢：深褐的大方砖，砖缝嵌铜线；两道熔铜沟沿着柱廊从里通到外，中间一圈铜纹地心
-			var sx := int(floor(x / 1.8))
+			# 灯冢：深褐的大方砖错缝铺（原来对缝一张网格），砖缝嵌铜线；少数砖裂了、积着烛灰和蜡泪；
+			# 两道熔铜沟沿着柱廊从里通到外，中间一圈铜纹地心
+			var h := fposmod(sin(x * 127.1 + z * 311.7) * 43758.5453, 1.0)
 			var sz := int(floor(z / 1.8))
-			var shade := 0.85 + 0.15 * sin(sx * 12.9898 + sz * 78.233)
-			var c := Color(0.25, 0.2, 0.17).lerp(Color(0.31, 0.25, 0.2), n * 0.5 + 0.5) * shade
-			if fposmod(x, 1.8) < FV * 0.8 or fposmod(z, 1.8) < FV * 0.8:
+			var off := 0.9 if sz % 2 == 0 else 0.0
+			var sx := int(floor((x + off) / 1.8))
+			var tk := fposmod(sin(sx * 12.9898 + sz * 78.233) * 43758.5453, 1.0)
+			var c := Color(0.25, 0.2, 0.17).lerp(Color(0.31, 0.25, 0.2), n * 0.5 + 0.5) * (0.84 + 0.16 * tk)
+			if fposmod(x + off, 1.8) < FV * 0.8 or fposmod(z, 1.8) < FV * 0.8:
 				c = Color(0.3, 0.21, 0.12) if n2 > 0.25 else Color(0.11, 0.08, 0.06)
+			elif tk > 0.82 and stone_noise.get_noise_2d(x * 1.6, z * 1.6) < -0.9:
+				c = Color(0.1, 0.07, 0.05)   # 裂砖
+			else:
+				var dust := noise.get_noise_2d(x * 0.6 - 70.0, z * 0.6)
+				if dust > 0.3:
+					c = c.lerp(Color(0.36, 0.33, 0.3), minf((dust - 0.3) * 1.6, 0.45))   # 烛灰
+				if h > 0.997:
+					c = Color(0.78, 0.68, 0.48)   # 蜡泪
 			var ch := _vault_channel(x, z)
 			if ch > 0.0:
 				c = Color(0.12, 0.07, 0.05).lerp(Color(1.0, 0.55, 0.18), ch)
@@ -346,10 +398,14 @@ func _floor_color(x: float, z: float) -> Color:
 				c = Color(0.42, 0.3, 0.15)
 			elif r < 3.2 and fposmod(atan2(z, x) * 7.0 / TAU, 1.0) < 0.05:
 				c = Color(0.34, 0.25, 0.14)
-			return c * (1.15 + n2 * 0.1)
+			return c * (1.15 + n2 * 0.1) * (0.97 + fposmod(h * 7.31, 1.0) * 0.06)
 		"camp":
-			# 灰衣营：踩实的黄土 + 车辙泥坑 + 散落的稻草；中间一条木板道通到营门
+			# 灰衣营：踩实的黄土 + 车辙泥坑 + 散落的稻草和马蹄印；中间一条木板道通到营门
+			var h := fposmod(sin(x * 127.1 + z * 311.7) * 43758.5453, 1.0)
 			var c := Color(0.27, 0.25, 0.22).lerp(Color(0.33, 0.3, 0.26), n * 0.5 + 0.5)
+			var big := noise.get_noise_2d(x * 0.45 + 120.0, z * 0.45)
+			if big > 0.3:
+				c = c.lerp(Color(0.37, 0.33, 0.24), minf((big - 0.3) * 2.0, 0.5))   # 晒干发白的硬土
 			var mud := noise.get_noise_2d(x * 0.9 - 30.0, z * 0.9)
 			if mud > 0.25:
 				c = c.lerp(Color(0.14, 0.12, 0.11), clampf((mud - 0.25) * 4.0, 0.0, 0.8))
@@ -358,24 +414,47 @@ func _floor_color(x: float, z: float) -> Color:
 			for rx: float in [-1.0, 1.0]:
 				if absf(x - rx * 3.4 - sin(z * 0.2) * 0.4) < 0.2:
 					c = c * 0.84
+			# 稻草：沿 x 拉长的细碎亮黄条
+			var straw := noise.get_noise_2d(x * 1.2 + 500.0, z * 9.0)
+			if straw > 0.62 and h > 0.55 and mud < 0.2:
+				c = Color(0.62, 0.52, 0.28) * (0.85 + h * 0.2)
+			elif h > 0.9985 and mud < 0.25:
+				c = c * 0.6   # 马蹄印 / 脚印小坑
 			if absf(x) < 1.4:
 				var pl := int(floor(z / 0.5))
 				c = Color(0.36, 0.27, 0.19) * (0.88 + 0.12 * sin(pl * 12.9898))
 				if fposmod(z, 0.5) < FV * 0.8 or absf(absf(x) - 1.35) < FV:
 					c = Color(0.18, 0.13, 0.1)
-			return c * (1.12 + n2 * 0.1)
+				elif fposmod(pl * 0.37, 1.0) < 0.12 and absf(x - 0.7 * sin(pl * 3.1)) < 0.06:
+					c = Color(0.25, 0.21, 0.18)   # 板上钉子
+			return c * (1.12 + n2 * 0.1) * (0.97 + fposmod(h * 7.31, 1.0) * 0.06)
 		"temple":
+			# 古寺：木地板，板子长短不一错开接头（原来一整条一整条的竖线），木纹顺着板子走；中间一条深色地毯，金边 + 回纹
 			var plank := int(floor(x / 0.6))
-			var seam := fposmod(x, 0.6) < FV * 0.6
-			var shade := 0.85 + 0.15 * sin(plank * 12.9898)
-			var c := Color(0.42, 0.29, 0.2) * shade
-			if seam:
-				c = Color(0.27, 0.18, 0.13)
-			# 中间铺一条深色地毯
+			var pk := fposmod(sin(plank * 12.9898) * 43758.5453, 1.0)
+			var plen := 2.4 + pk * 1.2
+			var pz := z + pk * 7.0
+			var seg := int(floor(pz / plen))
+			var shade := 0.82 + 0.18 * fposmod(sin(plank * 12.9898 + seg * 4.1) * 43758.5453, 1.0)
+			var grain := noise.get_noise_2d(x * 24.0, z * 1.5)
+			var c := Color(0.42, 0.29, 0.2) * shade * (0.94 + grain * 0.1)
+			if fposmod(x, 0.6) < FV * 0.6 or fposmod(pz, plen) < FV * 0.6:
+				c = Color(0.25, 0.16, 0.12)
+			elif fposmod(pz, plen) < 0.22 and absf(fposmod(x, 0.6) - 0.3) < 0.06:
+				c = Color(0.2, 0.14, 0.1)   # 木钉
 			if absf(x) < 2.2 and absf(z) < size.y * 0.5 - 2.0:
 				c = Color(0.36, 0.1, 0.1) * (0.9 + n2 * 0.1)
-				if absf(absf(x) - 2.0) < FV:
+				var ax := absf(x)
+				if absf(ax - 2.0) < FV:
 					c = Color(0.45, 0.34, 0.15)
+				elif ax > 1.55 and ax < 1.85:
+					# 回纹边：一格一格的“回”字
+					var u := fposmod(z, 0.6)
+					var v := ax - 1.55
+					if (u < 0.08 or u > 0.52 or v < 0.04 or v > 0.26) or (absf(u - 0.3) < 0.04 and v > 0.1):
+						c = Color(0.52, 0.36, 0.14)
+				elif ax < 0.35 and fposmod(z, 2.4) < 0.5:
+					c = Color(0.48, 0.32, 0.12) * (0.9 + n2 * 0.1)   # 正中一串方胜纹
 			return c * (1.15 + n * 0.12)
 		"sakura":
 			# 夜樱广场：苔地上落满樱瓣，正中一圈石板“决斗台”，入口一条石板路通过来（原来满地 1.4 米方砖缝，像空网格）

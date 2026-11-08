@@ -265,8 +265,16 @@ func _draw_orb(c: Vector2, r: float) -> void:
 	var blood := Color(0.62, 0.05, 0.08)
 	if low:
 		blood = blood.lerp(Color(1.0, 0.2, 0.2), 0.35 + 0.35 * sin(_orb_t * 9.0))
-	if k > 0.001:
-		draw_colored_polygon(pts, blood)
+	# 两端水位和球边重合会出重复点、低血时液面贴着球底成了零面积的尖条，直接画会刷“triangulation failed”报错：
+	# 先去掉挨得太近的点，再试着三角化一下，分不开的那一帧就不画液面
+	var poly := PackedVector2Array()
+	for p in pts:
+		if poly.is_empty() or poly[poly.size() - 1].distance_squared_to(p) > 0.09:
+			poly.append(p)
+	if poly.size() > 1 and poly[0].distance_squared_to(poly[poly.size() - 1]) <= 0.09:
+		poly.remove_at(poly.size() - 1)
+	if k > 0.001 and poly.size() >= 3 and not Geometry2D.triangulate_polygon(poly).is_empty():
+		draw_colored_polygon(poly, blood)
 		# 液面一道亮线
 		var top := PackedVector2Array()
 		for i in range(steps + 1):
