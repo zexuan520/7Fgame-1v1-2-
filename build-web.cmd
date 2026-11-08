@@ -68,6 +68,17 @@ if exist "%PROJECT_DIR%\addons\zaohua_platform\plugin.cfg" (
 
 rem Mobile publishing: copy the source-root landing.html unchanged into dist
 if exist "%PROJECT_DIR%\landing.html" copy /y "%PROJECT_DIR%\landing.html" "%STAGE_DIR%\landing.html" >nul
+rem Streamed music: assets\music is excluded from index.pck by export_presets.cfg exclude_filter.
+rem the game downloads music\NAME.ogg next to index.html while playing, see scripts/music_fetch.gd
+if exist "%PROJECT_DIR%\assets\music\hub.ogg" (
+	if not exist "%STAGE_DIR%\music" mkdir "%STAGE_DIR%\music"
+	copy /y "%PROJECT_DIR%\assets\music\*.ogg" "%STAGE_DIR%\music\" >nul
+	if not exist "%STAGE_DIR%\music\hub.ogg" (
+		echo [ERROR] Failed to copy music files into the Web build.
+		goto :failed
+	)
+)
+
 
 echo [3/3] Publishing atomically to "%OUTPUT_DIR%"...
 robocopy "%STAGE_DIR%" "%NEXT_DIR%" /E /NFL /NDL /NJH /NJS /NP >nul

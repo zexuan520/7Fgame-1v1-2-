@@ -41,6 +41,7 @@ var _sfx_last := {}
 var _bgm: AudioStreamPlayer
 var _bgm_name := ""
 var _bgm_tween: Tween
+var _mfetch: MusicFetch   # 网页版配乐边玩边下；桌面版是 null
 
 
 func _ready() -> void:
@@ -375,6 +376,13 @@ func _setup_audio() -> void:
 	_bgm = AudioStreamPlayer.new()
 	_bgm.bus = "Music"
 	add_child(_bgm)
+	if MusicFetch.wanted():
+		_mfetch = MusicFetch.new()
+		_mfetch.name = "MusicFetch"
+		add_child(_mfetch)
+		_mfetch.track_ready.connect(_on_music_ready)
+		_mfetch.track_failed.connect(_on_music_failed)
+		_mfetch.prefetch(["hub", "village"])   # 山门和第一层先下着
 	apply_volume()
 
 
@@ -408,23 +416,58 @@ func sfx(sound: String, volume_db: float = 0.0, pitch_var: float = 0.06, pitch: 
 
 
 ## 换背景音乐（同一首不重来）；空字符串是停下
+## 网页版配乐不在导出包里，边玩边下（MusicFetch）：还没下好时旧曲接着放，下好了再换
 func music(track: String) -> void:
 	if track == _bgm_name or _bgm == null:
 		return
 	if _sfx_log:
 		print("[music] ", track)
 	_bgm_name = track
+	var s := _music_stream(track)
+	if s == null and track != "" and _mfetch != null and _mfetch.pending(track):
+		return
+	if s != null and s == _bgm.stream and _bgm.playing:
+		return
+	_switch_music(s)
+
+
+## 后台预下几首接下来可能用到的曲子（只有网页版有用；桌面版什么都不做）
+func music_prefetch(tracks: Array) -> void:
+	if _mfetch != null:
+		_mfetch.prefetch(tracks)
+
+
+func _music_stream(track: String) -> AudioStream:
+	if track == "":
+		return null
+	if _mfetch != null:
+		var got := _mfetch.stream(track)
+		if got != null or _mfetch.pending(track):
+			return got
+		# 下了几次都失败：导出包里要是还带着原文件就放它，否则这首静音
+	var path := "res://assets/music/%s.ogg" % track
+	if ResourceLoader.exists(path):
+		return _load_sound(path)
+	return _load_sound("res://assets/music/%s.wav" % track)
+
+
+func _on_music_ready(track: String, stream: AudioStream) -> void:
+	if track == _bgm_name and _bgm.stream != stream:
+		_switch_music(stream)
+
+
+func _on_music_failed(track: String) -> void:
+	if track == _bgm_name:
+		_switch_music(_music_stream(track))
+
+
+func _switch_music(s: AudioStream) -> void:
 	if _bgm_tween != null:
 		_bgm_tween.kill()
 	_bgm_tween = create_tween()
 	if _bgm.playing:
 		_bgm_tween.tween_property(_bgm, "volume_db", -40.0, 0.6)
 	_bgm_tween.tween_callback(func() -> void:
-		var s: AudioStream = null
-		if track != "":
-			s = _load_sound("res://assets/music/%s.ogg" % track)
-			if s == null:
-				s = _load_sound("res://assets/music/%s.wav" % track)
 		_bgm.stop()
 		if s is AudioStreamOggVorbis:
 			(s as AudioStreamOggVorbis).loop = true
@@ -433,8 +476,8 @@ func music(track: String) -> void:
 			w.loop_mode = AudioStreamWAV.LOOP_FORWARD
 			w.loop_begin = 0
 			w.loop_end = int(w.get_length() * w.mix_rate)
+		_bgm.stream = s
 		if s != null:
-			_bgm.stream = s
 			_bgm.volume_db = -40.0
 			_bgm.play())
 	_bgm_tween.tween_property(_bgm, "volume_db", 0.0, 0.8)

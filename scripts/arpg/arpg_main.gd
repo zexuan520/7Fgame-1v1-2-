@@ -1703,6 +1703,7 @@ func _enter_room_body(kind: String = "", zone_override: String = "") -> void:
 			Game.music("hub")
 		_:
 			Game.music(String(ArpgState.ZONE_MUSIC.get(zone_id, "village")))
+	_prefetch_music(zone_id)
 	var mid := Vector3(-3.5, 0, -1.5)   # 摆在一边，别挡住去光门的路
 	if room_kind in ["fight", "elite", "trial"] and not state.secrets_done.has(state.run.room_id()):
 		var hint := state.flags.has("secret_hint")
@@ -4016,7 +4017,8 @@ func _open_pause(sel: Variant = 0) -> void:
 		{"id": "quality", "title": "画质", "right": QUALITY_NAMES[quality], "desc": "低：关阴影和辉光，降低渲染分辨率，适合网页和轻薄本"},
 		{"id": "diff", "title": "难度", "right": ArpgState.DIFF_NAMES[ArpgState.difficulty()], "desc": ArpgState.DIFF_DESC[ArpgState.difficulty()]},
 		{"id": "impact", "title": "冲击帧", "right": "开" if bool(Game.settings.get("impact_frames", true)) else "关", "desc": "清完一波、斩精英、见切时整屏黑白定格一瞬；对闪光敏感可以关掉"},
-		{"id": "shake", "title": "震屏强度", "right": CamRig.SHAKE_NAMES[CamRig.shake_level()], "desc": "命中、爆炸时镜头抖动的幅度（关 → 弱 → 中 → 强）；容易晕可以调低"}]
+		{"id": "shake", "title": "震屏强度", "right": CamRig.SHAKE_NAMES[CamRig.shake_level()], "desc": "命中、爆炸时镜头抖动的幅度（关 → 弱 → 中 → 强）；容易晕可以调低"},
+		{"id": "tilt", "title": "移轴景深", "right": "开" if bool(Game.settings.get("tilt_shift", true)) else "关", "desc": "画面上下边缘微微虚化，像看微缩模型；中、高画质才有，嫌糊可以关掉"}]
 	if TouchPad.active:
 		items.insert(5, {"id": "touchsize", "title": "按键大小", "right": TouchPad.SIZE_NAMES[TouchPad.size_i], "desc": "右下角触屏按键的大小（小 → 中 → 大）"})
 	items.append({"id": "ach", "title": "成就", "right": "%d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], "desc": "看看做到了哪些"})
@@ -4066,6 +4068,12 @@ func _on_pause_chosen(i: int) -> void:
 			Game.write_settings()
 			if CamRig.I != null:
 				CamRig.I.shake(1)
+			Game.sfx("coin")
+			_open_pause(id)
+		"tilt":
+			Game.settings["tilt_shift"] = not bool(Game.settings.get("tilt_shift", true))
+			Game.write_settings()
+			_post_full.set_shader_parameter("tilt", (1.0 if quality >= 2 else 0.75) if bool(Game.settings["tilt_shift"]) else 0.0)
 			Game.sfx("coin")
 			_open_pause(id)
 		"touchsize":
@@ -4885,3 +4893,11 @@ func _story_test(c: String) -> void:
 					n.interacted.emit(n)
 					return
 			print("STORYTEST 没有禅房")
+
+
+## 网页版配乐边玩边下：进房后在后台先下本层场景曲、头目曲和下一层场景曲
+func _prefetch_music(zone_id: String) -> void:
+	var gf := state.gfloor()
+	var nxt: String = ArpgState.FLOOR_ZONES[mini(gf + 1, ArpgState.FLOOR_ZONES.size() - 1)]
+	Game.music_prefetch([String(ArpgState.ZONE_MUSIC.get(zone_id, "village")), state.boss_music(), "secret",
+		String(ArpgState.ZONE_MUSIC.get(nxt, "village"))])
