@@ -5,9 +5,9 @@
    "kit": [
     "bench",
     "lantern",
-    "rock_e",
     "rock_c",
     "tree_dead_s",
+    "rock_e",
     "rock_b",
     "rock_d",
     "stones"
@@ -15,7 +15,7 @@
    "grids": [
     [
      "Arena",
-     "sakura|0",
+     "sakura|1",
      "_sakura_tree",
      [],
      [
@@ -70,7 +70,7 @@
     ],
     [
      "Arena",
-     "sakura|1",
+     "sakura|0",
      "_sakura_tree",
      [],
      [
@@ -83,16 +83,6 @@
        1,
        0.05,
        true
-      ],
-      [
-       0,
-       0.07,
-       false
-      ],
-      [
-       1,
-       0.07,
-       true
       ]
      ]
     ]
@@ -100,42 +90,43 @@
   },
   "forest": {
    "kit": [
-    "wall_arch",
+    "column",
+    "pillar",
+    "rubble_half",
     "wall",
     "wall_broken",
     "tree_dead",
-    "pillar",
-    "rubble",
     "crates",
+    "rubble",
     "post_lantern",
-    "gravemarker",
-    "gravestone",
-    "sword_shield",
     "ribcage",
-    "tree_dead_s",
+    "grave_a",
+    "sword_shield",
+    "gravestone",
+    "gravemarker",
+    "rock_c",
     "tree_dead_m",
     "rock_a",
-    "rock_c",
-    "rock_e",
-    "rock_d",
-    "stones",
-    "rock_b",
+    "tree_dead_s",
     "bone_c",
+    "stones",
+    "wall_arch",
     "fence",
+    "fence_broken",
     "arch_gate",
     "torch_wall",
     "table",
     "sack",
     "lumber",
-    "barrel_small",
-    "fence_broken",
     "barrel",
-    "box",
-    "column",
-    "grave_a",
-    "rubble_half",
-    "well",
+    "barrel_small",
     "bench",
+    "box",
+    "rock_e",
+    "rock_b",
+    "rock_d",
+    "banner",
+    "chest_gold",
     "shrine"
    ],
    "grids": [
@@ -179,6 +170,33 @@
     ],
     [
      "Arena",
+     "trunk|54|6.0|29211fff|2e5738ff",
+     "_trunk",
+     [
+      [
+       "i",
+       54
+      ],
+      6.0,
+      [
+       "c",
+       "29211fff"
+      ],
+      [
+       "c",
+       "2e5738ff"
+      ]
+     ],
+     [
+      [
+       -1,
+       0.06,
+       false
+      ]
+     ]
+    ],
+    [
+     "Arena",
      "trunk|54|5.0|29211fff|2e5738ff",
      "_trunk",
      [
@@ -187,6 +205,60 @@
        54
       ],
       5.0,
+      [
+       "c",
+       "29211fff"
+      ],
+      [
+       "c",
+       "2e5738ff"
+      ]
+     ],
+     [
+      [
+       -1,
+       0.06,
+       false
+      ]
+     ]
+    ],
+    [
+     "Arena",
+     "trunk|66|5.0|29211fff|2e5738ff",
+     "_trunk",
+     [
+      [
+       "i",
+       66
+      ],
+      5.0,
+      [
+       "c",
+       "29211fff"
+      ],
+      [
+       "c",
+       "2e5738ff"
+      ]
+     ],
+     [
+      [
+       -1,
+       0.06,
+       false
+      ]
+     ]
+    ],
+    [
+     "Arena",
+     "trunk|66|4.0|29211fff|2e5738ff",
+     "_trunk",
+     [
+      [
+       "i",
+       66
+      ],
+      4.0,
       [
        "c",
        "29211fff"
@@ -233,75 +305,21 @@
     ],
     [
      "Arena",
-     "trunk|44|4.0|29211fff|2e5738ff",
-     "_trunk",
-     [
-      [
-       "i",
-       44
-      ],
-      4.0,
-      [
-       "c",
-       "29211fff"
-      ],
-      [
-       "c",
-       "2e5738ff"
-      ]
-     ],
-     [
-      [
-       -1,
-       0.06,
-       false
-      ]
-     ]
-    ],
-    [
-     "Arena",
-     "trunk|54|4.0|29211fff|2e5738ff",
+     "trunk|54|5.0|0a0d0dff|0d1712ff",
      "_trunk",
      [
       [
        "i",
        54
       ],
-      4.0,
-      [
-       "c",
-       "29211fff"
-      ],
-      [
-       "c",
-       "2e5738ff"
-      ]
-     ],
-     [
-      [
-       -1,
-       0.06,
-       false
-      ]
-     ]
-    ],
-    [
-     "Arena",
-     "trunk|66|5.0|29211fff|2e5738ff",
-     "_trunk",
-     [
-      [
-       "i",
-       66
-      ],
       5.0,
       [
        "c",
-       "29211fff"
+       "0a0d0dff"
       ],
       [
        "c",
-       "2e5738ff"
+       "0d1712ff"
       ]
      ],
      [
@@ -368,14 +386,14 @@
     ],
     [
      "Arena",
-     "trunk|54|6.0|29211fff|2e5738ff",
+     "trunk|54|4.0|29211fff|2e5738ff",
      "_trunk",
      [
       [
        "i",
        54
       ],
-      6.0,
+      4.0,
       [
        "c",
        "29211fff"
@@ -395,21 +413,21 @@
     ],
     [
      "Arena",
-     "trunk|54|5.0|0a0d0dff|0d1712ff",
+     "trunk|44|4.0|29211fff|2e5738ff",
      "_trunk",
      [
       [
        "i",
-       54
+       44
       ],
-      5.0,
+      4.0,
       [
        "c",
-       "0a0d0dff"
+       "29211fff"
       ],
       [
        "c",
-       "0d1712ff"
+       "2e5738ff"
       ]
      ],
      [
@@ -476,21 +494,21 @@
     ],
     [
      "Arena",
-     "trunk|66|4.0|29211fff|2e5738ff",
+     "trunk|54|6.0|0a0d0dff|0d1712ff",
      "_trunk",
      [
       [
        "i",
-       66
+       54
       ],
-      4.0,
+      6.0,
       [
        "c",
-       "29211fff"
+       "0a0d0dff"
       ],
       [
        "c",
-       "2e5738ff"
+       "0d1712ff"
       ]
      ],
      [
@@ -507,38 +525,40 @@
    "kit": [
     "crypt",
     "arch_gate",
-    "fence_broken",
     "fence",
-    "tree_dead",
-    "tree_dead_m",
+    "fence_broken",
     "tree_pine",
+    "tree_dead_m",
+    "tree_dead",
     "post_skull",
-    "gravestone",
     "grave_a",
-    "grave_b",
+    "gravestone",
     "gravemarker",
-    "rubble",
+    "grave_b",
     "coffin",
+    "rubble",
     "ribcage",
     "post_lantern",
     "skull_candle",
+    "tree_dead_s",
     "rock_a",
     "grave_broken",
     "rock_d",
-    "rock_b",
-    "bone_b",
-    "bone_a",
-    "lantern_hang",
-    "tree_dead_s",
     "stones",
+    "bone_a",
+    "gravemarker_b",
+    "bone_b",
+    "fence_stone",
+    "lantern_hang",
     "wall_broken",
+    "wall_arch",
     "torch_wall",
     "candles",
+    "box",
     "well",
-    "wall_arch",
+    "rock_b",
     "fence_pillar",
-    "gravemarker_b",
-    "box"
+    "rock_c"
    ],
    "grids": [
     [
@@ -575,54 +595,58 @@
     "shrine",
     "candles",
     "lantern",
-    "chest",
     "banner",
-    "rubble_half",
     "table_s",
+    "rubble_half",
     "barrel_deco",
-    "wall",
     "wall_arch",
+    "barrier_col",
+    "chest",
+    "wall",
     "fence",
-    "fence_broken",
     "arch_gate",
     "torch_wall",
     "shelf",
-    "sack",
     "bench",
-    "wall_broken",
-    "box"
+    "sack",
+    "box",
+    "fence_broken",
+    "rubble",
+    "table_m",
+    "pillar",
+    "column"
    ],
    "grids": []
   },
   "well": {
    "kit": [
     "shrine",
-    "column",
     "rubble",
-    "ribcage",
+    "pillar",
+    "column",
     "skull_candle",
     "candles",
+    "ribcage",
     "rock_c",
     "rock_e",
-    "rock_a",
     "rock_d",
     "stones",
-    "reeds_b",
-    "rubble_half",
-    "barrier_col",
-    "reeds_a",
-    "pillar",
+    "rock_a",
     "rock_b",
+    "rubble_half",
+    "reeds_b",
+    "reeds_a",
+    "barrier_col",
     "wall_broken",
-    "wall_arch",
     "fence",
     "fence_broken",
     "arch_gate",
     "torch_wall",
-    "shelf",
+    "wall_arch",
+    "lantern",
     "coffin",
-    "well",
-    "box"
+    "box",
+    "shelf"
    ],
    "grids": [
     [
@@ -768,51 +792,36 @@
   },
   "vault": {
    "kit": [
+    "coffin",
     "crates",
     "rubble",
     "column",
-    "coffin",
-    "barrel_small",
     "skull_candle",
+    "barrel_small",
+    "candles",
     "sack",
+    "pillar",
     "rock_c",
     "rubble_half",
-    "pillar",
     "coins",
     "banner_gold",
-    "barrel_deco",
-    "trunk",
-    "candles",
     "chest_gold",
+    "trunk",
+    "keg",
+    "crate_long",
     "wall",
-    "fence_broken",
+    "barrel_deco",
+    "wall_arch",
     "fence",
+    "fence_broken",
     "arch_gate",
     "torch_wall",
     "barrel",
-    "well",
-    "keg",
-    "wall_arch",
     "box",
-    "wall_broken",
+    "well",
     "shrine"
    ],
    "grids": [
-    [
-     "Arena",
-     "niche|0",
-     "_lamp_niche",
-     [
-      false
-     ],
-     [
-      [
-       0,
-       0.12,
-       false
-      ]
-     ]
-    ],
     [
      "Arena",
      "niche|1",
@@ -830,6 +839,21 @@
        1,
        0.12,
        true
+      ]
+     ]
+    ],
+    [
+     "Arena",
+     "niche|0",
+     "_lamp_niche",
+     [
+      false
+     ],
+     [
+      [
+       0,
+       0.12,
+       false
       ]
      ]
     ],
@@ -895,38 +919,40 @@
     "torch",
     "tent",
     "bench",
+    "barrel",
     "lumber",
-    "sword_shield",
     "crates",
-    "barrel_small",
     "sack",
+    "barrel_small",
     "box",
-    "rock_a",
-    "tree_dead_m",
     "flag",
+    "tree_dead_m",
+    "tree_dead_s",
+    "rock_a",
     "fence_wood",
     "rock_c",
-    "stones",
+    "rock_b",
     "rock_d",
+    "stones",
+    "target",
+    "arrows",
+    "pallet",
+    "bucket",
+    "crate_long",
     "weaponrack",
     "wheelbarrow",
+    "barrier",
+    "sword_shield",
     "keg",
-    "crate_long",
-    "arrows",
-    "target",
-    "barrel",
-    "tree_dead_s",
-    "rock_b",
-    "crate_open",
-    "bucket",
-    "fence",
     "wall_arch",
+    "fence",
     "fence_broken",
     "arch_gate",
     "torch_wall",
     "table",
+    "well",
     "wall_broken",
-    "pallet"
+    "crate_open"
    ],
    "grids": [
     [
@@ -1054,40 +1080,40 @@
     "tree_pine",
     "trees",
     "column",
+    "lumber",
+    "crates",
     "well",
     "barrel",
-    "crates",
     "barrel_small",
-    "sack",
-    "lumber",
     "pumpkin",
+    "sack",
     "shrine",
     "banner",
     "fence",
-    "tree_a",
-    "tree_b",
-    "rock_e",
-    "rock_c",
-    "rock_b",
-    "bucket",
-    "pallet",
     "fence_wood",
-    "crate_open",
+    "rock_e",
+    "tree_b",
+    "tree_a",
+    "rock_c",
     "rock_d",
+    "rock_b",
     "stones",
+    "wheelbarrow",
+    "crate_open",
+    "pallet",
+    "bucket",
     "reeds_a",
     "wall_arch",
     "wall",
     "fence_broken",
     "arch_gate",
     "torch_wall",
-    "bench",
     "table",
-    "wheelbarrow",
-    "lantern",
-    "box",
+    "bench",
     "tent",
-    "wall_broken"
+    "wall_broken",
+    "box",
+    "candles"
    ],
    "grids": [
     [
@@ -1147,32 +1173,32 @@
     "tree_pine",
     "barrel",
     "barrel_small",
+    "lumber",
     "crates",
     "sack",
-    "lumber",
+    "fence",
     "fence_broken",
-    "fence_stone",
     "tree_b",
-    "rock_c",
+    "fence_stone",
     "rock_e",
     "rock_d",
-    "rock_b",
     "stones",
-    "bucket",
-    "crate_long",
-    "barrel_deco",
-    "fence",
-    "pallet",
+    "rock_c",
+    "rock_b",
     "wheelbarrow",
+    "crate_long",
+    "pallet",
+    "barrel_deco",
+    "bucket",
     "wall",
     "wall_arch",
     "arch_gate",
     "torch_wall",
     "table",
-    "tent",
     "box",
-    "rock_a",
-    "wall_broken"
+    "wall_broken",
+    "well",
+    "rock_a"
    ],
    "grids": [
     [
@@ -1213,6 +1239,19 @@
        false
       ]
      ]
+    ],
+    [
+     "Arena3",
+     "haystack",
+     "_haystack",
+     [],
+     [
+      [
+       -1,
+       0.12,
+       false
+      ]
+     ]
     ]
    ]
   },
@@ -1220,27 +1259,26 @@
    "kit": [
     "banner",
     "candles",
-    "barrier",
-    "banner_gold",
-    "barrier_col",
-    "chest_gold",
-    "coins",
     "box",
-    "table_m",
+    "barrier",
+    "barrier_col",
+    "banner_gold",
+    "coins",
+    "column",
+    "chest_gold",
     "wall",
     "wall_arch",
-    "fence_broken",
     "fence",
     "arch_gate",
     "torch_wall",
     "shelf",
-    "sack",
-    "crates",
     "lantern",
-    "column",
-    "well",
+    "sack",
     "wall_broken",
-    "shrine"
+    "table_m",
+    "fence_broken",
+    "shrine",
+    "crates"
    ],
    "grids": [
     [
@@ -1350,38 +1388,23 @@
   },
   "abyss": {
    "kit": [
-    "column",
     "crates",
+    "column",
     "coffin",
     "rubble",
-    "candles",
-    "barrel_small",
     "sack",
     "skull_candle",
+    "barrel_small",
+    "candles",
     "rubble_half",
-    "rock_c",
     "pillar",
+    "rock_c",
+    "barrel_deco",
     "coins",
     "trunk",
-    "barrel_deco",
-    "keg"
+    "banner_gold"
    ],
    "grids": [
-    [
-     "Arena",
-     "niche|0",
-     "_lamp_niche",
-     [
-      false
-     ],
-     [
-      [
-       0,
-       0.12,
-       false
-      ]
-     ]
-    ],
     [
      "Arena",
      "niche|1",
@@ -1399,6 +1422,21 @@
        1,
        0.12,
        true
+      ]
+     ]
+    ],
+    [
+     "Arena",
+     "niche|0",
+     "_lamp_niche",
+     [
+      false
+     ],
+     [
+      [
+       0,
+       0.12,
+       false
       ]
      ]
     ],
@@ -1462,35 +1500,123 @@
  "models": [
   [
    "model",
-   "rogue"
+   "hero_canren"
   ],
   [
    "model",
-   "skel_warrior"
+   "skel_grunt"
   ],
   [
    "model",
-   "skel_mage"
+   "skel_mage2"
   ],
   [
    "model",
-   "skel_minion"
+   "skel_sporer"
   ],
   [
    "model",
-   "barbarian"
+   "skel_crawler"
   ],
   [
    "model",
-   "skel_rogue"
+   "skel_archer"
   ],
   [
    "model",
-   "knight"
+   "npc_merchant"
   ],
   [
    "model",
-   "mage"
+   "skel_assassin"
+  ],
+  [
+   "model",
+   "skel_shield"
+  ],
+  [
+   "model",
+   "skel_bomber"
+  ],
+  [
+   "model",
+   "skel_chainmonk"
+  ],
+  [
+   "model",
+   "skel_drowned"
+  ],
+  [
+   "model",
+   "skel_eel"
+  ],
+  [
+   "model",
+   "zhu_armored"
+  ],
+  [
+   "model",
+   "skel_flame"
+  ],
+  [
+   "model",
+   "bronze_oiler"
+  ],
+  [
+   "model",
+   "grey_guard"
+  ],
+  [
+   "model",
+   "grey_blade"
+  ],
+  [
+   "model",
+   "grey_bow"
+  ],
+  [
+   "model",
+   "zhu_lampguard"
+  ],
+  [
+   "model",
+   "zhu_lampman"
+  ],
+  [
+   "model",
+   "torcher"
+  ],
+  [
+   "model",
+   "lancer"
+  ],
+  [
+   "model",
+   "courier"
+  ],
+  [
+   "model",
+   "goldguard"
+  ],
+  [
+   "model",
+   "palace_ghost"
+  ],
+  [
+   "model",
+   "wardbell"
+  ],
+  [
+   "model",
+   "npc_hag"
+  ],
+  [
+   "model",
+   "npc_smith"
+  ],
+  [
+   "model",
+   "npc_monk"
   ],
   [
    "weapon",
@@ -1514,11 +1640,6 @@
   ],
   [
    "weapon",
-   "dagger",
-   22.0
-  ],
-  [
-   "weapon",
    "crossbow",
    28.0
   ],
@@ -1529,13 +1650,8 @@
   ],
   [
    "weapon",
-   "skel_axe",
-   36.0
-  ],
-  [
-   "weapon",
-   "coffin_lid",
-   34.0
+   "dagger",
+   22.0
   ],
   [
    "weapon",
@@ -1554,8 +1670,8 @@
   ],
   [
    "weapon",
-   "lantern_h",
-   30.0
+   "dagger",
+   20.0
   ],
   [
    "weapon",
@@ -1579,11 +1695,6 @@
   ],
   [
    "weapon",
-   "flag",
-   54.0
-  ],
-  [
-   "weapon",
    "spear",
    58.0
   ],
@@ -1594,11 +1705,6 @@
   ],
   [
    "weapon",
-   "staff",
-   34.0
-  ],
-  [
-   "weapon",
    "spear",
    62.0
   ],
@@ -1606,6 +1712,11 @@
    "weapon",
    "lantern_h",
    26.0
+  ],
+  [
+   "weapon",
+   "staff",
+   34.0
   ]
  ]
 }

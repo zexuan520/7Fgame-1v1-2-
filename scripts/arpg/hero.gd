@@ -291,13 +291,8 @@ func _reset_trail() -> void:
 	trail.set_colors(tc[0], rel.tint_edge(tc[1]))
 
 
-## 测试：rogue 换成哪个模型（--newmodels）
-static var rogue_swap := ""
-
-
 static func _skin_model(sk: Dictionary) -> String:
-	var m := String(sk.get("model", ""))
-	return rogue_swap if m == "rogue" and rogue_swap != "" else m
+	return String(sk.get("model", ""))
 
 
 ## 换皮肤：换模型就整个人偶重建（兵器、刀光跟着挂回去）

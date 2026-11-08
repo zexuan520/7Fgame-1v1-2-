@@ -7,24 +7,7 @@
 import numpy as np
 from forge import Forge, std_joints, rgb
 
-C = {
-    "skin": "#e2b48a", "skin_d": "#b9845e",
-    "hair": "#1c1820",
-    "straw": "#dcb867", "straw_d": "#a9813d", "straw_l": "#f0d48c",
-    "red": "#c23a2c", "red_d": "#7d2119",
-    "robe": "#1f8a52", "robe_d": "#126039", "robe_l": "#3aa46a",   # 绿色系：皮肤换色时整块换掉
-    "cream": "#e8dcbf", "cream_d": "#b9aa88",
-    "char": "#2a2630", "char_l": "#423c4a",
-    "boot": "#2b211f", "boot_l": "#4a3a33",
-    "bone": "#e9e0c8", "bone_d": "#b7a988", "bone_l": "#fbf5e2",
-    "gap": "#1b1416",
-    "rag": "#4a2c26", "rag_d": "#2e1b18", "rag_l": "#6b4033",
-    "iron": "#5c5f68", "iron_d": "#34363d", "iron_l": "#8b8f99", "rust": "#7d4a2e",
-    "eye": "#ff3b2a", "eye_hot": "#ffd2a0",
-    "grey": "#8d9097", "grey_d": "#5d6068", "grey_l": "#b4b7bd",
-    "lacq": "#26232a", "lacq_l": "#45404d",
-    "brass": "#c99a3e", "brass_d": "#8a6424",
-}
+from kit import C
 
 
 def hero_canren():
@@ -97,10 +80,12 @@ def hero_canren():
 # ---------------- 骷髅一家 ----------------
 # 同一副骨架，靠“头上戴的东西 + 肩上那块 + 手里的家伙”区分兵种：顶视最先看到的就是头和肩
 
-def _skeleton(name, src, head="bare", shoulder="pauldron", rag=C["rag"], rag_d=C["rag_d"], hunch=3, eye=C["eye"]):
+def _skeleton(name, src, head="bare", shoulder="pauldron", rag=C["rag"], rag_d=C["rag_d"], hunch=3, eye=C["eye"], bones=None, eye_glow=0.45):
+    """bones=(骨, 暗骨, 亮骨)；返回的 f 可以再往上加东西（头顶的 x 偏移 = hunch * 0.6）"""
     J = std_joints(neck=70, sh_y=66, sh_z=13, hip_y=42, leg_z=5, knee_y=22, ankle_y=6)
     f = Forge(name, J, src)
-    B, Bd, Bl, G = C["bone"], C["bone_d"], C["bone_l"], C["gap"]
+    B, Bd, Bl = bones or (C["bone"], C["bone_d"], C["bone_l"])
+    G = C["gap"]
     # ---- 腿：细骨头 + 膝盖骨疙瘩 + 长脚掌 ----
     for s, (pu, pl) in ((1, ("leg_u_f", "leg_l_f")), (-1, ("leg_u_b", "leg_l_b"))):
         z = 5 * s
@@ -164,7 +149,7 @@ def _skeleton(name, src, head="bare", shoulder="pauldron", rag=C["rag"], rag_d=C
         sock = f.ell((hx + 8, 79.5, 3.2 * s), (2.8, 2.6, 2.4))
         f.carve(sock, "head")
         f.fill(f.ell((hx + 6.5, 79.5, 3.2 * s), (2.0, 2.2, 2.0)), "head", G)
-        f.fill(f.box(hx + 7, hx + 9, 79, 81, 3.2 * s - 1, 3.2 * s + 1), "head", eye, glow=0.45)
+        f.fill(f.box(hx + 7, hx + 9, 79, 81, 3.2 * s - 1, 3.2 * s + 1), "head", eye, glow=eye_glow)
     f.carve(f.box(hx + 8, hx + 10, 75, 77, -0.8, 0.8), "head")            # 鼻孔
     if head == "helmet":
         # 盾骷髅：铁锅盔，顶上一根红缨（顶视：灰圆盘中间一点红）
@@ -183,7 +168,7 @@ def _skeleton(name, src, head="bare", shoulder="pauldron", rag=C["rag"], rag_d=C
         f.fill(f.seg((hx - 6, 88, 0), (hx - 13, 76, 0), 4.2, 1.6), "head", rag)
         f.fill(f.seg((hx + 2, 92, 0), (hx - 5, 92, 0), 3.0, 4.0), "head", rag)   # 兜帽尖
         f.fill(f.ell((0, 66, 0), (8.5, 5.5, 13)) & f.side("y", ">", 62), "torso", rag)   # 披肩
-        f.paint(f.side("y", ">", 90), C["rag_l"], part="head")
+        f.paint(f.side("y", ">", 90) & (f.part == 2), C["rag_l"] if rag == C["rag"] else rag, part="head")
     elif head == "horns":
         # 冲阵骨：牛角盔
         hm = f.ell((hx + 1, 82, 0), (8.6, 7.4, 8.2)) & f.side("y", ">", 81)
@@ -271,6 +256,10 @@ def grey_blade():
     return f
 
 
+from chars_foes import FOES
+from chars_boss import BOSSES
+from chars_npc import NPCS
+
 ALL = {
     "hero_canren": hero_canren,
     "skel_grunt": skel_grunt,
@@ -278,3 +267,6 @@ ALL = {
     "skel_archer": skel_archer,
     "grey_blade": grey_blade,
 }
+ALL.update(FOES)
+ALL.update(BOSSES)
+ALL.update(NPCS)

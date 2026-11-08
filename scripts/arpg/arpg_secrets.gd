@@ -267,7 +267,7 @@ func hub_entered() -> void:
 		main._npc("信物匣 %d / %d" % [keeps().size(), KEEPS.size()], Vector3(-12.5, 0, -6.5), {"kit": "shelf", "scale": 1.0}, _open_box)
 	# 阿七：第一幕最近一次救下了他，就来山门蹭酒
 	if ArpgState.act1("ronin") == "ronin_saved":
-		var n: ArpgNpc = main._npc("阿七 · 闲聊", Vector3(12.5, 0, 6.5), {"model": "barbarian", "weapon": "sword", "tint": Color(1.15, 0.85, 0.65)}, func(x: ArpgNpc) -> void: chat("ronin", x))
+		var n: ArpgNpc = main._npc("阿七 · 闲聊", Vector3(12.5, 0, 6.5), {"model": "aqi", "weapon": "sword"}, func(x: ArpgNpc) -> void: chat("ronin", x))
 		n.display = "阿七 · 闲聊"
 
 

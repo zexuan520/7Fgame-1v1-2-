@@ -6,9 +6,6 @@ extends Actor
 ## 幽魂术士（远程法阵）、骨弩手（远程弩箭，会躲着打）、冲阵骨（远距离直线冲锋，撞墙会晕）、爆骨鬼（贴脸自爆，先打死它反而炸到旁边的怪）、
 ## 盾骷髅（正面举盾挡刀，绕后或连砍破盾）、招魂巫（躲在后面招小鬼，打死它小鬼散架）、头目（夜樱剑鬼、百骨将会召唤小怪和地刺、寂光）。
 
-## 测试：兵种 → 新模型（锻造台做的，颜色画在模型上，不再染色），--newmodels 打开
-static var model_swap := {}
-
 ## 头目进二阶段时头上冒的字
 const RAGE_NAMES := {"boss": "剑鬼·狂", "boss3": "万骨·醒", "boss2": "残灯·燃", "boss4": "枯荣·涨", "boss5": "不夜·燃", "boss6": "烬·点灯"}
 ## 头目半血变身时说的一句
@@ -24,112 +21,112 @@ static var _base_shader: Shader
 var _base_ring: MeshInstance3D
 
 const TYPES := {
-	"crawler": {"name": "腐骨虫", "model": "skel_minion", "weapon": "", "wlen": 0.0, "tint": Color(0.85, 0.95, 0.8), "k": 0.72,
+	"crawler": {"name": "腐骨虫", "model": "skel_crawler", "weapon": "", "wlen": 0.0, "tint": Color(0.85, 0.95, 0.8), "k": 0.72,
 		"hp": 26.0, "speed": 5.4, "detect": 13.0, "range": 2.2, "dmg": 7.0, "windup": 0.42, "attack": "lunge", "poise": 0.0, "coins": 1},
-	"skeleton": {"name": "骷髅兵", "model": "skel_warrior", "weapon": "skel_blade", "wlen": 30.0, "tint": Color(0.95, 0.95, 0.9), "k": 1.0,
+	"skeleton": {"name": "骷髅兵", "model": "skel_grunt", "weapon": "skel_blade", "wlen": 30.0, "tint": Color(0.95, 0.95, 0.9), "k": 1.0,
 		"hp": 55.0, "speed": 3.8, "detect": 12.0, "range": 2.1, "dmg": 11.0, "windup": 0.55, "attack": "slash", "poise": 0.0, "coins": 3},
-	"shadow": {"name": "残影", "model": "rogue", "weapon": "sword", "wlen": 34.0, "tint": Color(0.45, 0.55, 0.95), "k": 0.82,
+	"shadow": {"name": "残影", "model": "hero_canren", "ghost": true, "weapon": "sword", "wlen": 34.0, "tint": Color(0.45, 0.55, 0.95), "k": 0.82,
 		"hp": 520.0, "speed": 5.4, "detect": 30.0, "range": 2.4, "dmg": 15.0, "windup": 0.4, "attack": "slash", "poise": 60.0, "coins": 30},
-	"samurai": {"name": "赤甲武士", "model": "knight", "weapon": "axe2", "wlen": 44.0, "tint": Color(1.25, 0.5, 0.45), "k": 1.25,
+	"samurai": {"name": "赤甲武士", "model": "red_armor", "weapon": "axe2", "wlen": 44.0, "tint": Color(1.25, 0.5, 0.45), "k": 1.25,
 		"hp": 190.0, "speed": 3.2, "detect": 14.0, "range": 2.8, "dmg": 22.0, "windup": 0.75, "attack": "heavy", "poise": 45.0, "coins": 9},
-	"mage": {"name": "幽魂术士", "model": "skel_mage", "weapon": "skel_staff", "wlen": 34.0, "tint": Color(0.85, 0.7, 1.15), "k": 1.0,
+	"mage": {"name": "幽魂术士", "model": "skel_mage2", "weapon": "skel_staff", "wlen": 34.0, "tint": Color(0.85, 0.7, 1.15), "k": 1.0,
 		"hp": 42.0, "speed": 3.4, "detect": 16.0, "range": 11.0, "dmg": 14.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 4, "keep": 7.5, "elem": "magic"},
-	"rogue": {"name": "骨刺客", "model": "skel_rogue", "weapon": "dagger", "wlen": 22.0, "tint": Color(0.8, 0.95, 0.85), "k": 0.95,
+	"rogue": {"name": "骨刺客", "model": "skel_assassin", "weapon": "dagger", "wlen": 22.0, "tint": Color(0.8, 0.95, 0.85), "k": 0.95,
 		"hp": 38.0, "speed": 5.0, "detect": 15.0, "range": 2.6, "dmg": 10.0, "windup": 0.32, "attack": "lunge", "poise": 0.0, "coins": 3},
-	"archer": {"name": "骨弩手", "model": "skel_minion", "weapon": "crossbow", "wlen": 28.0, "tint": Color(0.95, 0.9, 0.8), "k": 0.95,
+	"archer": {"name": "骨弩手", "model": "skel_archer", "weapon": "crossbow", "wlen": 28.0, "tint": Color(0.95, 0.9, 0.8), "k": 0.95,
 		"hp": 34.0, "speed": 3.6, "detect": 17.0, "range": 14.0, "dmg": 10.0, "windup": 0.65, "attack": "shot", "poise": 0.0, "coins": 3, "keep": 9.0},
-	"charger": {"name": "冲阵骨", "model": "skel_warrior", "weapon": "skel_axe", "wlen": 38.0, "tint": Color(1.2, 0.72, 0.55), "k": 1.3,
+	"charger": {"name": "冲阵骨", "model": "skel_charger", "weapon": "skel_axe", "wlen": 38.0, "tint": Color(1.2, 0.72, 0.55), "k": 1.3,
 		"hp": 120.0, "speed": 3.1, "detect": 16.0, "range": 2.6, "dmg": 18.0, "windup": 0.7, "attack": "charge", "poise": 30.0, "coins": 6},
-	"bomber": {"name": "爆骨鬼", "model": "skel_minion", "weapon": "", "wlen": 0.0, "tint": Color(1.35, 0.8, 0.45), "k": 0.8,
+	"bomber": {"name": "爆骨鬼", "model": "skel_bomber", "weapon": "", "wlen": 0.0, "tint": Color(1.35, 0.8, 0.45), "k": 0.8,
 		"hp": 20.0, "speed": 6.2, "detect": 16.0, "range": 2.3, "dmg": 20.0, "windup": 0.8, "attack": "blast", "poise": 0.0, "coins": 2, "elem": "fire"},
-	"shield": {"name": "盾骷髅", "model": "skel_warrior", "weapon": "skel_blade", "wlen": 28.0, "tint": Color(0.85, 0.9, 1.0), "k": 1.1,
+	"shield": {"name": "盾骷髅", "model": "skel_shield", "weapon": "skel_blade", "wlen": 28.0, "tint": Color(0.85, 0.9, 1.0), "k": 1.1,
 		"hp": 70.0, "speed": 3.3, "detect": 12.0, "range": 2.2, "dmg": 12.0, "windup": 0.6, "attack": "slash", "poise": 0.0, "coins": 5,
 		"offhand": "shield_f", "olen": 26.0, "guard": 4.0},
-	"summoner": {"name": "招魂巫", "model": "mage", "weapon": "staff", "wlen": 34.0, "tint": Color(0.75, 0.95, 0.8), "k": 1.0,
+	"summoner": {"name": "招魂巫", "model": "summoner", "weapon": "staff", "wlen": 34.0, "tint": Color(0.75, 0.95, 0.8), "k": 1.0,
 		"hp": 60.0, "speed": 3.2, "detect": 17.0, "range": 12.0, "dmg": 12.0, "windup": 0.7, "attack": "rune", "poise": 0.0, "coins": 6, "keep": 10.0, "elem": "magic"},
 	# ---------- 第一幕 · 每层独有 ----------
 	# 瘴菇骨（幽林）：顶着一朵毒菇的小骸骨，站开几步往你脚下喷一团瘴，落地留一滩毒；死了也会噗地散一小团
-	"sporer": {"name": "瘴菇骨", "model": "skel_minion", "weapon": "", "wlen": 0.0, "tint": Color(0.78, 1.0, 0.62), "k": 0.85,
+	"sporer": {"name": "瘴菇骨", "model": "skel_sporer", "weapon": "", "wlen": 0.0, "tint": Color(0.78, 1.0, 0.62), "k": 0.85,
 		"hp": 44.0, "speed": 3.3, "detect": 15.0, "range": 8.0, "dmg": 8.0, "windup": 0.85, "attack": "spore", "poise": 0.0, "coins": 4, "keep": 5.5,
 		"offhand": "shroom", "olen": 26.0, "elem": "poison"},
 	# 抬棺骨（无名冢）：扛着一块棺盖当盾，抡斧头重劈；劈碎了它，棺材里还会爬出三只腐骨虫
-	"coffin": {"name": "抬棺骨", "model": "skel_warrior", "weapon": "skel_axe", "wlen": 36.0, "tint": Color(0.88, 0.84, 0.74), "k": 1.25,
+	"coffin": {"name": "抬棺骨", "model": "skel_coffin", "weapon": "skel_axe", "wlen": 36.0, "tint": Color(0.88, 0.84, 0.74), "k": 1.25,
 		"hp": 125.0, "speed": 2.8, "detect": 13.0, "range": 2.6, "dmg": 17.0, "windup": 0.75, "attack": "heavy", "poise": 25.0, "coins": 6,
 		"offhand": "coffin_lid", "olen": 34.0, "guard": 3.0, "split": "crawler"},
 	# 铜钟僧（古寺）：拄着钟杖的僧骨，站在几步外一敲钟，金色的声浪一圈圈往外推（翻滚穿过，或者站到圈外）
-	"bellmonk": {"name": "铜钟僧", "model": "skel_mage", "weapon": "bell_h", "wlen": 46.0, "tint": Color(1.05, 0.98, 0.85), "head": "skel_minion", "k": 1.1,
+	"bellmonk": {"name": "铜钟僧", "model": "skel_bellmonk", "weapon": "bell_h", "wlen": 46.0, "tint": Color(1.05, 0.98, 0.85), "head": "skel_minion", "k": 1.1,
 		"hp": 95.0, "speed": 2.9, "detect": 15.0, "range": 7.5, "dmg": 13.0, "windup": 0.95, "attack": "bell", "poise": 20.0, "coins": 6, "keep": 5.0, "elem": "holy"},
 	# ---------- 第二幕 ----------
 	# 水骨：埋在积水里，主角走近才猛地站起来扑一下（lurk）
-	"drowned": {"name": "水骨", "model": "skel_rogue", "weapon": "dagger", "wlen": 22.0, "tint": Color(0.6, 0.85, 1.05), "k": 0.9,
+	"drowned": {"name": "水骨", "model": "skel_drowned", "weapon": "dagger", "wlen": 22.0, "tint": Color(0.6, 0.85, 1.05), "k": 0.9,
 		"hp": 40.0, "speed": 4.6, "detect": 14.0, "range": 2.4, "dmg": 11.0, "windup": 0.38, "attack": "lunge", "poise": 0.0, "coins": 3, "lurk": true, "elem": "water"},
 	# 灯奴僧：拖着灯链的僧人骸骨，蓄力后链子横扫一整圈
-	"chainmonk": {"name": "灯奴僧", "model": "skel_mage", "weapon": "skel_staff", "wlen": 30.0, "tint": Color(0.7, 0.9, 1.1), "k": 1.15,
+	"chainmonk": {"name": "灯奴僧", "model": "skel_chainmonk", "weapon": "skel_staff", "wlen": 30.0, "tint": Color(0.7, 0.9, 1.1), "k": 1.15,
 		"hp": 150.0, "speed": 2.7, "detect": 13.0, "range": 3.6, "dmg": 16.0, "windup": 0.9, "attack": "chain", "poise": 40.0, "coins": 7, "head": "skel_minion", "elem": "water"},
 	# 阿七（第四层拔刀）：续命司的刀法，快刀加突刺
-	"ronin": {"name": "阿七", "model": "barbarian", "weapon": "sword", "wlen": 34.0, "tint": Color(1.15, 0.85, 0.65), "k": 1.0,
+	"ronin": {"name": "阿七", "model": "aqi", "weapon": "sword", "wlen": 34.0, "tint": Color(1.15, 0.85, 0.65), "k": 1.0,
 		"hp": 420.0, "speed": 4.8, "detect": 30.0, "range": 2.5, "dmg": 15.0, "windup": 0.42, "attack": "slash", "poise": 55.0, "coins": 25},
 	# 烛国甲士：一身铜甲，平时只吃三成伤害；打掉韧性（破韧）后甲片松开，几秒内伤害全吃
-	"armored": {"name": "烛国甲士", "model": "knight", "weapon": "axe2", "wlen": 44.0, "tint": Color(1.25, 0.88, 0.5), "mono": 0.75, "k": 1.2,
+	"armored": {"name": "烛国甲士", "model": "zhu_armored", "weapon": "axe2", "wlen": 44.0, "tint": Color(1.25, 0.88, 0.5), "mono": 0.75, "k": 1.2,
 		"hp": 150.0, "speed": 2.9, "detect": 13.0, "range": 2.8, "dmg": 19.0, "windup": 0.7, "attack": "heavy", "poise": 55.0, "coins": 8, "armor": 0.35},
 	# 披火骨：浑身着火的骨兵，死了留下一滩火
-	"flameskel": {"name": "披火骨", "model": "skel_warrior", "weapon": "skel_blade", "wlen": 30.0, "tint": Color(1.35, 0.75, 0.45), "k": 1.0,
+	"flameskel": {"name": "披火骨", "model": "skel_flame", "weapon": "skel_blade", "wlen": 30.0, "tint": Color(1.35, 0.75, 0.45), "k": 1.0,
 		"hp": 60.0, "speed": 4.2, "detect": 14.0, "range": 2.2, "dmg": 12.0, "windup": 0.5, "attack": "slash", "poise": 0.0, "coins": 4, "fire": true, "elem": "fire"},
 	# 不夜将军的亲兵（幻影）：列阵冲一趟就散
-	"phantom": {"name": "亲兵", "model": "knight", "weapon": "axe2", "wlen": 40.0, "tint": Color(1.5, 1.2, 0.7), "mono": 1.0, "phantom": true, "k": 1.15,
+	"phantom": {"name": "亲兵", "model": "zhu_armored", "ghost": true, "weapon": "axe2", "wlen": 40.0, "tint": Color(1.5, 1.2, 0.7), "mono": 1.0, "phantom": true, "k": 1.15,
 		"hp": 9999.0, "speed": 3.0, "detect": 40.0, "range": 2.6, "dmg": 16.0, "windup": 0.8, "attack": "charge", "poise": 999.0, "coins": 0},
 	# 续命司的挖掘队头领（灯冢里的精英战，第一次和活人交手）
-	"digger": {"name": "挖掘队头领", "model": "barbarian", "weapon": "axe2", "wlen": 40.0, "tint": Color(0.75, 0.78, 0.82), "k": 1.15,
+	"digger": {"name": "挖掘队头领", "model": "digger", "weapon": "axe2", "wlen": 40.0, "tint": Color(0.75, 0.78, 0.82), "k": 1.15,
 		"hp": 360.0, "speed": 4.0, "detect": 30.0, "range": 2.7, "dmg": 18.0, "windup": 0.55, "attack": "heavy", "poise": 60.0, "coins": 20},
 	# ---------- 第二幕 · 灰衣营（活人：会退、会挡、会躲） ----------
 	# 灰衣刀手：砍一刀就斜着退开；你挥刀时偶尔侧身闪开
-	"greyblade": {"name": "灰衣刀手", "model": "rogue", "weapon": "sword", "wlen": 32.0, "tint": Color(0.82, 0.84, 0.88), "mono": 1.0, "k": 1.0,
+	"greyblade": {"name": "灰衣刀手", "model": "grey_blade", "weapon": "sword", "wlen": 32.0, "tint": Color(0.82, 0.84, 0.88), "mono": 1.0, "k": 1.0,
 		"hp": 70.0, "speed": 4.6, "detect": 15.0, "range": 2.4, "dmg": 13.0, "windup": 0.42, "attack": "slash", "poise": 0.0, "coins": 4, "hitrun": true, "dodge": 0.3},
 	# 灰衣盾兵：举盾挡正面，挡满几下破盾
-	"greyguard": {"name": "灰衣盾兵", "model": "knight", "weapon": "sword", "wlen": 30.0, "tint": Color(0.78, 0.8, 0.85), "mono": 0.9, "k": 1.1,
+	"greyguard": {"name": "灰衣盾兵", "model": "grey_guard", "weapon": "sword", "wlen": 30.0, "tint": Color(0.78, 0.8, 0.85), "mono": 0.9, "k": 1.1,
 		"hp": 95.0, "speed": 3.4, "detect": 13.0, "range": 2.3, "dmg": 14.0, "windup": 0.55, "attack": "slash", "poise": 20.0, "coins": 6,
 		"offhand": "shield_f", "olen": 26.0, "guard": 5.0},
 	# 灰衣弩手：站远了射，人靠近就往后退
-	"greybow": {"name": "灰衣弩手", "model": "rogue", "weapon": "crossbow", "wlen": 28.0, "tint": Color(0.8, 0.82, 0.86), "mono": 1.0, "k": 0.95,
+	"greybow": {"name": "灰衣弩手", "model": "grey_bow", "weapon": "crossbow", "wlen": 28.0, "tint": Color(0.8, 0.82, 0.86), "mono": 1.0, "k": 0.95,
 		"hp": 45.0, "speed": 4.2, "detect": 17.0, "range": 14.0, "dmg": 9.0, "windup": 0.72, "attack": "shot", "poise": 0.0, "coins": 4, "keep": 9.5, "dodge": 0.2},
 	# 灰衣军官：精英，重劈 + 突刺，会喊人
-	"officer": {"name": "灰衣军官", "model": "barbarian", "weapon": "axe2", "wlen": 42.0, "tint": Color(0.75, 0.78, 0.84), "mono": 0.8, "k": 1.2,
+	"officer": {"name": "灰衣军官", "model": "grey_officer", "weapon": "axe2", "wlen": 42.0, "tint": Color(0.75, 0.78, 0.84), "mono": 0.8, "k": 1.2,
 		"hp": 380.0, "speed": 4.0, "detect": 30.0, "range": 2.7, "dmg": 19.0, "windup": 0.5, "attack": "heavy", "poise": 60.0, "coins": 22, "dodge": 0.2},
 	# ---------- 第二幕 · 扩充：每层两类新小怪 ----------
 	# 引魂灯童（青井）：提着纸灯的小骸骨，不打人，躲在后面；隔一阵灯一亮，身边的怪都回血
-	"lampkid": {"name": "引魂灯童", "model": "skel_minion", "weapon": "", "wlen": 0.0, "tint": Color(0.82, 0.92, 1.05), "k": 0.72,
+	"lampkid": {"name": "引魂灯童", "model": "skel_lampkid", "weapon": "", "wlen": 0.0, "tint": Color(0.82, 0.92, 1.05), "k": 0.72,
 		"hp": 34.0, "speed": 4.4, "detect": 16.0, "range": 9.0, "dmg": 0.0, "windup": 0.8, "attack": "aura", "poise": 0.0, "coins": 4, "keep": 8.5,
 		"offhand": "lantern_h", "olen": 30.0, "aura": "heal"},
 	# 井鳗骨（青井）：在积水底下游着跟你，冒头咬一口又潜下去（潜着时打不着）
-	"eel": {"name": "井鳗骨", "model": "skel_rogue", "weapon": "dagger", "wlen": 20.0, "tint": Color(0.5, 0.95, 1.0), "mono": 0.65, "k": 0.95,
+	"eel": {"name": "井鳗骨", "model": "skel_eel", "weapon": "dagger", "wlen": 20.0, "tint": Color(0.5, 0.95, 1.0), "mono": 0.65, "k": 0.95,
 		"hp": 48.0, "speed": 5.0, "detect": 16.0, "range": 2.6, "dmg": 13.0, "windup": 0.34, "attack": "lunge", "poise": 0.0, "coins": 4, "lurk": true, "dive": true, "elem": "water"},
 	# 泼油俑（灯冢）：铜俑抱着灯油罐，站远了往你脚下扔，落地烧一摊火
-	"oiler": {"name": "泼油俑", "model": "knight", "weapon": "", "wlen": 0.0, "tint": Color(1.2, 0.84, 0.5), "mono": 0.7, "k": 1.05,
+	"oiler": {"name": "泼油俑", "model": "bronze_oiler", "weapon": "", "wlen": 0.0, "tint": Color(1.2, 0.84, 0.5), "mono": 0.7, "k": 1.05,
 		"hp": 70.0, "speed": 3.0, "detect": 16.0, "range": 12.0, "dmg": 7.0, "windup": 0.8, "attack": "lob", "poise": 0.0, "coins": 5, "keep": 8.0, "elem": "fire"},
 	# 殉灯俑（灯冢）：成对殉葬的铜俑，倒下一个，只要另一个还站着，几秒后又爬起来
-	"twin": {"name": "殉灯俑", "model": "skel_warrior", "weapon": "sword", "wlen": 30.0, "tint": Color(1.2, 0.9, 0.55), "mono": 0.6, "k": 1.0,
+	"twin": {"name": "殉灯俑", "model": "bronze_twin", "weapon": "sword", "wlen": 30.0, "tint": Color(1.2, 0.9, 0.55), "mono": 0.6, "k": 1.0,
 		"hp": 62.0, "speed": 3.9, "detect": 14.0, "range": 2.3, "dmg": 13.0, "windup": 0.5, "attack": "slash", "poise": 0.0, "coins": 4, "twin": true},
 	# 灰衣枪兵（灰衣营）：长枪，隔着四五步就扎过来，扎完退开
-	"greyspear": {"name": "灰衣枪兵", "model": "knight", "weapon": "spear", "wlen": 60.0, "tint": Color(0.8, 0.82, 0.87), "mono": 0.9, "k": 1.05,
+	"greyspear": {"name": "灰衣枪兵", "model": "grey_spear", "weapon": "spear", "wlen": 60.0, "tint": Color(0.8, 0.82, 0.87), "mono": 0.9, "k": 1.05,
 		"hp": 80.0, "speed": 3.8, "detect": 15.0, "range": 4.6, "dmg": 15.0, "windup": 0.6, "attack": "thrust", "poise": 0.0, "coins": 5, "hitrun": true, "dodge": 0.15},
 	# 灰衣旗手（灰衣营）：扛旗的，躲在后面，旗一举，身边的灰衣人发狠（出手更快、更疼）
-	"greyflag": {"name": "灰衣旗手", "model": "barbarian", "weapon": "flag", "wlen": 54.0, "tint": Color(0.8, 0.82, 0.86), "mono": 0.75, "k": 1.0,
+	"greyflag": {"name": "灰衣旗手", "model": "grey_flag", "weapon": "flag", "wlen": 54.0, "tint": Color(0.8, 0.82, 0.86), "mono": 0.75, "k": 1.0,
 		"hp": 75.0, "speed": 3.8, "detect": 16.0, "range": 9.0, "dmg": 10.0, "windup": 0.8, "attack": "aura", "poise": 0.0, "coins": 6, "keep": 7.5, "aura": "rally"},
 	# 烬的残影（燃烬时）：灰烬凝成的人影，排开冲过来，打不着
-	"ashghost": {"name": "烬影", "model": "rogue", "weapon": "sword", "wlen": 34.0, "tint": Color(1.4, 0.9, 0.7), "mono": 1.0, "k": 1.0,
+	"ashghost": {"name": "烬影", "model": "jin", "ghost": true, "weapon": "sword", "wlen": 34.0, "tint": Color(1.4, 0.9, 0.7), "mono": 1.0, "k": 1.0,
 		"hp": 9999.0, "speed": 3.0, "detect": 40.0, "range": 2.6, "dmg": 15.0, "windup": 0.7, "attack": "charge", "poise": 999.0, "coins": 0, "phantom": true},
 	# 执灯使·烬：寂光大弟子，手里是断刀前半截。三段：刀法 → 点第四盏灯（放火、叫人）→ 燃烬（残影冲阵）
-	"boss6": {"name": "执灯使·烬", "model": "rogue", "weapon": "sword2", "wlen": 50.0, "tint": Color(0.82, 0.8, 0.86), "mono": 1.0, "k": 1.45,
+	"boss6": {"name": "执灯使·烬", "model": "jin", "weapon": "sword2", "wlen": 50.0, "tint": Color(0.82, 0.8, 0.86), "mono": 1.0, "k": 1.45,
 		"hp": 1400.0, "speed": 4.4, "detect": 40.0, "range": 3.0, "dmg": 23.0, "windup": 0.47, "attack": "boss", "poise": 160.0, "coins": 120, "boss": true, "dodge": 0.15},
-	"boss5": {"name": "不夜将军", "model": "knight", "weapon": "axe2", "wlen": 60.0, "tint": Color(1.3, 0.9, 0.5), "mono": 0.55, "k": 2.0,
+	"boss5": {"name": "不夜将军", "model": "boss_general", "weapon": "axe2", "wlen": 60.0, "tint": Color(1.3, 0.9, 0.5), "mono": 0.55, "k": 2.0,
 		"hp": 1050.0, "speed": 3.2, "detect": 40.0, "range": 3.6, "dmg": 22.0, "windup": 0.62, "attack": "boss", "poise": 150.0, "coins": 90, "boss": true},
-	"boss4": {"name": "井中人·枯荣", "model": "skel_mage", "weapon": "skel_staff", "wlen": 48.0, "tint": Color(0.65, 0.88, 1.15), "k": 1.8,
+	"boss4": {"name": "井中人·枯荣", "model": "boss_kurong", "weapon": "skel_staff", "wlen": 48.0, "tint": Color(0.65, 0.88, 1.15), "k": 1.8,
 		"hp": 950.0, "speed": 3.0, "detect": 40.0, "range": 3.4, "dmg": 20.0, "windup": 0.6, "attack": "boss", "poise": 130.0, "coins": 80, "boss": true, "head": "skel_minion"},
-	"boss3": {"name": "百骨将", "model": "skel_warrior", "weapon": "skel_axe", "wlen": 50.0, "tint": Color(0.9, 1.0, 0.85), "k": 2.0,
+	"boss3": {"name": "百骨将", "model": "boss_bones", "weapon": "skel_axe", "wlen": 50.0, "tint": Color(0.9, 1.0, 0.85), "k": 2.0,
 		"hp": 1100.0, "speed": 3.3, "detect": 40.0, "range": 3.4, "dmg": 22.0, "windup": 0.65, "attack": "boss", "poise": 140.0, "coins": 75, "boss": true},
-	"boss": {"name": "夜樱剑鬼", "model": "barbarian", "weapon": "sword2", "wlen": 52.0, "tint": Color(0.78, 0.72, 0.9), "k": 1.55,
+	"boss": {"name": "夜樱剑鬼", "model": "boss_sakura", "weapon": "sword2", "wlen": 52.0, "tint": Color(0.78, 0.72, 0.9), "k": 1.55,
 		"hp": 900.0, "speed": 3.6, "detect": 40.0, "range": 3.2, "dmg": 20.0, "windup": 0.6, "attack": "boss", "poise": 120.0, "coins": 60, "boss": true},
-	"boss2": {"name": "寂光", "model": "knight", "weapon": "sword2", "wlen": 56.0, "tint": Color(0.85, 0.9, 1.05), "k": 1.6,
+	"boss2": {"name": "寂光", "model": "boss_jiguang", "weapon": "sword2", "wlen": 56.0, "tint": Color(0.85, 0.9, 1.05), "k": 1.6,
 		"hp": 1150.0, "speed": 3.9, "detect": 40.0, "range": 3.4, "dmg": 24.0, "windup": 0.55, "attack": "boss", "poise": 160.0, "coins": 90, "boss": true},
 }
 
@@ -244,18 +241,18 @@ func _ready() -> void:
 	rig = VoxActor.new()
 	add_child(rig)
 	var mid := String(data["model"])
-	var swapped := model_swap.has(kind)
-	if swapped:
-		mid = String(model_swap[kind])
-	rig.setup(mid, String(data["weapon"]), float(data["wlen"]), Color.WHITE if swapped else data["tint"], k)
+	# 锻造台做的模型颜色是画好的，不再染色、去色；只有幻影类（ghost）照旧染成一片光
+	var forged := VoxelModel.forged(mid)
+	var ghost := bool(data.get("ghost", false))
+	rig.setup(mid, String(data["weapon"]), float(data["wlen"]), data["tint"] if (ghost or not forged) else Color.WHITE, k)
 	if Arena.lod == 0 and not is_boss:
 		rig.mat.next_pass = null   # 低画质：小怪不描边（描边是整个人偶再画一遍，成群时绘制调用翻倍）
 	# 边缘光跟着区域走：冷色地面（幽林、墓园、樱林、地宫、驿站）用暖色，暖色地面用冷色，怎么都跟地面拉开
 	rig.set_rim(zone_rim if not is_boss else Color(1.0, 0.6, 0.8), 0.45 if not is_boss else 0.35)
 	_make_base_ring(k)
-	if data.has("head") and not swapped:
+	if data.has("head") and not forged:
 		rig.swap_head(String(data["head"]))
-	if data.has("mono"):
+	if data.has("mono") and (ghost or not forged):
 		rig.mat.set_shader_parameter("mono", float(data["mono"]))
 	if data.has("offhand"):
 		rig.set_offhand(String(data["offhand"]), float(data.get("olen", 22.0)))

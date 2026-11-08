@@ -300,14 +300,16 @@ static func lightning(hero: Hero, at: Vector3, dmg: float, stun: float = 0.4) ->
 ## neutral 灯光去色（0~1，金色这类暖色在青光、绿光下不发绿）；swap_glow 换色那块自己亮几分；
 ## k 体型缩放；unlock：free / jade 魂玉买 / ach 成就数 / clears 登顶次数 / kills 累计斩敌 / act2 第二幕通关
 const SKINS := [
-	{"id": "qing", "name": "青衫", "desc": "最早那身衣服，洗得发白", "model": "rogue", "swap": Color(0.28, 0.5, 0.86), "rim": Color(0.45, 0.95, 1.0), "unlock": {"free": true}},
-	{"id": "chi", "name": "赤焰", "desc": "红得像要烧起来的披风", "model": "rogue", "swap": Color(0.7, 0.16, 0.12), "rim": Color(1.0, 0.5, 0.3), "scarf": Color(0.95, 0.72, 0.25), "unlock": {"jade": 25}},
-	{"id": "mo", "name": "墨夜", "desc": "黑里透紫，夜里看不见人", "model": "rogue", "swap": Color(0.13, 0.1, 0.18), "rim": Color(0.72, 0.5, 1.0), "scarf": Color(0.6, 0.3, 0.95), "unlock": {"jade": 40}},
-	{"id": "shuang", "name": "白霜", "desc": "一身素白，刀光也冷", "model": "rogue", "swap": Color(0.82, 0.86, 0.9), "rim": Color(0.75, 0.92, 1.0), "unlock": {"ach": 10}},
-	{"id": "knight", "name": "铁甲骑士", "desc": "从柳江远那里学来的板甲", "model": "knight", "rim": Color(1.0, 0.85, 0.5), "unlock": {"clears": 1}},
-	{"id": "barbarian", "name": "北地蛮勇", "desc": "一身兽皮，砍过一千个敌人才穿得上", "model": "barbarian", "rim": Color(1.0, 0.55, 0.35), "unlock": {"kills": 1000}},
-	{"id": "mage", "name": "云游术士", "desc": "宽袍大袖，打起来却不含糊", "model": "mage", "k": 1.3, "rim": Color(0.72, 0.6, 1.0), "unlock": {"jade": 60}},
-	{"id": "jin", "name": "金身", "desc": "第二幕走到底的人，才有这一身金", "model": "rogue", "swap": Color(1.0, 0.6, 0.14), "rim": Color(1.0, 0.85, 0.4), "glow": Color(0.08, 0.05, 0.0), "neutral": 0.75, "swap_glow": 0.35, "unlock": {"act2": true}},
+	{"id": "qing", "name": "青衫", "desc": "最早那身衣服，洗得发白", "model": "hero_canren", "swap": Color(0.28, 0.5, 0.86), "rim": Color(0.45, 0.95, 1.0), "unlock": {"free": true}},
+	{"id": "chi", "name": "赤焰", "desc": "红得像要烧起来的披风", "model": "hero_canren", "swap": Color(0.7, 0.16, 0.12), "rim": Color(1.0, 0.5, 0.3), "scarf": Color(0.95, 0.72, 0.25), "unlock": {"jade": 25}},
+	{"id": "mo", "name": "墨夜", "desc": "黑里透紫，夜里看不见人", "model": "hero_canren", "swap": Color(0.13, 0.1, 0.18), "rim": Color(0.72, 0.5, 1.0), "scarf": Color(0.6, 0.3, 0.95), "unlock": {"jade": 40}},
+	{"id": "shuang", "name": "白霜", "desc": "一身素白，刀光也冷", "model": "hero_canren", "swap": Color(0.82, 0.86, 0.9), "rim": Color(0.75, 0.92, 1.0), "unlock": {"ach": 10}},
+	{"id": "knight", "name": "铁甲", "desc": "从柳江远那里学来的札甲", "model": "hero_armor", "swap": Color(0.3, 0.36, 0.5), "rim": Color(1.0, 0.85, 0.5), "unlock": {"clears": 1}},
+	{"id": "barbarian", "name": "北地蛮勇", "desc": "一身兽皮，砍过一千个敌人才穿得上", "model": "hero_wild", "rim": Color(1.0, 0.55, 0.35), "unlock": {"kills": 1000}},
+	{"id": "mage", "name": "云游僧", "desc": "大斗笠、行脚箱，打起来却不含糊", "model": "huiming", "swap": Color(0.5, 0.42, 0.34), "rim": Color(0.72, 0.6, 1.0), "unlock": {"jade": 60}},
+	{"id": "aqi", "name": "逃兵", "desc": "阿七那身旧灰衣，臂章早撕了", "model": "aqi", "rim": Color(1.0, 0.6, 0.45), "unlock": {"char": "aqi"}},
+	{"id": "ember", "name": "执灯", "desc": "师兄的黑红长衣，袖口还在冒火星", "model": "jin", "rim": Color(1.0, 0.55, 0.3), "scarf": Color(0.95, 0.72, 0.25), "unlock": {"char": "jin"}},
+	{"id": "jin", "name": "金身", "desc": "第二幕走到底的人，才有这一身金", "model": "hero_canren", "swap": Color(1.0, 0.6, 0.14), "rim": Color(1.0, 0.85, 0.4), "glow": Color(0.08, 0.05, 0.0), "neutral": 0.75, "swap_glow": 0.35, "unlock": {"act2": true}},
 ]
 
 
@@ -353,4 +355,6 @@ static func skin_why_not(id: String) -> String:
 	if u.has("act2"):
 		var ends: Dictionary = Game.save.get("arpg_act2_endings", {})
 		return "" if not ends.is_empty() else "打通第二幕"
+	if u.has("char"):
+		return "" if ArpgChars.char_open(String(u["char"])) else "名册里解锁%s" % String(ArpgChars.get_char(String(u["char"]))["name"])
 	return "未解锁"

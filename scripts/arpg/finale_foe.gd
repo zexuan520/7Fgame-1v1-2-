@@ -5,7 +5,7 @@ extends Act3Foe
 ##          推完灯露在外面，他自己也站不稳：三秒内挨打伤害 +50%（这是打他的窗口）
 ##   半血“燃国”：七盏灯的回响轮着来（长明帝的光柱、焦明的天火、霍长风的幽骑列阵），灯涌更勤，叫人时多一个披火骨
 
-const KING := {"name": "烛王", "model": "knight", "weapon": "sword2", "wlen": 56.0, "tint": Color(0.72, 0.56, 0.44), "mono": 0.45, "k": 2.15,
+const KING := {"name": "烛王", "model": "boss_king", "weapon": "sword2", "wlen": 56.0, "tint": Color(0.72, 0.56, 0.44), "mono": 0.45, "k": 2.15,
 	"hp": 2500.0, "speed": 3.5, "detect": 40.0, "range": 3.4, "dmg": 30.0, "windup": 0.5, "attack": "boss", "poise": 180.0, "coins": 260, "boss": true,
 	"rage": "第八灯·燃国", "rage_line": "烛国——都起来！", "head": "barbarian"}
 const MINE := ["k_surge", "k_summon"]

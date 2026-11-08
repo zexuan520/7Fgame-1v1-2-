@@ -85,10 +85,6 @@ func _ready() -> void:
 		Game.save.erase("arpg_hints_off")
 	if _args.has("pad"):
 		ArpgInput.pad_used[0] = true   # 测试：按键提示写成手柄的
-	if _args.has("newmodels"):
-		# 测试：换上锻造台的新模型（tools/charforge），拍新旧对比
-		Hero.rogue_swap = "hero_canren"
-		Foe.model_swap = {"skeleton": "skel_grunt", "shield": "skel_shield", "archer": "skel_archer", "greyblade": "grey_blade"}
 	VoxelGrid.greedy = not _args.has("nogreedy")
 	VoxelGrid.fast = not _args.has("slowmesh")   # 测试：用老的合网格写法（对比快多少）
 	if _args.has("batchmax"):
@@ -183,7 +179,7 @@ func _ready() -> void:
 	if _args.has("lineup"):
 		# 测试：一排角色模型站好，拍特写对比
 		# --lineup=模型:兵器,模型:兵器  自定排哪几个（--lineup_yaw 朝向度数，0 = 正对镜头；--lineup_gap 间距米）
-		var ids := [["rogue", "sword"], ["skel_minion", ""], ["skel_warrior", "skel_blade"], ["skel_mage", "skel_staff"], ["skel_rogue", ""], ["knight", "axe2"], ["barbarian", "sword2"]]
+		var ids := [["hero_canren", "sword"], ["skel_crawler", ""], ["skel_grunt", "skel_blade"], ["skel_mage2", "skel_staff"], ["skel_assassin", "dagger"], ["red_armor", "axe2"], ["boss_sakura", "sword2"]]
 		if String(_args["lineup"]) != "1":
 			ids = []
 			for s: String in String(_args["lineup"]).split(","):
@@ -1074,7 +1070,7 @@ func _enter_hub_body() -> void:
 	feel.screen_flash(Color(0, 0, 0, 1), 1.4)
 	Game.music("hub")
 	var hz := HUB_SIZE.y * 0.5
-	_npc("拾骨婆 · 天赋", Vector3(-4.0, 0, 1.0), {"model": "skel_mage", "weapon": "skel_staff", "tint": Color(1.1, 0.95, 0.8)}, _open_talents)
+	_npc("拾骨婆 · 天赋", Vector3(-4.0, 0, 1.0), {"model": "npc_hag", "weapon": "skel_staff"}, _open_talents)
 	_npc("兵器架", Vector3(4.0, 0, 1.0), {"kit": "sword_shield", "scale": 1.3}, _open_weapons)
 	_npc("衣箱 · 皮肤", Vector3(-6.5, 0, 4.0), {"kit": "crates", "scale": 0.9}, _open_skins)
 	ArpgChars.check_unlocks()
@@ -1104,8 +1100,8 @@ func _enter_hub_body() -> void:
 		_make_secret_portal(wp, "act2", Color(0.45, 0.8, 1.0))
 	# 第二幕的支线人物：刀匠（第二幕走过一次后来）、地藏（头放回去以后）
 	if int(Game.save.get("arpg_act2_runs", 0)) > 0:
-		_npc("老刀匠 · 刀镡已成" if ArpgStory.smith_done() else "老刀匠 %d / %d" % [ArpgStory.smith_items().size(), ArpgStory.SMITH_ITEMS.size()], Vector3(9.0, 0, 2.5), {"model": "barbarian", "tint": Color(1.05, 0.8, 0.6)}, _talk_smith)
-		_npc("守灯僧 · 换物" if String(Game.save.get("arpg_monk_buy", "")) == "" else "守灯僧 · 已换过", Vector3(9.5, 0, -2.0), {"model": "mage", "tint": Color(0.8, 0.95, 0.8)}, _talk_monk)
+		_npc("老刀匠 · 刀镡已成" if ArpgStory.smith_done() else "老刀匠 %d / %d" % [ArpgStory.smith_items().size(), ArpgStory.SMITH_ITEMS.size()], Vector3(9.0, 0, 2.5), {"model": "npc_smith"}, _talk_smith)
+		_npc("守灯僧 · 换物" if String(Game.save.get("arpg_monk_buy", "")) == "" else "守灯僧 · 已换过", Vector3(9.5, 0, -2.0), {"model": "npc_monk"}, _talk_monk)
 	# 第三幕：第二幕任一结局后，山门左边下山的路口出现“出山”光门；阿禾、七村名录碑
 	Act3.hub(self)
 	ArpgDaily.hub(self)   # 每日挑战、种子局的告示牌（光门右边）
@@ -1794,7 +1790,7 @@ func _enter_room_body(kind: String = "", zone_override: String = "") -> void:
 			if _hold_waves:
 				get_tree().create_timer(1.3).timeout.connect(_boss_intro.bind(fl))
 		"shop":
-			_npc("游商", mid, {"model": "barbarian", "tint": Color(0.95, 0.85, 0.7)}, _open_shop)
+			_npc("游商", mid, {"model": "npc_merchant"}, _open_shop)
 			_open_portal()
 		"rest":
 			_npc("土地庙", mid, {"kit": "shrine", "scale": 1.2}, _open_rest)
@@ -2644,7 +2640,7 @@ func _ensure_xiaoman() -> void:
 		return
 	_xiaoman = Follower.new()
 	add_child(_xiaoman)
-	_xiaoman.setup("rogue", Color(1.15, 0.95, 0.8), 0.62, "小满")
+	_xiaoman.setup("npc_kid", Color.WHITE, 0.62, "小满")
 	_xiaoman.hero = hero
 	_xiaoman.global_position = hero.global_position + Vector3(1.5, 0, 1.5)
 

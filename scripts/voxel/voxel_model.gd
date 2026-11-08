@@ -102,6 +102,12 @@ static func _make(id: String, sliced: bool) -> VoxelModel:
 	return m
 
 
+## 是不是锻造台（tools/charforge）自制的模型：颜色画在模型上，用的地方不该再染色
+static func forged(id: String) -> bool:
+	var m := load_model(id)
+	return m != null and m.source.begins_with("本作自制")
+
+
 func j(name: String) -> Vector3:
 	return joints.get(name, Vector3.ZERO)
 

@@ -2122,7 +2122,7 @@ func _bronze_statue(p: Vector3, yaw: float) -> void:
 	add_child(a)
 	a.position = p + Vector3(0, 0.45, 0)
 	a.rotation.y = yaw
-	a.setup("knight", "sword", 36.0, Color(1.25, 0.85, 0.48), 1.15)
+	a.setup("zhu_armored", "sword", 36.0, Color(1.25, 0.85, 0.48), 1.15)
 	a.mat.set_shader_parameter("mono", 1.0)
 	a.apply(Poses.idle(0.0))
 	a.set_rim(Color(1.0, 0.7, 0.35), 0.35)

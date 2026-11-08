@@ -113,7 +113,7 @@ static func ensure_jin(main: ArpgMain) -> void:
 		return
 	_jin = Follower.new()
 	main.add_child(_jin)
-	_jin.setup("rogue", Color(0.85, 0.82, 0.9), 1.0, "烬")
+	_jin.setup("jin", Color.WHITE, 1.0, "烬")
 	_jin.hero = main.hero
 	_jin.global_position = main.hero.global_position + Vector3(-1.5, 0, 1.5)
 
@@ -127,7 +127,7 @@ static func hub(main: ArpgMain) -> void:
 		ar.spirit_fire(PORTAL_POS + Vector3(0, 1.2, -1.2), C_PORTAL, 1.2, 2.0, 7.0)
 		main._make_secret_portal(PORTAL_POS, "act3", C_PORTAL)
 	if bool(Game.save.get("arpg_ahe_home", false)):
-		main._npc("阿禾", Vector3(11.0, 0, 3.5), {"model": "rogue", "tint": Color(1.15, 0.9, 0.85)}, func(_n: ArpgNpc) -> void:
+		main._npc("阿禾", Vector3(11.0, 0, 3.5), {"model": "npc_he"}, func(_n: ArpgNpc) -> void:
 			main._say(Act3Story.AHE_HUB))
 	if not Act3Story.villages().is_empty():
 		main._npc("七村名录 %d / %d" % [Act3Story.villages().size(), Act3Story.VILLAGES.size()], Vector3(-12.0, 0, -2.5),

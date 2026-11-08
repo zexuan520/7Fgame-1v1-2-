@@ -1,3 +1,11 @@
+# 角色模型（2026-11-08 起）
+
+游戏里的主角、小怪、头目、NPC 现在都是**本作自制**的体素角色，用 `tools/charforge`（角色锻造台）按斜俯视镜头重新设计：
+头身比约 1:4、每种人一个顶视剪影、三层明度配色、敌人眼睛自发光。不来自任何第三方素材。
+生成：`python3 tools/charforge/forge.py [名字 ...]`，角色定义在 `tools/charforge/chars*.py`，零件在 `kit.py`。
+
+下面 KayKit 体素化的老模型（rogue、knight、skel_* 等）只剩早期横版原型（scenes/main.tscn）还在用。
+
 # 体素角色模型出处
 
 这里的 json 都是用 `tools/voxelize/voxelize_char.py` 从下面的 3D 模型体素化出来的（按骨骼切块、1 格 1 像素、颜色取自原贴图）。

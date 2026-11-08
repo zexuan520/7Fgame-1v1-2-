@@ -8,13 +8,13 @@ extends RefCounted
 const CHARS := [
 	{"id": "canren", "name": "残刃", "title": "寂光的小徒弟", "weapon": "sword", "boon": "", "skin": "qing",
 		"desc": "什么都会一点。没有天生的长处，也没有短处", "stats": {}, "unlock": {}},
-	{"id": "aqi", "name": "阿七", "title": "灰衣营的逃兵", "weapon": "crossbow", "boon": "swift", "skin": "mo",
+	{"id": "aqi", "name": "阿七", "title": "灰衣营的逃兵", "weapon": "crossbow", "boon": "swift", "skin": "aqi",
 		"desc": "连弩起手，开局带“轻身”。翻滚更远、翻滚后突进冷却 -0.4 秒，身子薄（生命 -15）",
 		"stats": {"roll_far": 0.25, "roll_cd": 0.4, "hp": -15.0}, "unlock": {"ach": "boss1"}},
 	{"id": "huiming", "name": "慧明", "title": "古寺守灯的和尚", "weapon": "staff", "boon": "iron", "skin": "mage",
 		"desc": "齐眉棍起手，开局带“铁衣”。生命 +30，每清完一间房回 8% 生命，走得慢一点（移速 -6%）",
 		"stats": {"hp": 30.0, "clear_heal": 0.08, "move": -0.06}, "unlock": {"ach": "boss2"}},
-	{"id": "jin", "name": "烬", "title": "执灯使，你的师兄", "weapon": "greatsword", "boon": "ember", "skin": "chi",
+	{"id": "jin", "name": "烬", "title": "执灯使，你的师兄", "weapon": "greatsword", "boon": "ember", "skin": "ember",
 		"desc": "斩马大剑起手，开局带“火种”。伤害 +12%、斩杀 15% 机会爆燃，代价是受伤 +10%",
 		"stats": {"atk": 0.12, "kill_fire": 0.15, "taken_extra": 0.1}, "unlock": {"ach": "boss6"}},
 ]
