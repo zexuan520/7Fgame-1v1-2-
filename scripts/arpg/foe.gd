@@ -6,6 +6,9 @@ extends Actor
 ## 幽魂术士（远程法阵）、骨弩手（远程弩箭，会躲着打）、冲阵骨（远距离直线冲锋，撞墙会晕）、爆骨鬼（贴脸自爆，先打死它反而炸到旁边的怪）、
 ## 盾骷髅（正面举盾挡刀，绕后或连砍破盾）、招魂巫（躲在后面招小鬼，打死它小鬼散架）、头目（夜樱剑鬼、百骨将会召唤小怪和地刺、寂光）。
 
+## 测试：兵种 → 新模型（锻造台做的，颜色画在模型上，不再染色），--newmodels 打开
+static var model_swap := {}
+
 ## 头目进二阶段时头上冒的字
 const RAGE_NAMES := {"boss": "剑鬼·狂", "boss3": "万骨·醒", "boss2": "残灯·燃", "boss4": "枯荣·涨", "boss5": "不夜·燃", "boss6": "烬·点灯"}
 ## 头目半血变身时说的一句
@@ -240,13 +243,17 @@ func _ready() -> void:
 	add_child(cs)
 	rig = VoxActor.new()
 	add_child(rig)
-	rig.setup(String(data["model"]), String(data["weapon"]), float(data["wlen"]), data["tint"], k)
+	var mid := String(data["model"])
+	var swapped := model_swap.has(kind)
+	if swapped:
+		mid = String(model_swap[kind])
+	rig.setup(mid, String(data["weapon"]), float(data["wlen"]), Color.WHITE if swapped else data["tint"], k)
 	if Arena.lod == 0 and not is_boss:
 		rig.mat.next_pass = null   # 低画质：小怪不描边（描边是整个人偶再画一遍，成群时绘制调用翻倍）
 	# 边缘光跟着区域走：冷色地面（幽林、墓园、樱林、地宫、驿站）用暖色，暖色地面用冷色，怎么都跟地面拉开
 	rig.set_rim(zone_rim if not is_boss else Color(1.0, 0.6, 0.8), 0.45 if not is_boss else 0.35)
 	_make_base_ring(k)
-	if data.has("head"):
+	if data.has("head") and not swapped:
 		rig.swap_head(String(data["head"]))
 	if data.has("mono"):
 		rig.mat.set_shader_parameter("mono", float(data["mono"]))

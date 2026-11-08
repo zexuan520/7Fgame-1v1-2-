@@ -136,18 +136,22 @@ func _downsample(f: int, sliced: bool) -> VoxelGrid:
 		var c: Color = cells[p]
 		var a: Variant = acc.get(q)
 		if a == null:
-			acc[q] = [c.r, c.g, c.b, 1]
+			acc[q] = [c.r, c.g, c.b, 1, c if c.a < 0.99 else null]
 		else:
 			a[0] += c.r
 			a[1] += c.g
 			a[2] += c.b
 			a[3] += 1
+			if c.a < 0.99 and a[4] == null:
+				a[4] = c
 	var g := VoxelGrid.new(0)
 	var need := maxi(1, f * f * f / 4)
 	for q: Vector3i in acc:
 		var a: Array = acc[q]
 		var n := int(a[3])
-		if n >= need:
+		if a[4] != null:
+			g.cells[q] = a[4]   # 发光格（alpha < 1，眼睛之类）缩小时不跟旁边平均，整格保住
+		elif n >= need:
 			g.cells[q] = Color(a[0] / n, a[1] / n, a[2] / n)
 	LoadProf.add("grid.downsample", _lp)
 	return g

@@ -291,19 +291,28 @@ func _reset_trail() -> void:
 	trail.set_colors(tc[0], rel.tint_edge(tc[1]))
 
 
+## 测试：rogue 换成哪个模型（--newmodels）
+static var rogue_swap := ""
+
+
+static func _skin_model(sk: Dictionary) -> String:
+	var m := String(sk.get("model", ""))
+	return rogue_swap if m == "rogue" and rogue_swap != "" else m
+
+
 ## 换皮肤：换模型就整个人偶重建（兵器、刀光跟着挂回去）
 func apply_skin(id: String) -> void:
 	var sk := ArpgArms.skin(id)
 	if skin_id == String(sk["id"]) and rig != null:
 		return
-	var old_model := String(ArpgArms.skin(skin_id).get("model", "")) if skin_id != "" else ""
+	var old_model := _skin_model(ArpgArms.skin(skin_id)) if skin_id != "" else ""
 	skin_id = String(sk["id"])
-	if rig == null or old_model != String(sk["model"]):
+	if rig == null or old_model != _skin_model(sk):
 		if rig != null:
 			rig.queue_free()
 		rig = VoxActor.new()
 		add_child(rig)
-		rig.setup(String(sk["model"]), "", 34.0, Color(1, 1, 1), float(sk.get("k", 1.0)))
+		rig.setup(_skin_model(sk), "", 34.0, Color(1, 1, 1), float(sk.get("k", 1.0)))
 		rig.mat.next_pass = VoxActor.hero_outline_material()
 		if trail != null:
 			trail.rig = rig

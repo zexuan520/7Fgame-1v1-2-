@@ -41,12 +41,14 @@ void fragment() {
 	// 顶面最亮；左右侧面压一点、朝镜头的正面压多一点（斜俯视看得最多的是顶面和正面，两者拉开才有体积）
 	float fs = face_shade * face_mul;
 	float face = 1.0 - fs * (abs(wn.x) * 0.3 + max(wn.z, 0.0) * 0.48 + max(-wn.z, 0.0) * 0.4 + max(-wn.y, 0.0) * 0.7);
-	base *= face;
+	// 顶点色 alpha < 1 = 发光格（锻造台角色的眼睛、灯火）：不压明暗，自己发光
+	float self_lit = 1.0 - COLOR.a;
+	base *= mix(face, 1.0, step(0.01, self_lit));
 	ALBEDO = mix(base, flash_color, flash);
 	vec3 hemi = mix(hemi_ground.rgb, hemi_sky.rgb, wn.y * 0.5 + 0.5);
 	float ndv = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
 	float rim = pow(1.0 - ndv, rim_power);
-	EMISSION = glow + swap_emit + rim_color * rim * rim_strength + flash_color * flash * 1.6 + base * hemi * (1.0 - flash);
+	EMISSION = base * self_lit * 6.0 + glow + swap_emit + rim_color * rim * rim_strength + flash_color * flash * 1.6 + base * hemi * (1.0 - flash);
 	if (fade < 0.999) {
 		// 屏幕空间 4x4 抖动：不用透明排序也能“半透明”
 		int x = int(FRAGCOORD.x) % 4;

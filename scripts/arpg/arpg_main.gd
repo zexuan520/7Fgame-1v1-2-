@@ -85,6 +85,10 @@ func _ready() -> void:
 		Game.save.erase("arpg_hints_off")
 	if _args.has("pad"):
 		ArpgInput.pad_used[0] = true   # 测试：按键提示写成手柄的
+	if _args.has("newmodels"):
+		# 测试：换上锻造台的新模型（tools/charforge），拍新旧对比
+		Hero.rogue_swap = "hero_canren"
+		Foe.model_swap = {"skeleton": "skel_grunt", "shield": "skel_shield", "archer": "skel_archer", "greyblade": "grey_blade"}
 	VoxelGrid.greedy = not _args.has("nogreedy")
 	VoxelGrid.fast = not _args.has("slowmesh")   # 测试：用老的合网格写法（对比快多少）
 	if _args.has("batchmax"):
@@ -178,11 +182,25 @@ func _ready() -> void:
 				get_tree().create_timer(0.05).timeout.connect(func() -> void: Input.action_release(ArpgInput.act(0, "attack"))))
 	if _args.has("lineup"):
 		# 测试：一排角色模型站好，拍特写对比
+		# --lineup=模型:兵器,模型:兵器  自定排哪几个（--lineup_yaw 朝向度数，0 = 正对镜头；--lineup_gap 间距米）
 		var ids := [["rogue", "sword"], ["skel_minion", ""], ["skel_warrior", "skel_blade"], ["skel_mage", "skel_staff"], ["skel_rogue", ""], ["knight", "axe2"], ["barbarian", "sword2"]]
+		if String(_args["lineup"]) != "1":
+			ids = []
+			for s: String in String(_args["lineup"]).split(","):
+				var kv := s.split(":")
+				ids.append([kv[0], kv[1] if kv.size() > 1 else ""])
+		var gap := float(_args.get("lineup_gap", "1.5"))
 		for i in range(ids.size()):
-			var n := _npc(ids[i][0], hero.global_position + Vector3(-4.5 + i * 1.5, 0, -2.2), {"model": ids[i][0], "weapon": ids[i][1]}, func(_x: ArpgNpc) -> void: pass)
-			n.rotation.y = PI
+			var n := _npc(ids[i][0], hero.global_position + Vector3(-(ids.size() - 1) * gap * 0.5 + i * gap, 0, -2.2), {"model": ids[i][0], "weapon": ids[i][1]}, func(_x: ArpgNpc) -> void: pass)
+			n.rotation.y = PI + deg_to_rad(float(_args.get("lineup_yaw", "0")))
 			n.radius = 0.0
+			n._label.visible = false
+			if n.rig != null and (ids[i][0] == "rogue" or String(ids[i][0]).begins_with("hero_")):
+				# 主角模型按默认皮肤“青衫”换色，和游戏里看到的一样
+				n.rig.mat.set_shader_parameter("swap_green", true)
+				n.rig.mat.set_shader_parameter("swap_color", Vector3(0.28, 0.5, 0.86))
+				n.rig.mat.next_pass = VoxActor.hero_outline_material()
+				n.rig.set_rim(Color(0.45, 0.95, 1.0), 0.6)
 		hero.visible = false
 	if _args.has("foelineup"):
 		# 测试：新敌人站成一排不动（看模型、兵器、盾的位置）
@@ -199,7 +217,15 @@ func _ready() -> void:
 			var pz: Dictionary = f._aim_pose(1.0) if ks[i] in ["archer", "greyspear"] else Poses.idle(0.0)
 			f._pose = pz
 			f._apply_pose(1.0)
-		hero.visible = false
+			if _args.has("lineup_yaw"):
+				f.face_to(Vector3(sin(deg_to_rad(float(_args["lineup_yaw"]))), 0, cos(deg_to_rad(float(_args["lineup_yaw"])))))
+				f._apply_pose(1.0)
+		if _args.has("keephero"):
+			# 主角站在这排前面，侧身朝右前（拍新旧对比用）
+			hero.global_position += Vector3(0, 0, 1.0)
+			hero.face_to(Vector3(0.8, 0, 0.6).normalized())
+		else:
+			hero.visible = false
 	if _args.has("outro"):
 		# 测试：直接当作头目已经打倒
 		get_tree().create_timer(1.0).timeout.connect(func() -> void: _room_cleared())

@@ -84,10 +84,12 @@ static func _make(id: String, sliced: bool) -> VoxelModel:
 		var pd: Dictionary = d["parts"][pname]
 		var g := VoxelGrid.new(1)
 		var v: Array = pd["vox"]
-		for i in range(0, v.size(), 6):
-			if sliced and (i % 3072) == 0 and VoxelWarm.over():
+		# stride 7：每格多一个 alpha（< 255 表示发光，toon 着色器按 1 - alpha 自发光；锻造台 tools/charforge 做的角色眼睛用）
+		var st := int(pd.get("stride", 6))
+		for i in range(0, v.size(), st):
+			if sliced and (i % (st * 512)) == 0 and VoxelWarm.over():
 				await VoxelWarm.pause()
-			g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3]), int(v[i + 4]), int(v[i + 5]))
+			g.cells[Vector3i(int(v[i]), int(v[i + 1]), int(v[i + 2]))] = Color8(int(v[i + 3]), int(v[i + 4]), int(v[i + 5]), int(v[i + 6]) if st == 7 else 255)
 		var an: Array = pd["anchor"]
 		var mesh: ArrayMesh
 		if sliced:

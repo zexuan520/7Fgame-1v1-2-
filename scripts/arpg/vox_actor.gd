@@ -32,6 +32,8 @@ var height := 50.0
 var _flash := 0.0
 var _flash_col := Color.WHITE
 var scale_k := 1.0
+## 腿长倍数：姿势里的步幅、抬脚是按 KayKit 短腿（约 8.4 格）写的，锻造台的新模型腿长一倍多，步子要跟着放大，不然像在碎步挪
+var _legk := 1.0
 
 
 static func toon_material() -> ShaderMaterial:
@@ -78,6 +80,7 @@ func setup(model_id: String, weapon_id: String = "", wlen: float = 30.0, tint: C
 		return
 	height = float(model.joints.get("head", Vector3(0, 28, 0)).y) + 12.0
 	_hipmid = (model.j("upperleg.r") + model.j("upperleg.l")) * 0.5
+	_legk = clampf((model.length("leg_u_f") + model.length("leg_l_f")) / 8.4, 1.0, 2.4)
 	for side: String in ["r", "l"]:
 		var f := model.j("foot." + side)
 		_rest_feet[side] = Vector3(f.x, 0.0, f.z * 0.8)
@@ -246,7 +249,7 @@ func apply(p: Dictionary) -> void:
 	var M := model
 	var lean := float(p.get("lean", 0.05))
 	var twist := float(p.get("twist", 0.0))
-	var bob := float(p.get("bob", 0.0))
+	var bob := float(p.get("bob", 0.0)) * _legk
 	# 整体：翻滚绕胯的侧轴转，回旋绕竖轴转，受击往后仰
 	var hip_h := _hipmid.y * PX * scale_k
 	var roll := float(p.get("roll", 0.0))
@@ -294,7 +297,7 @@ func apply(p: Dictionary) -> void:
 	for side: String in ["r", "l"]:
 		var sd := "f" if side == "r" else "b"
 		var hj := hip3 + Basis(Vector3.UP, twist * 0.4) * (M.j("upperleg." + side) - _hipmid)
-		var off: Vector3 = p.get("foot_" + side, Vector3.ZERO)
+		var off: Vector3 = p.get("foot_" + side, Vector3.ZERO) * Vector3(_legk, _legk, 1.0)
 		var target: Vector3 = _rest_feet[side] + off + Vector3(0, ankle_h, 0)
 		var kn := _ik2(hj, target, M.length("leg_u_" + sd), M.length("leg_l_" + sd), Vector3(1, 0, 0))
 		var dl := (target - kn).normalized() * M.length("leg_l_" + sd)
