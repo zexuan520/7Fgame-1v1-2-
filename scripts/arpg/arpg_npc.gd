@@ -15,7 +15,8 @@ var rig: VoxActor
 var used := false            # 用过一次就不再提示（歇脚、奇遇）
 var _t := 0.0
 var _near := false
-var _label: Label3D
+var _label: Label3D          # 只当“名字 / 显不显示”的记录用，不画（画在下面的 2D 名牌上）
+var _plate: Label            # 2D 名牌：画在后期处理层上面，不被移轴模糊、调色压暗，也能夹在屏幕里（审查第 17 条）
 
 
 func _ready() -> void:
@@ -50,9 +51,21 @@ func _ready() -> void:
 	_label.font_size = 40
 	_label.outline_size = 10
 	_label.pixel_size = 0.008
-	_label.modulate = Color(1.0, 0.9, 0.6)
 	_label.position = Vector3(0, 2.6, 0)
+	_label.modulate = Color(1, 1, 1, 0)
+	_label.outline_modulate = Color(0, 0, 0, 0)
 	add_child(_label)
+	var cl := CanvasLayer.new()
+	cl.layer = 5      # 后期处理层（1）之上、HUD（6）之下
+	add_child(cl)
+	_plate = Label.new()
+	_plate.add_theme_font_override("font", _label.font)
+	_plate.add_theme_font_size_override("font_size", 19)
+	_plate.add_theme_constant_override("outline_size", 7)
+	_plate.add_theme_color_override("font_outline_color", Color(0.04, 0.03, 0.02, 0.95))
+	_plate.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cl.add_child(_plate)
 	# 脚下一圈淡金色光环，告诉玩家这里能互动
 	var ring := MeshInstance3D.new()
 	var q := QuadMesh.new()
@@ -80,8 +93,29 @@ func _process(dt: float) -> void:
 		break
 	_near = hero != null and hero.alive and hero.global_position.distance_to(global_position) < radius and not used
 	_label.text = (("[%s] %s" % [ArpgInput.key_name(0, "interact"), display]) if not TouchPad.active else "「互」" + display) if _near else display
-	_label.modulate.a = 1.0 if _near else 0.55
-	if used:
-		_label.modulate.a = 0.25
+	_update_plate()
 	if _near and Feel.I.world_pause <= 0.0 and Input.is_action_just_pressed(ArpgInput.act(0, "interact")):
 		interacted.emit(self)
+
+
+func _update_plate() -> void:
+	var cam := get_viewport().get_camera_3d()
+	var head := global_position + Vector3(0, 2.6, 0)
+	if cam == null or not _label.visible or not is_visible_in_tree() or cam.is_position_behind(head):
+		_plate.visible = false
+		return
+	_plate.visible = true
+	_plate.text = _label.text
+	var a := 1.0 if _near else 0.9
+	if used:
+		a = 0.45
+	_plate.modulate = Color(1.0, 0.9, 0.6, a) if _near else Color(0.96, 0.9, 0.74, a)
+	_plate.add_theme_font_size_override("font_size", 22 if _near else 19)
+	_plate.reset_size()
+	var p := cam.unproject_position(head)
+	var vs := get_viewport().get_visible_rect().size
+	var sz := _plate.size
+	# 夹在屏幕里：站在最上沿、最左右边的 NPC，名牌也整块露出来
+	var x := clampf(p.x - sz.x * 0.5, 8.0, vs.x - sz.x - 8.0)
+	var y := clampf(p.y - sz.y, 6.0, vs.y - sz.y - 6.0)
+	_plate.position = Vector2(x, y)

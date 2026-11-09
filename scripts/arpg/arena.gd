@@ -393,11 +393,19 @@ func _floor_color(x: float, z: float) -> Color:
 			var ch := _vault_channel(x, z)
 			if ch > 0.0:
 				c = Color(0.12, 0.07, 0.05).lerp(Color(1.0, 0.55, 0.18), ch)
+			# 地心铜纹：内外两圈 + 圈间一周八卦（原来是七根辐条，斜俯视下看着像西式五芒阵）
 			var r := Vector2(x, z).length()
-			if absf(r - 3.2) < 0.1 or absf(r - 4.4) < 0.06:
+			if absf(r - 3.0) < 0.1 or absf(r - 4.6) < 0.07 or absf(r - 1.3) < 0.07:
 				c = Color(0.42, 0.3, 0.15)
-			elif r < 3.2 and fposmod(atan2(z, x) * 7.0 / TAU, 1.0) < 0.05:
-				c = Color(0.34, 0.25, 0.14)
+			elif r > 3.25 and r < 4.35:
+				var sec := fposmod(atan2(z, x) / TAU * 8.0 + 0.5, 8.0)
+				var k := int(sec)
+				var fa := (sec - k - 0.5) * TAU / 8.0 * r          # 离这一卦中线的弧长（米）
+				var j := int((r - 3.25) / 0.37)
+				var inbar := fposmod(r - 3.25, 0.37) < 0.22 and absf(fa) < 0.85
+				var yang := (["111", "110", "101", "100", "011", "010", "001", "000"][k] as String)[mini(j, 2)] == "1"
+				if inbar and (yang or absf(fa) > 0.16):
+					c = Color(0.4, 0.29, 0.15)
 			return c * (1.15 + n2 * 0.1) * (0.97 + fposmod(h * 7.31, 1.0) * 0.06)
 		"camp":
 			# 灰衣营：踩实的黄土 + 车辙泥坑 + 散落的稻草和马蹄印；中间一条木板道通到营门

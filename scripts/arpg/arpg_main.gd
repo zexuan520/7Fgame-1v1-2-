@@ -680,6 +680,29 @@ func _apply_zone_env(info: Dictionary) -> void:
 	Foe.zone_rim_k = float(info.get("foe_rim_k", 0.45))   # 暖色地面（柳溪村、长明宫、灯冢）上的红橙金敌人：冷色轮廓光加强，别糊进地里
 
 
+## 大个子（头目、放大的精英、骑马的）站在主角和镜头之间时把它镂空变淡，主角不会整个被挡住看不见（审查第 15 条）
+func _foe_occlusion(cam: Camera3D) -> void:
+	var from := cam.global_position
+	var to := hero.global_position + Vector3(0, 0.9, 0)
+	var seg := to - from
+	for n: Node in get_tree().get_nodes_in_group("foes"):
+		var f := n as Foe
+		if f == null or f.rig == null or f.rig.mat == null:
+			continue
+		var big := f.is_boss or f.rig.scale_k >= 1.3 or f.rig.mount_model != null
+		if not big:
+			continue
+		# 敌人身体当一根竖柱：离镜头→主角那条线的最近距离小于身宽、又在主角前面（更靠镜头）就算挡住
+		var c := f.global_position + Vector3(0, f.rig.height * VoxActor.PX * f.rig.scale_k * 0.5, 0)
+		var t := clampf((c - from).dot(seg) / seg.length_squared(), 0.0, 1.0)
+		var block := t < 0.97 and (from + seg * t).distance_to(c) < 0.55 * f.rig.scale_k + 0.35
+		var cur: float = f.get_meta("occ_fade", 1.0)
+		cur = move_toward(cur, 0.35 if block else 1.0, 0.08)
+		if cur != f.get_meta("occ_fade", 1.0):
+			f.set_meta("occ_fade", cur)
+			f.rig.set_fade(cur)
+
+
 ## 环境光拆成两份：平涂的只留 FLAT_AMB，剩下的走半球光（顶面吃天光、底面吃地面反光，toon / floor 着色器里加），
 ## 再加体素面明暗 FACE_SHADE（正面、侧面压暗）。总亮度和以前差不多，但方块的顶面和侧面分开了，一块块立起来。
 const FLAT_AMB := 0.5
@@ -1430,6 +1453,10 @@ func _open_weapons(_n: ArpgNpc, keep_index: int = -1) -> void:
 	var m := _open_menu("兵器架", sub, items, "list", true)
 	if keep_index >= 0:
 		m.index = mini(keep_index, items.size() - 1)
+	var skin_now := String(Game.save.get("arpg_skin", "qing"))
+	ModelPreview.attach(m, func(i: int) -> Dictionary:
+		var a: Array = acts[clampi(i, 0, acts.size() - 1)]
+		return {"skin": skin_now, "weapon": String(a[1]) if String(a[0]) in ["main", "off"] else cur})
 	m.chosen.connect(func(i: int) -> void:
 		var a: Array = acts[i]
 		var id := String(a[1])
@@ -1482,6 +1509,9 @@ func _open_skins(_n: ArpgNpc, keep_index: int = -1) -> void:
 	var m := _open_menu("衣箱 · 皮肤", "只换样子，不改数值。　　魂玉 %d" % jade, items, "list", true)
 	if keep_index >= 0:
 		m.index = keep_index
+	var wpn := String(Game.save.get("arpg_weapon", "sword"))
+	ModelPreview.attach(m, func(i: int) -> Dictionary:
+		return {"skin": String(ArpgArms.SKINS[clampi(i, 0, ArpgArms.SKINS.size() - 1)]["id"]), "weapon": wpn})
 	m.chosen.connect(func(i: int) -> void:
 		var sk: Dictionary = ArpgArms.SKINS[i]
 		var id := String(sk["id"])
@@ -4510,6 +4540,7 @@ func _process_body(dt: float) -> void:
 			get_tree().quit(3)
 	if arena != null and cam_rig.cam != null and is_instance_valid(hero):
 		arena.update_occluders(cam_rig.cam, [hero])
+		_foe_occlusion(cam_rig.cam)
 	if state != null:
 		hud.coins = state.coins
 		hud.jade = state.jade

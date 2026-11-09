@@ -387,7 +387,7 @@ func _build_content() -> void:
 			for i in range(2):
 				var va := VoxActor.new()
 				add_child(va)
-				va.setup(["rogue", "barbarian"][i], "", 30.0, Color(0.85, 0.78, 0.7), 0.9)
+				va.setup(["npc_he", "npc_smith"][i], "", 30.0, Color(0.85, 0.78, 0.7), 0.9)
 				va.mat.set_shader_parameter("mono", 0.5)
 				va.global_position = cp + Vector3(0, 0, -0.5 + i * 1.0)
 				va.rotation.y = -side * PI * 0.5
