@@ -7,13 +7,8 @@ const DIR := "res://assets/voxel/kit/%s.json"
 const DIM := 0.85          # KayKit 原色偏亮、像玩具，压暗一点配暗色光照
 ## 个别件再压暗 / 换色（中世纪包的山石是很亮的浅灰，放进暗色场景像发光）
 const TINT := {
-	"rock_a": Color(0.62, 0.64, 0.66), "rock_b": Color(0.62, 0.64, 0.66), "rock_c": Color(0.62, 0.64, 0.66),
-	"rock_d": Color(0.62, 0.64, 0.66), "rock_e": Color(0.62, 0.64, 0.66), "stones": Color(0.7, 0.7, 0.72),
-	# 地上的骨头小件压暗、偏土色：亮白的骷髅头在斜俯视下和骷髅小怪的头一样大一样白，一眼看去像敌人（审查第 18 条）
-	"skull": Color(0.56, 0.52, 0.46), "bone_a": Color(0.6, 0.56, 0.48), "bone_b": Color(0.6, 0.56, 0.48), "bone_c": Color(0.6, 0.56, 0.48),
-	"ribcage": Color(0.56, 0.52, 0.46),
+	# 山石、石料、骨头、芦苇已换成自制件（tools/charforge/props.py），颜色在生成时就按暗色场景调好了，不再另外压暗
 	"tree_a": Color(0.7, 0.78, 0.7), "tree_b": Color(0.7, 0.78, 0.7),
-	"reeds_a": Color(0.45, 0.62, 0.6), "reeds_b": Color(0.45, 0.62, 0.6),
 }
 
 ## 会发光的件：[相对底面中心的位置（以件的高度为 1）, 颜色, 半径]
@@ -23,7 +18,7 @@ const LIGHTS := {
 	"candles": [Vector3(0, 1.0, 0.2), Color(1.0, 0.7, 0.4), 90.0],
 	"lantern": [Vector3(0, 0.6, 0.2), Color(1.0, 0.75, 0.4), 130.0],
 	"post_lantern": [Vector3(0.3, 0.8, 0.2), Color(1.0, 0.75, 0.4), 130.0],
-	"shrine": [Vector3(0, 0.6, 0.4), Color(1.0, 0.7, 0.4), 110.0],
+	"shrine": [Vector3(0, 0.3, 0.55), Color(1.0, 0.7, 0.4), 110.0],   # 土地庙供台上的红烛
 	"skull_candle": [Vector3(0, 1.0, 0.2), Color(0.6, 1.0, 0.75), 100.0],
 	"pumpkin": [Vector3(0, 0.5, 0.5), Color(1.0, 0.55, 0.2), 90.0],
 }

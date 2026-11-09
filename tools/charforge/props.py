@@ -135,6 +135,19 @@ class Piece:
         self.col[on] = np.clip(self.col[on] * mul[on][:, None], 0, 255)
 
     def export(self):
+        # 藏在里面看不见的格（离空格至少 4 格，低画质两格并一格时也露不出来）统一成一个颜色，压缩包小好几倍
+        inner = self.occ.copy()
+        for _ in range(4):
+            e = inner.copy()
+            for ax in range(3):
+                for s in (1, -1):
+                    r = np.roll(inner, s, ax)
+                    sl = [slice(None)] * 3
+                    sl[ax] = 0 if s == 1 else -1
+                    r[tuple(sl)] = False
+                    e &= r
+            inner = e
+        self.col[inner] = (96, 96, 96)
         ix = np.argwhere(self.occ)
         cells = ix + np.array(self.mn)
         cols = np.clip(np.round(self.col[self.occ]), 0, 255).astype(int)
@@ -1011,6 +1024,841 @@ PIECES = {
     # 补
     "well": well, "tent": tent, "lantern": lantern, "post_lantern": post_lantern,
 }
+
+
+
+# ======================================================================
+# 第二轮：剩下的 KayKit 通用件（墙、牌坊、柱、栏杆篱笆、桌凳、烛台火盆、麻袋柴垛、车、山石、芦苇、骨头……）
+# 同样沿用原 id、原占地（size × vs 不变），摆放代码不用改
+# ======================================================================
+P.update({
+    "brick": "#8e9094", "brick_d": "#6e7074", "brick_l": "#a2a5aa",
+    "marble": "#c2bdb0", "marble_d": "#9c978a", "marble_l": "#d4d0c4",
+    "bamboo": "#8f8a52", "bamboo_d": "#666236", "bamboo_l": "#aaa468",
+    "hemp": "#9c8462", "hemp_d": "#7a6448", "hemp_l": "#b09a74",
+    "copper": "#9a6a34", "copper_d": "#6a4622", "copper_l": "#b88446",
+    "iron": "#45464c", "iron_d": "#2e2f34", "iron_l": "#62646c",
+    "ember": "#e0602a", "fire": "#f0a848", "coal": "#2e221e",
+    "bone": "#958a74", "bone_d": "#6e6555", "bone_l": "#aa9f88",
+    "reed": "#6e8a48", "reed_d": "#4c6234", "reed_l": "#9cb064", "plume": "#b09a76",
+    "rock": "#7c7a74", "rock_d": "#5a5954", "rock_l": "#959189",
+    "celadon": "#7a9a88", "candle": "#b8382a",
+})
+
+
+def top_surface(p):
+    """朝上露天的格（上面一格是空的）"""
+    up = np.zeros_like(p.occ)
+    up[:, :-1, :] = p.occ[:, 1:, :]
+    return p.occ & ~up
+
+
+def oct_r(p, cx=0.0, cz=0.0):
+    """八角形“半径”（八角柱、经幢用）"""
+    ax, az = np.abs(p.X - cx), np.abs(p.Z - cz)
+    return np.maximum(np.maximum(ax, az), (ax + az) / 1.414)
+
+
+def bricks(p, m, axis="x", course=3, blen=6, base="brick", dark="brick_d", light="brick_l"):
+    """青砖：一皮一皮错缝，灰缝深色，个别砖亮一点"""
+    A = p.X if axis == "x" else p.Z
+    row = np.floor(p.Y / course)
+    off = (row % 2) * (blen / 2)
+    col = np.floor((A + off) / blen)
+    p.paint(m, base)
+    h = ((row.astype(np.int64) * 7919 + col.astype(np.int64) * 104729) % 11)
+    p.paint(m & (h < 3), light)
+    p.paint(m & (h == 10), dark)
+    joint = (np.floor(p.Y) % course == 0) | (np.floor(A + off) % blen == 0)
+    p.paint(m & joint, dark)
+
+
+def coping(p, x0, x1, y0, hw=11.0, h=9.0, th=2.2):
+    """墙头小瓦顶：两坡、瓦垄，两头不起翘（墙一段接一段地摆）"""
+    p.fill(p.box(x0, x1, y0, y0 + 3, -hw + 3, hw - 3), "brick_d")              # 叠涩
+    roof(p, x0, x1, -hw, hw, y0 + 2, y0 + h, th=th, curl=0.0, ends=False)
+
+
+def wall_common(name, seed, kind="plain"):
+    """青砖墙：石墙脚、青砖错缝、腰线、墙头小瓦顶"""
+    p = Piece(name, 89, 89, 23, vs=1.0, seed=seed)
+    x0, x1 = -44, 45
+    p.fill(p.box(x0, x1, 0, 6, -6, 7), grad("stone_d", "stone", 0, 6))
+    body = p.box(x0, x1, 6, 74, -4, 5)
+    p.fill(body, "brick")
+    bricks(p, body)
+    p.fill(p.box(x0, x1, 22, 24, -4.6, 5.6), "stone")                          # 腰线
+    p.fill(p.box(x0, x1, 70, 74, -5, 6), "brick_d")
+    coping(p, x0 - 0.5, x1 + 0.5, 73, hw=9.5)
+    if kind == "arch":
+        # 漏窗：圆窗洞 + 石框 + 冰裂纹花格
+        cy, R = 46, 15
+        rr = np.sqrt(p.X ** 2 + (p.Y - cy) ** 2)
+        p.carve((rr < R) & (np.abs(p.Z) < 12))
+        p.fill((rr >= R) & (rr < R + 2.2) & (p.Z > -5) & (p.Z < 6), "stone_l")
+        lat = (rr < R) & (p.Z > -0.6) & (p.Z < 1.6) & ((np.abs((p.X + p.Y) % 7) < 1.1) | (np.abs((p.X - p.Y) % 7) < 1.1)
+                                                       | (np.abs(p.X) < 0.8) | (np.abs(p.Y - cy) < 0.8))
+        p.fill(lat, "stone_d")
+    elif kind == "broken":
+        # 墙头一段段塌下来，按砖块成台阶；塌下的砖堆在墙根
+        col = np.floor((p.X + 44) / 6)
+        prof = 74 - 46 * np.exp(-((col * 6 - 50) / 22.0) ** 2)
+        jit = p.rng.integers(0, 4, size=40)
+        yt = np.floor((prof - jit[np.clip(col.astype(int), 0, 39)] * 3) / 3) * 3
+        p.carve((p.Y >= yt) & (p.Y >= 8) & (yt < 72))
+        for _ in range(26):
+            bx = p.rng.uniform(-16, 34)
+            bz = p.rng.choice([-1, 1]) * p.rng.uniform(7, 10)
+            by = p.rng.uniform(0, 3)
+            w = p.rng.choice([3.0, 6.0])
+            p.fill(p.box(bx, bx + w, by, by + 3, bz - 1.5, bz + 1.5), p.rng.choice(["brick", "brick_d", "brick_l"]))
+        p.paint(p.occ & (p.Y > 6) & (p.rng.random(p.X.shape) < 0.06), "moss")
+    return p
+
+
+def wall():
+    return wall_common("wall", 101)
+
+
+def wall_arch():
+    """（原拱窗墙）青砖墙开一扇圆漏窗"""
+    return wall_common("wall_arch", 102, "arch")
+
+
+def wall_broken():
+    """（原破墙）塌了半截的青砖墙"""
+    return wall_common("wall_broken", 103, "broken")
+
+
+def arch_gate():
+    """（原石拱门）石牌坊：两根方石柱、抱鼓石、两道额枋夹一块黑底金字匾、斗拱、单檐瓦顶"""
+    p = Piece("arch_gate", 83, 87, 15, vs=1.4, seed=104)
+    for sx in (-1, 1):
+        x = sx * 33.5
+        p.fill(p.box(x - 3, x + 3, 0, 68, -3, 3.5), grad("stone_d", "stone_l", 0, 68))
+        p.fill(p.box(x - 4, x + 4, 0, 3, -7, 8), "stone_d")
+        for sz in (-1, 1):
+            p.fill(p.box(x - 2.2, x + 2.2, 3, 6, sz * 5 - 2, sz * 5 + 2), "stone")
+            p.fill(p.disk_x(sz * 5, 9.5, 4, x - 2, x + 2), "stone_l")             # 抱鼓石
+            p.paint(p.disk_x(sz * 5, 9.5, 2, x - 2.5, x + 2.5), "stone_d")
+        # 雀替
+        p.fill(p.box(x - sx * 9 - 3, x - sx * 3 + 3, 40, 46, -2, 2.5) & ((p.Y - 40) > (np.abs(p.X - x) - 3) * 0.7), "stone")
+    p.fill(p.box(-37, 37, 46, 50, -2.5, 3), "stone")                               # 下额枋
+    p.fill(p.box(-38, 38, 58, 62, -2.5, 3), "stone")                               # 上额枋
+    p.stripes("x", 9, "stone_d", 1, p.box(-37, 37, 46, 50, -9, 9) | p.box(-38, 38, 58, 62, -9, 9))
+    plaque = p.box(-11, 11, 50, 58, -1.5, 3.4)
+    p.fill(plaque, "lacq")
+    p.paint(plaque & ~p.box(-10, 10, 51, 57, -9, 9), "gold")
+    for x in (-6, -1, 4):
+        p.fill(p.box(x, x + 2.5, 52.5, 55.5, 3.2, 3.9), "gold", flat=True)       # 三个金字
+    p.fill(p.box(-38, 38, 50, 58, -1, 2) & ~plaque, "stone_d")                    # 字板（花板）
+    # 斗拱一排
+    p.fill(p.box(-40, 40, 62, 65, -4, 4.5), "stone_d")
+    for x in range(-36, 38, 6):
+        p.fill(p.box(x - 1.5, x + 1.5, 62, 66, -5, 5.5), "red_d")
+    roof(p, -42, 42, -7.5, 8, 66, 79, th=2.2, curl=2.2, ends=True)
+    p.paint(p.occ & (p.Y < 46) & (p.rng.random(p.X.shape) < 0.07), "moss")
+    return p
+
+
+def pillar():
+    """（原雕花石柱）石经幢：须弥座、八角幢身刻经、宝盖、小龛、八角攒尖顶、仰莲宝珠"""
+    p = Piece("pillar", 45, 81, 35, vs=1.0, seed=105)
+    r = oct_r(p)
+    p.fill(p.box(-20, 21, 0, 4, -16, 17), "stone_d")
+    p.fill((r < 14) & (p.Y >= 4) & (p.Y < 10), "stone")
+    p.paint((r < 14) & (np.abs(p.Y - 7) < 1), "stone_d")
+    p.fill((r < 15.5) & (p.Y >= 10) & (p.Y < 13), "stone_l")                       # 覆莲
+    p.paint((r < 15.5) & (p.Y >= 10) & (p.Y < 13) & ((np.floor(np.degrees(np.arctan2(p.Z, p.X)) / 15) % 2) == 0), "stone")
+    shaft = (r < 6) & (p.Y >= 13) & (p.Y < 44)
+    p.fill(shaft, grad("stone_d", "stone_l", 13, 44))
+    # 幢身刻经：每面一竖行竖槽
+    ang = np.degrees(np.arctan2(p.Z, p.X)) % 45
+    p.paint(shaft & (np.abs(ang - 22.5) < 6) & ((np.floor(p.Y) % 3) != 0) & (r > 5), "stone_d")
+    p.fill((r < 11) & (p.Y >= 44) & (p.Y < 48), "stone")                           # 宝盖
+    p.fill((r < 11) & (r > 9.5) & (p.Y >= 41) & (p.Y < 44) & ((np.floor(np.degrees(np.arctan2(p.Z, p.X)) / 11.25) % 2) == 0), "stone_d")
+    s2 = (r < 4.6) & (p.Y >= 48) & (p.Y < 60)
+    p.fill(s2, "stone")
+    p.paint(s2 & (np.abs(ang - 22.5) < 9) & (p.Y > 51) & (p.Y < 57) & (r > 3.6), "ink")   # 小佛龛
+    p.fill((r < 10 - (p.Y - 60) * 1.05) & (p.Y >= 60) & (p.Y < 68), "stone_d")     # 八角攒尖（石刻的檐）
+    p.paint((r < 10.5) & (r > 8.6) & (p.Y >= 60) & (p.Y < 62), "stone")
+    p.paint((r < 10.5) & (p.Y >= 60) & (p.Y < 68) & (np.abs(np.degrees(np.arctan2(p.Z, p.X)) % 45 - 22.5) > 20), "stone_l")   # 八条戗脊
+    p.fill((r < 4.5) & (p.Y >= 68) & (p.Y < 72), "stone_l")                         # 仰莲
+    p.fill(p.ell((0, 75.5, 0), (3.4, 4, 3.4)), "stone_l")                            # 宝珠
+    p.fill(p.ell((0, 79.5, 0), (1.4, 1.5, 1.4)), "stone_l")
+    p.paint(p.occ & (p.Y < 44) & (p.rng.random(p.X.shape) < 0.08), "moss")
+    return p
+
+
+def column():
+    """（原短石柱）断石柱：莲瓣柱础 + 八角柱身，上头断口参差，长青苔"""
+    p = Piece("column", 15, 29, 15, vs=1.0, seed=106)
+    r = oct_r(p)
+    p.fill(p.box(-7, 8, 0, 3, -7, 8), "stone_d")
+    p.fill((r < 6.8) & (p.Y >= 3) & (p.Y < 6), "stone")
+    p.paint((r < 6.8) & (p.Y >= 3) & (p.Y < 6) & ((np.floor(np.degrees(np.arctan2(p.Z, p.X)) / 22.5) % 2) == 0), "stone_l")
+    ang = np.arctan2(p.Z, p.X)
+    top = 22 + 4 * np.sin(ang * 2 + 0.7) + 2 * np.cos(ang * 5)
+    shaft = (r < 4.4) & (p.Y >= 6) & (p.Y < top)
+    p.fill(shaft, grad("stone_d", "stone_l", 6, 28))
+    p.stripes("y", 7, "stone_d", 1, shaft)
+    p.paint(top_surface(p) & (p.Y > 10), "moss")
+    p.fill(p.box(5, 8, 0, 2, -6, -2), "stone")                                      # 掉下的一块
+    return p
+
+
+def balustrade(p, x0, x1, zc, top=11.0):
+    """汉白玉栏板：地栿 + 栏板开宝瓶洞 + 圆寻杖"""
+    p.fill(p.box(x0, x1, 0, 2, zc - 2.0, zc + 2.0), "marble_d")
+    p.fill(p.box(x0, x1, 2, top - 2, zc - 1.0, zc + 1.0), "marble")
+    w = x1 - x0
+    for k in range(2):
+        a = x0 + w * (0.08 + 0.46 * k)
+        b = a + w * 0.38
+        p.carve(p.box(a, b, 3.5, top - 3.2, zc - 2, zc + 2))
+        c = (a + b) / 2
+        vase = (np.abs(p.X - c) <= 0.9 + 1.0 * np.exp(-((p.Y - (top + 0.5) / 2) / 1.3) ** 2)) & p.box(a, b, 3.5, top - 3.2, zc - 1, zc + 1)
+        p.fill(vase, "marble_l")
+    p.fill(((p.Y - (top - 1)) ** 2 + (p.Z - zc) ** 2 <= 1.5 ** 2) & (p.X >= x0) & (p.X < x1), "marble_l")
+
+
+def barrier():
+    """（原石栏）汉白玉栏板"""
+    p = Piece("barrier", 41, 12, 5, vs=2.0, seed=107)
+    balustrade(p, -20, 21, 0.5)
+    return p
+
+
+def barrier_col():
+    """（原带柱石栏）汉白玉栏板，中间一根望柱（莲头）"""
+    p = Piece("barrier_col", 41, 15, 7, vs=2.0, seed=108)
+    balustrade(p, -20, 21, 0.5)
+    p.fill(p.box(-2, 2, 0, 12, -1.5, 2.5), "marble")
+    p.fill(p.box(-2.5, 2.5, 11.5, 12.5, -2, 3), "marble_d")
+    p.fill(p.ell((0, 13.5, 0.5), (1.8, 1.6, 1.8)), "marble_l")
+    return p
+
+
+def bamboo_pole(p, x, z, r, y0, y1, slant=0.0, col="bamboo"):
+    m = p.cyl(x, z, r, y0, y1) & (p.Y < y1 - (p.X - x) * slant)
+    p.fill(m, grad(col + "_d", col + "_l", y0, y1) if col + "_d" in P else col)
+    p.paint(m & (np.floor(p.Y) % 9 == 0), "bamboo_d")                              # 竹节
+    return m
+
+
+def bamboo_fence(p, x0, x1, broken=False):
+    """竹篱笆：粗竹立柱 + 上下横杆 + 斜编菱格"""
+    lat = p.box(x0, x1, 5, 36, -0.8, 0.8) & ((np.floor(p.X + p.Y) % 9 < 1.5) | (np.floor(p.X - p.Y) % 9 < 1.5))
+    if broken:
+        hole = p.box(-8, 16, 0, 99, -9, 9) & (p.Y > 6 + 12 * np.abs(np.sin(p.X * 0.35)))
+        lat &= ~hole
+    p.fill(lat, "bamboo_l")
+    for yc in (6, 35):
+        rail = ((p.Y - yc) ** 2 + (p.Z - 1.6) ** 2 <= 1.3 ** 2) & (p.X >= x0) & (p.X < x1)
+        if broken and yc == 35:
+            rail &= ~p.box(-6, 14, 0, 99, -9, 9)
+        p.fill(rail, "bamboo")
+    for x in np.arange(x0 + 2, x1, 19.5):
+        if broken and -6 < x < 14:
+            continue
+        bamboo_pole(p, x, 0, 1.9, 0, 40 + p.rng.uniform(-2, 3), slant=0.6)
+        for yc in (6, 35):
+            p.fill(p.box(x - 2.2, x + 2.2, yc - 1, yc + 1, -2.4, 3.2), "straw_d")   # 草绳扎结
+
+
+def fence():
+    """（原木栅栏）竹篱笆"""
+    p = Piece("fence", 81, 45, 11, vs=1.0, seed=109)
+    bamboo_fence(p, -40, 41)
+    return p
+
+
+def fence_broken():
+    """（原破栅栏）破竹篱：中间一段倒了，一根竹竿斜倒在地上"""
+    p = Piece("fence_broken", 81, 45, 11, vs=1.0, seed=110)
+    bamboo_fence(p, -40, 41, broken=True)
+    p.fill(p.seg((-6, 1.5, 3.5), (18, 9, 3), 1.6), "bamboo")
+    p.fill(p.box(-4, 12, 0, 1.5, -4, -1) & ((np.floor(p.X) % 3) == 0), "bamboo_l")
+    bamboo_pole(p, 2, 0, 1.9, 0, 14, slant=0.6)                                       # 断了的半截竹桩
+    return p
+
+
+def fence_pillar():
+    """（原篱笆桩）拴马桩：木桩、缠草绳、桩头系一条红布"""
+    p = Piece("fence_pillar", 5, 23, 5, vs=2.0, seed=111)
+    p.fill(p.box(-1.5, 2.5, 0, 21, -1.5, 2.5) & (p.Y < 22 - np.abs(p.X - 0.5) * 0.8), grad("timber_d", "timber_l", 0, 21))
+    p.fill(p.box(-2, 3, 14, 15.5, -2, 3), "straw_d")
+    p.fill(p.box(-2, 3, 4, 5, -2, 3), "straw_d")
+    p.fill(p.box(0, 1.5, 8, 14, 2.5, 3.2), "red", flat=True)
+    return p
+
+
+def fence_stone():
+    """（原石墙段）矮石栏：石座 + 栏板 + 四根望柱（沿 z 摆）"""
+    p = Piece("fence_stone", 11, 14, 57, vs=2.0, seed=112)
+    p.fill(p.box(-4, 5, 0, 2, -28, 29), "stone_d")
+    p.fill(p.box(-1.5, 2.5, 2, 9, -28, 29), grad("stone_d", "stone", 2, 9))
+    p.carve(p.box(-3, 4, 4, 7.5, -28, 29) & ((np.floor(p.Z + 28) % 8) > 2) & (np.abs(((p.Z + 28) % 17) - 8.5) > 3))
+    p.fill(((p.Y - 10) ** 2 + (p.X - 0.5) ** 2 <= 1.4 ** 2) & (p.Z >= -28) & (p.Z < 29), "stone_l")
+    for z in (-26, -9, 8, 25):
+        p.fill(p.box(-1.5, 2.5, 0, 12, z - 1.5, z + 1.5), "stone")
+        p.fill(p.ell((0.5, 12.6, z), (1.8, 1.4, 1.8)), "stone_l")
+    p.paint(top_surface(p) & (p.rng.random(p.X.shape) < 0.07), "moss")
+    return p
+
+
+def fence_wood():
+    """（原木篱段）削尖的木栅（沿 z 摆）"""
+    p = Piece("fence_wood", 3, 14, 29, vs=2.0, seed=113)
+    for z in np.arange(-13, 15, 2.2):
+        h = 11 + p.rng.uniform(0, 2.5)
+        p.fill(p.box(-1, 1.6, 0, h, z - 0.9, z + 0.9) & (p.Y < h - np.abs(p.Z - z) * 1.6), grad("timber_d", "timber_l", 0, 13))
+    for y in (3.5, 8.5):
+        p.fill(p.box(1, 2, y, y + 1, -14, 15), "timber_d")
+        p.fill(p.box(0.6, 2, y - 0.3, y + 1.3, -14, 15) & ((np.floor(p.Z) % 9) == 0), "straw_d")
+    return p
+
+
+def bench():
+    """（原雕花长椅）美人靠长凳：厚板凳面、八字腿、后面一排靠栏"""
+    p = Piece("bench", 41, 35, 21, vs=1.0, seed=114)
+    p.fill(p.box(-19, 20, 13, 16, -6, 7), "timber_l")
+    p.paint(p.box(-19, 20, 15, 16, -6, 7) & ((np.floor(p.Z) % 4) == 0), "timber")
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            p.fill(p.seg((sx * 16.5, 0, sz * 5), (sx * 15, 13, sz * 3.5), 1.1), "timber_d")
+        p.fill(p.box(sx * 15.5 - 1, sx * 15.5 + 1, 5, 6.5, -5, 6), "timber_d")
+    p.fill(p.box(-15, 16, 5, 6.5, -0.5, 1.5), "timber_d")
+    zc = lambda y: -5.0 - (y - 16) * 0.28
+    back = (p.Y >= 16) & (p.Y < 33)
+    spindle = back & ((np.floor(p.X + 19) % 3) == 0) & (np.abs(p.Z - zc(p.Y)) < 0.8) & (p.X > -19) & (p.X < 20)
+    p.fill(spindle, "red_d")
+    for y0 in (16, 31):
+        p.fill((p.Y >= y0) & (p.Y < y0 + 2) & (np.abs(p.Z - zc(p.Y)) < 1.1) & (p.X >= -19) & (p.X < 20), "red")
+    return p
+
+
+def table():
+    """（原断腿长桌）断了两条腿、一头斜塌在地上的翘头长条案"""
+    p = Piece("table", 45, 24, 81, vs=1.0, seed=115)
+    yt = 5 + (p.Z + 37) / 74 * 14                       # 案面高度：-z 一头着地，+z 一头还架着
+    top = (np.abs(p.X - 0.5) < 15) & (p.Z >= -37) & (p.Z < 37) & (p.Y >= yt) & (p.Y < yt + 2.5)
+    p.fill(top, "timber")
+    p.paint(top & (p.Y >= yt + 1.8), "timber_d")
+    p.fill((np.abs(p.X - 0.5) < 15) & (p.Z >= 34) & (p.Z < 37) & (p.Y >= yt) & (p.Y < yt + 2.5 + 2.5 * np.abs(p.X - 0.5) / 15), "timber_d")   # 翘头
+    for sx in (-1, 1):
+        x = 0.5 + sx * 12
+        p.fill(p.box(x - 1.3, x + 1.3, 0, 19, 29, 32), "timber")                    # +z 两条腿完好
+        p.fill(p.box(x - 1.3, x + 1.3, 0, 4, -33, -30), "timber")                   # -z 两条断了
+        p.fill(p.box(x - 1.3, x + 1.3, 13, 19, 30.5, 31.5) | p.box(x - 1.3, x + 1.3, 15, 18.5, 22, 32) & (p.Y > 15 + (32 - p.Z) * 0.35), "timber_d")
+    p.fill(p.box(-12, 13, 15, 17.5, 30.5, 31.5), "timber")                            # 牙板
+    p.fill(p.seg((19, 1.2, -30), (21, 1.2, -8), 1.3), "timber")                         # 掉在旁边的断腿
+    p.fill(p.box(-6, 6, 0, 1, -36, -20) & (p.rng.random(p.X.shape) < 0.2), "paper_d")  # 撒了一地的纸
+    return p
+
+
+def table_m():
+    """（原铺布方桌）供桌：方桌前垂红桌围（金边团纹），桌上香炉、一对红烛、两盘供果"""
+    p = Piece("table_m", 19, 18, 19, vs=2.0, seed=116)
+    p.fill(p.box(-9, 10, 12, 13.5, -9, 10), "red_d")
+    p.fill(p.box(-9.5, 10.5, 13, 13.5, -9.5, 10.5), "lacq")
+    for sx in (-8, 8):
+        for sz in (-8, 8):
+            p.fill(p.box(sx - 0.5, sx + 1.5, 0, 12, sz - 0.5, sz + 1.5), "lacq")
+    cloth = p.box(-8.5, 9.5, 3, 12, 9.2, 10.2)
+    p.fill(cloth, "red")
+    p.paint(cloth & ~p.box(-7.5, 8.5, 4, 11, -99, 99), "gold")
+    p.fill(p.disk_z(0.5, 7.5, 2.4, 9.9, 10.6), "gold", flat=True)
+    p.fill(p.lathe(0.5, -3, lambda t: 2.2 - 0.4 * t, 13.5, 16), "bronze")             # 香炉
+    p.fill(p.box(0, 1, 16, 18, -3.4, -2.6), "#d8b070", flat=True)
+    for sx in (-1, 1):
+        p.fill(p.cyl(0.5 + sx * 6, -4, 0.8, 13.5, 17.5), "candle")
+        p.fill(p.box(0.5 + sx * 6 - 0.3, 0.5 + sx * 6 + 0.7, 17.5, 18, -4.3, -3.3), "fire", flat=True)
+        p.fill(p.cyl(0.5 + sx * 4.5, 4, 2, 13.5, 14.2), "white")                      # 盘子
+        p.fill(p.ell((0.5 + sx * 4.5, 15.2, 4), (1.6, 1.2, 1.6)), "#c87a2a")           # 橘子
+    return p
+
+
+def table_s():
+    """（原小圆桌）香几：圆面、三条弯腿、托泥圈，几上一只青瓷瓶插一枝梅"""
+    p = Piece("table_s", 11, 16, 11, vs=2.0, seed=117)
+    p.fill(p.cyl(0.5, 0.5, 4.6, 10.5, 12), "timber_d")
+    p.fill(p.cyl(0.5, 0.5, 4.9, 11.4, 12), "lacq")
+    for k in range(3):
+        a = k / 3 * math.tau + 0.4
+        c, s = math.cos(a), math.sin(a)
+        p.fill(p.seg((0.5 + c * 3.6, 10.5, 0.5 + s * 3.6), (0.5 + c * 4.4, 5, 0.5 + s * 4.4), 0.7) | p.seg((0.5 + c * 4.4, 5, 0.5 + s * 4.4), (0.5 + c * 3.4, 0, 0.5 + s * 3.4), 0.7), "timber_d")
+    p.fill(p.cyl(0.5, 0.5, 4.2, 2, 3) & ~p.cyl(0.5, 0.5, 3.2, 0, 9), "timber_d")
+    p.fill(p.lathe(0.5, 0.5, lambda t: 1.0 + 0.9 * np.sin(np.clip(t * 1.2, 0, 1) * math.pi) * (1 - 0.4 * t), 12, 15), "celadon")
+    p.fill(p.seg((0.5, 14.5, 0.5), (2.5, 16, 0.5), 0.45), "bark_d")
+    p.fill(p.box(2, 3.2, 15, 16, 0, 1.4), "#d86a78", flat=True)
+    return p
+
+
+def shrine():
+    """（原烛台神龛）路边土地庙：石台、青砖三面墙、小瓦顶、红柱红联，里面坐着土地公，供台上一对红烛"""
+    p = Piece("shrine", 25, 40, 25, vs=1.0, seed=118)
+    p.fill(p.box(-12, 13, 0, 5, -11, 12), grad("stone_d", "stone", 0, 5))
+    wallm = (p.box(-10, 11, 5, 27, -10, -7) | p.box(-10, -7, 5, 27, -10, 8) | p.box(8, 11, 5, 27, -10, 8))
+    p.fill(wallm, "brick")
+    bricks(p, wallm, axis="z", course=2, blen=4)
+    for x in (-9.5, 9.5):
+        p.fill(p.box(x - 1.2, x + 1.2, 5, 27, 7.5, 10), "red")
+        p.fill(p.box(x - 1, x + 1, 9, 22, 9.6, 10.4), "paper", flat=True)          # 红柱上贴的对联（白纸）
+        p.fill(p.box(x - 0.4, x + 0.4, 10, 21, 10.2, 10.6), "ink", flat=True)
+    p.fill(p.box(-10, 11, 23, 27, 7, 10.5), "red_d")                                  # 门楣
+    p.fill(p.box(-7, 8, 5, 9, -7, 7), "stone")                                       # 供台
+    # 土地公：坐像
+    p.fill(p.ell((0.5, 12, -4), (4, 4.5, 3)) & (p.Y >= 9), "#7a5a3a")
+    p.fill(p.ell((0.5, 18, -4), (2.2, 2.4, 2.2)), "#c4a07c")
+    p.fill(p.box(-1, 2, 14.5, 17.5, -2.6, -1.6), "white")                            # 白胡子
+    p.fill(p.box(-2, 3, 20, 21.5, -6, -2), "lacq")                                   # 帽子
+    p.fill(p.ell((0.5, 12, -1.5), (3, 1.4, 1)) & (p.Y > 11), "red", flat=True)
+    for sx in (-1, 1):
+        p.fill(p.cyl(0.5 + sx * 4, 5, 0.8, 9, 11.5), "candle")
+        p.fill(p.box(0.5 + sx * 4 - 0.3, 0.5 + sx * 4 + 0.7, 11.5, 12.5, 4.7, 5.7), "fire", flat=True)
+    p.fill(p.lathe(0.5, 2, lambda t: 1.6 - 0.3 * t, 9, 10.5), "bronze")
+    # 山墙 + 瓦顶
+    for x0 in (-10, 8):
+        p.fill(p.box(x0, x0 + 3, 27, 34, -10, 10) & (p.Y < 34 - np.abs(p.Z) * 0.65), "brick_d")
+    p.fill(p.box(-10, 11, 27, 30, -10, -7), "brick_d")
+    roof(p, -13, 14, -12.5, 13, 27, 34, th=2.2, curl=1.6, ends=True)
+    return p
+
+
+def candles():
+    """（原三联蜡烛）铜烛台插三支红烛"""
+    p = Piece("candles", 15, 24, 11, vs=1.0, seed=119)
+    p.fill(p.lathe(0.5, 0.5, lambda t: 4.2 - 1.6 * t, 0, 2.5), "bronze")
+    p.fill(p.cyl(0.5, 0.5, 1.1, 2.5, 10), "bronze_d")
+    p.fill(p.cyl(0.5, 0.5, 2.2, 5, 6.2), "bronze")
+    p.fill(p.ell((0.5, 10.5, 0.5), (7.2, 1.2, 4.6)), "bronze")
+    for x, h in ((0.5, 21), (-4.3, 17.5), (5.3, 17.5)):
+        p.fill(p.cyl(x, 0.5, 1.4, 11, h), "candle")
+        p.paint(p.cyl(x, 0.5, 1.5, h - 1.2, h) & (p.rng.random(p.X.shape) < 0.5), "#d8c8a8")   # 烛泪
+        p.fill(p.box(x - 0.5, x + 0.5, h, h + 1.5, 0, 1), "fire", flat=True)
+    p.fill(p.box(-0.3, 1.3, 2.5, 5, 0.3, 0.7) & False, "gold")
+    return p
+
+
+def torch():
+    """（原立式火把）三足铁火盆：盆里炭火通红"""
+    p = Piece("torch", 15, 30, 15, vs=1.0, seed=120)
+    for k in range(3):
+        a = k / 3 * math.tau + math.pi / 2
+        c, s = math.cos(a), math.sin(a)
+        p.fill(p.seg((0.5 + c * 6.2, 0, 0.5 + s * 6.2), (0.5 + c * 3, 21, 0.5 + s * 3), 0.85), "iron")
+        p.fill(p.ell((0.5 + c * 6.2, 0.5, 0.5 + s * 6.2), (1.3, 0.8, 1.3)), "iron_d")
+    p.fill(p.cyl(0.5, 0.5, 4.2, 9, 10.2) & ~p.cyl(0.5, 0.5, 3.4, 0, 99), "iron")    # 箍
+    bowl = p.lathe(0.5, 0.5, lambda t: 3.2 + 3.8 * t ** 0.8, 20, 26)
+    p.fill(bowl, "iron_d")
+    p.paint(bowl & (p.Y >= 25), "iron_l")
+    p.fill(p.ell((0.5, 26, 0.5), (5.6, 1.4, 5.6)) & (p.Y >= 25.5), "coal")
+    p.paint(p.ell((0.5, 26.5, 0.5), (4.8, 1.4, 4.8)) & (p.rng.random(p.X.shape) < 0.55), "ember", flat=True)
+    p.fill(p.lathe(0.5, 0.5, lambda t: 3.0 * (1 - t), 26.5, 29.5), "fire", flat=True)
+    return p
+
+
+def torch_wall():
+    """（原壁挂火把）墙上的铁灯架：背板、挑臂，挑着一只小火盆"""
+    p = Piece("torch_wall", 15, 29, 17, vs=1.0, seed=121)
+    p.fill(p.box(-2.5, 3.5, 9, 24, -8, -6.5), "iron")
+    p.paint(p.box(-2.5, 3.5, 9, 24, -8, -6.5) & ((np.abs(p.Y - 12) < 0.6) | (np.abs(p.Y - 21) < 0.6)), "iron_l")
+    p.fill(p.seg((0.5, 21, -7), (0.5, 21, 3), 0.8), "iron")
+    p.fill(p.seg((0.5, 12, -7), (0.5, 20, 2), 0.7), "iron")
+    bowl = p.lathe(0.5, 3, lambda t: 1.8 + 2.6 * t, 20.5, 24.5)
+    p.fill(bowl, "iron_d")
+    p.fill(p.ell((0.5, 24.5, 3), (3.6, 1, 3.6)) & (p.Y >= 24), "ember", flat=True)
+    p.fill(p.lathe(0.5, 3, lambda t: 2.2 * (1 - t), 25, 28), "fire", flat=True)
+    return p
+
+
+def lantern_hang():
+    """（原吊灯）竹竿挑一盏小红灯笼"""
+    p = Piece("lantern_hang", 11, 22, 11, vs=2.0, seed=122)
+    p.fill(p.box(-5, -1.5, 0, 1.2, -1.5, 2), "stone_d")
+    bamboo_pole(p, -3.5, 0.5, 0.8, 0, 21)
+    p.fill(p.box(-3.5, 3, 19.5, 20.5, 0, 1), "bamboo_d")
+    p.fill(p.box(1.6, 2.2, 15, 19.5, 0.2, 0.8), "ink")
+    lm = p.lathe(1.9, 0.5, lambda t: 3.0 * np.sin(np.clip(0.12 + t * 0.76, 0, 1) * math.pi) ** 0.6, 8, 15)
+    p.fill(lm, "#d04a32", flat=True)
+    p.paint(lm & (np.abs(p.Y - 11.5) < 0.6), "#f0c060", flat=True)
+    p.fill(p.cyl(1.9, 0.5, 1.6, 7.3, 8) | p.cyl(1.9, 0.5, 1.6, 15, 15.7), "lacq")
+    p.fill(p.box(1.4, 2.4, 4.5, 7.3, 0, 1), "gold", flat=True)
+    return p
+
+
+def shelf():
+    """（原小烛架）供架：三块黑漆金字牌位，下层一对红烛、一只香碗"""
+    p = Piece("shelf", 21, 21, 11, vs=1.0, seed=123)
+    p.fill(p.box(-9, 10, 0, 20, -5, -3.8), "red_d")
+    for x in (-10, 9):
+        p.fill(p.box(x, x + 2, 0, 20, -5, 5), "timber_d")
+    for y in (7, 13):
+        p.fill(p.box(-10, 11, y, y + 1.2, -5, 5.5), "timber")
+    p.fill(p.box(-10, 11, 0, 2, -5, 5), "timber_d")
+    for x in (-5.5, 0.5, 6.5):
+        tab = p.box(x - 1.6, x + 1.6, 14.2, 20.5, -1.5, 0.5) & ((p.Y < 19.5) | (np.abs(p.X - x) < 1.6 - (p.Y - 19.5)))
+        p.fill(tab, "lacq")
+        p.fill(p.box(x - 0.4, x + 0.4, 15.5, 19, 0.5, 1.0), "gold", flat=True)
+        p.fill(p.box(x - 2, x + 2, 14.2, 15.2, -2, 1), "timber_d")
+    for x in (-6, 7):
+        p.fill(p.cyl(x, 0.5, 0.8, 8.2, 11.5), "candle")
+        p.fill(p.box(x - 0.4, x + 0.6, 11.5, 12.3, 0.1, 0.9), "fire", flat=True)
+    p.fill(p.lathe(0.5, 0.5, lambda t: 1.8 + 0.6 * t, 8.2, 10), "bronze")
+    p.fill(p.box(0, 1, 10, 12.5, 0, 1), "#d8b070", flat=True)
+    return p
+
+
+def coins():
+    """（原金币堆）三只金元宝、几串铜钱、几枚散钱"""
+    p = Piece("coins", 17, 14, 19, vs=2.0, seed=124)
+
+    def ingot(cx, y0, cz, s=1.0):
+        m = p.ell((cx, y0 + 1.4 * s, cz), (3.6 * s, 1.8 * s, 2.3 * s)) & (p.Y >= y0)
+        m |= p.ell((cx - 2.8 * s, y0 + 2.6 * s, cz), (1.3 * s, 1.5 * s, 2.0 * s)) | p.ell((cx + 2.8 * s, y0 + 2.6 * s, cz), (1.3 * s, 1.5 * s, 2.0 * s))
+        m |= p.ell((cx, y0 + 3.0 * s, cz), (1.3 * s, 1.3 * s, 1.3 * s))
+        p.fill(m, grad("gold", "#f0cc6a", y0, y0 + 4 * s))
+    ingot(-3.5, 0, -3)
+    ingot(3.5, 0, -2)
+    ingot(0, 3.0, -2.5, 0.9)
+    for k, (x0, z0, x1, z1) in enumerate(((-7, 3, 6, 6), (-6, 6.5, 7, 8.5), (2, -8, 7, 1))):
+        s = p.seg((x0, 1.2, z0), (x1, 1.2, z1), 1.3)
+        p.fill(s, "copper")
+        d = np.array([x1 - x0, z1 - z0], float)
+        d /= np.linalg.norm(d)
+        p.paint(s & ((np.floor((p.X - x0) * d[0] + (p.Z - z0) * d[1]) % 2) == 0), "copper_d")
+        p.fill(p.ell((x0, 1.4, z0), (1, 1, 1)), "red")                                # 串钱的红绳头
+    for _ in range(6):
+        cx, cz = p.rng.uniform(-7, 8), p.rng.uniform(-8, 9)
+        p.fill(p.cyl(cx, cz, 1.2, 0, 0.8) & ~p.occ, "copper_l")
+    return p
+
+
+def flag():
+    """（原红旗）三角令旗：红底、黑火焰齿边、白圆心一个黑字（旗面在 y-z 面上，朝 x 看）"""
+    p = Piece("flag", 9, 46, 43, vs=2.0, seed=125)
+    pz = -19
+    p.fill(p.cyl(0.5, pz, 1.0, 0, 43), "timber_d")
+    p.fill(p.lathe(0.5, pz, lambda t: 1.4 * (1 - t), 43, 46), "brass")
+    p.fill(p.cyl(0.5, pz, 1.6, 41.5, 43), "red")                                       # 红缨
+    u = np.clip((p.Z - pz) / 36.0, 0, 1)
+    wave = 0.9 * np.sin(p.Z * 0.32)
+    cloth = (p.Z > pz) & (p.Z < pz + 36) & (p.Y < 43 - u * 3) & (p.Y > 24 + u * 13) & (np.abs(p.X - 0.5 - wave) < 0.8)
+    p.fill(cloth, "red", flat=True)
+    p.paint(cloth & (p.Y > 30 + u * 8), "red_l", flat=True)
+    edge = cloth & ((p.Y > 42 - u * 3) | (p.Y < 25.5 + u * 13 + 1.2 * (np.floor(p.Z) % 4 < 2)) | (p.Z > pz + 34.5))
+    p.paint(edge, "gold", flat=True)
+    disk = cloth & ((p.Z - (pz + 12)) ** 2 + (p.Y - 35) ** 2 <= 16)
+    p.paint(disk, "paper", flat=True)
+    p.paint(disk & ((np.abs(p.Z - (pz + 12)) < 0.6) | (np.abs(p.Y - 35) < 0.6) & (np.abs(p.Z - (pz + 12)) < 2.6)), "ink", flat=True)
+    return p
+
+
+def arrows():
+    """（原箭桶）黑漆箭壶插一把雕翎箭"""
+    p = Piece("arrows", 7, 12, 7, vs=2.0, seed=126)
+    q = p.lathe(0.5, 0.5, lambda t: 2.4 + 0.5 * t, 0, 7)
+    p.fill(q, "lacq")
+    p.paint(q & ((np.abs(p.Y - 1) < 0.6) | (np.abs(p.Y - 6.2) < 0.6)), "brass")
+    p.fill(p.box(0, 1, 3, 4.5, 2.6, 3.4), "red", flat=True)
+    for k in range(7):
+        a = k / 7 * math.tau
+        r0 = 1.2 if k else 0
+        x0, z0 = 0.5 + math.cos(a) * r0, 0.5 + math.sin(a) * r0
+        x1, z1 = 0.5 + math.cos(a) * r0 * 1.8, 0.5 + math.sin(a) * r0 * 1.8
+        p.fill(p.seg((x0, 6, z0), (x1, 10.5, z1), 0.45), "timber_l")
+        p.fill(p.seg((x1, 10, z1), (x1 + (x1 - x0) * 0.3, 12, z1 + (z1 - z0) * 0.3), 0.7), "white", flat=True)
+    return p
+
+
+def bucket():
+    """（原水桶）木水桶：竹篾箍、提梁，里面半桶水"""
+    p = Piece("bucket", 11, 9, 11, vs=2.0, seed=127)
+    b = p.lathe(0.5, 0.5, lambda t: 4.0 + 0.6 * t, 0, 6) & ~p.lathe(0.5, 0.5, lambda t: 3.2 + 0.6 * t, 1, 7)
+    p.fill(b, "timber")
+    p.stripes("x", 2, "timber_d", 1, b & (np.abs(p.Z - 0.5) > 2))
+    p.paint(b & ((np.abs(p.Y - 1.2) < 0.6) | (np.abs(p.Y - 4.8) < 0.6)), "bamboo_d")
+    p.fill(p.cyl(0.5, 0.5, 3.6, 1, 4.6), "water", flat=True)
+    for sx in (-1, 1):
+        p.fill(p.box(0.5 + sx * 4 - 0.6, 0.5 + sx * 4 + 0.6, 5, 8.5, 0, 1), "timber_d")
+    p.fill(p.box(-3.5, 4.5, 7.5, 8.6, 0, 1), "timber_d")
+    return p
+
+
+def sack():
+    """（原麻袋）粮袋：粗麻编纹、袋口扎绳，贴一张红纸"""
+    p = Piece("sack", 25, 15, 35, vs=1.0, seed=128)
+    body = ((p.X / 10.5) ** 4 + ((p.Y - 6) / 6.2) ** 2 + ((p.Z + 1.5) / 14) ** 4 <= 1) & (p.Y >= 0)
+    p.fill(body, grad("hemp_d", "hemp_l", 0, 12))
+    p.paint(body & (((np.floor(p.X) + np.floor(p.Z)) % 2) == 0) & (p.rng.random(p.X.shape) < 0.35), "hemp_d")
+    p.fill(p.ell((0.5, 5.5, 13.5), (3.2, 3, 2.4)), "hemp")
+    p.fill(p.cyl(0.5, 5.5, 3.6, 0, 99, rz=99) & p.box(-4, 5, 2, 9, 13, 14.5), "straw_d")
+    p.fill(p.ell((0.5, 5.5, 16), (4.2, 3.6, 1.4)), "hemp_l")
+    lab = top_surface(p) & p.box(-3.5, 4.5, 0, 99, -6, 0)
+    p.paint(lab, "red", flat=True)
+    p.paint(lab & ((np.abs(p.X - 0.5) < 0.6) | (np.abs(p.Z + 3) < 0.6)), "ink", flat=True)
+    return p
+
+
+def lumber():
+    """（原原木堆）柴垛：圆木码成三层，端面年轮，草绳捆两道"""
+    p = Piece("lumber", 79, 25, 39, vs=1.0, seed=129)
+    r = 4.4
+    rows = [(r, (-13.5, -4.5, 4.5, 13.5)), (r * 2.75, (-9, 0, 9)), (r * 4.5, (-4.5, 4.5))]
+    for yc, zs in rows:
+        for zc in zs:
+            x0, x1 = -37 + p.rng.uniform(0, 4), 37 - p.rng.uniform(0, 4)
+            lg = ((p.Y - yc) ** 2 + (p.Z - zc) ** 2 <= r * r) & (p.X >= x0) & (p.X < x1)
+            p.fill(lg, grad("bark_d", "bark_l", yc - r, yc + r))
+            p.paint(lg & (p.rng.random(p.X.shape) < 0.15), "bark_d")
+            ends = lg & ((p.X < x0 + 1) | (p.X >= x1 - 1))
+            rr = np.sqrt((p.Y - yc) ** 2 + (p.Z - zc) ** 2)
+            p.paint(ends, "earth_l", flat=True)
+            p.paint(ends & ((np.floor(rr * 1.2) % 2) == 0), "earth", flat=True)
+            p.paint(ends & (rr > r - 0.9), "bark", flat=True)
+    for x in (-18, 18):
+        p.paint(p.box(x, x + 2, 0, 99, -99, 99), "straw_d")
+    return p
+
+
+def pallet():
+    """（原木托盘）竹匾：圆竹匾里晒着红辣椒"""
+    p = Piece("pallet", 15, 5, 15, vs=2.0, seed=130)
+    rr = np.sqrt((p.X - 0.5) ** 2 + (p.Z - 0.5) ** 2)
+    p.fill((rr < 7.2) & (p.Y < 1), "bamboo")
+    p.paint((rr < 7.2) & (p.Y < 1) & (((np.floor(p.X) + np.floor(p.Z)) % 2) == 0), "bamboo_d")
+    p.fill((rr < 7.3) & (rr > 6.2) & (p.Y < 2.5), "bamboo_l")
+    for _ in range(26):
+        a, d = p.rng.uniform(0, math.tau), p.rng.uniform(0, 5.2)
+        cx, cz = 0.5 + math.cos(a) * d, 0.5 + math.sin(a) * d
+        b = p.rng.uniform(0, math.tau)
+        p.fill(p.seg((cx, 1.5, cz), (cx + math.cos(b) * 1.8, 1.5, cz + math.sin(b) * 1.8), 0.7) & (p.Y >= 1), p.rng.choice(["red", "red_l", "red"]))
+    return p
+
+
+def wheelbarrow():
+    """（原独轮手推车）中式独轮车：大木轮在正中、两边货架各驮一只麻袋、两根车把朝 -z"""
+    p = Piece("wheelbarrow", 19, 15, 39, vs=2.0, seed=131)
+    wz, wy, R = 3, 6.5, 6.4
+    rim = p.disk_x(wz, wy, R, -0.5, 1.5) & ~p.disk_x(wz, wy, R - 1.3, -1, 2)
+    p.fill(rim, "timber_d")
+    ang = np.arctan2(p.Y - wy, p.Z - wz)
+    spokes = p.disk_x(wz, wy, R - 1, -0.5, 1.5) & ((np.abs(((ang + math.pi) % (math.pi / 4)) - math.pi / 8) < 0.16) | p.disk_x(wz, wy, 1.4, -1, 2))
+    p.fill(spokes, "timber")
+    for sx in (-1, 1):
+        p.fill(p.seg((sx * 3, 8, 13), (sx * 6, 7.5, -19), 0.8), "timber")             # 车把
+        p.fill(p.seg((sx * 5.2, 7.5, -12), (sx * 5.6, 0, -13), 0.7), "timber_d")      # 支腿
+        p.fill(p.box(sx * 2.5 - (0 if sx > 0 else 6), sx * 2.5 + (6 if sx > 0 else 0), 7, 8, -6, 11), "timber_l")   # 货架板
+        p.fill(((p.X - sx * 5.5) ** 2 / 9 + (p.Y - 10.5) ** 2 / 7 + (p.Z - 2.5) ** 2 / 36 <= 1), grad("hemp_d", "hemp_l", 8, 13))
+        p.fill(p.box(sx * 5.5 - 3, sx * 5.5 + 3, 8, 13.5, 1.5, 2.6) & p.occ, "straw_d")
+    p.fill(p.box(-1.5, 2.5, 13, 14, -4, 10), "timber_d")                               # 轮上护架
+    for z in (-4, 9):
+        p.fill(p.box(-1.5, 2.5, 7.5, 14, z, z + 1), "timber_d")
+    return p
+
+
+def rubble_common(name, sx, sy, sz, vs, seed, scale, nb, beam=True):
+    p = Piece(name, sx, sy, sz, vs=vs, seed=seed)
+    hx, hz = sx / 2 - 1, sz / 2 - 1
+    mound = p.ell((0, 0, 0), (hx, sy * 0.32, hz)) & (p.Y >= 0)
+    p.fill(mound, grad("#4e4a44", "#6a645a", 0, sy * 0.3))                          # 碎砖末、灰土
+    p.paint(mound & (p.rng.random(p.X.shape) < 0.3), "brick_d")
+    for _ in range(nb):
+        a, d = p.rng.uniform(0, math.tau), p.rng.uniform(0, 1) ** 0.7
+        cx, cz = math.cos(a) * d * hx * 0.85, math.sin(a) * d * hz * 0.85
+        h = sy * 0.32 * math.sqrt(max(0.0, 1 - d * d))
+        by = max(0.0, h - 1.5 * scale + p.rng.uniform(-1, 1) * scale)
+        if p.rng.random() < 0.6:
+            w, t = 6 * scale, 3 * scale
+            if p.rng.random() < 0.5:
+                m = p.box(cx - w / 2, cx + w / 2, by, by + t, cz - t / 2, cz + t / 2)
+            else:
+                m = p.box(cx - t / 2, cx + t / 2, by, by + t, cz - w / 2, cz + w / 2)
+            p.fill(m, p.rng.choice(["brick", "brick_d", "brick_l"]))
+        else:
+            # 半片筒瓦
+            rr = np.sqrt((p.X - cx) ** 2 + (p.Y - by) ** 2)
+            m = (rr < 2.6 * scale) & (rr > 1.4 * scale) & (p.Y >= by) & (np.abs(p.Z - cz) < 3 * scale)
+            p.fill(m, p.rng.choice(["tile", "tile_d", "tile_l"]))
+    if beam:
+        p.fill(p.seg((-hx * 0.6, 1, -hz * 0.3), (hx * 0.3, sy * 0.85, hz * 0.2), 1.6 * scale), "timber_d")
+    p.paint(p.occ & (p.rng.random(p.X.shape) < 0.05), "moss")
+    return p
+
+
+def rubble():
+    """（原大碎石堆）塌下来的砖瓦堆：青砖、碎筒瓦、一根断梁斜戳着"""
+    return rubble_common("rubble", 75, 32, 29, 1.0, 132, 1.0, 90)
+
+
+def rubble_half():
+    """（原小碎石堆）一小堆砖瓦"""
+    return rubble_common("rubble_half", 19, 17, 15, 2.0, 133, 0.55, 30)
+
+
+def stones():
+    """（原石料）凿好的几块条石，带錾子印"""
+    p = Piece("stones", 15, 10, 13, vs=2.0, seed=134)
+    p.fill(p.box(-6.5, 2, 0, 4, -5.5, 3), "stone")
+    p.fill(p.box(1, 7.5, 0, 4, -3, 6), "stone_l")
+    p.fill(p.box(-4, 4, 4, 8, -3.5, 2.5), "stone_d")
+    p.paint(p.occ & (p.rng.random(p.X.shape) < 0.18), "stone_d")
+    p.fill(p.seg((-6, 0.6, 5), (-2, 0.6, 5.5), 0.5), "timber_l")                     # 錾子
+    p.fill(p.box(-2.2, -0.8, 0, 1.4, 4.8, 6.2), "iron")
+    return p
+
+
+def trunk():
+    """（原大箱子）黑漆描金樟木箱：平盖、铜包角、正面铜锁、两侧提环"""
+    p = Piece("trunk", 15, 10, 13, vs=2.0, seed=135)
+    body = p.box(-6.5, 7.5, 0, 6.5, -5.5, 6.5)
+    p.fill(body, "lacq")
+    p.fill(p.box(-7, 8, 6.5, 8.5, -6, 7), "lacq")
+    p.paint(p.box(-7, 8, 6.5, 7, -6, 7), "gold_d")
+    for xa in (-7, 6.5):
+        for za in (-6, 5.5):
+            p.paint(p.box(xa, xa + 1.5, 0, 9, za, za + 1.5), "brass")
+    p.paint(body & (np.abs(p.Y - 3.2) < 0.5), "gold_d")
+    p.fill(p.box(-0.5, 1.5, 3.5, 7, 6.5, 7.2), "brass")
+    p.fill(p.box(-2.5, 3.5, 2, 4, 6.5, 7.0) & (np.abs(p.X - 0.5) < 3 - (4 - p.Y)), "gold", flat=True)   # 描金云头
+    for sx in (-7.4, 7.9):
+        p.fill(p.disk_x(0.5, 4.5, 1.6, sx - 0.4, sx + 0.4) & ~p.disk_x(0.5, 4.5, 0.8, -99, 99), "brass")
+    return p
+
+
+def rock(name, sx, sy, sz, vs, seed, blobs=4, flat=0.75):
+    """山石：几块棱角分明的石块（随机切面围成的多面体）挤在一起，顶面斜削，横向层理 + 斜皴，只在顶上零星长苔"""
+    p = Piece(name, sx, sy, sz, vs=vs, seed=seed)
+    hx, hz = sx / 2 - 1, sz / 2 - 1
+    for i in range(blobs):
+        main = i == 0
+        cx = 0 if main else p.rng.uniform(-hx * 0.45, hx * 0.45)
+        cz = 0 if main else p.rng.uniform(-hz * 0.45, hz * 0.45)
+        rx = (0.9 if main else p.rng.uniform(0.45, 0.65)) * hx
+        rz = (0.9 if main else p.rng.uniform(0.45, 0.65)) * hz
+        rx, rz = min(rx, hx - abs(cx)), min(rz, hz - abs(cz))
+        top = sy * ((flat + (1 - flat) * p.rng.uniform(0.7, 1.0)) if main else p.rng.uniform(0.4, 0.8))
+        u, v = (p.X - cx) / rx, (p.Z - cz) / rz
+        m = (p.Y >= 0) & (p.Y < top + (u * p.rng.uniform(-0.12, 0.12) + v * p.rng.uniform(-0.12, 0.12)) * sy)
+        a0 = p.rng.uniform(0, math.tau)
+        for k in range(7):                          # 一圈侧面：竖切，稍往里收（上窄下宽）
+            ang = a0 + k / 7 * math.tau + p.rng.uniform(-0.25, 0.25)
+            d = p.rng.uniform(0.78, 1.0)
+            m &= (u * math.cos(ang) + v * math.sin(ang)) <= d - (p.Y / sy) * p.rng.uniform(0.1, 0.35)
+        for k in range(3):                          # 上面几刀斜削
+            ang = p.rng.uniform(0, math.tau)
+            m &= (u * math.cos(ang) + v * math.sin(ang)) * 0.6 + (p.Y / max(top, 1)) * 0.8 <= p.rng.uniform(0.95, 1.15)
+        p.fill(m, "rock")
+    surf = p.occ & ~(np.roll(p.occ, 1, 0) & np.roll(p.occ, -1, 0) & np.roll(p.occ, 1, 2) & np.roll(p.occ, -1, 2))
+    bx = (np.floor(p.X / 2).astype(np.int64) * 73856093) ^ (np.floor(p.Y / 2).astype(np.int64) * 19349663) ^ (np.floor(p.Z / 2).astype(np.int64) * 83492791)
+    p.carve(surf & ((bx % 9) == 0) & (p.Y > 1))
+    yn = p.Y / sy
+    p.paint(p.occ, grad("rock_d", "rock_l", 0, sy))
+    p.paint(p.occ & ((np.floor(p.Y + 1.2 * np.sin(p.X * 0.25 + p.Z * 0.15)) % 4) == 0), "rock_d")   # 层理
+    p.paint(p.occ & ((np.floor(p.X * 0.6 + p.Y + p.Z * 0.3) % 9) == 0) & (yn > 0.2), "rock_d")    # 斜皴
+    ts = top_surface(p)
+    p.paint(ts & (p.rng.random(p.X.shape) < 0.35), "rock_l")
+    p.paint(ts & (yn > 0.55) & (p.rng.random(p.X.shape) < 0.22), "moss")
+    return p
+
+
+def rock_a():
+    return rock("rock_a", 65, 16, 63, 2.0, 141, blobs=5, flat=0.7)
+
+
+def rock_b():
+    return rock("rock_b", 27, 13, 23, 2.0, 142, blobs=3)
+
+
+def rock_c():
+    return rock("rock_c", 37, 21, 37, 2.0, 143, blobs=4, flat=0.8)
+
+
+def rock_d():
+    return rock("rock_d", 19, 11, 17, 2.0, 144, blobs=2)
+
+
+def rock_e():
+    return rock("rock_e", 41, 17, 29, 2.0, 145, blobs=4)
+
+
+def reeds(name, sx, sy, sz, vs, seed, n):
+    """芦苇：一丛细叶往外斜，几根顶着芦花"""
+    p = Piece(name, sx, sy, sz, vs=vs, seed=seed)
+    hx, hz = sx / 2 - 1.5, sz / 2 - 1.5
+    for i in range(n):
+        a, d = p.rng.uniform(0, math.tau), p.rng.uniform(0, 0.45)
+        bx, bz = math.cos(a) * d * hx, math.sin(a) * d * hz
+        h = p.rng.uniform(0.55, 0.98) * (sy - 1)
+        lean = p.rng.uniform(0.15, 0.45)
+        tx = np.clip(bx + math.cos(a) * lean * h, -hx, hx)
+        tz = np.clip(bz + math.sin(a) * lean * h, -hz, hz)
+        p.fill(p.seg((bx, 0, bz), (tx, h, tz), 0.85, 0.55), grad("reed_d", "reed_l", 0, sy))
+        if i % 3 == 0:
+            p.fill(p.ell((tx, min(h + 1, sy - 1.2), tz), (0.9, 1.6, 0.9)), "plume", flat=True)
+    return p
+
+
+def reeds_a():
+    return reeds("reeds_a", 21, 14, 23, 2.0, 146, 44)
+
+
+def reeds_b():
+    return reeds("reeds_b", 7, 12, 5, 2.0, 147, 9)
+
+
+def bone(name, sx, sy, sz, vs, seed, bend=0.0):
+    p = Piece(name, sx, sy, sz, vs=vs, seed=seed)
+    L = sx / 2 - 1.5
+    p.fill(p.seg((-L, 1, 0), (0, 1, bend), 0.8) | p.seg((0, 1, bend), (L, 1, 0), 0.8), "bone")
+    for ex in (-L, L):
+        for dz in (-0.7, 0.7):
+            p.fill(p.ell((ex, 1.2, dz), (1.1, 1.1, 0.9)) & (p.Y >= 0), "bone_l")
+    p.paint(p.occ & (p.Y < 0.9), "bone_d")
+    return p
+
+
+def bone_a():
+    return bone("bone_a", 9, 4, 3, 2.0, 151)
+
+
+def bone_b():
+    return bone("bone_b", 7, 3, 3, 2.0, 152)
+
+
+def bone_c():
+    return bone("bone_c", 13, 4, 3, 2.0, 153, bend=0.6)
+
+
+def ribcage():
+    """（原肋骨架）一副兽骨肋架：脊骨在上，一根根肋骨弯下来扎进土里"""
+    p = Piece("ribcage", 19, 20, 17, vs=1.0, seed=154)
+    p.fill(p.seg((0.5, 15.5, -7.5), (0.5, 14, 7.5), 1.3), "bone")
+    for z in np.arange(-7, 8, 1.6):
+        p.paint(p.box(-1.5, 2.5, 13, 18, z - 0.4, z + 0.4), "bone_l")
+    for z in np.arange(-5.5, 7, 2.6):
+        k = 1 - abs(z) / 12
+        rr = ((p.X - 0.5) / (8.2 * k)) ** 2 + ((p.Y - 0) / (15.0 * k + 0.5)) ** 2
+        rib = (rr <= 1) & (rr >= 0.78) & (np.abs(p.Z - z) < 0.65) & (p.Y >= 0)
+        p.fill(rib, "bone")
+    p.fill(p.ell((0.5, 0, 0), (8, 1.5, 7.5)) & (p.Y >= 0) & (p.rng.random(p.X.shape) < 0.3), "earth_d")
+    p.paint(p.occ & (p.Y < 3), "bone_d")
+    return p
+
+
+PIECES2 = {
+    "wall": wall, "wall_arch": wall_arch, "wall_broken": wall_broken, "arch_gate": arch_gate,
+    "pillar": pillar, "column": column, "barrier": barrier, "barrier_col": barrier_col,
+    "fence": fence, "fence_broken": fence_broken, "fence_pillar": fence_pillar, "fence_stone": fence_stone, "fence_wood": fence_wood,
+    "bench": bench, "table": table, "table_m": table_m, "table_s": table_s,
+    "shrine": shrine, "candles": candles, "torch": torch, "torch_wall": torch_wall, "lantern_hang": lantern_hang, "shelf": shelf,
+    "coins": coins, "flag": flag, "arrows": arrows, "bucket": bucket, "sack": sack, "lumber": lumber, "pallet": pallet,
+    "wheelbarrow": wheelbarrow, "rubble": rubble, "rubble_half": rubble_half, "stones": stones, "trunk": trunk,
+    "rock_a": rock_a, "rock_b": rock_b, "rock_c": rock_c, "rock_d": rock_d, "rock_e": rock_e,
+    "reeds_a": reeds_a, "reeds_b": reeds_b, "bone_a": bone_a, "bone_b": bone_b, "bone_c": bone_c, "ribcage": ribcage,
+}
+PIECES.update(PIECES2)
 
 
 if __name__ == "__main__":
