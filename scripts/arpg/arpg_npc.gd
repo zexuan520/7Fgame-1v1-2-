@@ -98,9 +98,14 @@ func _process(dt: float) -> void:
 		interacted.emit(self)
 
 
+static var _plates: Array[Rect2] = []
+static var _plates_frame := -1
+
+
 func _update_plate() -> void:
 	var cam := get_viewport().get_camera_3d()
-	var head := global_position + Vector3(0, 2.6, 0)
+	var hh := (rig.height * VoxActor.PX * rig.scale_k + 0.25) if rig != null else 1.7 * kit_scale
+	var head := global_position + Vector3(0, hh, 0)
 	if cam == null or not _label.visible or not is_visible_in_tree() or cam.is_position_behind(head):
 		_plate.visible = false
 		return
@@ -118,4 +123,19 @@ func _update_plate() -> void:
 	# 夹在屏幕里：站在最上沿、最左右边的 NPC，名牌也整块露出来
 	var x := clampf(p.x - sz.x * 0.5, 8.0, vs.x - sz.x - 8.0)
 	var y := clampf(p.y - sz.y, 6.0, vs.y - sz.y - 6.0)
-	_plate.position = Vector2(x, y)
+	# 几块名牌挤在一起（都被夹到屏幕上沿）时往下错开，不叠成一团
+	var f := Engine.get_process_frames()
+	if f != _plates_frame:
+		_plates_frame = f
+		_plates.clear()
+	var r := Rect2(x, y, sz.x, sz.y)
+	for i in range(8):
+		var hit := false
+		for o: Rect2 in _plates:
+			if o.grow(2.0).intersects(r):
+				r.position.y = o.end.y + 2.0
+				hit = true
+		if not hit:
+			break
+	_plates.append(r)
+	_plate.position = r.position
