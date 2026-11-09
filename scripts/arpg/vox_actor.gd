@@ -91,6 +91,7 @@ func setup(model_id: String, weapon_id: String = "", wlen: float = 30.0, tint: C
 		mi.name = pname
 		body.add_child(mi)
 		parts[pname] = mi
+	wlen = _wlen_k(wlen)
 	weapon_len = wlen
 	if weapon_id != "":
 		var wm := VoxelModel.weapon_mesh(weapon_id, wlen)
@@ -100,6 +101,13 @@ func setup(model_id: String, weapon_id: String = "", wlen: float = 30.0, tint: C
 			weapon.material_override = mat
 			body.add_child(weapon)
 	apply({})
+
+
+## 头目整体放大 1.5~2 倍时兵器别跟着一样大（不然一把斧子比上半身还大）：超过 1.3 倍的部分按 0.6 次方收
+func _wlen_k(wlen: float) -> float:
+	if scale_k <= 1.3:
+		return wlen
+	return snappedf(wlen * pow(1.3 / scale_k, 0.6), 0.5)
 
 
 ## 换脑袋：用另一个模型的头（同一套 KayKit 骨架），比如给骷髅法师摘掉尖帽子当老僧
@@ -114,6 +122,7 @@ func set_weapon(weapon_id: String, wlen: float) -> void:
 	if weapon != null:
 		weapon.queue_free()
 		weapon = null
+	wlen = _wlen_k(wlen)
 	weapon_len = wlen
 	var wm := VoxelModel.weapon_mesh(weapon_id, wlen)
 	if wm != null:
@@ -311,6 +320,15 @@ func apply(p: Dictionary) -> void:
 			var hv: Vector3 = p.get("hand_r", Vector3(0.05, -1, 0.12))
 			bd = (hv.normalized() + Vector3(0.7, 0.2, 0)).normalized()
 		bd = bd.normalized()
+		# 尖端别戳进地里：长兵器垂下来够到地面时，往前抬到刚好离地
+		var tip_y := hr.y + bd.y * weapon_len * 0.85
+		if tip_y < 1.5 and weapon_len > 1.0:
+			var need := clampf((1.5 - hr.y) / (weapon_len * 0.85), -0.97, 0.97)
+			var hz := Vector2(bd.x, bd.z)
+			if hz.length_squared() < 0.0001:
+				hz = Vector2(1, 0)
+			hz = hz.normalized() * sqrt(1.0 - need * need)
+			bd = Vector3(hz.x, need, hz.y)
 		_place("", hr, hr + bd, weapon)
 		var bw := body.global_transform
 		blade_base = bw * _m2b(hr + bd * weapon_len * 0.25)

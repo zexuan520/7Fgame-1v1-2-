@@ -20,6 +20,9 @@ static var zone_rim := Color(1.0, 0.55, 0.35)
 static var _base_shader: Shader
 var _base_ring: MeshInstance3D
 
+## 不出手时竖着拿的兵器
+const UPRIGHT := {"staff": true, "skel_staff": true, "spear": true}
+
 const TYPES := {
 	"crawler": {"name": "腐骨虫", "model": "skel_crawler", "weapon": "", "wlen": 0.0, "tint": Color(0.85, 0.95, 0.8), "k": 0.72,
 		"hp": 26.0, "speed": 5.4, "detect": 13.0, "range": 2.2, "dmg": 7.0, "windup": 0.42, "attack": "lunge", "poise": 0.0, "coins": 1},
@@ -2000,6 +2003,11 @@ func _apply_pose_body(dt: float) -> void:
 	var p := _pose
 	if _blend < 1.0 and not _pose_prev.is_empty():
 		p = Poses.blend(_pose_prev, _pose, Poses.ease_in_out(_blend))
+	if UPRIGHT.has(String(data["weapon"])) and not state in ["windup", "attack"] and not p.has("keep_blade"):
+		# 长杖、锡杖、长枪：不出手时竖着拿，杖头朝上（兵器模型尖端朝 -y，默认姿势会把杖头拖在地上）
+		p = p.duplicate()
+		p["blade"] = Vector3(0.32, 0.9, 0.3)        # 往前、往外斜一点：俯视时杖头露在肩膀外面
+		p["hand_r"] = Poses.dirv(-45, -35, 0.8)
 	if kind == "greyflag" and _atk != "slash" or kind == "greyflag" and not state in ["windup", "attack"]:
 		# 旗手：旗杆一直竖着扛（抡旗杆打人时才放下来）
 		p = p.duplicate()

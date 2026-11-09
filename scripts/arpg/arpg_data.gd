@@ -17,7 +17,7 @@ const WEAPONS := {
 	"dagger": {"style": "五段，极快", "name": "双刃短匕", "desc": "五段，极快，攻击范围小；收势影刺叠两层出血", "trait": "背刺：从背后砍必定会心，出血 +1", "model": "dagger", "len": 22.0, "dmg": 0.9, "price": 25},
 	"axe": {"style": "三段，下劈震地", "name": "裂骨斧", "desc": "三段，第三段下劈震地", "trait": "碎骨：会心伤害 +50%", "model": "axe2", "len": 38.0, "dmg": 1.0, "price": 25},
 	"spear": {"style": "四段，直刺够得远", "name": "破阵枪", "desc": "四段，前两段直刺够得远，第三段横扫，收势一枪扎穿一整排", "trait": "枪尖：2.4 米外的敌人伤害 +25%", "model": "spear", "len": 52.0, "dmg": 1.0, "price": 35},
-	"staff": {"style": "五段，大开大合", "name": "齐眉棍", "desc": "五段，大开大合，把敌人打飞；收势扫堂把一圈人扫晕", "trait": "棍扫：每一棍多回 3 点气力，击退更远", "model": "staff", "len": 44.0, "dmg": 1.0, "price": 30},
+	"staff": {"style": "五段，大开大合", "name": "齐眉棍", "desc": "五段，大开大合，把敌人打飞；收势扫堂把一圈人扫晕", "trait": "棍扫：每一棍多回 3 点气力，击退更远", "model": "gun", "len": 44.0, "dmg": 1.0, "price": 30},
 	"twin": {"style": "六段，双手轮着砍", "name": "鸳鸯双刀", "desc": "六段，两手轮着砍，最后两段旋身连斩", "trait": "刀势：砍中叠层，每层伤害 +4%（最多 10 层）", "model": "twin_blade", "offhand": "twin_blade", "len": 28.0, "dmg": 0.95, "price": 40},
 	"hammer": {"style": "三段，最慢最重", "name": "镇岳锤", "desc": "三段，最慢最重；后两锤砸地，第三锤震出三圈地波", "trait": "震荡：被砸中的敌人晕得更久（×1.8）", "model": "hammer", "len": 44.0, "dmg": 1.1, "price": 45},
 	"crossbow": {"style": "远程，四段连射", "name": "连弩", "desc": "远程：三发连射，第四段扇形连珠五箭；射击时略往后退", "trait": "游射：翻滚后的第一箭必定会心，弩箭穿透两个敌人", "model": "crossbow", "len": 30.0, "dmg": 1.12, "price": 45, "ranged": true},

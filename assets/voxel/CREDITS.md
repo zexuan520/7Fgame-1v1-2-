@@ -36,4 +36,4 @@
 
 ## 武器（weapon/）
 
-`weapon/*.json` 由 `voxelize_prop.py --grip` 体素化（原点在握把），清单见 `tools/voxelize/weapon_list.txt`。KayKit Adventurers 1.0 的单手剑、双手剑、匕首、双手斧、法杖，KayKit Skeletons 1.0 的骷髅刀、骷髅斧、骷髅法杖、骷髅大盾，以及骷髅弩（骨弩手）、骷髅大盾的转向版 shield_f（盾骷髅）、骷髅箭（弩箭飞行物）。Kay Lousberg，CC0 1.0。
+2026-11-09 起全部兵器都是**本作自制**：剑、长刀、匕首、钺、齐眉棍（gun）、诸葛连弩、拐杖、锈环首刀、锈板斧、锡杖、藤牌、弩箭由 `tools/charforge/arms.py` 生成；锤、鸳鸯双刀由 `tools/voxelize/gen_arms.py`，枪、灯、旗由 `tools/voxelize/gen_act2_props.py` 生成。不再用 KayKit 的兵器。
