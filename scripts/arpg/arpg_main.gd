@@ -295,6 +295,13 @@ func _ready() -> void:
 			get_tree().create_timer(float(aa[1])).timeout.connect(func() -> void:
 				Input.action_press(ArpgInput.act(0, aa[0]))
 				get_tree().create_timer(0.06).timeout.connect(func() -> void: Input.action_release(ArpgInput.act(0, aa[0]))))
+	if _args.has("animtest") and is_instance_valid(hero):
+		# 测试：按剧本按键连拍主角动作（AnimTest，tools/anim_sheet.py 拼图）
+		var at := AnimTest.new()
+		at.main = self
+		at.hero = hero
+		hero.invincible = true
+		add_child(at)
 	if _args.has("armsmenu"):
 		get_tree().create_timer(1.5).timeout.connect(_arms_menu_test.bind(String(_args["armsmenu"])))
 	if _args.has("givegear") and state != null:

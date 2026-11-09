@@ -99,6 +99,9 @@ static func _make(id: String, sliced: bool) -> VoxelModel:
 		else:
 			mesh = g.build(1.0 / res)
 		m.parts[pname] = {"anchor": Vector3(an[0], an[1], an[2]) / res, "len": float(pd["len"]) / res, "mesh": mesh}
+		if pd.has("pivot"):
+			var pv: Array = pd["pivot"]
+			m.parts[pname]["pivot"] = Vector3(pv[0], pv[1], pv[2]) / res   # 会飘的件的转轴（相对锚点，格）
 	return m
 
 

@@ -20,7 +20,10 @@ RES = 1.75
 XR = (-40, 40)
 YR = (0, 120)
 ZR = (-40, 40)
-PART_IDS = ["torso", "hips", "head", "arm_u_f", "arm_l_f", "arm_u_b", "arm_l_b", "leg_u_f", "leg_l_f", "leg_u_b", "leg_l_b"]
+PART_IDS = ["torso", "hips", "head", "arm_u_f", "arm_l_f", "arm_u_b", "arm_l_b", "leg_u_f", "leg_l_f", "leg_u_b", "leg_l_b",
+            "hair", "tail_r", "tail_l", "sleeve_f", "sleeve_b"]
+# 后面五个是“会飘的件”（2026-11-09 动作衔接）：长发/发带、袍子后摆左右两片、广袖袖口。VoxActor 按惯性和弹簧单独摆，
+# 没有这些件的模型照旧（全长在头、胯、前臂上）
 # 部件 → (起点关节, 终点关节)；None = 竖直往下
 SPAN = {
     "torso": ("head", "hips"), "hips": ("hips", None), "head": ("head", None),
@@ -28,6 +31,8 @@ SPAN = {
     "arm_u_b": ("upperarm.l", "lowerarm.l"), "arm_l_b": ("lowerarm.l", "wrist.l"),
     "leg_u_f": ("upperleg.r", "lowerleg.r"), "leg_l_f": ("lowerleg.r", "foot.r"),
     "leg_u_b": ("upperleg.l", "lowerleg.l"), "leg_l_b": ("lowerleg.l", "foot.l"),
+    "hair": ("head", None), "tail_r": ("hips", None), "tail_l": ("hips", None),
+    "sleeve_f": ("lowerarm.r", "wrist.r"), "sleeve_b": ("lowerarm.l", "wrist.l"),
 }
 
 
@@ -50,6 +55,7 @@ class Forge:
         self.part = np.full(shp, -1, dtype=np.int16)
         self.col = np.zeros(shp + (3,), dtype=float)
         self.rng = np.random.default_rng(seed)
+        self.pivots = {}                            # 会飘的件绕哪个点转（模型坐标，小格）
         self.glow = np.zeros(shp, dtype=float)      # 发光强度 0~1（眼睛、灯火）：不做明暗，导出成 alpha = 1 - glow
 
     # ---------- 形状（返回布尔掩码） ----------
@@ -102,6 +108,11 @@ class Forge:
             m &= self.part == PART_IDS.index(part)
         self._paint(m, color)
         self.glow[m] = glow
+
+    def move(self, mask, src, dst):
+        """把 src 部件里落在掩码内的格挪到 dst 部件（颜色不变）：拆出会飘的件用"""
+        m = mask & (self.part == PART_IDS.index(src))
+        self.part[m] = PART_IDS.index(dst)
 
     def carve(self, mask, part=None):
         m = mask
@@ -159,6 +170,8 @@ class Forge:
             cols = np.clip(np.round(self.col[surf]), 0, 255).astype(int)
             gl = self.glow[surf]
             pd = {"anchor": [float(x) for x in np.floor(A)], "len": round(L, 2)}
+            if pname in self.pivots:
+                pd["pivot"] = [round(float(x), 2) for x in (np.array(self.pivots[pname], dtype=float) - np.floor(A))]
             if (gl > 0).any():
                 alpha = np.clip(np.round(255 * (1.0 - gl)), 0, 255).astype(int)[:, None]
                 pd["vox"] = np.concatenate([cells, cols, alpha], 1).reshape(-1).tolist()

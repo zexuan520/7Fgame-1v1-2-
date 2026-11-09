@@ -257,7 +257,24 @@ def hero_c(name="hero_c"):
     f.fill(f.seg((-0.5, 93, -6.5), (-0.5, 93, 6.5), 0.8), "head", C["gold_l"])        # 簪子横穿
     # 发带：冠后两条米白长带垂到背中
     f.fill(f.seg((-3.5, 91, 1.5), (-10, 70, 3.5), 1.2, 0.8) | f.seg((-3.5, 91, -1.5), (-10, 72, -3.5), 1.2, 0.8), "head", C["cream"])
+    _split_flutter(f)
     return f
+
+
+def _split_flutter(f):
+    """拆出会飘的件：背后长发 + 发带（hair）、袍子腰带以下的左右两片（tail_r / tail_l）、广袖袖口（sleeve_f / sleeve_b）。
+    玉佩红穗、内层米白中衣留在胯上不动，袍片飘开时露出来，有层次"""
+    f.move(f.side("x", "<", -4.2) & f.side("y", "<", 81), "head", "hair")
+    f.move(f.side("x", "<", -6.5) & f.side("y", "<", 90), "head", "hair")      # 冠后发带上段
+    pend = (np.abs(f.X - 7.6) < 2.2) & (np.abs(f.Z - 5) < 3.2)
+    inner = f.cone(-0.5, 0, 10, 26, 7.5, 44, squash=1.18) & ~f.cone(-0.5, 0, 8.4, 26, 6.0, 44, squash=1.18) & f.side("x", ">", 0)
+    sk = f.side("y", "<", 41) & ~pend & ~inner
+    f.move(sk & f.side("z", ">", 0), "hips", "tail_r")
+    f.move(sk & f.side("z", "<", 0), "hips", "tail_l")
+    for s, sd in SIDES:
+        f.move(f.side("y", "<", 50.5) & f.side("y", ">", 39) & ~f.cyl(0, 13.5 * s, 4.45, 30, 60), "arm_l_" + sd, "sleeve_" + sd)
+        f.pivots["sleeve_" + sd] = (0, 51, 13.5 * s)
+    f.pivots.update({"hair": (-5, 82, 0), "tail_r": (-1, 41, 6), "tail_l": (-1, 41, -6)})
 
 
 def hero_canren():

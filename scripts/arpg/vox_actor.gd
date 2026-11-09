@@ -10,6 +10,10 @@ extends Node3D
 ##   blade 刀刃方向（Vector3），没有就顺着前臂
 ##   foot_r / foot_l 脚相对站立位置的偏移（格）
 ##   roll 整个人绕侧轴翻（弧度，翻滚用）  spin 整个人绕竖轴转（弧度，回旋斩用）  tilt 往后仰（弧度，受击用）
+##   bank 往右歪（弧度，转弯往弯里倾）  look 头往左转（弧度，看最近的敌人）
+##
+## 会飘的件（模型里有才有，现在只有主角白衣剑客）：hair 长发和发带、tail_r / tail_l 袍子腰下左右两片、sleeve_f / sleeve_b 广袖袖口。
+## 这些件按人偶自己的移动速度、转身快慢、回旋翻滚和迈腿，用弹簧算一个摆角（_flutter），跑起来往后飘、停下晃两下、回旋甩开
 
 const PX := 0.036             # 1 体素格 = 0.036 米：50 格高的人物约 1.8 米
 
@@ -41,6 +45,22 @@ var mount_speed := 0.0         # 拥有者每帧写进来（米/秒），马按�
 var _mount_lift := 0.0         # 骑手抬高多少（格）
 var _gait := 0.0
 var _gait_t := 0.0
+# 会飘的件（二次动态）：每件一个摆角 Vector2(往后摆, 往外/往右摆) 和角速度
+var _fl_on := false
+var _fl_a := {}
+var _fl_v := {}
+var _fl_sleeve := {}          # 袖口：袖子垂向（模型空间方向）
+var _fl_sleeve_v := {}
+var _fl_pos := Vector3.ZERO
+var _fl_yaw := 0.0
+var _fl_spin := 0.0
+var _fl_roll := 0.0
+var _fl_vel := Vector3.ZERO   # 平滑过的模型空间速度（米/秒）：x 前、z 右
+var _fl_yr := 0.0             # 转身角速度（弧度/秒，正 = 往左）
+var _fl_spr := 0.0            # 回旋 / 翻滚的角速度
+var _fl_us := 0
+var fl_kick := Vector2.ZERO   # 外部给袍子一脚（翻滚起跳、落地、急停）：下一帧加到袍片、长发的角速度上
+const FLUTTER := ["hair", "tail_r", "tail_l"]
 
 
 static func toon_material() -> ShaderMaterial:
@@ -98,6 +118,10 @@ func setup(model_id: String, weapon_id: String = "", wlen: float = 30.0, tint: C
 		mi.name = pname
 		body.add_child(mi)
 		parts[pname] = mi
+	_fl_on = parts.has("hair") or parts.has("tail_r") or parts.has("sleeve_f")
+	for pn: String in FLUTTER:
+		_fl_a[pn] = Vector2.ZERO
+		_fl_v[pn] = Vector2.ZERO
 	wlen = _wlen_k(wlen)
 	weapon_len = wlen
 	if weapon_id != "":
@@ -299,27 +323,42 @@ func apply(p: Dictionary) -> void:
 	var roll := float(p.get("roll", 0.0))
 	var spin := float(p.get("spin", 0.0))
 	var tilt := float(p.get("tilt", 0.0))
+	var bank := float(p.get("bank", 0.0))
 	var bt := Transform3D.IDENTITY
 	bt = bt.translated_local(Vector3(0, hip_h, 0))
 	bt = bt.rotated_local(Vector3.UP, spin)
 	bt = bt.rotated_local(Vector3.RIGHT, -roll + tilt)
+	if bank != 0.0:
+		bt = bt.rotated_local(Vector3(0, 0, 1), -bank)
 	bt = bt.translated_local(Vector3(0, -hip_h, 0))
 	body.transform = bt
 
 	var hip3 := _hipmid + Vector3(0, bob, 0)
 	var tb := Basis(Vector3.UP, twist) * Basis(Vector3(0, 0, 1), -lean)
+	var fdt := _flutter_step(p, lean, spin, roll) if _fl_on else 0.0
 	var neck3 := hip3 + tb * (M.j("head") - _hipmid)
 	_place("torso", neck3, neck3 + tb * (M.j("hips") - M.j("head")))
 	if parts.has("hips"):
 		var conv := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))
 		var hb := Basis(Vector3.UP, twist * 0.4) * Basis(Vector3(0, 0, 1), -lean * 0.3)
 		(parts["hips"] as MeshInstance3D).transform = Transform3D(conv * hb * PX * scale_k, _m2b(hip3 + hb * (M.j("hips") - _hipmid)))
-	var hdb := tb * Basis(Vector3(0, 0, 1), -float(p.get("head", 0.0)))
+		for tn: String in ["tail_r", "tail_l"]:
+			if parts.has(tn):
+				_place_swing(tn, hb, hip3 + hb * (M.j("hips") - _hipmid))
+	var hdb := tb * Basis(Vector3.UP, float(p.get("look", 0.0))) * Basis(Vector3(0, 0, 1), -float(p.get("head", 0.0)))
 	var conv2 := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))
 	(parts["head"] as MeshInstance3D).transform = Transform3D(conv2 * hdb * PX * scale_k, _m2b(neck3))
+	if parts.has("hair"):
+		_place_swing("hair", hdb, neck3)
 
 	# 手臂：手往 hand_* 的方向伸，肘往外后方弯
 	var hand := {}
+	# 双手握（grip 0~1）：左手搭到右手下面 grip_at 格的刀柄/枪杆上
+	var grip := float(p.get("grip", 0.0))
+	var bd0: Vector3 = p.get("blade", Vector3.ZERO)
+	if bd0 == Vector3.ZERO:
+		var hv0: Vector3 = p.get("hand_r", Vector3(0.05, -1, 0.12))
+		bd0 = (hv0.normalized() + Vector3(0.7, 0.2, 0)).normalized()
 	for side: String in ["r", "l"]:
 		var sd := "f" if side == "r" else "b"
 		var sh3 := neck3 + tb * (M.j("upperarm." + side) - M.j("head"))
@@ -330,11 +369,15 @@ func apply(p: Dictionary) -> void:
 		var hv: Vector3 = p.get("hand_" + side, def)
 		var reach := clampf(hv.length(), 0.2, 0.98)
 		var target := sh3 + hv.normalized() * (l1 + l2) * reach
+		if side == "l" and grip > 0.0 and hand.has("r"):
+			target = target.lerp((hand["r"] as Vector3) - bd0.normalized() * float(p.get("grip_at", 3.0)), clampf(grip, 0.0, 1.0))
 		var el := _ik2(sh3, target, l1, l2, Vector3(-0.6, -0.2, 0.8 * zs))
 		var hd := el + (target - el).normalized() * l2
 		_place("arm_u_" + sd, sh3, el)
 		_place("arm_l_" + sd, el, hd)
 		hand[side] = hd
+		if parts.has("sleeve_" + sd):
+			_place("sleeve_" + sd, el, el + _sleeve_dir("sleeve_" + sd, (hd - el).normalized(), fdt))
 
 	# 腿：两节 IK，膝盖往前弯
 	var ankle_h := M.j("foot.r").y
@@ -380,6 +423,101 @@ func apply(p: Dictionary) -> void:
 		var hl: Vector3 = hand["l"]
 		var od: Vector3 = p.get("shield", Vector3(0.25, 1.0, 0.0))
 		_place("", hl + Vector3(2.0, 0, 0), hl + Vector3(2.0, 0, 0) + od.normalized(), offhand)
+
+
+## 会飘的件：按人偶自己的位移、转身、回旋翻滚和迈腿，推一步弹簧（返回这一步的秒数，袖口也用）
+func _flutter_step(p: Dictionary, lean: float, spin: float, roll: float) -> float:
+	var us := Time.get_ticks_usec()
+	var dt := clampf(float(us - _fl_us) / 1e6, 0.0, 0.05) * Engine.time_scale if _fl_us > 0 else 0.0
+	_fl_us = us
+	var gp := global_position
+	var yaw := global_rotation.y
+	if dt <= 0.0001:
+		_fl_pos = gp
+		_fl_yaw = yaw
+		_fl_spin = spin
+		_fl_roll = roll
+		return 0.0
+	# 世界速度 → 模型空间（x 前、z 右）
+	var vw := (gp - _fl_pos) / dt
+	if vw.length() > 40.0:
+		vw = Vector3.ZERO      # 传送、换房间
+	var lb := global_transform.basis.orthonormalized().inverse() * vw
+	var vm := Vector3(-lb.z, lb.y, lb.x)
+	_fl_vel = _fl_vel.lerp(vm, 1.0 - exp(-14.0 * dt))
+	var yr := wrapf(yaw - _fl_yaw, -PI, PI) / dt
+	_fl_yr = lerpf(_fl_yr, clampf(yr, -20.0, 20.0), 1.0 - exp(-12.0 * dt))
+	var spr := (wrapf(spin - _fl_spin, -PI, PI) + absf(wrapf(roll - _fl_roll, -PI, PI))) / dt
+	_fl_spr = lerpf(_fl_spr, clampf(spr, -30.0, 30.0), 1.0 - exp(-10.0 * dt))
+	_fl_pos = gp
+	_fl_yaw = yaw
+	_fl_spin = spin
+	_fl_roll = roll
+	var fwd := _fl_vel.x
+	var side := _fl_vel.z
+	var flare := minf(absf(_fl_spr) * 0.045, 1.0)
+	var head := float(p.get("head", 0.0))
+	for pn: String in FLUTTER:
+		if not parts.has(pn):
+			continue
+		var tgt := Vector2.ZERO
+		var k := 90.0
+		var c := 9.0
+		if pn == "hair":
+			# 长发：往后飘、转身甩到外侧；人低头、前倾时仍然往下垂（抵掉头的转角）
+			tgt.x = clampf(fwd * 0.085, -0.05, 0.85) + (lean + head) * 0.75 + flare * 0.6
+			tgt.y = clampf(-side * 0.06 - _fl_yr * 0.05, -0.7, 0.7)
+			k = 55.0
+			c = 6.0
+		else:
+			var s := 1.0 if pn == "tail_r" else -1.0
+			var ft: Vector3 = p.get("foot_r" if s > 0.0 else "foot_l", Vector3.ZERO)
+			# 袍片：跑起来往后拖、迈哪条腿哪片往前踢、横移和转身往一边甩、回旋翻滚整圈甩开
+			tgt.x = clampf(fwd * 0.075, -0.3, 0.8) + lean * 0.3 - ft.x * _legk * 0.03
+			tgt.y = clampf(0.03 - s * side * 0.06 - s * _fl_yr * 0.035, -0.35, 0.6) + flare
+		var a: Vector2 = _fl_a[pn]
+		var v: Vector2 = _fl_v[pn]
+		v += ((tgt - a) * k - v * c) * dt + fl_kick * (1.0 if pn != "hair" else 1.4)
+		a += v * dt
+		a.x = clampf(a.x, -0.6, 1.25)
+		a.y = clampf(a.y, -0.8, 1.2)
+		_fl_a[pn] = a
+		_fl_v[pn] = v
+	fl_kick = Vector2.ZERO
+	return dt
+
+
+## 会飘的件绕自己的转轴（锻造台导出的 pivot）摆：pb 是它挂的那块（头 / 胯）的转向，at 是挂点（模型坐标）
+func _place_swing(pn: String, pb: Basis, at: Vector3) -> void:
+	var mi: MeshInstance3D = parts[pn]
+	var a: Vector2 = _fl_a.get(pn, Vector2.ZERO)
+	var pv: Vector3 = model.parts[pn].get("pivot", Vector3.ZERO)
+	var side := -a.y
+	if pn == "tail_l":
+		side = a.y
+	# 往后摆 = 绕 z 轴转（底往 -x），往外摆 = 绕 x 轴转
+	var r := Basis(Vector3(0, 0, 1), -a.x) * Basis(Vector3(1, 0, 0), side)
+	var conv := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))
+	mi.transform = Transform3D(conv * pb * r * PX * scale_k, _m2b(at + pb * (pv - r * pv)))
+
+
+## 袖口：大半跟着前臂，往下垂一点（广袖受重力），胳膊甩得快时拖在后面
+func _sleeve_dir(pn: String, fore: Vector3, dt: float) -> Vector3:
+	var tgt := (fore + Vector3(0, -0.55, 0) - _fl_vel * 0.035).normalized()
+	var d: Vector3 = _fl_sleeve.get(pn, tgt)
+	var v: Vector3 = _fl_sleeve_v.get(pn, Vector3.ZERO)
+	if dt > 0.0:
+		v += ((tgt - d) * 160.0 - v * 14.0) * dt
+		d = (d + v * dt).normalized()
+		# 别和前臂分得太开（不然胳膊从袖子侧面戳出来）
+		if d.dot(fore) < 0.82:
+			d = fore.slerp(d, 0.6).normalized() if fore.cross(d).length_squared() > 1e-6 else fore
+	else:
+		d = tgt if not _fl_sleeve.has(pn) else d
+	_fl_sleeve[pn] = d
+	_fl_sleeve_v[pn] = v
+	var l := model.length("arm_l_" + ("f" if pn == "sleeve_f" else "b"))
+	return d * maxf(l, 1.0)
 
 
 ## 马：身子跟着颠、微微点头；四条腿绕腿根前后摆（前后腿反相，左右错开一点，像跑马）

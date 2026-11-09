@@ -40,6 +40,36 @@ var _move := Vector3.ZERO
 var _pose := {}
 var _pose_prev := {}
 var _blend := 1.0
+var _blend_rate := 10.0          # 过渡速度（1 / 过渡秒数）：每种衔接自己定（_xf）
+var _shown := {}                 # 上一帧真正摆出来的姿势（切状态时从这里插值，中途取消不会跳）
+# ---- 动作衔接（2026-11-09）----
+const STANCE_T := 2.5            # 打完保持架势几秒
+const SKID_T := 0.26
+const PIVOT_T := 0.17
+const SETTLE_T := 0.55
+var _stance := 0.0               # 架势剩余秒数（最后 0.6 秒慢慢放松回站姿）
+var _from_ang := Vector2(-5, -25)    # 这一刀起手前刀在哪（θ, φ）
+var _from_feet: Array = []           # 这一刀起手前两只脚在哪
+var _rise := 0.0                 # 起身斩（翻滚里接的攻击）
+var _since_roll := 9.0
+var _skid_t := 0.0
+var _pivot_t := 0.0
+var _pivot_left := false
+var _pivot_yaw0 := 0.0
+var _pivot_dir := Vector3.ZERO
+var _land_t := 0.0
+var _settle_t := 0.0
+var _settle_kind := ""
+var _idle_t := 0.0
+var _fidget_t := -1.0
+var _look := 0.0
+var _look_want := 0.0
+var _look_scan := 0.0
+var _acc_lean := 0.0
+var _bank := 0.0
+var _yaw_prev := 0.0
+var _speed_prev := 0.0
+var _hurt_back := false
 var _anim_t := 0.0
 var _step_snd := 0.0
 var _lunge_dir := Vector3.ZERO
@@ -484,6 +514,10 @@ func _physics_process_body(delta: float) -> void:
 	st_t += dt
 	_anim_t += dt
 	_combo_reset = maxf(_combo_reset - dt, 0.0)
+	_since_roll += dt
+	_land_t = maxf(_land_t - dt, 0.0)
+	if _settle_t <= 0.0:
+		_stance = maxf(_stance - dt, 0.0)
 	match state:
 		"move":
 			_st_move(dt)
@@ -550,6 +584,14 @@ func _set_state(s: String) -> void:
 		rig.position.y = 0.0
 	state = s
 	st_t = 0.0
+	if s != "move":
+		_skid_t = 0.0
+		_pivot_t = 0.0
+		_settle_t = 0.0
+		_fidget_t = -1.0
+		_idle_t = 0.0
+	if s in ["attack", "roll", "dash_ready", "dash", "beam", "finish", "whirl", "quake", "art_cast", "hurt", "item"]:
+		_stance = STANCE_T
 	if trail != null:
 		trail.active = s in ["attack", "finish", "dash"]
 		if s == "finish":
@@ -557,8 +599,15 @@ func _set_state(s: String) -> void:
 			trail.life = 0.22
 		elif s != "attack":
 			_reset_trail()
-	_pose_prev = _pose
+	_pose_prev = _shown if not _shown.is_empty() else _pose
 	_blend = 0.0
+	_blend_rate = 10.0
+
+
+## 这次切状态的过渡时长（秒）：连招接连招最快，收招回站姿慢一点
+func _xf(sec: float) -> void:
+	_blend = 0.0
+	_blend_rate = 1.0 / maxf(sec, 0.001)
 
 
 func _try_actions(allowed: Array) -> bool:
@@ -626,9 +675,47 @@ func _st_move(dt: float) -> void:
 	if _try_actions(["attack", "roll", "dash", "beam", "finish", "heal", "art", "swap", "item", "item_next"]):
 		return
 	var d := input_dir()
-	var want := d * move_speed * (1.3 if buffs.has("smoke") else 1.0)
-	_move = _move.move_toward(want, accel * dt)
+	var sp0 := _move.length() / move_speed
+	# 急停：快跑时松手 → 后仰刹步、扬尘、往前滑一小段
+	if d == Vector3.ZERO and sp0 > 0.75 and _skid_t <= 0.0 and _pivot_t <= 0.0:
+		_skid_t = SKID_T
+		_settle_t = 0.0
+		Vfx.I.puff(global_position + facing * 0.35, facing, 2)
+		Game.sfx("step", -9.0, 0.15)
+		if rig != null:
+			rig.fl_kick = Vector2(-5.0, 0.0)      # 袍子、头发往前甩
 	if d != Vector3.ZERO:
+		_skid_t = 0.0
+		_settle_t = 0.0
+		var dn := d.normalized()
+		# 急转身：跑着往反方向扳 → 压低拧身、蹬地扬尘，不再瞬间翻面
+		if facing.dot(dn) < -0.5 and sp0 > 0.55 and _pivot_t <= 0.0:
+			_pivot_t = PIVOT_T
+			_pivot_left = facing.cross(dn).y > 0.0
+			_pivot_yaw0 = atan2(facing.x, facing.z)
+			_pivot_dir = dn
+			_move *= 0.25
+			Vfx.I.puff(global_position, -facing, 2)
+			Game.sfx("step", -9.0, 0.2)
+			if rig != null:
+				rig.fl_kick = Vector2(3.0, 4.0 if _pivot_left else -4.0)
+	var want := d * move_speed * (1.3 if buffs.has("smoke") else 1.0)
+	if _pivot_t > 0.0:
+		want *= 0.35
+	_move = _move.move_toward(want, accel * dt)
+	if _pivot_t > 0.0:
+		_pivot_t = maxf(_pivot_t - dt, 0.0)
+		if d != Vector3.ZERO:
+			_pivot_dir = d.normalized()
+		var y1 := atan2(_pivot_dir.x, _pivot_dir.z)
+		var dy := wrapf(y1 - _pivot_yaw0, -PI, PI)
+		if _pivot_left and dy < 0.0:
+			dy += TAU
+		elif not _pivot_left and dy > 0.0:
+			dy -= TAU
+		var ya := _pivot_yaw0 + dy * Poses.ease_in_out(1.0 - _pivot_t / PIVOT_T)
+		face_to(Vector3(sin(ya), 0, cos(ya)))
+	elif d != Vector3.ZERO:
 		# 按角度插值转身（Vector3.slerp 在两向量几乎平行时会报“轴未归一化”）
 		var dn := d.normalized()
 		if facing.dot(dn) > -0.9:
@@ -638,29 +725,102 @@ func _st_move(dt: float) -> void:
 			face_to(dn)
 	move_with_knock(_move, dt)
 	var sp := _move.length() / move_speed
+	# 起跑往前冲、刹车往后坐；转弯往弯里倾
+	var yaw := atan2(facing.x, facing.z)
+	var yr := wrapf(yaw - _yaw_prev, -PI, PI) / dt
+	_yaw_prev = yaw
+	_acc_lean = lerpf(_acc_lean, clampf((sp - _speed_prev) / dt * 0.05, -0.25, 0.3), 1.0 - exp(-10.0 * dt))
+	_speed_prev = sp
+	_bank = lerpf(_bank, clampf(-yr * sp * 0.035, -0.3, 0.3), 1.0 - exp(-10.0 * dt))
+	# 步伐：脚落地那一下才响、才扬尘（右脚在相位 π/2，左脚在 3π/2）
+	var ph0 := _phase
 	_phase += dt * (6.0 + 6.0 * sp) * (1.0 if sp > 0.05 else 0.0)
 	if sp > 0.1:
-		_target_pose(Poses.run(_phase, sp))
-		_step_snd -= dt
-		if _step_snd <= 0.0:
-			_step_snd = 0.32
-			Game.sfx("step", -14.0, 0.1)
-			if sp > 0.7:
-				Vfx.I.puff(global_position - facing * 0.25, -_move.normalized())
-	else:
-		_target_pose(Poses.idle(_anim_t))
+		var n1 := floori((_phase - PI * 0.5) / PI)
+		if n1 != floori((ph0 - PI * 0.5) / PI):
+			Game.sfx("step", -15.0 + 3.0 * sp, 0.1)
+			if sp > 0.6:
+				var sd := facing.cross(Vector3.UP) * (0.14 if posmod(n1, 2) == 0 else -0.14)
+				Vfx.I.puff(global_position + facing * 0.2 + sd, -_move.normalized())
+	_target_pose(_move_pose(dt, d, sp))
 	if CamRig.I != null:
 		CamRig.I.lead_dir = CamRig.I.lead_dir.lerp(_move / move_speed, 1.0 - exp(-3.0 * dt))
+
+
+## 站/跑/急停/急转身/落地/收刀/小动作叠成这一帧的姿势
+func _move_pose(dt: float, d: Vector3, sp: float) -> Dictionary:
+	var am := Poses.arms(weapon_id)
+	var style := String(am["carry"])
+	var g := Poses.ease_in_out(_stance / 0.6)
+	var p := Poses.hero_idle(_anim_t, style, g)
+	var run_w := Poses.ease_in_out(clampf((sp - 0.06) / 0.3, 0.0, 1.0))
+	if run_w > 0.0:
+		p = Poses.blend(p, Poses.hero_run(_phase, sp, style, g), run_w)
+	# 站久了的小动作（放松了才有）
+	if sp < 0.05 and g <= 0.0 and _settle_t <= 0.0 and d == Vector3.ZERO:
+		_idle_t += dt
+	else:
+		_idle_t = 0.0
+		_fidget_t = -1.0
+	if _idle_t > 4.0 and _fidget_t < 0.0:
+		_fidget_t = 0.0
+	if _fidget_t >= 0.0:
+		_fidget_t += dt
+		var fk := _fidget_t / 1.8
+		var fp := Poses.fidget(fk, style, _anim_t)
+		if style in ["side", "reverse", "twin"]:
+			p.merge(fp, true)
+		else:
+			p["look"] = float(p.get("look", 0.0)) + float(fp.get("look", 0.0))
+			p["bank"] = float(p.get("bank", 0.0)) + float(fp.get("bank", 0.0))
+			p["bob"] = float(p.get("bob", 0.0)) + float(fp.get("bob", -0.6)) + 0.6
+		if fk >= 1.0:
+			_fidget_t = -1.0
+			_idle_t = -3.0
+	# 收势后的收刀（振刀 / 扛回肩上 / 枪棍转一圈），一动就停
+	if _settle_t > 0.0:
+		var before := _settle_t
+		_settle_t = maxf(_settle_t - dt, 0.0)
+		var k := 1.0 - _settle_t / SETTLE_T
+		p.merge(Poses.settle(_settle_kind, k, style), true)
+		if _settle_t <= 0.0 and _settle_kind == "heave":
+			_stance = 0.0      # 扛回肩上就是放松了，不再回架势
+		if _settle_kind == "flick" and before > SETTLE_T * 0.8 and _settle_t <= SETTLE_T * 0.8:
+			# 甩刀那一下：刀尖甩出一溜细光，轻轻“唰”一声
+			var tc := ArpgArms.trail(weapon_id)
+			Vfx.I.streaks(rig.blade_tip, (rig.blade_tip - rig.blade_base).normalized(), tc[1], 3, 0.7, 0.12, 0.4, 0.05)
+			Game.sfx("slash", -16.0, 0.2)
+	# 急停、急转身：自带起落包络，最后几成交还给站/跑
+	if _skid_t > 0.0:
+		_skid_t = maxf(_skid_t - dt, 0.0)
+		var k := 1.0 - _skid_t / SKID_T
+		p = Poses.blend(p, p.merged(Poses.skid(k, style), true), 1.0 - Poses.ease_in_out((k - 0.6) / 0.4))
+	if _pivot_t > 0.0:
+		var k := 1.0 - _pivot_t / PIVOT_T
+		p = Poses.blend(p, p.merged(Poses.pivot(k, style, _pivot_left), true), sin(k * PI))
+	if _land_t > 0.0:
+		var lp := Poses.land(1.0 - _land_t / 0.18)
+		for key: String in lp:
+			p[key] = float(p.get(key, 0.0)) + float(lp[key])
+	p["lean"] = float(p.get("lean", 0.0)) + _acc_lean
+	p["bank"] = float(p.get("bank", 0.0)) + _bank
+	return p
 
 
 # ---------- 连招 ----------
 
 func _start_attack(i: int) -> void:
+	var chained := state == "attack"
+	var from_roll := state == "roll" or _since_roll < 0.12
+	# 刀路衔接：从画面上刀现在的位置起手，两只脚从现在的位置迈
+	_from_ang = Poses.blade_angles(_shown.get("blade", Poses.dirv(-5, -25)))
+	_from_feet = [_shown.get("foot_r", Vector3(1.5, 0, 0.6)), _shown.get("foot_l", Vector3(-1.5, 0, -0.6))]
+	_rise = 1.0 if from_roll else 0.0
 	step_i = i
 	_hit_set.clear()
 	_called = false
 	_set_state("attack")
-	_blend = 0.4
+	_xf(0.05 if chained else (0.06 if from_roll else 0.07))
 	# 朝向：有方向键按方向键，没有就自动对准前方最近的敌人
 	var d := input_dir()
 	var tgt := _auto_target(d if d != Vector3.ZERO else facing, 5.5)
@@ -697,6 +857,20 @@ func _start_attack(i: int) -> void:
 	if s.swing == "shoot":
 		trail.active = false
 	_move = Vector3.ZERO
+	if from_roll:
+		# 起身斩：翻滚的劲儿直接带进这一刀，前摇少三成半、多冲一截
+		st_t = s.startup * 0.35
+		_lunge_len *= 1.35
+
+
+## 这一刀的姿势参数（Poses.swing 的 opt）
+func _swing_opt(s: AttackStep) -> Dictionary:
+	var am := Poses.arms(weapon_id)
+	var g := float(am["grip"])
+	if s.swing == "v_down" and not weapon_id in ["twin", "dagger"]:
+		g = maxf(g, 0.8)      # 下劈双手握
+	return {"from": _from_ang, "lead": 1.0 if step_i % 2 == 0 else -1.0, "feet0": _from_feet,
+		"heft": am["heft"], "grip": g, "grip_at": am["grip_at"], "rise": _rise}
 
 
 func _auto_target(dir: Vector3, rng: float) -> Actor:
@@ -734,7 +908,7 @@ func _st_attack(dt: float) -> void:
 		if not near:
 			lunge_v = _lunge_dir * _lunge_len / (s.startup + s.active)
 	move_with_knock(lunge_v, dt)
-	_target_pose(Poses.swing(s.swing, su, ac, rc))
+	_target_pose(Poses.swing(s.swing, su, ac, rc, _swing_opt(s)))
 	# 判定开始的那一帧放刀光
 	if t >= s.startup and t - dt < s.startup:
 		_spawn_slash(s)
@@ -754,10 +928,14 @@ func _st_attack(dt: float) -> void:
 		if _try_actions(["attack", "dash", "beam", "finish", "art", "swap", "item"]):
 			return
 	if t >= s.total():
-		step_i = step_i if step_i < combo.size() - 1 else -1
+		var last := step_i >= combo.size() - 1
+		step_i = step_i if not last else -1
 		_combo_reset = 0.35
 		_set_state("move")
-		_blend = 0.3
+		_xf(0.18)
+		if last and input_dir() == Vector3.ZERO:
+			_settle_kind = String(Poses.arms(weapon_id)["settle"])
+			_settle_t = SETTLE_T if _settle_kind != "" else 0.0
 
 
 func _nearest_ahead(dist: float) -> bool:
@@ -1099,7 +1277,7 @@ func _start_item() -> bool:
 	_item_id = String(kit.props[clampi(kit.prop_sel, 0, kit.props.size() - 1)]["id"])
 	cd["item"] = 0.5
 	_set_state("item")
-	_blend = 0.6
+	_xf(0.06)
 	return true
 
 
@@ -1117,6 +1295,7 @@ func _st_item(dt: float) -> void:
 		return
 	if st_t >= 0.32:
 		_set_state("move")
+		_xf(0.15)
 
 
 func buff(id: String, t: float) -> void:
@@ -1765,7 +1944,9 @@ func _start_roll() -> void:
 	_set_state("roll")
 	if scarf != null:
 		scarf.fling(-_roll_dir + Vector3(0, 0.8, 0), 1.6)
-	_blend = 0.6
+	if rig != null:
+		rig.fl_kick = Vector2(4.0, 2.5)      # 袍子、头发往后掀
+	_xf(0.05)
 	iframes = roll_iframes
 	_ghost_t = 0.0
 	step_i = -1
@@ -1806,7 +1987,10 @@ func _st_roll(dt: float) -> void:
 			_roll_thunder()
 		_set_state("move")
 		_move = _roll_dir * move_speed * 0.7
-		_blend = 0.5
+		_speed_prev = 0.7
+		_xf(0.1)
+		_since_roll = 0.0
+		_land_t = 0.18
 		Vfx.I.puff(global_position + _roll_dir * 0.3, _roll_dir, 2)
 
 
@@ -1878,8 +2062,9 @@ func take_hit(info: HitInfo) -> bool:
 		Game.sfx("hurt", -2.0)
 		if (info.weight >= 1 or state in ["move", "heal"]) and not armored:
 			step_i = -1
+			_hurt_back = info.dir.dot(facing) > 0.3
 			_set_state("hurt")
-			_blend = 0.8
+			_xf(0.03)
 		iframes = 0.35
 	return ok
 
@@ -1941,7 +2126,7 @@ func _on_hurt(info: HitInfo) -> void:
 
 func _st_hurt(dt: float) -> void:
 	move_with_knock(Vector3.ZERO, dt)
-	_target_pose(Poses.hurt(st_t / 0.32))
+	_target_pose(Poses.hurt(st_t / 0.32, _hurt_back))
 	if st_t > 0.18 and _take_buffer(["roll"]) == "roll":
 		_start_roll()
 		return
@@ -1993,7 +2178,7 @@ func _start_dash() -> void:
 		len = maxf((hit["position"] as Vector3 - (global_position + Vector3(0, 0.6, 0))).length() - radius - 0.2, 0.5)
 	_dash_to = global_position + facing * len
 	_set_state("dash_ready")
-	_blend = 0.5
+	_xf(0.06)
 	if _echo_live:
 		_echo_t = 0.0      # 连闪这一下不进冷却
 	else:
@@ -2074,11 +2259,12 @@ func _do_dash() -> void:
 
 func _st_dash(dt: float) -> void:
 	move_with_knock(Vector3.ZERO, dt)
-	_target_pose(Poses.swing("h_rl", 1.0, 1.0, clampf(st_t / 0.3, 0, 1)))
+	_target_pose(Poses.dash_end(st_t / 0.36))
 	if st_t > 0.12 and _try_actions(["attack", "roll", "finish", "beam", "art"]):
 		return
-	if st_t >= 0.3:
+	if st_t >= 0.36:
 		_set_state("move")
+		_xf(0.14)
 
 
 # ---------- 光束斩 ----------
@@ -2095,7 +2281,7 @@ func _start_beam() -> void:
 	if tgt != null:
 		face_to(tgt.global_position - global_position)
 	_set_state("beam")
-	_blend = 0.5
+	_xf(0.07)
 	iframes = 1.0
 	Vfx.I.sheet("charge-up", chest() - Vector3(0, 0.6, 0) + facing * 0.4, 2.0, Color(0.8, 1.0, 1.0), 2.0, false, 0.0, 2.2)
 	CamRig.I.punch_zoom(0.6, 0.55)
@@ -2111,6 +2297,7 @@ func _st_beam(dt: float) -> void:
 		_fire_beam()
 	if k >= 1.0:
 		_set_state("move")
+		_xf(0.25)
 
 
 func _fire_beam() -> void:
@@ -2207,7 +2394,7 @@ func _start_finish() -> void:
 			a.add_bleed(4 if lid == "guiyi" else 3, bleed_dmg)
 	cd["finish"] = finish_cd
 	_set_state("finish")
-	_blend = 0.5
+	_xf(0.06)
 	iframes = 0.4
 
 
@@ -2219,6 +2406,7 @@ func _st_finish(dt: float) -> void:
 		_detonate()
 	if k >= 1.0:
 		_set_state("move")
+		_xf(0.2)
 
 
 ## 血爆的范围（瞬狱大四成）
@@ -2272,7 +2460,7 @@ func _detonate() -> void:
 
 func _st_heal(dt: float) -> void:
 	move_with_knock(Vector3.ZERO, dt)
-	_target_pose(Poses.cast(clampf(st_t / 0.3, 0, 1), st_t))
+	_target_pose(Poses.drink(st_t / 0.7, String(Poses.arms(weapon_id)["carry"])))
 	if st_t >= 0.5 and st_t - dt < 0.5:
 		gourds -= 1
 		drinks += 1
@@ -2285,6 +2473,7 @@ func _st_heal(dt: float) -> void:
 		return
 	if st_t >= 0.7:
 		_set_state("move")
+		_xf(0.15)
 
 
 # ---------- 姿势 ----------
@@ -2294,16 +2483,45 @@ func _target_pose(p: Dictionary) -> void:
 
 
 func _apply_pose(dt: float) -> void:
-	_blend = minf(_blend + dt * 10.0, 1.0)
+	_blend = minf(_blend + dt * _blend_rate, 1.0)
 	var p := _pose
 	if _blend < 1.0 and not _pose_prev.is_empty():
 		p = Poses.blend(_pose_prev, _pose, Poses.ease_in_out(_blend))
+	_shown = p
+	p = _with_look(p, dt)
 	if rig.offhand != null:
 		# 鸳鸯双刀：左手那把和右手镜像着挥
 		var b: Vector3 = p.get("blade", Poses.dirv(-5, -25))
 		p = p.duplicate()
 		p["shield"] = Vector3(b.x, b.y, -b.z)
 	rig.apply(p)
+
+
+## 头部追踪：头微微转向最近的敌人（翻滚、回旋时不看）
+func _with_look(p: Dictionary, dt: float) -> Dictionary:
+	if dt > 0.0:
+		_look_scan -= dt
+		if _look_scan <= 0.0:
+			_look_scan = 0.15
+			_look_want = 0.0
+			var best := 8.0
+			for f: Node in get_tree().get_nodes_in_group("foes"):
+				var a := f as Actor
+				if a == null or not a.alive:
+					continue
+				var to := a.global_position - global_position
+				to.y = 0
+				var dist := to.length()
+				if dist < best and dist > 0.3:
+					best = dist
+					_look_want = clampf(atan2(facing.cross(to).y, facing.dot(to)), -0.8, 0.8) * 0.8
+		var want := _look_want if not state in ["roll", "whirl", "dash"] else 0.0
+		_look = lerpf(_look, want, 1.0 - exp(-8.0 * dt))
+	if absf(_look) < 0.01:
+		return p
+	var q := p.duplicate()
+	q["look"] = float(q.get("look", 0.0)) + _look
+	return q
 
 
 func _update_ring() -> void:
