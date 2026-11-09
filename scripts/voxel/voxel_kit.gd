@@ -9,7 +9,9 @@ const DIM := 0.85          # KayKit 原色偏亮、像玩具，压暗一点配�
 const TINT := {
 	"rock_a": Color(0.62, 0.64, 0.66), "rock_b": Color(0.62, 0.64, 0.66), "rock_c": Color(0.62, 0.64, 0.66),
 	"rock_d": Color(0.62, 0.64, 0.66), "rock_e": Color(0.62, 0.64, 0.66), "stones": Color(0.7, 0.7, 0.72),
-	"skull": Color(0.8, 0.78, 0.72), "bone_a": Color(0.8, 0.78, 0.72), "bone_b": Color(0.8, 0.78, 0.72), "bone_c": Color(0.8, 0.78, 0.72),
+	# 地上的骨头小件压暗、偏土色：亮白的骷髅头在斜俯视下和骷髅小怪的头一样大一样白，一眼看去像敌人（审查第 18 条）
+	"skull": Color(0.56, 0.52, 0.46), "bone_a": Color(0.6, 0.56, 0.48), "bone_b": Color(0.6, 0.56, 0.48), "bone_c": Color(0.6, 0.56, 0.48),
+	"ribcage": Color(0.56, 0.52, 0.46),
 	"tree_a": Color(0.7, 0.78, 0.7), "tree_b": Color(0.7, 0.78, 0.7),
 	"reeds_a": Color(0.45, 0.62, 0.6), "reeds_b": Color(0.45, 0.62, 0.6),
 }
