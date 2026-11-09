@@ -46,7 +46,7 @@ const ZONES := {
 	"well": {"bg": Color(0.02, 0.04, 0.07), "fog": Color(0.05, 0.14, 0.2), "fog_d": 0.6, "amb": Color(0.48, 0.52, 0.58), "amb_e": 1.45,
 		"sun": Color(0.7, 0.85, 1.0), "sun_e": 1.2, "spore": Color(0.5, 0.9, 1.0)},
 	"vault": {"bg": Color(0.06, 0.03, 0.02), "fog": Color(0.18, 0.09, 0.04), "fog_d": 0.55, "amb": Color(0.6, 0.47, 0.36), "amb_e": 1.35,
-		"sun": Color(1.0, 0.78, 0.55), "sun_e": 1.1, "spore": Color(1.0, 0.6, 0.25), "foe_rim": Color(0.55, 0.9, 1.0)},
+		"sun": Color(1.0, 0.78, 0.55), "sun_e": 1.1, "spore": Color(1.0, 0.6, 0.25), "foe_rim": Color(0.55, 0.9, 1.0), "foe_rim_k": 0.7},
 	"camp": {"bg": Color(0.05, 0.05, 0.07), "fog": Color(0.16, 0.14, 0.16), "fog_d": 0.6, "amb": Color(0.56, 0.52, 0.56), "amb_e": 1.3,
 		"sun": Color(1.0, 0.72, 0.5), "sun_e": 1.15, "spore": Color(1.0, 0.55, 0.3), "foe_rim": Color(0.55, 0.9, 1.0)},
 	# 终章 · 无光殿（灯冢最深处，烛王坐的地方）：摆设和灯冢一样，光压得很暗、发红

@@ -190,7 +190,16 @@ def skel_shield():
 
 def skel_archer():
     """骨弩手：兜帽，弯腰更厉害。顶视：暗色泪滴"""
-    return _skeleton("skel_archer", "本作自制 · 骨弩手", head="hood", shoulder="none", rag="#6a5f3e", rag_d="#3f3826", hunch=5)
+    f = _skeleton("skel_archer", "本作自制 · 骨弩手", head="hood", shoulder="none", rag="#6a5f3e", rag_d="#3f3826", hunch=5,
+                  bones=("#d6c8a0", "#a39370", "#ece0bc"))
+    # 斗篷从兜帽一直披到腰下（背上一大片土绿），背一只箭壶露出红羽
+    cp = f.ell((-2, 60, 0), (9.5, 14, 13.6)) & f.side("y", ">", 40) & f.side("x", "<", 3)
+    f.fill(cp, "torso", "#6a5f3e")
+    f.paint(cp & f.side("y", "<", 44), "#3f3826", part="torso")
+    f.fill(f.seg((-10, 46, 5), (-11, 72, -3), 3.0), "torso", C["leather"])
+    for dz in (-2, 0, 2):
+        f.fill(f.seg((-11, 72, -3 + dz), (-12, 80, -5 + dz), 0.9), "torso", C["red"])
+    return f
 
 
 # ---------------- 灰衣营 ----------------

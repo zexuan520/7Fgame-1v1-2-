@@ -17,6 +17,7 @@ const MAX_TOKENS := 2
 static var tokens := 0
 ## 这一区的小怪边缘光颜色（ArpgMain._apply_zone_env 按区域冷暖设）
 static var zone_rim := Color(1.0, 0.55, 0.35)
+static var zone_rim_k := 0.45
 static var _base_shader: Shader
 var _base_ring: MeshInstance3D
 
@@ -28,7 +29,7 @@ const TYPES := {
 		"hp": 26.0, "speed": 5.4, "detect": 13.0, "range": 2.2, "dmg": 7.0, "windup": 0.42, "attack": "lunge", "poise": 0.0, "coins": 1},
 	"skeleton": {"name": "骷髅兵", "model": "skel_grunt", "weapon": "skel_blade", "wlen": 30.0, "tint": Color(0.95, 0.95, 0.9), "k": 1.0,
 		"hp": 55.0, "speed": 3.8, "detect": 12.0, "range": 2.1, "dmg": 11.0, "windup": 0.55, "attack": "slash", "poise": 0.0, "coins": 3},
-	"shadow": {"name": "残影", "model": "hero_canren", "ghost": true, "weapon": "sword", "wlen": 34.0, "tint": Color(0.45, 0.55, 0.95), "k": 0.82,
+	"shadow": {"name": "残影", "model": "hero_canren", "ghost": true, "weapon": "sword", "wlen": 34.0, "tint": Color(0.3, 0.26, 0.5), "mono": 1.0, "k": 0.82,
 		"hp": 520.0, "speed": 5.4, "detect": 30.0, "range": 2.4, "dmg": 15.0, "windup": 0.4, "attack": "slash", "poise": 60.0, "coins": 30},
 	"samurai": {"name": "赤甲武士", "model": "red_armor", "weapon": "axe2", "wlen": 44.0, "tint": Color(1.25, 0.5, 0.45), "k": 1.25,
 		"hp": 190.0, "speed": 3.2, "detect": 14.0, "range": 2.8, "dmg": 22.0, "windup": 0.75, "attack": "heavy", "poise": 45.0, "coins": 9},
@@ -251,7 +252,7 @@ func _ready() -> void:
 	if Arena.lod == 0 and not is_boss:
 		rig.mat.next_pass = null   # 低画质：小怪不描边（描边是整个人偶再画一遍，成群时绘制调用翻倍）
 	# 边缘光跟着区域走：冷色地面（幽林、墓园、樱林、地宫、驿站）用暖色，暖色地面用冷色，怎么都跟地面拉开
-	rig.set_rim(zone_rim if not is_boss else Color(1.0, 0.6, 0.8), 0.45 if not is_boss else 0.35)
+	rig.set_rim(zone_rim if not is_boss else Color(1.0, 0.6, 0.8), zone_rim_k if not is_boss else 0.35)
 	_make_base_ring(k)
 	if data.has("head") and not forged:
 		rig.swap_head(String(data["head"]))
@@ -260,6 +261,8 @@ func _ready() -> void:
 	if data.has("offhand"):
 		rig.set_offhand(String(data["offhand"]), float(data.get("olen", 22.0)))
 	match kind:
+		"shadow":
+			rig.set_rim(Color(0.75, 0.5, 1.0), 1.0)   # 残影：一团墨色人影 + 紫色描边，和主角（青衫黄斗笠）一眼分开
 		"bomber":
 			rig.set_rim(Color(1.0, 0.55, 0.2), 0.9)
 		"summoner":

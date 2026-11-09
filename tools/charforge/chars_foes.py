@@ -40,7 +40,9 @@ def _man(name, src, heavy=False, thigh=C["char"], shin=C["char"], boot=C["boot"]
 def skel_crawler():
     """腐骨虫：弓成一团的小骨头，发霉的黄绿骨色，背上一排骨刺，头顶长苔。顶视：一颗绿苔小头 + 一串刺"""
     f = _skeleton("skel_crawler", "本作自制 · 腐骨虫", shoulder="none", rag=None, hunch=8,
-                  bones=("#cfd0a8", "#9a9a70", "#e6e6c4"))
+                  bones=("#b4bc78", "#7c8448", "#ccd496"))
+    # 满身霉斑苔藓（黄绿一团，和白骨头分开）
+    f.paint((f.part >= 0) & ((np.floor(f.X / 2) * 7 + np.floor(f.Y / 2) * 3 + np.floor(f.Z / 2) * 5) % 4 == 0), "#6f8a3a")
     hx = 8 * 0.6
     f.paint(f.ell((hx + 1.5, 80, 0), (9.4, 9.6, 9.0)) & f.side("y", ">", 85), "#6f8a3a", part="head")
     f.paint(f.ell((hx + 1.5, 80, 0), (9.4, 9.6, 9.0)) & f.side("y", ">", 85) & ((np.floor(f.X) + np.floor(f.Z)) % 3 == 0), "#8fb04a", part="head")
@@ -51,8 +53,15 @@ def skel_crawler():
 
 def skel_assassin():
     """骨刺客：黑巾蒙面 + 头巾长飘带 + 斜挎黑布带，瘦。顶视：黑头巾 + 两条飘带"""
-    f = _skeleton("skel_assassin", "本作自制 · 骨刺客", shoulder="none", rag="#2d2438", rag_d="#1a1522", hunch=4)
+    f = _skeleton("skel_assassin", "本作自制 · 骨刺客", shoulder="none", rag="#2d2438", rag_d="#1a1522", hunch=4,
+                  bones=("#b8b0c4", "#827a90", "#d6d0e0"))
     hx = 4 * 0.6
+    # 一身黑布裹到腰（远看是一条黑影顶一颗白头，和别的骷髅一眼分开）
+    wrap = f.ell((2, 57, 0), (8.6, 12.5, 12.4)) & f.side("y", ">", 46)
+    f.fill(wrap, "torso", "#2d2438")
+    f.paint(wrap & ((np.floor(f.Y) % 4) == 0), "#3d3248", part="torso")
+    for s_, sd in ((1, "f"), (-1, "b")):
+        f.fill(f.seg((0, 66, 13 * s_), (0, 52, 13 * s_), 3.6, 3.3), "arm_u_" + sd, "#2d2438")
     mask_lower(f, "#2d2438", cx=hx + 2, cy=79)
     f.paint(f.ell((hx + 1.5, 80, 0), (9.4, 9.6, 9.0)) & f.side("y", ">", 83), "#2d2438", part="head")
     f.fill(f.seg((hx - 7, 85, 2), (hx - 18, 77, 4), 1.8, 1.0) | f.seg((hx - 7, 85, -2), (hx - 17, 74, -4), 1.8, 1.0), "head", "#7a2a3a")
@@ -157,8 +166,14 @@ def skel_bellmonk():
 def skel_drowned():
     """水骨：青灰泡发的骨头，挂着水草，眼睛青光。顶视：青白头 + 垂下来的暗绿水草"""
     f = _skeleton("skel_drowned", "本作自制 · 水骨", shoulder="none", rag="#2c4a3e", rag_d="#1a2e26", hunch=5, eye=C["eye_c"],
-                  bones=("#b9c9c6", "#7f9694", "#d8e6e2"))
+                  bones=("#8fbcb6", "#5a8884", "#b4dcd6"))
     hx = 5 * 0.6
+    # 披一身水草（暗绿一大片盖住肩背），身上挂着发青光的水珠
+    shawl = f.ell((-1, 63, 0), (9.5, 8, 14)) & f.side("y", ">", 54)
+    f.fill(shawl, "torso", "#2f5a44")
+    f.paint(shawl & ((np.floor(f.Z) % 3) == 0), "#3f7458", part="torso")
+    for (x, y, z) in ((4, 52, 8), (5, 48, -7), (3, 40, 4), (-2, 30, -5), (6, 58, -3)):
+        f.fill(f.ell((x, y, z), (1.2, 1.6, 1.2)), "torso" if y > 46 else "hips", C["eye_c"], glow=0.6)
     for z, x, L in ((-6, -3, 16), (-2, -6, 20), (3, -5, 14), (7, -1, 12), (0, 2, 10)):
         f.fill(f.seg((hx + x, 88, z), (hx + x - 2, 88 - L, z * 1.15), 1.4, 0.8), "head", "#2f5a44")
     for s, sd in ((1, "f"), (-1, "b")):
@@ -216,11 +231,13 @@ def skel_lampkid():
 def skel_eel():
     """井鳗骨：弓得很低，脊背到头顶一道青色鱼鳍。顶视：一条青鳍"""
     f = _skeleton("skel_eel", "本作自制 · 井鳗骨", shoulder="none", rag=None, hunch=9, eye=C["eye_c"],
-                  bones=("#c0d4cc", "#82a096", "#dcece6"))
-    for y in range(46, 90, 2):
-        h = 6 + 3 * np.sin((y - 46) / 44 * np.pi)
-        x = -4 + (y - 46) * 0.12
-        f.fill(f.box(x - h, x - 1, y, y + 2, -0.8, 0.8), "torso" if y < 70 else "head", C["teal"])
+                  bones=("#9cc8bc", "#628e84", "#c4e6dc"))
+    for y in range(44, 92, 2):
+        h = 8 + 5 * np.sin((y - 44) / 48 * np.pi)
+        x = -4 + (y - 44) * 0.12
+        fin = f.box(x - h, x - 1, y, y + 2, -1.2, 1.2)
+        f.fill(fin, "torso" if y < 70 else "head", "#3a9a90")
+        f.paint(fin & f.side("x", "<", x - h + 2), C["eye_c"], part="torso" if y < 70 else "head", glow=0.45)   # 鳍边发青光
     return f
 
 
@@ -341,7 +358,9 @@ def grey_bow():
              sk=C["grey"], sk_dark=C["grey_d"], belt_col=C["leather_d"], buckle=C["brass"])
     f.fill(f.box(-8.5, 8.5, 50, 64, -9, 9) & f.ell((0, 57, 0), (9, 12, 11.6)), "torso", C["leather"])
     mask_lower(f, C["grey_d"])
-    hat_straw(f, r=14, h=9, col="#8c8478", dark="#5e574e", light="#aaa294", band=C["red"])
+    # 弩手：深绿兜帽 + 深绿短斗篷（灰衣五兵种里唯一的绿色，远看就知道是放冷箭的）
+    hood(f, "#3e5a44", pointed=False)
+    cape(f, "#3e5a44", "#2a3e2e", top=68, bottom=40, w=12, back=-7)
     quiver(f)
     for s in (1, -1):
         f.fill(f.cyl(0, 14 * s, 5.0, 56, 59), "arm_u_" + ("f" if s > 0 else "b"), C["red"])
@@ -358,6 +377,12 @@ def grey_spear():
     mask_lower(f, C["grey"])
     helm_round(f, C["steel"], C["steel_d"], r=(8.6, 7.5, 8.2), crest="spike", crest_col=C["steel_l"])
     f.fill(f.seg((0, 95, 0), (-5, 99, 0), 2.4, 3.0), "head", C["red"])
+    # 枪兵：白布十字背带 + 背后一面小号旗（三角红旗，比旗手的小），顶视多一个尖角
+    for sgn in (1, -1):
+        f.fill((np.abs((f.Y - 57) - sgn * f.Z * 0.9) < 1.5) & f.ell((0, 57, 0), (9.4, 13, 12.4)) & ~f.ell((0, 57, 0), (7.6, 11.4, 10.6)), "torso", C["cream"])
+    f.fill(f.seg((-9, 50, 0), (-10, 92, 0), 0.9), "torso", C["wood_d"])
+    tri = f.box(-10.6, -9.4, 76, 92, 0, 14) & ((f.Z) < (f.Y - 76) * 0.9)
+    f.fill(tri, "torso", C["red"])
     return f
 
 
@@ -423,8 +448,10 @@ def scarecrow():
     for z in (-3, -1, 1, 3):
         f.fill(f.box(7, 10, 73, 77, z - 0.4, z + 0.4), "head", "#3a2a1a")
     hat = f.cone(0.5, 0, 16, 86, 6, 92) | f.cyl(0.5, 0, 6, 86, 96)
-    hat &= ~((np.floor(f.X / 3) * 5 + np.floor(f.Z / 3)) % 11 == 0)
-    f.fill(hat, "head", Sd)
+    hat &= ~((np.floor(f.X / 3) * 5 + np.floor(f.Z / 3)) % 7 == 0)        # 破洞多一点
+    hat &= ~((f.X > 6) & (f.Z > 4))                                       # 帽檐缺一大块
+    f.fill(hat, "head", "#5a4630")                                        # 发黑的旧草帽（主角的斗笠是亮黄，别撞）
+    f.paint(hat & ((np.floor(f.X) + np.floor(f.Z)) % 4 == 0), "#3e3020", part="head")
     for s, sd in ((1, "f"), (-1, "b")):
         for k in range(5):
             f.fill(f.seg((0, 37, 14 * s), (np.cos(k * 1.3) * 4, 30, 14 * s + np.sin(k * 1.3) * 4), 0.8), "arm_l_" + sd, Sl)
@@ -466,7 +493,7 @@ def courier():
              body=C["navy"], sk=C["navy"], sk_dark=C["navy_d"], belt_col=C["red_d"])
     f.fill(f.box(-8.6, 8.6, 50, 66, -10, 10) & f.ell((0, 58, 0), (9, 12, 11.8)), "torso", C["red"])
     f.paint(f.box(-10, 10, 50, 66, -2, 2) & f.side("x", ">", 6), C["navy"], part="torso")
-    hat_straw(f, r=13, h=9, band=C["red"])
+    hat_straw(f, r=13, h=9, col="#2e2a30", dark="#1e1b20", light="#46404a", band=C["red"])   # 黑漆驿笠 + 红边（主角是黄斗笠）
     f.fill(f.box(-6, 6, 38, 48, 10, 15), "torso", C["leather"])
     f.fill((np.abs((f.Y - 56) + f.Z * 0.85) < 1.4) & f.ell((0, 57, 0), (9.2, 13, 12.2)) & ~f.ell((0, 57, 0), (7.4, 11.4, 10.4)), "torso", C["leather_d"])
     return f

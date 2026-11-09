@@ -198,6 +198,16 @@ func _ready() -> void:
 				n.rig.mat.next_pass = VoxActor.hero_outline_material()
 				n.rig.set_rim(Color(0.45, 0.95, 1.0), 0.6)
 		hero.visible = false
+	if _args.has("kitlineup"):
+		# 测试（审查用）：一组场景件排成网格
+		var ks := String(_args["kitlineup"]).split(",")
+		var cols := int(_args.get("kitcols", "6"))
+		var kg := float(_args.get("kitgap", "3.2"))
+		for i in range(ks.size()):
+			var c := i % cols
+			var r := i / cols
+			arena.kit(ks[i], hero.global_position + Vector3(-(cols - 1) * kg * 0.5 + c * kg, 0, -6.0 + r * kg), 0.0, 1.0, false)
+		hero.visible = false
 	if _args.has("foelineup"):
 		# 测试：新敌人站成一排不动（看模型、兵器、盾的位置）
 		var ks := String(_args["foelineup"]).split(",")
@@ -666,6 +676,7 @@ func _apply_zone_env(info: Dictionary) -> void:
 	sun.light_energy = info["sun_e"]
 	_apply_grade(arena.zone if arena != null else "")
 	Foe.zone_rim = info.get("foe_rim", Color(1.0, 0.55, 0.35))
+	Foe.zone_rim_k = float(info.get("foe_rim_k", 0.45))   # 暖色地面（柳溪村、长明宫、灯冢）上的红橙金敌人：冷色轮廓光加强，别糊进地里
 
 
 ## 环境光拆成两份：平涂的只留 FLAT_AMB，剩下的走半球光（顶面吃天光、底面吃地面反光，toon / floor 着色器里加），
@@ -685,9 +696,9 @@ const GRADES := {
 	"well": [Color(0.0, 0.04, 0.1), Color(1.0, 1.02, 1.05), 1.02],
 	"vault": [Color(0.07, 0.03, 0.0), Color(1.1, 0.96, 0.82), 1.05],
 	"camp": [Color(0.04, 0.03, 0.06), Color(1.1, 0.97, 0.86), 1.0],
-	"liuxi": [Color(0.05, 0.02, 0.04), Color(1.08, 0.98, 0.86), 1.05],
+	"liuxi": [Color(0.05, 0.02, 0.04), Color(1.05, 0.99, 0.9), 0.96],
 	"post": [Color(0.02, 0.03, 0.08), Color(1.04, 1.0, 0.94), 1.0],
-	"palace": [Color(0.06, 0.02, 0.02), Color(1.1, 0.98, 0.84), 1.05],
+	"palace": [Color(0.06, 0.02, 0.02), Color(1.06, 0.99, 0.9), 0.97],
 	"hub": [Color(0.01, 0.04, 0.08), Color(1.1, 1.0, 0.88), 1.05],
 }
 
