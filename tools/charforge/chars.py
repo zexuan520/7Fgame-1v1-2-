@@ -268,6 +268,7 @@ def grey_blade():
 from chars_foes import FOES
 from chars_boss import BOSSES
 from chars_npc import NPCS
+from chars_hero import HEROES
 
 ALL = {
     "hero_canren": hero_canren,
@@ -279,3 +280,4 @@ ALL = {
 ALL.update(FOES)
 ALL.update(BOSSES)
 ALL.update(NPCS)
+ALL.update(HEROES)
