@@ -215,7 +215,8 @@ func _ready() -> void:
 			var f: Foe = Act3Foe.new() if Act3Foe.TYPES3.has(ks[i]) else Foe.new()
 			f.setup_kind(ks[i])
 			add_child(f)
-			f.global_position = hero.global_position + Vector3(-(ks.size() - 1) * 0.9 + i * 1.8, 0, -2.4)
+			var fg := float(_args.get("lineup_gap", "1.8"))
+			f.global_position = hero.global_position + Vector3(-(ks.size() - 1) * fg * 0.5 + i * fg, 0, -2.4)
 			f.face_to(Vector3(0, 0, 1))
 			f.set_physics_process(false)
 			f.rig.scale = Vector3.ONE

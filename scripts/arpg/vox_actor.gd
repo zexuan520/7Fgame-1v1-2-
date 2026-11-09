@@ -34,6 +34,13 @@ var _flash_col := Color.WHITE
 var scale_k := 1.0
 ## 腿长倍数：姿势里的步幅、抬脚是按 KayKit 短腿（约 8.4 格）写的，锻造台的新模型腿长一倍多，步子要跟着放大，不然像在碎步挪
 var _legk := 1.0
+# 坐骑（冲骑、幽骑的马）：马的部件也挂在 body 下、共用材质；骑手整体抬到鞍上，两腿跨开夹住马
+var mount_model: VoxelModel
+var mount_parts := {}
+var mount_speed := 0.0         # 拥有者每帧写进来（米/秒），马按它跑
+var _mount_lift := 0.0         # 骑手抬高多少（格）
+var _gait := 0.0
+var _gait_t := 0.0
 
 
 static func toon_material() -> ShaderMaterial:
@@ -100,6 +107,25 @@ func setup(model_id: String, weapon_id: String = "", wlen: float = 30.0, tint: C
 			weapon.mesh = wm
 			weapon.material_override = mat
 			body.add_child(weapon)
+	apply({})
+
+
+## 骑上马：model_id 是马的模型（tools/charforge/horse.py），锚点 head 是鞍面
+func set_mount(model_id: String) -> void:
+	mount_model = VoxelModel.load_model(model_id)
+	if mount_model == null or model == null:
+		return
+	for pname: String in mount_model.parts:
+		var mi := MeshInstance3D.new()
+		mi.mesh = mount_model.parts[pname]["mesh"]
+		mi.material_override = mat
+		mi.name = "mount_" + pname
+		body.add_child(mi)
+		mount_parts[pname] = mi
+	# 胯骨关节在屁股上面一点：再往上抬 3 格，屁股才坐在鞍上而不是陷进马背
+	_mount_lift = mount_model.j("head").y - _hipmid.y + 3.0
+	height += _mount_lift
+	_gait_t = Time.get_ticks_msec() / 1000.0
 	apply({})
 
 
@@ -259,8 +285,17 @@ func apply(p: Dictionary) -> void:
 	var lean := float(p.get("lean", 0.05))
 	var twist := float(p.get("twist", 0.0))
 	var bob := float(p.get("bob", 0.0)) * _legk
+	var gamp := 0.0
+	if mount_model != null:
+		# 马跑：按速度推进步态相位；骑手跟着马背一颠一颠，不再自己踩步
+		var now := Time.get_ticks_msec() / 1000.0
+		var gdt := clampf(now - _gait_t, 0.0, 0.1)
+		_gait_t = now
+		gamp = clampf(mount_speed / 3.0, 0.0, 1.0)
+		_gait = fmod(_gait + gdt * (4.0 + mount_speed * 1.4) * gamp, TAU)
+		bob = absf(cos(_gait)) * 1.4 * gamp + _mount_lift
 	# 整体：翻滚绕胯的侧轴转，回旋绕竖轴转，受击往后仰
-	var hip_h := _hipmid.y * PX * scale_k
+	var hip_h := (_hipmid.y + (_mount_lift if mount_model != null else 0.0)) * PX * scale_k
 	var roll := float(p.get("roll", 0.0))
 	var spin := float(p.get("spin", 0.0))
 	var tilt := float(p.get("tilt", 0.0))
@@ -308,11 +343,18 @@ func apply(p: Dictionary) -> void:
 		var hj := hip3 + Basis(Vector3.UP, twist * 0.4) * (M.j("upperleg." + side) - _hipmid)
 		var off: Vector3 = p.get("foot_" + side, Vector3.ZERO) * Vector3(_legk, _legk, 1.0)
 		var target: Vector3 = _rest_feet[side] + off + Vector3(0, ankle_h, 0)
+		if mount_model != null:
+			# 骑马：两脚往前下、往外跨，夹在马肚子两边
+			var ll := M.length("leg_u_" + sd) + M.length("leg_l_" + sd)
+			var zs2 := 1.0 if side == "r" else -1.0
+			target = hj + Vector3(0.18 * ll, -0.66 * ll, zs2 * 0.5 * ll)
 		var kn := _ik2(hj, target, M.length("leg_u_" + sd), M.length("leg_l_" + sd), Vector3(1, 0, 0))
 		var dl := (target - kn).normalized() * M.length("leg_l_" + sd)
 		_place("leg_u_" + sd, hj, kn)
 		_place("leg_l_" + sd, kn, kn + dl)
 
+	if mount_model != null:
+		_apply_mount(gamp)
 	if weapon != null:
 		var hr: Vector3 = hand["r"]
 		var bd: Vector3 = p.get("blade", Vector3.ZERO)
@@ -340,9 +382,32 @@ func apply(p: Dictionary) -> void:
 		_place("", hl + Vector3(2.0, 0, 0), hl + Vector3(2.0, 0, 0) + od.normalized(), offhand)
 
 
+## 马：身子跟着颠、微微点头；四条腿绕腿根前后摆（前后腿反相，左右错开一点，像跑马）
+func _apply_mount(gamp: float) -> void:
+	var conv := Basis(Vector3(0, 0, -1), Vector3(0, 1, 0), Vector3(1, 0, 0))
+	var up := Vector3(0, absf(cos(_gait)) * 1.4 * gamp, 0)
+	var pitch := sin(_gait * 2.0) * 0.04 * gamp
+	for pname: String in mount_parts:
+		var mi: MeshInstance3D = mount_parts[pname]
+		var an: Vector3 = mount_model.parts[pname]["anchor"]
+		var b := Basis.IDENTITY
+		var pos := an + up
+		if pname == "torso":
+			b = Basis(Vector3(0, 0, 1), pitch)
+		else:
+			var ph := 0.0
+			match pname:
+				"hleg_fl": ph = 0.6
+				"hleg_br": ph = PI
+				"hleg_bl": ph = PI + 0.6
+			b = Basis(Vector3(0, 0, 1), sin(_gait + ph) * 0.55 * gamp)
+		mi.transform = Transform3D(conv * b * PX * scale_k, _m2b(pos))
+
+
 ## 死了碎成方块：把每块部件拆出来，往外飞、落地弹一下、缩小消失
 func shatter(world: Node3D, impulse: Vector3) -> void:
 	var list: Array = parts.values()
+	list.append_array(mount_parts.values())
 	if weapon != null:
 		list.append(weapon)
 	if offhand != null:

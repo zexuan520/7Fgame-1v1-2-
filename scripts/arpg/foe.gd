@@ -260,6 +260,8 @@ func _ready() -> void:
 		rig.mat.set_shader_parameter("mono", float(data["mono"]))
 	if data.has("offhand"):
 		rig.set_offhand(String(data["offhand"]), float(data.get("olen", 22.0)))
+	if data.has("mount"):
+		rig.set_mount(String(data["mount"]))   # 冲骑、幽骑：骑马
 	match kind:
 		"shadow":
 			rig.set_rim(Color(0.75, 0.5, 1.0), 1.0)   # 残影：一团墨色人影 + 紫色描边，和主角（青衫黄斗笠）一眼分开
@@ -2025,4 +2027,6 @@ func _apply_pose_body(dt: float) -> void:
 		p = p.duplicate()
 		p["hand_l"] = Vector3(0.7, -0.2, -0.3)
 		p["shield"] = Vector3(0.9, 0.5, -0.2)
+	if rig.mount_model != null:
+		rig.mount_speed = Vector2(velocity.x, velocity.z).length()
 	rig.apply(p)
