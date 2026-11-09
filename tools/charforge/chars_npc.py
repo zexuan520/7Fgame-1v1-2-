@@ -4,7 +4,6 @@ from forge import Forge
 from kit import (C, human_joints, legs, arms, torso, cross_collar, belt, skirt, flaps, head, hat_straw, helm_round, hair_bun,
                  topknot, bandana, hood, pauldrons_round, chest_plate, cape, backpack, lantern_hand, jag)
 from chars_foes import _man
-from chars import hero_canren
 
 
 def npc_hag():

@@ -197,6 +197,6 @@ if __name__ == "__main__":
     out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "assets", "voxel")
     names = sys.argv[1:] or list(chars.ALL.keys())
     for n in names:
-        f = chars.ALL[n]()
+        f = chars.ALL[n]() if n in chars.ALL else chars.DRAFTS[n]()
         f.shade()
         f.export(out_dir)

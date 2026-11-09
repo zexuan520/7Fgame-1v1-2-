@@ -10,10 +10,10 @@ from forge import Forge, std_joints, rgb
 from kit import C
 
 
-def hero_canren():
-    """主角·残刃：斗笠 + 青衫 + 红围巾（围巾是 HeroScarf 另画的）。顶视：一张暖色大圆盘，镜头里一眼找到自己"""
+def hero_canren_old():
+    """（2026-11-09 已换成 chars_hero.hero_c 白衣剑客，留着备查）主角·残刃：斗笠 + 青衫 + 红围巾（围巾是 HeroScarf 另画的）。顶视：一张暖色大圆盘，镜头里一眼找到自己"""
     J = std_joints(neck=72, sh_y=67, sh_z=14, hip_y=42, leg_z=6, knee_y=22, ankle_y=6)
-    f = Forge("hero_canren", J, "本作自制 · 主角残刃")
+    f = Forge("hero_canren_old", J, "本作自制 · 主角残刃（旧斗笠）")
     # ---- 腿 ----
     for s, (pu, pl) in ((1, ("leg_u_f", "leg_l_f")), (-1, ("leg_u_b", "leg_l_b"))):
         z = 6 * s
@@ -268,10 +268,9 @@ def grey_blade():
 from chars_foes import FOES
 from chars_boss import BOSSES
 from chars_npc import NPCS
-from chars_hero import HEROES
+from chars_hero import HEROES, HERO_DRAFTS
 
 ALL = {
-    "hero_canren": hero_canren,
     "skel_grunt": skel_grunt,
     "skel_shield": skel_shield,
     "skel_archer": skel_archer,
@@ -281,3 +280,4 @@ ALL.update(FOES)
 ALL.update(BOSSES)
 ALL.update(NPCS)
 ALL.update(HEROES)
+DRAFTS = dict(HERO_DRAFTS)

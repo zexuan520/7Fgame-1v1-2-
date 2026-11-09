@@ -1,4 +1,5 @@
-"""主角新造型（2026-11-09“把主角模型做得更帅”）：三个方案，挑定一个替换 hero_canren。
+"""主角新造型（2026-11-09“把主角模型做得更帅”）：三个方案，用户挑了 C 白衣剑客，输出成 hero_canren（皮肤青衫/赤焰/墨夜/白霜/金身都用它）。
+A、B 留着备查（HERO_DRAFTS，forge.py 不会默认生成；要看就 python3 forge.py hero_a）。
 共同的改法（老主角的毛病：斗笠半径 19 盖住整个人，顶视就是一张草帽圆盘；米白绑腿、米白小臂显得土；腰身直筒）：
   - 头身拉长到约 1:4.5：腿长 3 小格、腰收窄、肩加宽，倒三角
   - 下身全换深色（炭黑裤、黑靴），亮色只留给头顶记号、袍子（皮肤换色那块）和一点朱红
@@ -214,10 +215,10 @@ def hero_b():
 
 # ================= 方案 C · 白衣剑客（束发玉冠 + 广袖长袍） =================
 
-def hero_c():
+def hero_c(name="hero_c"):
     """白衣剑客：高束发髻配银冠 + 长发披到后背 + 广袖长袍到脚踝（燕尾开衩）+ 玉佩红穗。
     顶视：一个小银冠 + 一条长发 + 一大片袍子（皮肤换色），仙侠味；默认青衫是青蓝，白霜皮肤就是一身白"""
-    f = Forge("hero_c", std_joints(**HERO_J), "本作自制 · 主角残刃（白衣剑客）")
+    f = Forge(name, std_joints(**HERO_J), "本作自制 · 主角残刃（白衣剑客）")
     _legs(f, wrap=None)
     _coat_tail(f, C["robe"], C["robe_d"], C["cream"], front_y=24, back_y=8, r1=15)
     # 内层米白中衣下摆（开衩里露一点）
@@ -259,4 +260,9 @@ def hero_c():
     return f
 
 
-HEROES = {"hero_a": hero_a, "hero_b": hero_b, "hero_c": hero_c}
+def hero_canren():
+    return hero_c("hero_canren")
+
+
+HEROES = {"hero_canren": hero_canren}
+HERO_DRAFTS = {"hero_a": hero_a, "hero_b": hero_b, "hero_c": hero_c}
