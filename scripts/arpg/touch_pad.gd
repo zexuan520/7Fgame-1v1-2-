@@ -422,6 +422,8 @@ func _draw_button(b: Array, k: float, down: bool) -> void:
 	draw_arc(c, r, -PI / 2, -PI / 2 + TAU * clampf(k, 0.0, 1.0), 48, Color(col, 0.95 if ready else 0.55), 3.0 if ready else 2.0, true)
 	draw_arc(c, r + 4, 0, TAU, 48, Color(GOLD, 0.25), 1.0, true)
 	if _hero_ok():
+		if String(b[0]) == "finish" and hero.finish_ripe() >= Actor.BLEED_MAX:   # 出血攒够了：红光跳动
+			draw_arc(c, r + 8 + 3 * (0.5 + 0.5 * sin(_t * 16.0)), 0, TAU, 48, Color(1.0, 0.2, 0.2, 0.75 + 0.25 * sin(_t * 16.0)), 4.0, true)
 		var lg := hero.link_glow(String(b[0]))   # 现在按能接连携：外圈亮本色
 		if lg.a > 0.0:
 			draw_arc(c, r + 6, 0, TAU, 48, Color(lg, 0.7 + 0.3 * sin(_t * 18.0)), 4.0, true)

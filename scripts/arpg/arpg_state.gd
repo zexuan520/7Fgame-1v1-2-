@@ -456,6 +456,8 @@ func roll_boons(n: int, rng: RandomNumberGenerator, school: String = "") -> Arra
 	var pool := []
 	for b: Dictionary in ArpgData.BOONS:
 		if not b.get("hidden", false) or bool(Game.save.get(String(b.get("unlock", "arpg_shadow")), false)):
+			if String(b.get("school", "")) == "魂" and not ArpgUnlock.open("soul"):
+				continue   # 分局解锁：魂派第三局才出
 			pool.append(b)
 	var out := []
 	if school != "":

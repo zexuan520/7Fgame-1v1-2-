@@ -7,6 +7,7 @@ extends Node3D
 ## 命令行（-- 后面）：
 ##   --foes=archer,bomber 战斗房只刷这几种（测试新敌人）
 ##   --demo=fight 自动打（录视频用，主角不掉血）  --zone=temple 指定区域  --room=shop 直接进某种房间  --hub 直接进山门
+##   --bosshalf 头目出场就剩 52% 血（看半血机制）  --lockedsys 按第一局的系统解锁  --nohorde 关割草房
 ##   --shot=路径 --shot_t=3,6 按时间拍图后退出（--nohud 不画界面）  --nowaves 不刷怪  --cam_dist/--cam_pitch/--cam_yaw 调镜头
 
 const HUB_SIZE := Vector2(30, 22)
@@ -987,6 +988,7 @@ func _start_chapter(act: int) -> void:
 		s["arpg_last_end2"] = "zhan"
 	s.erase("arpg_bless")
 	s.erase("arpg_monk_buy")
+	ArpgUnlock.force = true
 	_start_run(true, act)
 	state.flags["chapter"] = true
 	for b: Dictionary in state.roll_boons(2, _rng):
@@ -1130,11 +1132,19 @@ func _enter_hub_body() -> void:
 	_hub_stats()
 	_place_hero(arena.entry_pos)
 	hud.visible = true
+	ArpgUnlock.force = false
 	hud.zone_name = "山门 · 拾骨婆的小院"
 	hud.wave_text = "局外：点天赋、换兵器，走进光门出发"
 	hud.coins = 0
 	hud.jade = int(Game.save["jade"])
 	hud.banner("山门", "魂玉 %d　·　出发 %d 次　·　登顶 %d 次" % [int(Game.save["jade"]), int(Game.save.get("runs", 0)), int(Game.save.get("clears", 0))], 2.6)
+	var nu := ArpgUnlock.take_new()
+	if not nu.is_empty():
+		Game.write_save()
+		get_tree().create_timer(3.0).timeout.connect(func() -> void:
+			if mode == "hub":
+				hud.banner("新开：" + String(nu["name"]), String(nu["desc"]), 3.4)
+				Game.sfx("memory", -3.0))
 	if Game.save_notice != "":
 		var note := Game.save_notice
 		Game.save_notice = ""
@@ -2131,6 +2141,8 @@ func _next_wave() -> void:
 	for j in range(0, w.size(), 2):
 		var kind: String = w[j]
 		var n: int = w[j + 1]
+		if kind == _horde_kind():
+			n = int(round(n * (2.0 if Arena.lod > 0 else 1.6)))   # 割草房：翻倍（低画质少一些，手机扛不住）
 		if not kind.begins_with("boss") and state != null:
 			n = maxi(1, int(round(n * state.omen_val("count") * ArpgCycle.count_mult(state.cycle) * ArpgDaily.foe_mult(state, "count"))))   # 天象：血月、骨潮多刷；轮回三起多两成
 		counts.append(n)
@@ -2144,6 +2156,8 @@ func _next_wave() -> void:
 		var n: int = counts[j / 2]
 		for k in range(n):
 			var p: Vector3 = pts[pi % pts.size()] + Vector3(randf_range(-0.6, 0.6), 0, randf_range(-0.6, 0.6))
+			if kind == _horde_kind():
+				p = _horde_point(hp)
 			var afx: Array = marks.get(pi, [])
 			pi += 1
 			if kind.begins_with("boss"):
@@ -2158,6 +2172,28 @@ func _next_wave() -> void:
 			_spawn_foe(kind, p, k * 0.12, base)
 	if wave_i > 0:
 		Game.sfx("boss" if String(w[0]).begins_with("boss") else "danger", -6.0)
+
+
+## 割草房的那种小怪（空 = 这间不是割草房）
+func _horde_kind() -> String:
+	if room_kind != "fight" or _squad.is_empty() or _args.has("nohorde"):
+		return ""
+	return String(_squad.get("horde", ""))
+
+
+## 割草房的刷怪点：主角身边 5~9 米一圈随机，避开障碍；找不到就退回普通刷怪点里最近的
+func _horde_point(hp: Vector3) -> Vector3:
+	for t in range(12):
+		var a := randf() * TAU
+		var r := randf_range(5.0, 9.0)
+		var p := hp + Vector3(cos(a) * r, 0, sin(a) * r)
+		if arena.spot_free(p):
+			return p
+	var best: Vector3 = arena.spawn_points[0] if not arena.spawn_points.is_empty() else hp + Vector3(6, 0, 0)
+	for q: Vector3 in arena.spawn_points:
+		if absf(q.distance_to(hp) - 7.0) < absf(best.distance_to(hp) - 7.0):
+			best = q
+	return best
 
 
 ## 这一波哪一种怪的第一只带词缀（返回在波次数组里的下标，-1 = 没有）：
@@ -2236,6 +2272,8 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 	if kind.begins_with("boss") and kind != "boss10" and not _args.has("oldboss"):
 		ah *= BOSS_HP_K[clampi(fl, 0, BOSS_HP_K.size() - 1)]
 		ad *= BOSS_DMG_K[clampi(fl, 0, BOSS_DMG_K.size() - 1)]   # 打得久了，每下轻一点，整场挨的伤和原来差不多
+	if kind == _horde_kind():
+		om_hp *= 0.5   # 割草房：血量减半
 	f.setup_kind(kind, (1.0 + fl * 0.35 + rk * 0.04) * om_hp * ah, (1.0 + fl * 0.18 + rk * 0.03) * om_dmg * ad)
 	if state != null and room_kind != "tutorial" and not f.data.has("phantom"):
 		ArpgCycle.scale_foe(f, state.cycle)   # 轮回：敌人更硬、更疼
@@ -2262,6 +2300,8 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 		f.dropped.connect(func(_p: Vector3, _c: int, _j: int) -> void: ArpgAch.add("k_affix"))
 		if state != null and state.cycle > 0 and not f.no_loot:
 			f.dropped.connect(func(dp: Vector3, _c: int, _j: int) -> void: _loot(dp, "jade", 1))   # 轮回里的词缀怪多掉一颗魂玉
+	if f.is_boss and _args.has("bosshalf"):
+		f.hp = f.max_hp * 0.52   # 测试：头目一出来就快到半血，好看二阶段机制
 	if f.is_boss:
 		hud.boss = f
 		var sub: String = {"boss": "守在樱树下的无名剑客", "boss3": "无名冢下，万骨之主", "boss2": "古寺深处，一盏不灭的灯",
@@ -2302,7 +2342,7 @@ func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
 			"skeleton": 0.04, "rogue": 0.04, "crawler": 0.015,
 			"lampman": 0.03, "scarecrow": 0.04, "lampguard": 0.1, "torcher": 0.05, "courier": 0.04, "lancer": 0.12, "wardbell": 0.08,
 			"goldguard": 0.14, "censer": 0.06, "palaceghost": 0.05, "chief": 0.9}
-		if _rng.randf() < float(chance.get(kind, 0.0)):
+		if _rng.randf() < float(chance.get(kind, 0.0)) and ArpgUnlock.open("gear"):
 			_drop_gear(pos, -1, 0.1 if kind == "samurai" else 0.0)
 		# 道具：小怪偶尔掉，精英常掉
 		if _rng.randf() < (0.2 if float(chance.get(kind, 0.0)) >= 0.3 else 0.025):
@@ -2373,7 +2413,8 @@ func _room_cleared() -> void:
 		get_tree().create_timer(1.2).timeout.connect(_shadow_outro)
 		return
 	if room_kind == "elite":
-		_drop_gear(hero.global_position + hero.facing * 1.5, -1, 0.25)
+		if ArpgUnlock.open("gear"):
+			_drop_gear(hero.global_position + hero.facing * 1.5, -1, 0.25)
 		if _event_bonus.has("gear"):
 			_drop_gear(hero.global_position + hero.facing * 1.5 + Vector3(-0.8, 0, 0), int(_event_bonus["gear"]))
 			_event_bonus = {}
@@ -4130,6 +4171,7 @@ func _open_pause(sel: Variant = 0) -> void:
 		{"id": "impact", "title": "冲击帧", "right": "开" if bool(Game.settings.get("impact_frames", true)) else "关", "desc": "清完一波、斩精英、见切时整屏黑白定格一瞬；对闪光敏感可以关掉"},
 		{"id": "shake", "title": "震屏强度", "right": CamRig.SHAKE_NAMES[CamRig.shake_level()], "desc": "命中、爆炸时镜头抖动的幅度（关 → 弱 → 中 → 强）；容易晕可以调低"},
 		{"id": "rumble", "title": "震动", "right": "开" if bool(Game.settings.get("rumble", true)) else "关", "desc": "命中、挨打时手柄震一下；手机上只在重击、会心、斩杀、挨打时震"},
+		{"id": "mouseaim", "title": "鼠标瞄准", "right": "开" if bool(Game.settings.get("mouse_aim", true)) else "关", "desc": "电脑上动过鼠标后，出刀和光束斩朝鼠标指的方向；关掉就按方向键和自动瞄准"},
 		{"id": "tilt", "title": "移轴景深", "right": "开" if bool(Game.settings.get("tilt_shift", true)) else "关", "desc": "画面上下边缘微微虚化，像看微缩模型；中、高画质才有，战斗房里自动不开，嫌糊可以关掉"}]
 	if TouchPad.active:
 		items.insert(5, {"id": "touchsize", "title": "按键大小", "right": TouchPad.SIZE_NAMES[TouchPad.size_i], "desc": "右下角触屏按键的大小（小 → 中 → 大）"})
@@ -4172,6 +4214,11 @@ func _on_pause_chosen(i: int) -> void:
 			_open_pause(id)
 		"impact":
 			Game.settings["impact_frames"] = not bool(Game.settings.get("impact_frames", true))
+			Game.write_settings()
+			Game.sfx("coin")
+			_open_pause(id)
+		"mouseaim":
+			Game.settings["mouse_aim"] = not bool(Game.settings.get("mouse_aim", true))
 			Game.write_settings()
 			Game.sfx("coin")
 			_open_pause(id)

@@ -158,6 +158,13 @@ var _leap_from := Vector3.ZERO
 var _did_hit := false
 var _strafe := 1.0
 var _boss_phase := 0
+## 第一幕三个头目半血后的必解机制（2026-11-10）：夜樱“落樱斩阵”（全场斩，只留一条缝）、百骨将“骨牢”（脚下一片骨刺，只留一个口子）、
+## 寂光“三灯”（连推三圈佛光，翻滚穿过去）。隔 9~11 秒一次，半血后 2 秒来第一次
+const MECH := {"boss": "boss_bloom", "boss3": "boss_cage", "boss2": "boss_lamps"}
+const LANE_W := 4.2
+var _mech_t := 0.0
+var _lane_p := Vector3.ZERO
+var _lane_d := Vector3.FORWARD
 var _combo_n := 0
 var _summon_t := 6.0                 # 百骨将：多久召一次小怪
 var _spikes: Array[Vector3] = []     # 百骨将：地刺落点
@@ -383,6 +390,8 @@ func _physics_process_body(delta: float) -> void:
 	st_t += dt
 	_anim_t += dt
 	_cool = maxf(_cool - dt * (1.7 if _rally > 0.0 else 1.0) * (1.45 if affixes.has("frenzy") else 1.0), 0.0)
+	if _boss_phase >= 1:
+		_mech_t -= dt   # 半血机制的倒计时不管在干什么都走（只在追人时才发动）
 	if not affixes.is_empty() and state != "lurk":
 		FoeAffix.tick(self, dt)
 	if _rally > 0.0:
@@ -667,6 +676,19 @@ func _st_chase(dt: float) -> void:
 				_summon_t = randf_range(13.0, 16.0)
 				_begin_attack("boss_summon")
 				return
+	if _boss_phase >= 1 and MECH.has(kind) and not _args_old_boss():
+		if _mech_t <= 0.0 and _get_token():
+			_mech_t = randf_range(9.0, 11.0)
+			if OS.get_cmdline_user_args().has("--feellog"):
+				print("MECH %s %s hp=%.0f/%.0f t=%.2f" % [kind, MECH[kind], hp, max_hp, Time.get_ticks_msec() / 1000.0])
+			if OS.get_cmdline_user_args().has("--mechshot") and get_parent().get("_shots") != null:
+				# 测试：机制一发动就改拍这一招的预警和出手（之后退出）
+				var m: Node = get_parent()
+				var c: float = m.get("_clock")
+				var ts: Array[float] = [c + 0.9, c + 1.6, c + 2.05, c + 2.5]
+				m.set("_shots", ts)
+			_begin_attack(String(MECH[kind]))
+			return
 	if _retreat_t > 0.0:
 		# 骨刺客刺完一下就斜着退开，再找机会
 		_retreat_t -= dt
@@ -829,6 +851,12 @@ func _choose_attack(_dist: float) -> String:
 func _windup_time() -> float:
 	var w := float(data["windup"])
 	match _atk:
+		"boss_bloom":
+			return 1.9
+		"boss_cage":
+			return 1.5
+		"boss_lamps":
+			return 0.9
 		"leap", "boss_leap":
 			return 0.35
 		"boss_combo":
@@ -914,6 +942,49 @@ func _begin_attack(kind_: String) -> void:
 					_spikes.append(target.global_position + Vector3(cos(a), 0, sin(a)) * randf_range(1.5, 3.5))
 			for s in _spikes:
 				Vfx.I.telegraph_circle(s, 1.2, Vfx.DANGER["bone"] if kind != "boss4" else Vfx.DANGER["water"], wt)
+		"boss_bloom":
+			# 落樱斩阵：一条 4 米宽的安全缝从主角身边 3~6 米外穿过，缝两边整片粉红，出手时全场落刀
+			var tp := target.global_position if target != null else global_position
+			var ang := randf() * TAU
+			_lane_d = Vector3(cos(ang), 0, sin(ang))
+			var perp := _lane_d.cross(Vector3.UP)
+			_lane_p = tp + perp * randf_range(2.6, 4.6) * (1.0 if randf() < 0.5 else -1.0)
+			var ar: Variant = get_parent().get("arena") if get_parent() != null else null
+			if ar != null:
+				var hx: float = ar.size.x * 0.5 - 3.0
+				var hz: float = ar.size.y * 0.5 - 3.0
+				_lane_p.x = clampf(_lane_p.x, -hx, hx)
+				_lane_p.z = clampf(_lane_p.z, -hz, hz)
+			_lane_p.y = tp.y
+			var pink := Color(1.0, 0.2, 0.45, 0.4)
+			for sg: float in [-1.0, 1.0]:
+				var o := perp * sg * (LANE_W * 0.5 + 15.0)
+				Vfx.I.danger_rect(_lane_p + o - _lane_d * 40.0, _lane_p + o + _lane_d * 40.0, 30.0, pink, wt)
+			Vfx.I.danger_rect(_lane_p - _lane_d * 40.0, _lane_p + _lane_d * 40.0, LANE_W, Color(0.7, 1.0, 0.85, 0.3), wt)
+			Vfx.I.telegraph_rect(_lane_p - _lane_d * 40.0, _lane_p + _lane_d * 40.0, LANE_W, Color(0.75, 1.0, 0.85, 0.6), wt)
+			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "落樱——找那条缝！", Color(1.0, 0.6, 0.75), 1.3)
+		"boss_cage":
+			# 骨牢：主角脚下 4.5 米一整片骨刺，只空出一个 70° 的口子
+			_spikes.clear()
+			var tp := target.global_position if target != null else global_position
+			var gap := randf() * TAU
+			_spikes.append(tp)
+			for ring in range(1, 4):
+				var rr := ring * 1.5
+				var n := ring * 6
+				for i in range(n):
+					var a := TAU * i / n + ring * 0.3
+					if absf(wrapf(a - gap, -PI, PI)) < 0.62:
+						continue
+					_spikes.append(tp + Vector3(cos(a), 0, sin(a)) * rr)
+			for sp in _spikes:
+				Vfx.I.telegraph_circle(sp, 1.0, Vfx.DANGER["bone"], wt)
+			# 口子那边一道亮线指出去
+			Vfx.I.telegraph_rect(tp, tp + Vector3(cos(gap), 0, sin(gap)) * 6.0, 1.2, Color(0.8, 1.0, 0.85, 0.35), wt)
+			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "骨牢！", Color(0.85, 1.0, 0.7), 1.3)
+		"boss_lamps":
+			Vfx.I.ground(global_position, "magic_01", Vfx.DANGER["holy"], 0.5, 6.0, wt + 0.3)
+			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "三灯——翻滚穿过去！", Color(1.0, 0.88, 0.5), 1.3)
 		"boss_summon":
 			Vfx.I.ground(global_position, "magic_01", Vfx.DANGER["summon"], 0.5, 5.0, wt + 0.3)
 			Feel.I.callout(head_top() + Vector3(0, 0.4, 0), "起来！" if kind != "boss6" else "灰衣营——上！", Color(0.7, 1.0, 0.7) if kind != "boss6" else Color(0.85, 0.85, 0.9), 1.0)
@@ -1020,9 +1091,9 @@ func _st_windup(dt: float) -> void:
 		"chain", "boss_chain":
 			_pose = Poses.windup("enemy_h", k, st_t)
 			_pose["twist"] = -0.9 * k
-		"boss_tide", "boss_fire":
+		"boss_tide", "boss_fire", "boss_bloom", "boss_lamps":
 			_pose = Poses.cast(k, _anim_t)
-		"boss_rank":
+		"boss_rank", "boss_cage":
 			_pose = Poses.windup("enemy_v", k, st_t)
 		"boss_spikes":
 			_pose = Poses.windup("enemy_v", k, st_t)
@@ -1137,7 +1208,11 @@ func _st_attack(dt: float) -> void:
 				_area_hit(global_position, r, float(data["dmg"]) * 1.2, HitInfo.Weight.HEAVY)
 			if st_t >= dur + 0.15:
 				_end_attack()
-		"boss_spikes":
+		"boss_bloom":
+			_st_bloom(dt)
+		"boss_lamps":
+			_st_lamps(dt)
+		"boss_spikes", "boss_cage":
 			var k := st_t / 0.45
 			_pose = Poses.swing("enemy_v", 1.0, clampf(k / 0.3, 0, 1), clampf((k - 0.3) / 0.7, 0, 1))
 			move_with_knock(Vector3.ZERO, dt)
@@ -1720,6 +1795,62 @@ func _melee_hit(reach: float, arc_deg: float, dmg: float, w: int) -> void:
 		_hit_target(hh, dmg, w)
 
 
+## 落樱斩阵出手：缝外的人挨一记重的，整片地上落满粉色刀光
+func _st_bloom(dt: float) -> void:
+	var k := st_t / 0.6
+	_pose = Poses.swing("enemy_v", 1.0, clampf(k / 0.3, 0, 1), clampf((k - 0.3) / 0.7, 0, 1))
+	move_with_knock(Vector3.ZERO, dt)
+	if not _did_hit and k >= 0.2:
+		_did_hit = true
+		var perp := _lane_d.cross(Vector3.UP)
+		for h: Node in get_tree().get_nodes_in_group("heroes"):
+			var hh := h as Hero
+			if hh == null or not hh.alive:
+				continue
+			var off := absf((hh.global_position - _lane_p).dot(perp))
+			if off > LANE_W * 0.5 - hh.radius * 0.5:
+				_hit_target(hh, float(data["dmg"]) * 1.3, HitInfo.Weight.HEAVY)
+		for i in range(14):
+			var sg := 1.0 if i % 2 == 0 else -1.0
+			var p := _lane_p + perp * sg * randf_range(LANE_W * 0.5 + 1.0, 13.0) + _lane_d * randf_range(-14.0, 14.0)
+			var xf := Transform3D(Basis(Vector3.UP, randf() * TAU), p + Vector3(0, 0.6, 0))
+			Vfx.I.slash(xf, randf_range(1.4, 2.4), deg_to_rad(100), deg_to_rad(-100), 0.22, Color(1, 0.95, 0.97), Color(1.0, 0.35, 0.6), 3.0)
+		Feel.I.screen_flash(Color(1.0, 0.45, 0.65, 0.3), 5.0)
+		CamRig.I.shake(2, 1.1)
+		Game.sfx("slash_heavy", -2.0, 0.05, 0.8)
+	if k >= 1.0:
+		_end_attack()
+
+
+## 三灯：连推三圈佛光（隔 0.75 秒一圈），只有环的前沿伤人，翻滚的无敌帧穿过去
+func _st_lamps(dt: float) -> void:
+	var k := st_t / 0.5
+	_pose = Poses.cast(1.0, _anim_t)
+	move_with_knock(Vector3.ZERO, dt)
+	if not _did_hit:
+		_did_hit = true
+		for i in range(3):
+			var t := TideRing.new()
+			t.owner_foe = self
+			t.damage = float(data["dmg"]) * 0.85 * dmg_scale
+			t.color = Color(1.0, 0.86, 0.45)
+			t.elem = "holy"
+			t.speed = 7.5
+			t.max_r = 17.0
+			t.delay = i * 0.75
+			get_parent().add_child(t)
+			t.global_position = Vector3(global_position.x, 0.0, global_position.z)
+		Vfx.I.shock_ring(global_position, Color(1.0, 0.92, 0.6), 0.3, 3.5, 0.3)
+		CamRig.I.shake(1)
+		Game.sfx("block", -2.0, 0.05, 0.5)
+	if k >= 1.0:
+		_end_attack()
+
+
+func _args_old_boss() -> bool:
+	return OS.get_cmdline_user_args().has("--oldboss")
+
+
 func _area_hit(p: Vector3, r: float, dmg: float, w: int) -> void:
 	for h: Node in get_tree().get_nodes_in_group("heroes"):
 		var hh := h as Hero
@@ -1822,6 +1953,8 @@ func take_hit(info: HitInfo) -> bool:
 			Game.sfx("posture_break", -3.0)
 	if state == "attack" and _atk in ["leap", "boss_leap"]:
 		interrupt = false
+	if state in ["windup", "attack"] and MECH.values().has(_atk):
+		interrupt = false   # 半血机制打不断：预警已经铺出去了，得让玩家应对完
 	if interrupt:
 		_release()
 		rig.position.y = 0
@@ -1873,6 +2006,9 @@ func take_hit(info: HitInfo) -> bool:
 		FoeSfx.play(self, "rage")
 		data = data.duplicate()
 		data["speed"] = float(data["speed"]) * 1.25
+		_mech_t = 2.0
+		if OS.get_cmdline_user_args().has("--feellog"):
+			print("PHASE2 %s hp=%.0f/%.0f" % [kind, hp, max_hp])
 		if kind == "boss6":
 			# 烬 · 第二段：点起第四盏灯
 			_fire_t = 2.5

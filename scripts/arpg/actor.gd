@@ -91,6 +91,8 @@ func _tick_shiver(dt: float) -> void:
 func tick_common(dt: float) -> float:
 	if rig != null:
 		rig.tick_flash(dt)
+		if team == 1:
+			rig.set_bleed(bleed if alive else 0, BLEED_MAX)
 	_tick_shiver(dt)
 	if Feel.I != null and Feel.I.world_pause > 0.0:
 		return 0.0

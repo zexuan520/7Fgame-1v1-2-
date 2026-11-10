@@ -90,9 +90,10 @@ static func all() -> Array:
 
 ## 这一局还没见过的奇遇优先
 static func pick(rng: RandomNumberGenerator, seen: Array) -> Dictionary:
-	var pool := all().filter(func(e: Dictionary) -> bool: return not seen.has(String(e["id"])))
+	var ok := all().filter(func(e: Dictionary) -> bool: return ArpgUnlock.event_ok(e))   # 分局解锁：用到没开系统的奇遇先不出
+	var pool := ok.filter(func(e: Dictionary) -> bool: return not seen.has(String(e["id"])))
 	if pool.is_empty():
-		pool = all()
+		pool = ok
 	return pool[rng.randi_range(0, pool.size() - 1)]
 
 

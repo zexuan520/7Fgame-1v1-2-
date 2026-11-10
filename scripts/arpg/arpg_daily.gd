@@ -82,7 +82,7 @@ static func plan(date: String) -> Dictionary:
 
 
 static func open_for(main: ArpgMain) -> bool:
-	return int(Game.save.get("runs", 0)) > 0 or main._args.has("daily")
+	return (int(Game.save.get("runs", 0)) > 0 and ArpgUnlock.open("daily")) or main._args.has("daily")
 
 
 ## 山门：光门右边立一块告示牌

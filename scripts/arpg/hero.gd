@@ -484,6 +484,17 @@ func input_dir() -> Vector3:
 	return right * v.x - up * v.y
 
 
+## 出招朝哪：电脑上用鼠标时朝鼠标（离主角太近的不算），否则按方向键；都没有返回 ZERO
+func aim_dir() -> Vector3:
+	if index == 0 and ArpgInput.mouse_aim_on():
+		var g: Variant = ArpgInput.mouse_ground(get_viewport(), global_position.y)
+		if g != null:
+			var to: Vector3 = ((g as Vector3) - global_position) * Vector3(1, 0, 1)
+			if to.length() > 0.4:
+				return to.normalized()
+	return input_dir()
+
+
 func gain_energy(v: float) -> void:
 	if v > 0.0 and rel.energy_locked():
 		return   # 满溢：光束斩后几秒不回气
@@ -821,9 +832,10 @@ func _start_attack(i: int) -> void:
 	_called = false
 	_set_state("attack")
 	_xf(0.05 if chained else (0.06 if from_roll else 0.07))
-	# 朝向：有方向键按方向键，没有就自动对准前方最近的敌人
-	var d := input_dir()
-	var tgt := _auto_target(d if d != Vector3.ZERO else facing, 5.5)
+	# 朝向：有方向键（或鼠标）按它，没有就自动对准前方最近的敌人；鼠标瞄准时只吸附鼠标方向左右 35° 里的敌人
+	var d := aim_dir()
+	var mouse := index == 0 and ArpgInput.mouse_aim_on()
+	var tgt := _auto_target(d if d != Vector3.ZERO else facing, 5.5, 0.6 if mouse else 1.2)
 	if tgt != null:
 		face_to(tgt.global_position - global_position)
 	elif d != Vector3.ZERO:
@@ -873,7 +885,7 @@ func _swing_opt(s: AttackStep) -> Dictionary:
 		"heft": am["heft"], "grip": g, "grip_at": am["grip_at"], "rise": _rise}
 
 
-func _auto_target(dir: Vector3, rng: float) -> Actor:
+func _auto_target(dir: Vector3, rng: float, max_ang: float = 1.2) -> Actor:
 	var best: Actor = null
 	var best_s := 999.0
 	for f: Node in get_tree().get_nodes_in_group("foes"):
@@ -886,7 +898,7 @@ func _auto_target(dir: Vector3, rng: float) -> Actor:
 		if dist > rng:
 			continue
 		var ang := dir.angle_to(to) if dist > 0.01 else 0.0
-		if ang > 1.2:
+		if ang > max_ang:
 			continue
 		var score := dist + ang * 2.0
 		if score < best_s:
@@ -1411,6 +1423,27 @@ func _link_peek(to: String) -> Dictionary:
 
 
 ## HUD 用：这一招现在接上去会触发连携吗（返回颜色，不会时 a = 0）
+## 终结技现在按下去能引爆多少层出血（范围内活着的敌人层数相加；冷却中算 0）。界面按这个让“终”键发红光
+var _ripe := 0
+var _ripe_frame := -1
+
+
+func finish_ripe() -> int:
+	var f := Engine.get_process_frames()
+	if f == _ripe_frame:
+		return _ripe
+	_ripe_frame = f
+	_ripe = 0
+	if not alive or cd["finish"] > 0.0:
+		return 0
+	var r := _finish_r("")
+	for n: Node in get_tree().get_nodes_in_group("foes"):
+		var a := n as Actor
+		if a != null and a.alive and a.bleed > 0 and a.global_position.distance_to(global_position) < r:
+			_ripe += a.bleed
+	return _ripe
+
+
 func link_glow(to: String) -> Color:
 	var l := _link_peek(to)
 	if l.is_empty():
@@ -2278,9 +2311,12 @@ func _start_beam() -> void:
 	if not lk.is_empty():
 		_link_take(lk)
 	_beam_fast = _link_now == "tianluo"
-	var tgt := _auto_target(input_dir() if input_dir() != Vector3.ZERO else facing, 14.0)
+	var ad := aim_dir()
+	var tgt := _auto_target(ad if ad != Vector3.ZERO else facing, 14.0, 0.5 if index == 0 and ArpgInput.mouse_aim_on() else 1.2)
 	if tgt != null:
 		face_to(tgt.global_position - global_position)
+	elif ad != Vector3.ZERO:
+		face_to(ad)
 	_set_state("beam")
 	_xf(0.07)
 	iframes = 1.0

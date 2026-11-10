@@ -49,6 +49,34 @@ static func note(event: InputEvent) -> void:
 					return
 	elif event is InputEventMouseButton and not TouchPad.active:
 		pad_used[0] = false
+		mouse_seen = true
+	elif event is InputEventMouseMotion and not TouchPad.active:
+		if (event as InputEventMouseMotion).relative.length() > 3.0:
+			mouse_seen = true
+
+
+## 鼠标瞄准（2026-11-10）：电脑上动过鼠标，一号玩家出刀、光束斩朝鼠标指的地方；用手柄、触屏时照旧自动瞄准。设置里能关
+static var mouse_seen := false
+
+
+static func mouse_aim_on() -> bool:
+	return mouse_seen and not pad_used[0] and not TouchPad.active and bool(Game.settings.get("mouse_aim", true))
+
+
+## 鼠标指着的地面点（y = 主角脚下高度），算不出来返回 null
+static func mouse_ground(vp: Viewport, y: float) -> Variant:
+	var cam := vp.get_camera_3d()
+	if cam == null:
+		return null
+	var mp := vp.get_mouse_position()
+	var o := cam.project_ray_origin(mp)
+	var d := cam.project_ray_normal(mp)
+	if absf(d.y) < 0.001:
+		return null
+	var t := (y - o.y) / d.y
+	if t < 0.0:
+		return null
+	return o + d * t
 
 
 ## 当前该显示哪套按键提示：kb 键鼠 / pad 手柄 / touch 触屏

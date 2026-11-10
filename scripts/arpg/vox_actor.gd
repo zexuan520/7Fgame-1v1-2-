@@ -216,9 +216,33 @@ func set_glow(c: Color) -> void:
 	mat.set_shader_parameter("glow", Vector3(c.r, c.g, c.b))
 
 
+var _rim_c := Color.WHITE
+var _rim_k := 0.0
+var _bleed_k := 0.0
+
+
 func set_rim(c: Color, strength: float) -> void:
+	_rim_c = c
+	_rim_k = strength
+	_apply_rim()
+
+
+## 出血层数看得见（2026-11-10）：轮廓光往血红推，层数越多越红越亮，满层时一闪一闪——到这时按终结技引爆最赚
+func set_bleed(stacks: int, maxs: int) -> void:
+	var k := clampf(float(stacks) / float(maxs), 0.0, 1.0)
+	if stacks >= maxs:
+		k = 0.85 + 0.15 * sin(Time.get_ticks_msec() * 0.018)
+	if absf(k - _bleed_k) < 0.01:
+		return
+	_bleed_k = k
+	_apply_rim()
+
+
+func _apply_rim() -> void:
+	var c := _rim_c.lerp(Color(1.0, 0.08, 0.1), clampf(_bleed_k * 1.4, 0.0, 1.0))
+	var st := lerpf(_rim_k, maxf(_rim_k, 1.6), _bleed_k)
 	mat.set_shader_parameter("rim_color", Vector3(c.r, c.g, c.b))
-	mat.set_shader_parameter("rim_strength", strength)
+	mat.set_shader_parameter("rim_strength", st)
 
 
 func flash(t: float = 0.1, c: Color = Color.WHITE) -> void:

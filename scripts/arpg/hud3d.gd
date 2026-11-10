@@ -339,6 +339,12 @@ func _draw_skills(vs: Vector2) -> void:
 				draw_colored_polygon(pts, Color(0, 0, 0, 0.55))
 		draw_arc(c, 27, -PI / 2, -PI / 2 + TAU * clampf(float(it[2]), 0, 1), 48, col if ready else Color(col, 0.6), 3.0, true)
 		draw_arc(c, 25, 0, TAU, 48, Color(GOLD, 0.5), 1.0, true)
+		# 出血攒够了（范围里合计 5 层以上）：“终”键外面一圈红光跳动，写“引爆”——不读字也知道该按了
+		if it[1] == "finish" and hero.finish_ripe() >= Actor.BLEED_MAX:
+			var rp := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.016)
+			draw_circle(c, 25, Color(0.8, 0.05, 0.08, 0.25 + 0.25 * rp))
+			draw_arc(c, 32 + 3 * rp, 0, TAU, 48, Color(1.0, 0.2, 0.2, 0.65 + 0.35 * rp), 3.5, true)
+			draw_string(font, c + Vector2(-20, -36), "引爆", HORIZONTAL_ALIGNMENT_CENTER, 40, 13, Color(1.0, 0.55, 0.5))
 		# 连携：现在按这一招能接上连携，外面亮一圈本色、轻轻跳
 		var lg := hero.link_glow(String(it[1]))
 		if lg.a > 0.0:
@@ -450,8 +456,12 @@ func _draw_enemy_marks() -> void:
 		if a.max_poise > 0.0:
 			draw_rect(Rect2(sp.x - w * 0.5, y + 5, w * a.poise / a.max_poise, 2), Color(1.0, 0.8, 0.4, 0.8))
 		if a.bleed > 0:
-			# 红色菱形 + 层数
+			# 红色菱形 + 层数（满层时放大、一闪一闪）
 			var dc := Vector2(sp.x - w * 0.5 - 12, y + 2)
+			if a.bleed >= Actor.BLEED_MAX:
+				var bp := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.018)
+				var bs := 14.0 + 3.0 * bp
+				draw_colored_polygon(PackedVector2Array([dc + Vector2(0, -bs), dc + Vector2(bs * 0.9, 0), dc + Vector2(0, bs), dc + Vector2(-bs * 0.9, 0)]), Color(1.0, 0.15, 0.15, 0.35 + 0.35 * bp))
 			draw_colored_polygon(PackedVector2Array([dc + Vector2(0, -10), dc + Vector2(9, 0), dc + Vector2(0, 10), dc + Vector2(-9, 0)]), Color(0.75, 0.05, 0.08))
 			draw_polyline(PackedVector2Array([dc + Vector2(0, -10), dc + Vector2(9, 0), dc + Vector2(0, 10), dc + Vector2(-9, 0), dc + Vector2(0, -10)]), Color(1.0, 0.6, 0.5), 1.0)
 			draw_string(font, dc + Vector2(-5, 6), str(a.bleed), HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(1, 0.95, 0.9))

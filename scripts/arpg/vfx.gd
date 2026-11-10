@@ -520,6 +520,30 @@ func telegraph_rect(from: Vector3, to: Vector3, w: float, c: Color, dur: float) 
 	return mi
 
 
+## 大片危险区（头目全场招）：纯色半透明平面，越临近出手越亮、闪得越快；预警贴图在几十米宽时太淡，用这个
+func danger_rect(from: Vector3, to: Vector3, w: float, c: Color, dur: float) -> void:
+	var mi := MeshInstance3D.new()
+	var q := PlaneMesh.new()
+	var d := to - from
+	d.y = 0
+	q.size = Vector2(w, maxf(d.length(), 0.1))
+	mi.mesh = q
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.no_depth_test = false
+	m.albedo_color = Color(c, 0.0)
+	mi.material_override = m
+	add_child(mi)
+	var mid := (from + to) * 0.5
+	mid.y = from.y + 0.06
+	mi.global_transform = Transform3D(Basis(Vector3.UP, atan2(d.x, d.z)), mid)
+	_live.append([mi, 0.0, dur, func(n: MeshInstance3D, k: float) -> void:
+		var pulse := 0.8 + 0.2 * sin(k * (20.0 + 40.0 * k))
+		m.albedo_color = Color(c, c.a * minf(k * 3.0, 1.0) * pulse * (0.7 + 0.5 * k))])
+
+
 ## 地面上的红色预警圆（敌人跳劈落点、法师法术落点）
 func telegraph_circle(pos: Vector3, r: float, c: Color, dur: float) -> void:
 	var mi := _take()

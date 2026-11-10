@@ -27,6 +27,14 @@ static func assign(st: ArpgState) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = st.seed_value + st.run.floor_index * 977 + 31
 	var sc := schools()
+	if not ArpgUnlock.open("soul"):
+		sc.erase("魂")
+	# 分局解锁：没开的奖励类型这一局不出
+	var kinds := {}
+	for k: String in KINDS:
+		if (k == "relic" and not ArpgUnlock.open("relic")) or (k == "gear" and not ArpgUnlock.open("gear")):
+			continue
+		kinds[k] = KINDS[k]
 	for r: Array in st.run.rows:
 		var last := ""
 		for nd: Dictionary in r:
@@ -34,7 +42,7 @@ static func assign(st: ArpgState) -> void:
 			if nd.has("reward"):
 				continue
 			if t == "fight":
-				var k := _pick(rng, KINDS, last)
+				var k := _pick(rng, kinds, last)
 				nd["reward"] = k
 				if k == "school":
 					nd["school"] = sc[rng.randi_range(0, sc.size() - 1)]
@@ -42,6 +50,8 @@ static func assign(st: ArpgState) -> void:
 			elif t == "elite":
 				var ew := {}
 				for k: String in ELITE_KINDS:
+					if k == "relic" and not ArpgUnlock.open("relic"):
+						continue
 					ew[k] = {"w": ELITE_KINDS[k]}
 				nd["reward"] = _pick(rng, ew, "")
 

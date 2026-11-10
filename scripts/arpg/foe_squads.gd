@@ -3,12 +3,13 @@ extends RefCounted
 ## 战斗房的“阵”：每层四种主题编成，每间战斗房抽一种（同一层尽量不重样）。
 ## 一个阵定了这间房的小怪组合、可能出现的精英词缀、以及房间里的环境机关（瘴气、骨刺、钟声、涌泉、铜汁、箭雨）。
 ## waves：编成池，前两个是第一波用的轻松编成；late：每层深处（第 4 排起）多加的一波；
+## horde：割草房（2026-11-10）——这种小怪数量翻倍、血量减半、刷在主角身边 5~9 米，一刀扫倒一片；
 ## hazard：RoomHazard 的种类（空 = 没有）；affix：这个阵里精英会带的词缀（FoeAffix 的键）。
 
 const THEMES := {
 	# ---------------- 第一幕 · 幽林 ----------------
 	"forest": [
-		{"id": "swarm", "name": "骨潮", "desc": "腐骨虫成群涌上来，混着几只爆骨鬼", "hazard": "", "affix": ["swift", "volatile"],
+		{"id": "swarm", "name": "骨潮", "desc": "腐骨虫成群涌上来，混着几只爆骨鬼", "horde": "crawler", "hazard": "", "affix": ["swift", "volatile"],
 			"waves": [["crawler", 6, "bomber", 1], ["crawler", 5, "skeleton", 1], ["crawler", 6, "bomber", 2],
 				["crawler", 4, "bomber", 2, "skeleton", 2], ["crawler", 7, "rogue", 1], ["crawler", 5, "bomber", 3]],
 			"late": [["charger", 1, "crawler", 5], ["samurai", 1, "crawler", 4]]},
@@ -77,7 +78,7 @@ const THEMES := {
 			"waves": [["lampkid", 1, "skeleton", 3], ["lampkid", 1, "drowned", 3], ["lampkid", 2, "shield", 2, "skeleton", 1],
 				["lampkid", 2, "rogue", 2, "drowned", 2], ["lampkid", 1, "chainmonk", 1, "eel", 2], ["lampkid", 2, "skeleton", 2, "archer", 2]],
 			"late": [["samurai", 1, "lampkid", 2, "shield", 1], ["chainmonk", 1, "lampkid", 2, "eel", 2]]},
-		{"id": "abyss", "name": "井底", "desc": "整间都是积水，脚下随时有东西扑上来", "hazard": "", "affix": ["frenzy", "swift"],
+		{"id": "abyss", "name": "井底", "desc": "整间都是积水，脚下随时有东西扑上来", "horde": "drowned", "hazard": "", "affix": ["frenzy", "swift"],
 			"waves": [["drowned", 4, "rogue", 1], ["eel", 2, "drowned", 2, "crawler", 2], ["eel", 3, "rogue", 2],
 				["drowned", 3, "bomber", 2, "eel", 1], ["eel", 4, "archer", 1], ["drowned", 5, "chainmonk", 1]],
 			"late": [["samurai", 1, "drowned", 3], ["samurai", 1, "eel", 3, "lampkid", 1]]},
@@ -115,14 +116,14 @@ const THEMES := {
 			"waves": [["greyflag", 1, "greyblade", 3], ["greyflag", 1, "greyguard", 2], ["greyflag", 1, "greyblade", 3, "greyspear", 1],
 				["greyflag", 2, "greyblade", 3], ["greyflag", 1, "greyguard", 2, "greyspear", 2], ["greyflag", 1, "greyblade", 2, "greybow", 2]],
 			"late": [["officer", 1, "greyflag", 1, "greyblade", 2], ["greyflag", 2, "greyguard", 2]]},
-		{"id": "raid", "name": "夜袭", "desc": "刀手成群扑上来，砍一刀就退，你一挥刀就闪", "hazard": "", "affix": ["swift", "frenzy"],
+		{"id": "raid", "name": "夜袭", "desc": "刀手成群扑上来，砍一刀就退，你一挥刀就闪", "horde": "greyblade", "hazard": "", "affix": ["swift", "frenzy"],
 			"waves": [["greyblade", 4, "crawler", 2], ["greyblade", 3, "greybow", 1], ["greyblade", 5],
 				["greyblade", 4, "greyspear", 1], ["greyblade", 3, "armored", 1], ["greyblade", 4, "greyguard", 1, "greybow", 1]],
 			"late": [["officer", 1, "greyblade", 3], ["officer", 1, "greyblade", 2, "greyflag", 1]]},
 	],
 	# ---------------- 第三幕 · 柳溪村（敌人见 Act3Foe） ----------------
 	"liuxi": [
-		{"id": "lamps", "name": "灰灯", "desc": "被灰纸灯点起来的村民成群走过来，倒下了还会再站起来", "hazard": "", "affix": ["haunt", "stout"],
+		{"id": "lamps", "name": "灰灯", "desc": "被灰纸灯点起来的村民成群走过来，倒下了还会再站起来", "horde": "lampman", "hazard": "", "affix": ["haunt", "stout"],
 			"waves": [["lampman", 5, "crawler", 2], ["lampman", 4, "torcher", 1], ["lampman", 6, "torcher", 1],
 				["lampman", 4, "lampguard", 1, "torcher", 1], ["lampman", 5, "bomber", 2], ["lampman", 6, "scarecrow", 2]],
 			"late": [["lampguard", 2, "lampman", 3], ["samurai", 1, "lampman", 4]]},

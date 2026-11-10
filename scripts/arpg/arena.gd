@@ -2274,6 +2274,16 @@ func _atmosphere() -> void:
 		_shaft(Vector3(rng.randf_range(-size.x * 0.4, size.x * 0.4), 0, rng.randf_range(-size.y * 0.4, size.y * 0.25)), Color(sc.r, sc.g * 0.95, sc.b * 0.8, sa), rng.randf_range(1.6, 2.8))
 
 
+## 这一点离障碍物够远（刷怪用）
+func spot_free(p: Vector3, margin: float = 1.0) -> bool:
+	if absf(p.x) > size.x * 0.5 - 2.0 or absf(p.z) > size.y * 0.5 - 2.0:
+		return false
+	for r: Rect2 in _solid:
+		if r.grow(margin).has_point(Vector2(p.x, p.z)):
+			return false
+	return true
+
+
 func _make_spawns() -> void:
 	spawn_points.clear()
 	var tries := 0
