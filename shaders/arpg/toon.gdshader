@@ -31,7 +31,9 @@ void fragment() {
 		float g = src.g - max(src.r, src.b);
 		if (g > 0.05) {
 			float lum = dot(src, vec3(0.3, 0.59, 0.11));
-			src = swap_color * lum * 2.2;
+			// 浅色（白衣）多给一点亮度：原来一律 ×2.2，白袍被压成一身灰（2026-11-10）
+			float wht = smoothstep(0.35, 0.6, min(swap_color.r, min(swap_color.g, swap_color.b)));
+			src = swap_color * lum * mix(2.2, 3.5, wht);
 			swap_emit = src * swap_glow;
 		}
 	}
