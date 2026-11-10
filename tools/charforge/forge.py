@@ -15,7 +15,14 @@ import gzip, json, os, sys
 import numpy as np
 
 # 一游戏格切几小格。1.75：100 小格高的人 ≈ 57 格 ≈ 2.05 米，比 KayKit 的 50 格高一点（镜头远，个头大一点才压得住场面）
+# 角色函数里的坐标、关节、半径都按这个“小格”写，不随输出密度变
 RES = 1.75
+# 2026-11-10 第三档 M3：输出密度。原来一小格出一个体素（每格约 2 厘米，100 格高），和场景件（3.6~5 厘米）、
+# 地面（4.5 厘米小格）不是一种“像素”。现在默认一游戏格出一个体素（OUT_RES=1.0，每格 3.6 厘米，约 57 格高）：
+# 形状在 2×2×2 倍细的网格上求值，再按格合并（过半算实、发光格只要沾到就留，颜色取格里最多的那种），
+# 细线条（眼睛、腰带）不会整条丢。FORGE_RES=1.75 环境变量可以出回老密度。
+OUT_RES = float(os.environ.get("FORGE_RES", "1.0"))
+SS = 2 if OUT_RES < RES else 1
 # 模型空间范围（小格）
 XR = (-40, 40)
 YR = (0, 120)
@@ -47,9 +54,12 @@ class Forge:
         self.name = name
         self.source = source
         self.J = {k: np.array(v, dtype=float) for k, v in joints.items()}
-        xs = np.arange(*XR) + 0.5
-        ys = np.arange(*YR) + 0.5
-        zs = np.arange(*ZR) + 0.5
+        # cs：一个输出体素有几小格宽；网格对齐到 cs 的整数倍，先在 cs/SS 的细网格上搭形状
+        self.cs = RES / OUT_RES
+        self.o = [int(np.floor(r[0] / self.cs)) for r in (XR, YR, ZR)]          # 输出格的起始坐标（输出格单位）
+        n = [int(np.ceil(r[1] / self.cs)) - o for r, o in zip((XR, YR, ZR), self.o)]
+        fine = self.cs / SS
+        xs, ys, zs = [(o * self.cs) + (np.arange(k * SS) + 0.5) * fine for o, k in zip(self.o, n)]
         self.X, self.Y, self.Z = np.meshgrid(xs, ys, zs, indexing="ij")
         shp = self.X.shape
         self.part = np.full(shp, -1, dtype=np.int16)
@@ -127,7 +137,45 @@ class Forge:
             self.col[mask] = rgb(color) if isinstance(color, str) else np.asarray(color, float)
 
     # ---------- 输出 ----------
+    def coarsen(self):
+        """细网格 SS×SS×SS 合成一个输出格（OUT_RES < RES 时）。shade、export 之前调；只调一次"""
+        if SS == 1 or getattr(self, "_coarse", False):
+            return
+        self._coarse = True
+        k = SS
+        nx, ny, nz = (d // k for d in self.part.shape)
+
+        def blocks(a):
+            # (nx*k, ny*k, nz*k, ...) → (nx, ny, nz, k³, ...)
+            t = a.reshape((nx, k, ny, k, nz, k) + a.shape[3:])
+            t = np.moveaxis(t, (1, 3, 5), (3, 4, 5))
+            return t.reshape((nx, ny, nz, k ** 3) + a.shape[3:])
+        P = blocks(self.part)
+        C = blocks(self.col)
+        G = blocks(self.glow)
+        occ = P >= 0
+        cnt = occ.sum(-1)
+        glow_any = ((G > 0) & occ).any(-1)
+        keep = (cnt * 2 >= k ** 3) | (glow_any & (cnt >= 1))
+        # 发光格优先（眼睛），其次按“部件+颜色”数票，取票最多的那个子格
+        key = np.where(occ, P.astype(np.int64) * (1 << 24) + (np.round(C[..., 0]).astype(np.int64) << 16)
+                       + (np.round(C[..., 1]).astype(np.int64) << 8) + np.round(C[..., 2]).astype(np.int64), -1)
+        votes = (key[..., :, None] == key[..., None, :]).sum(-1).astype(float)
+        votes[~occ] = -1.0
+        votes += np.where((G > 0) & occ, 100.0, 0.0)
+        best = votes.argmax(-1)[..., None]
+        part = np.take_along_axis(P, best, -1)[..., 0]
+        col = np.take_along_axis(C, best[..., None], -2)[..., 0, :]
+        glow = np.take_along_axis(G, best, -1)[..., 0]
+        self.part = np.where(keep, part, -1).astype(np.int16)
+        self.col = col
+        self.glow = np.where(keep, glow, 0.0)
+        cx = lambda A: blocks(A).mean(-1)
+        self.X, self.Y, self.Z = cx(self.X), cx(self.Y), cx(self.Z)
+
     def shade(self, top_light=0.10, noise=0.05, block=2):
+        self.coarsen()
+        block = max(block, 2.0 * self.cs) if SS > 1 else block
         """体素像素画的明暗：越往上越亮一点（斜俯视主要看顶面），再加 block×block 的块状噪点（大块才不破坏网格合并）"""
         on = (self.part >= 0) & (self.glow <= 0)
         # 每个部件内部按高度做一点点渐变：用整体高度归一化
@@ -141,6 +189,8 @@ class Forge:
         self.col[on] = np.clip(self.col[on] * mul[on][:, None], 0, 255)
 
     def export(self, out_dir):
+        self.coarsen()
+        cs = self.cs
         parts = {}
         occ = self.part >= 0
         ix = np.argwhere(occ)
@@ -163,15 +213,15 @@ class Forge:
                     inner &= np.roll(pp, s, axis=ax)[1:-1, 1:-1, 1:-1]
             surf = sel & ~inner
             a_name, b_name = SPAN[pname]
-            A = self.J[a_name]
-            L = 0.0 if b_name is None else float(np.linalg.norm(self.J[b_name] - A))
+            A = self.J[a_name] / cs          # 以下都换成输出格单位
+            L = 0.0 if b_name is None else float(np.linalg.norm(self.J[b_name] - self.J[a_name])) / cs
             pts = np.argwhere(surf)
-            cells = np.stack([pts[:, 0] + XR[0], pts[:, 1] + YR[0], pts[:, 2] + ZR[0]], -1) - np.floor(A).astype(int)
+            cells = np.stack([pts[:, 0] + self.o[0], pts[:, 1] + self.o[1], pts[:, 2] + self.o[2]], -1) - np.floor(A).astype(int)
             cols = np.clip(np.round(self.col[surf]), 0, 255).astype(int)
             gl = self.glow[surf]
             pd = {"anchor": [float(x) for x in np.floor(A)], "len": round(L, 2)}
             if pname in self.pivots:
-                pd["pivot"] = [round(float(x), 2) for x in (np.array(self.pivots[pname], dtype=float) - np.floor(A))]
+                pd["pivot"] = [round(float(x), 2) for x in (np.array(self.pivots[pname], dtype=float) / cs - np.floor(A))]
             if (gl > 0).any():
                 alpha = np.clip(np.round(255 * (1.0 - gl)), 0, 255).astype(int)[:, None]
                 pd["vox"] = np.concatenate([cells, cols, alpha], 1).reshape(-1).tolist()
@@ -180,8 +230,8 @@ class Forge:
                 pd["vox"] = np.concatenate([cells, cols], 1).reshape(-1).tolist()
             parts[pname] = pd
             total += len(pts)
-        joints = {k: [float(x) for x in v] for k, v in self.J.items()}
-        out = {"source": self.source, "license": "CC0 1.0（本作自制）", "height": 100.0, "res": RES,
+        joints = {k: [round(float(x) / cs, 3) for x in v] for k, v in self.J.items()}
+        out = {"source": self.source, "license": "CC0 1.0（本作自制）", "height": round(100.0 / cs, 2), "res": OUT_RES,
                "joints": joints, "parts": parts}
         path = os.path.join(out_dir, self.name + ".json.gz")
         with gzip.open(path, "wt", compresslevel=9) as f:

@@ -77,6 +77,7 @@ func _ready() -> void:
 	Foe.tokens = 0
 	_rng.randomize()
 	_parse_args()
+	ArpgBench.merge_args(_args)   # 帧率测试进行中：这一段的场景参数
 	# 物理插值：角色在 60Hz 物理里走，高刷屏上每帧按比例插到两次物理之间，不再一顿一顿。
 	# 只给角色（Actor）开；其余在 _process 里自己动的东西（镜头、特效、飞射物）关掉，免得被拖慢一拍。
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
@@ -128,6 +129,9 @@ func _ready() -> void:
 		var pp := PerfProbe.new()
 		pp.name = "PerfProbe"
 		add_child(pp)
+	if _args.has("fpsbench") and ArpgBench.active:
+		ArpgBench.q_name = QUALITY_NAMES[quality]
+		add_child(ArpgBench.new())
 	if _args.has("shot"):
 		for t: String in String(_args.get("shot_t", "3.0")).split(","):
 			_shots.append(float(t))
@@ -909,6 +913,9 @@ func _enter_title() -> void:
 
 func _enter_title_body() -> void:
 	mode = "title"
+	if ArpgBench.show_result:
+		ArpgBench.show_result = false
+		get_tree().create_timer(0.8).timeout.connect(_show_bench_result)
 	if VoxelWarm.I != null:
 		# 看标题的这几秒：先拼角色模型和第一层（山门、第一层都是幽林）
 		VoxelWarm.I.queue_models()
@@ -4151,6 +4158,28 @@ func _open_menu(title: String, sub: String, items: Array, layout: String, cancel
 	return m
 
 
+## 帧率测试跑完：结果卡（每段一行），能复制
+func _show_bench_result() -> void:
+	var text := ArpgBench.report()
+	var items := []
+	for r: Dictionary in ArpgBench.results:
+		items.append({"id": "row", "title": String(r["name"]), "right": "平均 %.0f 帧" % r["avg"],
+			"desc": "最慢 1%% 的帧 %.0f 帧 · 最长一帧 %.0f 毫秒 · 卡顿（一帧超过 50 毫秒）%d 次" % [r["low1"], r["worst"], r["stutters"]]})
+	items.append({"id": "copy", "title": "复制结果", "desc": "复制成一段文字，粘贴发给开发者"})
+	items.append({"id": "close", "title": "关闭"})
+	var lines := text.split("\n")
+	var m := _open_menu("帧率测试结果", lines[1] + " · " + lines[2], items, "list", true)
+	m.chosen.connect(func(i: int) -> void:
+		var id := String(items[i]["id"])
+		if id == "copy":
+			DisplayServer.clipboard_set(text)
+			Game.sfx("coin")
+			hud.banner("已复制", "粘贴到聊天里就行", 1.6)
+		elif id == "close":
+			_close_menu())
+	print("BENCH\n", text)
+
+
 func _no_dialog() -> bool:
 	return get_tree().get_nodes_in_group("dialog_box").is_empty()
 
@@ -4177,6 +4206,10 @@ func _open_pause(sel: Variant = 0) -> void:
 		items.insert(5, {"id": "touchsize", "title": "按键大小", "right": TouchPad.SIZE_NAMES[TouchPad.size_i], "desc": "右下角触屏按键的大小（小 → 中 → 大）"})
 	items.append({"id": "ach", "title": "成就", "right": "%d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], "desc": "看看做到了哪些"})
 	items.append({"id": "guide", "title": "新手提示", "right": "开" if ArpgHints.enabled() else "关", "desc": "开关提示、回看全部提示、重新提示一遍"})
+	if mode != "room":
+		var last: Dictionary = Game.save.get("bench_last", {})
+		items.append({"id": "bench", "title": "帧率测试", "right": "约 75 秒",
+			"desc": "自动跑三段最吃性能的场景，测完给出平均帧数、最慢帧和卡顿次数，可以复制发给开发者。不动存档进度" + ("（上次 %s）" % String(last.get("when", "")).left(16) if not last.is_empty() else "")})
 	if mode == "room":
 		items.append({"id": "run", "title": "这一局", "desc": "路线图、天象、心法、流派、双修和连携"})
 		items.append({"id": "giveup", "title": "放弃这一局", "desc": "回到山门，魂玉带回六成"})
@@ -4217,6 +4250,9 @@ func _on_pause_chosen(i: int) -> void:
 			Game.write_settings()
 			Game.sfx("coin")
 			_open_pause(id)
+		"bench":
+			_close_menu()
+			ArpgBench.start(get_tree())
 		"mouseaim":
 			Game.settings["mouse_aim"] = not bool(Game.settings.get("mouse_aim", true))
 			Game.write_settings()
