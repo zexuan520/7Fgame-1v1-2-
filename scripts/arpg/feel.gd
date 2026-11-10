@@ -267,6 +267,10 @@ func _tick_speed(real_dt: float) -> void:
 	_speed.modulate = Color(1, 1, 1, 0.42 * (1.0 - (f - 2) / 8.0))
 
 
+var _multi := 0
+var _multi_t := -9.0
+
+
 ## 敌人倒下（Foe.die 调）：斩线 + 放射线；精英、一波最后一个、头目会短暂慢镜头
 func on_kill(f: Foe, impulse: Vector3) -> void:
 	var p := f.chest()
@@ -289,8 +293,17 @@ func on_kill(f: Foe, impulse: Vector3) -> void:
 		return
 	var elite := f.max_poise > 0.0
 	Vfx.I.kill_burst(p, impulse, Color(1.0, 0.85, 0.4) if not elite else Color(1.0, 0.55, 0.3), elite)
+	# 2026-11-10 第二档 H3：一刀带走好几个（骨潮房常见）：0.25 秒内第三个起，每个都顿一下、镜头一推、低频再“咚”一声
+	var now := Time.get_ticks_msec() / 1000.0
+	_multi = _multi + 1 if now - _multi_t < 0.25 else 1
+	_multi_t = now
+	if _multi >= 3 and not last:
+		pause_world(0.03)
+		CamRig.I.punch_zoom(0.2 + 0.05 * mini(_multi - 3, 4), 0.15)
+		Game.sfx("hit_blunt", -6.0, 0.05, 0.8)
 	if last:
-		# 清完一波：慢镜头 + 拉近，给玩家一口气
+		# 清完一波：先定格两帧，再慢镜头 + 拉近，给玩家一口气
+		pause_world(0.035)
 		slowmo(0.22, 0.55)
 		impact_frame(0.05)
 		CamRig.I.punch_zoom(0.55, 0.45)

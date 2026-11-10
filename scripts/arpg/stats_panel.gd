@@ -13,6 +13,9 @@ const GOOD := Color(0.55, 1.0, 0.65)
 const BAD := Color(1.0, 0.5, 0.42)
 const WHITE := Color(0.95, 0.92, 0.85)
 const SOFT := Color(0.72, 0.8, 0.8)
+const GROUP_COL := {"攻": Color(1.0, 0.45, 0.4), "守": Color(0.45, 0.95, 0.6), "身法": Color(0.4, 0.85, 0.95),
+	"特效": Color(0.85, 0.6, 1.0), "收益": Color(1.0, 0.82, 0.4)}
+const GROUP_ICON := {"攻": "attack", "守": "g_def", "身法": "roll", "特效": "g_fx", "收益": "g_gain"}
 
 ## stats 键 → [名字, 写法]。写法：pct 百分比带正负号 / neg 越少越好的百分比（冷却、价格，显示成减号）/ flat 整数 / sec 秒 / lv 级
 const KEYS := {
@@ -231,13 +234,29 @@ func _draw_stats(area: Rect2) -> void:
 		var r := Rect2(area.position.x, y, lw, ROW_H - 4)
 		var sel := i == index
 		_hits.append([r, i])
-		draw_rect(r, Color(0.05, 0.09, 0.1, 0.92) if sel else Color(0.03, 0.05, 0.06, 0.55))
+		var g := String(row["group"])
+		var gc: Color = GROUP_COL.get(g, TEAL)
+		# 2026-11-10 第二档 A3：每组一种颜色，左边一道色条；组的第一行画组图标和组名，一眼分得出攻、守、身法
+		draw_rect(r, Color(0.05, 0.09, 0.1, 0.92) if sel else Color(gc.r * 0.08, gc.g * 0.08, gc.b * 0.08, 0.6))
+		draw_rect(Rect2(r.position, Vector2(3, r.size.y)), Color(gc, 0.8))
 		if sel:
 			draw_rect(r, GOLD, false, 1.5)
-		var g := String(row["group"])
 		if g != last_group:
-			draw_string(font, r.position + Vector2(8, 21), g, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(TEAL, 0.85))
+			draw_rect(Rect2(r.position, Vector2(r.size.x, 1)), Color(gc, 0.45))
+			var gi := Hud3D.icon(String(GROUP_ICON.get(g, "")))
+			if gi != null:
+				draw_texture_rect(gi, Rect2(r.position + Vector2(9, 5), Vector2(20, 20)), false, gc)
+			else:
+				draw_string(font, r.position + Vector2(8, 21), g, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(gc, 0.85))
 			last_group = g
+		# 比基础值好多少：数值下面一道细条（绿是变好、红是变差，满格 = 翻一倍）
+		if row.has("num") and row.has("base_num"):
+			var bn := float(row["base_num"])
+			var dv := (float(row["num"]) - bn) * float(row.get("dir", 1.0))
+			var frac := clampf(absf(dv) / maxf(absf(bn), 1.0 if bn == 0.0 else 0.0001), 0.0, 1.0)
+			if frac > 0.005:
+				var bw := 150.0 * frac
+				draw_rect(Rect2(r.position.x + lw - 12 - bw, r.position.y + r.size.y - 4, bw, 2), Color(GOOD if dv > 0.0 else BAD, 0.7))
 		draw_string(font, r.position + Vector2(44, 22), String(row["label"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, WHITE)
 		var base := String(row.get("base_txt", ""))
 		if base != "":

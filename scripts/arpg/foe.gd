@@ -2108,6 +2108,12 @@ func die(impulse: Vector3) -> void:
 				(f as Foe).die(Vector3.UP * 2.0)
 	Vfx.I.impact_flash(chest(), 2.5 if not is_boss else 6.0)
 	Vfx.I.chips(chest(), impulse, Color(0.85, 0.85, 0.78), 10, 6.0)
+	# 2026-11-10 第二档 H3：顺着这一刀的方向再喷一道碎骨（贴地、窄、飞得远），肢体也甩得更远，
+	# 一眼看出“是被我这刀劈飞的”
+	var cut := Vector3(impulse.x, 0.0, impulse.z)
+	if cut.length() > 0.1 and not is_boss:
+		Vfx.I.chips(chest(), cut.normalized() + Vector3.UP * 0.22, Color(0.9, 0.88, 0.8), 9, 11.0, 0.07, 0.22)
+		impulse = cut * 1.6 + Vector3.UP * impulse.y
 	CamRig.I.shake(1 if not is_boss else 2)
 	rig.shatter(get_parent(), impulse)
 	var jade := 3 if is_boss else (1 if randf() < 0.25 and not no_loot else 0)

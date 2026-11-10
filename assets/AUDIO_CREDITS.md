@@ -51,3 +51,14 @@
 作者写了“欢迎署名”的：Bobjt、MintoDog、Eldritch Grim、cynicmusic、Emma_MA、Crocdent、Umplix、iamoneabe、rubberduck、LEGIT Audio、StumpyStrust、William Hector、qubodup、PWL。
 
 处理脚本：tools/audio/build_audio.py（素材放在 /mnt/project-files/asset-library/audio-cc0/）。没在脚本里列出的音效（assets/sfx/*.wav）是 tools/gen_audio.py 合成的。
+
+## 2026-11-10 第二档加的（素材目录 s1-oriental/、s1-impact/，全部 CC0 1.0）
+
+| 用在 | 文件 | 作者 | 页面 |
+|---|---|---|---|
+| hub（标题、山门） | asianoriental2_0.ogg（Asian/Oriental 2） | Tozan | https://opengameart.org/content/asianoriental2 |
+| calm（商人、土地庙、奇遇、故人房） | orien1_0.ogg（Orient Peace Valley） | Tozan | https://opengameart.org/content/orient-peace-valley |
+| kill、hit_heavy 的肉击层 | qubodupImpactMeat01/02.ogg | qubodup | https://opengameart.org/content/impact |
+
+hit / hit_heavy / hit_blunt / kill / boss_kill 垫的低频“咚”（s1-impact/sub_thump_N.wav）是 ffmpeg 合成的下滑正弦，自制。
+原来的山门曲 Forest Whisper 不再用（build_audio.py 里拿掉了）。

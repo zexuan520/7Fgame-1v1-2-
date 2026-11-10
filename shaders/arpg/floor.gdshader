@@ -5,6 +5,8 @@
 //   浮雕：朝太阳那边再取一格比亮度，砖缝、石板边、草丛边自己出一道亮边和一道暗边，平贴图看着有高低；
 //   接触阴影：另一张低分辨率 AO 图（Arena._bake_floor_ao 按摆设的占地烘出来，线性插值成软边），墙角、柱脚、石头底下压暗；
 //   半球环境光：和 toon 一样吃天光。
+// 2026-11-10 第二档 A2：贴图一格 0.09 米，这里再按 sub_cell（0.045 米，场景件体素那一档）切 2×2 小格，
+//   每小格按世界坐标哈希抖 ±5% 明暗——地面颗粒和场景件、像素特效对齐，不再是一块块 10 厘米的大方格。
 shader_type spatial;
 render_mode cull_back;
 
@@ -15,6 +17,8 @@ uniform vec4 ao_rect = vec4(-25.0, -20.0, 50.0, 40.0);
 uniform float ao_on = 0.0;
 uniform vec2 texel = vec2(0.002, 0.0025);   // 地面贴图一格在 uv 里多大
 uniform float emboss = 1.5;
+uniform float sub_cell = 0.045;
+uniform float sub_jitter = 0.1;
 uniform vec3 rim_color : source_color = vec3(0.45, 0.95, 1.0);
 uniform float rim_strength = 0.12;
 uniform float shadow_floor = 0.38;
@@ -32,6 +36,11 @@ void vertex() {
 void fragment() {
 	vec2 uv = (world_xz - floor_rect.xy) / floor_rect.zw;
 	vec3 src = pow(texture(floor_tex, uv).rgb, vec3(2.2));
+	vec2 sc = floor(world_xz / sub_cell);
+	// Dave Hoskins 的 hash12：不用大数 sin，手机 mediump 下也不出条纹
+	vec3 p3 = fract(vec3(sc.xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	float sh = fract((p3.x + p3.y) * p3.z);
 	// 浮雕：太阳从左后方来（-x, -z），比左上一格亮 = 这格是“高处的边”，暗 = “落进缝里”
 	vec3 nb = pow(texture(floor_tex, uv - texel).rgb, vec3(2.2));
 	float l0 = dot(src, vec3(0.3, 0.59, 0.11));
@@ -40,7 +49,7 @@ void fragment() {
 	// 小于 6% 的亮度差是颗粒抖动，不浮雕（不然满地噪点）；大的才是缝和边
 	dl = sign(dl) * max(abs(dl) - 0.06, 0.0);
 	float e = clamp(dl * emboss, -0.4, 0.5);
-	src *= 1.0 + e;
+	src *= (1.0 + e) * (1.0 + (sh - 0.5) * sub_jitter);
 	float ao = 1.0;
 	if (ao_on > 0.5) {
 		ao = texture(ao_tex, (world_xz - ao_rect.xy) / ao_rect.zw).r;

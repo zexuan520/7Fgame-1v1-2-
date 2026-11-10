@@ -28,6 +28,10 @@ BFH = "sfx_breaking_and_falling/bfh1_%s.ogg"
 CLASH = "sword_clash_-_starninjas_0/sword_clash.%d.ogg"
 TINY = "tinysized/sfx-cc0/%s.wav"
 IMP = "impact_-_starninjas/impact.%d.ogg"
+# 2026-11-10 第二档 H3：低频一层。SUB 是 ffmpeg 合成的下滑正弦“咚”（自制，见 s1-impact/），MEAT 是 qubodup 的 CC0 肉击
+SUB = "s1-impact/sub_thump_%d.wav"
+MEAT = "s1-impact/qubodupImpact/qubodupImpactMeat0%d.ogg"
+PUNCH = "s1-impact/qubodupPunch/qubodupPunch0%d.ogg"
 SWD = "sword_-_starninjas_1/sword - StarNinjas/sword.%d.ogg"
 SHADE = "rpg_sound_pack/RPG Sound Pack/NPC/shade/shade%d.wav"
 RINV = "rpg_sound_pack/RPG Sound Pack/inventory/%s.wav"
@@ -47,21 +51,21 @@ SFX = {
     "slash_heavy": ([[(RPG % "battle/swing", 0, 0.82)], [(RPG % "battle/swing2", 0, 0.8)], [(RPG % "battle/swing3", 0, 0.85)],
                      [(SW % 12, 0, 0.75)], [(SW % 7, 0, 0.72)]], 0.5, 0.12),
     # 命中：刀切进去 + 一记闷击
-    "hit": ([[(KEN % "knifeSlice", 0, 1.0), (BFH % "hit_01", -9, 1.1)],
-             [(KEN % "knifeSlice2", 0, 1.0), (BFH % "hit_03", -9, 1.1)],
-             [(KEN % "chop", 0, 1.05), (BFH % "hit_05", -10, 1.0)],
-             [(KEN % "knifeSlice", -1, 0.92), (BFH % "hit_07", -9, 1.15)],
-             [(KEN % "chop", 0, 0.95), (BFH % "hit_02", -10, 1.1)]], 0.45, 0.12),
+    "hit": ([[(KEN % "knifeSlice", 0, 1.0), (BFH % "hit_01", -9, 1.1), (SUB % 2, -11, 1.0)],
+             [(KEN % "knifeSlice2", 0, 1.0), (BFH % "hit_03", -9, 1.1), (SUB % 0, -11, 1.05)],
+             [(KEN % "chop", 0, 1.05), (BFH % "hit_05", -10, 1.0), (SUB % 2, -11, 0.95)],
+             [(KEN % "knifeSlice", -1, 0.92), (BFH % "hit_07", -9, 1.15), (SUB % 0, -11, 1.0)],
+             [(KEN % "chop", 0, 0.95), (BFH % "hit_02", -10, 1.1), (SUB % 2, -11, 1.1)]], 0.45, 0.12),
     # 重击：低沉的砸击 + 骨头脆响
-    "hit_heavy": ([[(BFH % "hit_04", 0, 0.85), (KEN % "chop", -4, 0.8), (BFH % "wood_hit_01", -8, 1.0)],
-                   [(BFH % "hit_06", 0, 0.85), (KEN % "knifeSlice2", -4, 0.8), (BFH % "wood_hit_02", -8, 1.0)],
-                   [(BFH % "hit_10", 0, 0.85), (KEN % "chop", -4, 0.75), (BFH % "rock_hit_01", -8, 1.0)],
-                   [(BFH % "hit_12", 0, 0.85), (KEN % "knifeSlice", -4, 0.8), (BFH % "wood_hit_03", -8, 1.0)]], 0.6, 0.2),
+    "hit_heavy": ([[(BFH % "hit_04", 0, 0.85), (KEN % "chop", -4, 0.8), (BFH % "wood_hit_01", -8, 1.0), (SUB % 1, -5, 1.0), (MEAT % 1, -9, 0.9)],
+                   [(BFH % "hit_06", 0, 0.85), (KEN % "knifeSlice2", -4, 0.8), (BFH % "wood_hit_02", -8, 1.0), (SUB % 0, -5, 0.95), (MEAT % 2, -9, 0.9)],
+                   [(BFH % "hit_10", 0, 0.85), (KEN % "chop", -4, 0.75), (BFH % "rock_hit_01", -8, 1.0), (SUB % 1, -5, 1.05), (MEAT % 1, -9, 0.85)],
+                   [(BFH % "hit_12", 0, 0.85), (KEN % "knifeSlice", -4, 0.8), (BFH % "wood_hit_03", -8, 1.0), (SUB % 0, -5, 1.0), (MEAT % 2, -9, 0.95)]], 0.6, 0.2),
     # 锤、棍命中：闷重的砸击 + 地面一震（没有刀刃切肉声）
-    "hit_blunt": ([[(IMP % 2, 0, 0.75), (BFH % "hit_04", -3, 0.8), (C100 % "slam_01", -9, 0.85)],
-                   [(IMP % 6, 0, 0.72), (BFH % "hit_06", -3, 0.8), (C100 % "slam_03", -9, 0.85)],
-                   [(IMP % 8, 0, 0.78), (BFH % "hit_10", -3, 0.85), (C100 % "slam_05", -9, 0.8)],
-                   [(IMP % 10, 0, 0.74), (BFH % "wood_hit_02", -4, 0.75), (C100 % "slam_02", -9, 0.85)]], 0.55, 0.18),
+    "hit_blunt": ([[(IMP % 2, 0, 0.75), (BFH % "hit_04", -3, 0.8), (C100 % "slam_01", -9, 0.85), (SUB % 3, -4, 1.0)],
+                   [(IMP % 6, 0, 0.72), (BFH % "hit_06", -3, 0.8), (C100 % "slam_03", -9, 0.85), (SUB % 1, -4, 0.95)],
+                   [(IMP % 8, 0, 0.78), (BFH % "hit_10", -3, 0.85), (C100 % "slam_05", -9, 0.8), (SUB % 3, -4, 1.05)],
+                   [(IMP % 10, 0, 0.74), (BFH % "wood_hit_02", -4, 0.75), (C100 % "slam_02", -9, 0.85), (SUB % 1, -4, 1.0)]], 0.55, 0.18),
     # 枪命中：短促的扎穿声（刃口高一点 + 一丝穿过去的风）
     "hit_pierce": ([[(KEN % "knifeSlice2", 0, 1.25), (R80 % "blade_01", -4, 1.2), (SW % 2, -8, 1.5)],
                     [(KEN % "knifeSlice", 0, 1.3), (R80 % "blade_02", -4, 1.15), (SW % 5, -8, 1.45)],
@@ -70,11 +74,13 @@ SFX = {
     "mikiri": ([[(CLASH % 3, 0, 1.45), (SW % 12, -5, 0.6), (C100 % "bell_02", -14, 1.6)],
                 [(CLASH % 7, 0, 1.4), (SW % 7, -5, 0.62), (C100 % "bell_03", -14, 1.7)]], 0.9, 0.45),
     # 击杀：一声清脆的刀鸣 + 低沉的闷击（只在击杀那一下叠在命中音上）
-    "kill": ([[(IMP % i, 0, 0.8), (SWD % j, -5, 1.15)] for i, j in ((1, 1), (3, 3), (5, 6), (7, 8), (9, 10))], 0.6, 0.25),
+    # 2026-11-10：垫一层低频“咚”和肉击，手机外放也听得出（SUB 带二次谐波，约 100Hz）
+    "kill": ([[(IMP % i, 0, 0.8), (SWD % j, -5, 1.15), (SUB % k, -3, 1.0), (MEAT % m, -8, 0.95)]
+              for i, j, k, m in ((1, 1, 1, 1), (3, 3, 0, 2), (5, 6, 1, 1), (7, 8, 3, 2), (9, 10, 0, 1))], 0.6, 0.25),
     # 会心：短促的高音刀鸣
     "crit": ([[(CLASH % i, -2, 1.3)] for i in (2, 4, 6)], 0.35, 0.15),
     # 头目倒下：很低的轰击 + 碎裂
-    "boss_kill": ([[(IMP % 4, 0, 0.55), (BFH % "hit_12", -2, 0.6), (BFH % "rock_breaking_01", -4, 0.8)]], 1.6, 0.6),
+    "boss_kill": ([[(IMP % 4, 0, 0.55), (BFH % "hit_12", -2, 0.6), (BFH % "rock_breaking_01", -4, 0.8), (SUB % 3, -1, 0.8)]], 1.6, 0.6),
     # 格挡 / 打在硬东西上：刀剑相击
     "block": ([[(CLASH % i, 0, 1.0)] for i in (1, 3, 5, 7, 9)], 0.5, 0.25),
     # 骷髅碎掉：木头 / 石头断裂
@@ -153,7 +159,9 @@ MUSIC_Q = 0
 SFX_Q = 3   # 音效是短的单声道，q3 听不出区别
 
 MUSIC = {
-    "hub": "forest_whisper_theme.zip:Forest Whisper Theme/Forest Whisper.ogg",
+    # 2026-11-10 第二档 S1：标题、山门、歇脚房换国风（Tozan 的 CC0 曲，OpenGameArt）；原来的林间曲不再用
+    "hub": {"src": "s1-oriental/asianoriental2_0.ogg"},     # 山门 / 标题：古筝 + 笛 + 弦，作者说是“中国风”
+    "calm": {"src": "s1-oriental/orien1_0.ogg"},            # 商人、土地庙、奇遇、故人房：Orient Peace Valley
     "village": "GameMusic_ForestTheme_24_0.mp3",
     "bamboo": "qubodup-yd-DarkShrineLoop-OpenGameArt.ogg",
     "boss": "Juhani Junkala - Epic Boss Battle [Seamlessly Looping].wav",

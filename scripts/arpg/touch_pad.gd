@@ -428,7 +428,15 @@ func _draw_button(b: Array, k: float, down: bool) -> void:
 		if lg.a > 0.0:
 			draw_arc(c, r + 6, 0, TAU, 48, Color(lg, 0.7 + 0.3 * sin(_t * 18.0)), 4.0, true)
 	var fs := int(r * 0.78)
-	draw_string(font, c + Vector2(-r, fs * 0.36), String(b[1]), HORIZONTAL_ALIGNMENT_CENTER, r * 2, fs, col if ready else Color(0.55, 0.6, 0.6))
+	var ic := Hud3D.icon(String(b[0]))
+	if ic != null:
+		# 2026-11-10 第二档 A3：图标（game-icons.net）为主，字缩小垫在下面——不认字也知道是哪一招
+		var isz := r * 1.0
+		draw_texture_rect(ic, Rect2(c - Vector2(isz * 0.5, isz * 0.62), Vector2(isz, isz)), false, col if ready else Color(0.55, 0.6, 0.6))
+		var sf := maxi(int(r * 0.34), 11)
+		draw_string(font, c + Vector2(-r, r * 0.72), String(b[1]), HORIZONTAL_ALIGNMENT_CENTER, r * 2, sf, Color(col, 0.85) if ready else Color(0.55, 0.6, 0.6, 0.8))
+	else:
+		draw_string(font, c + Vector2(-r, fs * 0.36), String(b[1]), HORIZONTAL_ALIGNMENT_CENTER, r * 2, fs, col if ready else Color(0.55, 0.6, 0.6))
 	if String(b[0]) == "heal" and _hero_ok():
 		draw_string(font, c + Vector2(r * 0.35, r * 0.95), str(hero.gourds), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.8, 1.0, 0.85))
 	if String(b[0]) == "item" and _hero_ok() and hero.kit != null and not hero.kit.props.is_empty():

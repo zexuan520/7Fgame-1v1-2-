@@ -302,6 +302,24 @@ func _draw_orb(c: Vector2, r: float) -> void:
 	draw_circle(gd - u * 24, 3.5, GOLD)
 
 
+static var _icons := {}
+
+
+## 界面图标（assets/ui/icons/<id>.png，白图透明底，画的时候 modulate 上色）；没有这张图返回 null，调用处退回写字
+static func icon(id: String) -> Texture2D:
+	if not _icons.has(id):
+		var p := "res://assets/ui/icons/%s.png" % id
+		if ResourceLoader.exists(p):
+			# 全局画布是最近邻（像素字），图标缩小会锯齿：包一层 CanvasTexture 单独用三线性
+			var ct := CanvasTexture.new()
+			ct.diffuse_texture = load(p)
+			ct.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+			_icons[id] = ct
+		else:
+			_icons[id] = null
+	return _icons[id]
+
+
 func _draw_skills(vs: Vector2) -> void:
 	var items := [
 		["突", "dash", 1.0 if hero._echo_t > 0.0 else 1.0 - float(hero.cd["dash"]) / hero.dash_cd, ArpgInput.key_name(hero.index, "dash")],
@@ -351,7 +369,13 @@ func _draw_skills(vs: Vector2) -> void:
 			var pul := 0.5 + 0.5 * sin(Time.get_ticks_msec() * 0.02)
 			draw_arc(c, 31 + 2 * pul, 0, TAU, 48, Color(lg, 0.6 + 0.4 * pul), 3.0, true)
 			draw_string(font, c + Vector2(-20, -34), "连携", HORIZONTAL_ALIGNMENT_CENTER, 40, 13, lg.lightened(0.3))
-		draw_string(font, c + Vector2(-13, 9), it[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 26, col if ready else Color(0.5, 0.55, 0.55))
+		var ic := icon(String(it[1]))
+		if ic != null:
+			# 2026-11-10 第二档 A3：技能键画图标（game-icons.net，CC BY 3.0），字缩成角标
+			draw_texture_rect(ic, Rect2(c - Vector2(16, 18), Vector2(32, 32)), false, col if ready else Color(0.5, 0.55, 0.55))
+			draw_string(font, c + Vector2(-25, 23), it[0], HORIZONTAL_ALIGNMENT_CENTER, 50, 11, Color(col, 0.8) if ready else Color(0.5, 0.55, 0.55, 0.8))
+		else:
+			draw_string(font, c + Vector2(-13, 9), it[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 26, col if ready else Color(0.5, 0.55, 0.55))
 		# 按键名垫一个小键帽，小屏上也一眼认得出
 		var kw := maxf(pixel.get_string_size(String(it[3]), HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x + 8, 16)
 		var kr := Rect2(c.x - kw / 2, c.y + 31, kw, 17)

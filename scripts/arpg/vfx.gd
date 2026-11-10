@@ -189,7 +189,8 @@ func impact_flash(pos: Vector3, size: float = 3.0, c: Color = Color(1, 1, 1)) ->
 
 
 ## 小方块碎片：从 pos 往 dir 方向溅开（体素风格的“喷血”换成方块）
-func chips(pos: Vector3, dir: Vector3, c: Color, n: int = 8, speed: float = 6.0, size: float = 0.09) -> void:
+## cone：散开多少（0.7 是原来的乱溅；0.2~0.3 是顺着 dir 一条线喷出去，击杀时顺着刀路飞远用）
+func chips(pos: Vector3, dir: Vector3, c: Color, n: int = 8, speed: float = 6.0, size: float = 0.09, cone: float = 0.7) -> void:
 	if lod == 0:
 		n = (n + 1) / 2
 	if not room_for(n):
@@ -212,7 +213,7 @@ func chips(pos: Vector3, dir: Vector3, c: Color, n: int = 8, speed: float = 6.0,
 		var d := VoxDebris.new()
 		d.target = mi
 		var spread := Vector3(randf_range(-1, 1), randf_range(0.2, 1.4), randf_range(-1, 1))
-		d.vel = (dir.normalized() * 0.8 + spread * 0.7).normalized() * speed * randf_range(0.5, 1.2)
+		d.vel = (dir.normalized() * 0.8 + spread * cone).normalized() * speed * randf_range(0.5, 1.2)
 		d.spin = Vector3(randf_range(-12, 12), randf_range(-12, 12), randf_range(-12, 12))
 		d.life = randf_range(0.6, 1.1)
 		add_child(d)
@@ -643,7 +644,13 @@ func sheet(id: String, pos: Vector3, h: float, c: Color = Color.WHITE, energy: f
 	var mi := MeshInstance3D.new()
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var q := QuadMesh.new()
+	# 2026-11-10 第二档 A2：像素特效的一个像素对齐 Arena.GRID（0.045 米，场景件体素那一档）：
+	# 比它大就取整倍，比它小就取 1/2、1/3……，一格体素里正好装整数个特效像素，大小最多变两成
 	var k := h / float(info["fh"])
+	if k >= Arena.GRID:
+		k = roundf(k / Arena.GRID) * Arena.GRID
+	else:
+		k = Arena.GRID / roundf(Arena.GRID / k)
 	q.size = Vector2(float(info["fw"]), float(info["fh"])) * k
 	# 让 pivot 落在节点原点上
 	q.center_offset = Vector3((float(info["fw"]) * 0.5 - float(info["px"])) * k, (float(info["py"]) - float(info["fh"]) * 0.5) * k, 0)

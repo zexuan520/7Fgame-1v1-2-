@@ -116,6 +116,8 @@ func _draw() -> void:
 	draw_string(font, Vector2(x0, cy + 22), "直接进第二、三幕，不影响存档", HORIZONTAL_ALIGNMENT_CENTER, w, 13, Color(0.6, 0.7, 0.72, a * 0.75))
 	var keys := TouchPad.hint("WASD 移动　J 攻击　空格 翻滚　K 突进斩　I 光束斩　E 终结技　U 喝药　F 互动", "请横屏游玩　左手摇杆移动　右手：斩 攻击　滚 翻滚　突 突进斩　光 光束斩　终 终结技　药 喝药")
 	draw_string(font, Vector2(0, vs.y * 0.94), keys, HORIZONTAL_ALIGNMENT_CENTER, vs.x, 16, Color(0.65, 0.75, 0.75, a))
+	# 素材署名（CC BY 要求写出处；其余 CC0/MIT 素材的出处在 assets/*CREDITS.md）
+	draw_string(font, Vector2(0, vs.y - 8), "图标 game-icons.net（Lorc、Delapouite，CC BY 3.0）　配乐和音效 OpenGameArt 各作者（CC0）", HORIZONTAL_ALIGNMENT_CENTER, vs.x, 11, Color(0.5, 0.58, 0.58, a * 0.7))
 	draw_string(font, Vector2(0, vs.y * 0.08), "魂玉 %d" % int(Game.save.get("jade", 0)), HORIZONTAL_ALIGNMENT_RIGHT, vs.x - 30, 18, Color(0.55, 1.0, 0.85, a))
 
 

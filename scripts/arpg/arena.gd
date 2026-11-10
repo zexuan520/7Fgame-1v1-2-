@@ -10,7 +10,10 @@ extends Node3D
 ## 坐标：1 单位 = 1 米，房间中心在原点，-z 是画面上方（远处），+z 是靠镜头的一边。
 
 const PX := 0.036
-const FV := 0.1                    # 地面一格 0.1 米（和精细体素角色同一档）
+# 地面一格 0.09 米。2026-11-10 第二档 A2：原来 0.1 米，和场景件的体素（PX×1~1.4 ≈ 3.6~5 厘米）对不上，
+# 改成 GRID 的两倍；地面着色器再把每格切成 2×2 小格各抖一点明暗，地面颗粒就和场景件、像素特效同一档
+const GRID := 0.045
+const FV := GRID * 2.0
 
 var zone := "forest"
 var abyss := false                 # 终章无光殿：按灯冢摆，用 abyss 的光
@@ -527,7 +530,7 @@ func _floor_patch(x0: float, z0: float, nx: int, nz: int, main_room: bool, tint:
 	var px := PackedByteArray()
 	px.resize(nx * nz * 3)
 	var bumps := VoxelGrid.new(rng.randi())
-	var tuft_cut := 0.993 if lod == 0 else 0.982
+	var tuft_cut := 0.9943 if lod == 0 else 0.9854   # 格子比 0.1 米小了两成，概率跟着压，草丛总数不变
 	for iz in range(nz):
 		var z := z0 + iz * FV
 		var row := iz * nx * 3
@@ -566,6 +569,7 @@ func _floor_patch(x0: float, z0: float, nx: int, nz: int, main_room: bool, tint:
 	mat.set_shader_parameter("floor_tex", ImageTexture.create_from_image(img))
 	mat.set_shader_parameter("floor_rect", Vector4(x0, z0, nx * FV, nz * FV))
 	mat.set_shader_parameter("texel", Vector2(1.0 / nx, 1.0 / nz))
+	mat.set_shader_parameter("sub_cell", GRID)
 	if main_room:
 		floor_mat = mat
 	# 分块：每块约 10 米见方

@@ -1811,7 +1811,7 @@ func _enter_room_body(kind: String = "", zone_override: String = "") -> void:
 		"secret", "nook":
 			Game.music("secret")
 		"shop", "rest", "event", "start", "story", "treasure", "tutorial":
-			Game.music("hub")
+			Game.music("calm")   # 2026-11-10：歇脚类的房间换一首国风小曲，山门曲留给标题和山门
 		_:
 			Game.music(String(ArpgState.ZONE_MUSIC.get(zone_id, "village")))
 	_prefetch_music(zone_id)
@@ -5066,5 +5066,5 @@ func _story_test(c: String) -> void:
 func _prefetch_music(zone_id: String) -> void:
 	var gf := state.gfloor()
 	var nxt: String = ArpgState.FLOOR_ZONES[mini(gf + 1, ArpgState.FLOOR_ZONES.size() - 1)]
-	Game.music_prefetch([String(ArpgState.ZONE_MUSIC.get(zone_id, "village")), state.boss_music(), "secret",
+	Game.music_prefetch([String(ArpgState.ZONE_MUSIC.get(zone_id, "village")), "calm", state.boss_music(), "secret",
 		String(ArpgState.ZONE_MUSIC.get(nxt, "village"))])
