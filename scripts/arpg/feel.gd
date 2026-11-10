@@ -9,7 +9,7 @@ static var I: Feel
 
 const HITSTOP := [0.05, 0.1, 0.15]   # 旧的按重量取的默认值（别的地方还在引用）
 ## 顿帧三档（秒）：弱击 / 强击 / 会心，各自一个区间，按伤害和连击在区间里取；大招另算
-const STOP_WEAK := Vector2(0.0, 0.03)
+const STOP_WEAK := Vector2(0.035, 0.055)   # 2026-11：原来 0~0.03，轻击几乎不顿，砍上去像砍空气
 const STOP_STRONG := Vector2(0.05, 0.08)
 const STOP_CRIT := Vector2(0.1, 0.15)
 const STOP_ULT := 0.15
@@ -79,6 +79,8 @@ func on_hit(info: HitInfo) -> bool:
 		tgt.shiver(hs + 0.04, (0.05 if w == 0 else 0.09) * (0.5 if boss else 1.0) * (1.3 if info.crit else 1.0))
 	if info.attacker != null:
 		info.attacker.self_stop(hs * 0.9)
+	if not extra or tgt.team == 0:
+		_rumble_hit(info, w, hero_hit, killed, boss)
 	# 受击挤压：压扁再弹回
 	if tgt.rig != null:
 		tgt.rig.squash((0.16 if w == 0 else 0.26) * (0.45 if boss else 1.0) * (1.3 if info.crit else 1.0))
@@ -124,6 +126,40 @@ func on_hit(info: HitInfo) -> bool:
 	if info.attacker != null and info.gain > 0.0 and info.attacker.has_method("gain_energy"):
 		info.attacker.call("gain_energy", info.gain)
 	return true
+
+
+## 震动：手柄（左右两个马达）和手机（只有一个马达，只在重击、会心、斩杀、挨打时震，免得一直嗡嗡）
+var _rumble_cd := 0.0
+
+
+func rumble(weak: float, strong: float, dur: float, handheld := false) -> void:
+	if not bool(Game.settings.get("rumble", true)):
+		return
+	for d: int in Input.get_connected_joypads():
+		Input.start_joy_vibration(d, clampf(weak, 0.0, 1.0), clampf(strong, 0.0, 1.0), dur)
+	if handheld and TouchPad.active and _rumble_cd <= 0.0:
+		_rumble_cd = 0.12
+		Input.vibrate_handheld(int(dur * 1000.0), clampf(maxf(weak, strong), 0.1, 1.0))
+	if OS.get_cmdline_user_args().has("--feellog"):
+		print("FEEL rumble %.2f %.2f %.2f %s" % [weak, strong, dur, handheld])
+
+
+func _rumble_hit(info: HitInfo, w: int, hero_hit: bool, killed: bool, boss: bool) -> void:
+	if info.target.team == 0:
+		rumble(0.55, 0.8, 0.18, true)
+	elif hero_hit:
+		if killed and boss:
+			rumble(1.0, 1.0, 0.4, true)
+		elif w >= HitInfo.Weight.ULT:
+			rumble(0.8, 0.9, 0.25, true)
+		elif info.crit:
+			rumble(0.5, 0.6, 0.13, true)
+		elif killed:
+			rumble(0.3, 0.45, 0.1, true)
+		elif w >= HitInfo.Weight.HEAVY:
+			rumble(0.4, 0.3, 0.09, false)
+		else:
+			rumble(0.22, 0.0, 0.05, false)
 
 
 ## 这一下顿多久：显式给了 hitstop 就用它；多段攻击的中间段不顿；否则按 弱 / 强 / 会心 三档区间取
@@ -383,6 +419,19 @@ func _trim_nums() -> void:
 
 
 ## 屏幕中间偏上的大字（连段“1段!”、技能名）
+## 招式名大字：同一招一局只弹头两次（认识了就不必每刀都挡在人头上）；key 不给就按文字
+static var _called_n := {}
+
+
+func callout_once(world_pos: Vector3, text: String, col: Color, scale: float = 1.0, key: String = "") -> void:
+	var kk := key if key != "" else text
+	var n := int(_called_n.get(kk, 0))
+	if n >= 2:
+		return
+	_called_n[kk] = n + 1
+	callout(world_pos, text, col, scale)
+
+
 func callout(world_pos: Vector3, text: String, col: Color, scale: float = 1.0) -> void:
 	var l := Label.new()
 	l.text = text
@@ -431,6 +480,7 @@ func _process(dt: float) -> void:
 
 
 func _process_body(dt: float) -> void:
+	_rumble_cd = maxf(_rumble_cd - dt, 0.0)
 	# dt 已经乘过 Engine.time_scale；慢镜头本身要按真实时间走
 	var real_dt := dt / maxf(Engine.time_scale, 0.01)
 	_tick_slow(real_dt)

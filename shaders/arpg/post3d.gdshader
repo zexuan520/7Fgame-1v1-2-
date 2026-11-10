@@ -9,7 +9,7 @@ shader_type canvas_item;
 
 uniform sampler2D screen : hint_screen_texture, filter_linear;
 uniform float vignette = 0.5;
-uniform float aberration = 0.00035;
+uniform float aberration = 0.0;        // 2026-11-10：平时不再色散（满屏彩边看着脏），只在挨打时随 hurt 闪一下
 uniform vec3 shadow_tint = vec3(0.0, 0.05, 0.09);
 uniform vec3 highlight_tint = vec3(1.05, 1.0, 0.92);
 uniform float saturation = 1.0;
@@ -18,7 +18,7 @@ uniform float tilt = 1.0;             // 移轴强度（0 关）
 uniform float tilt_focus = 0.55;      // 焦点带中心（屏幕 y，0 顶 1 底；主角在画面中间略下）
 uniform float tilt_band = 0.2;        // 焦点带半宽，带内完全清楚
 uniform float tilt_px = 3.2;          // 最远处模糊半径（像素，按 720 高算）
-uniform float grain = 0.025;
+uniform float grain = 0.012;
 uniform vec4 flash = vec4(0.0);       // 全屏闪（大招白、终结红）
 uniform float hurt = 0.0;             // 主角挨打时四周泛红
 uniform float impact = 0.0;           // 冲击帧：1 时整屏变成黑底白影的高反差画面（只亮一两帧）
@@ -35,7 +35,7 @@ void fragment() {
 	vec2 uv = SCREEN_UV;
 	vec2 dc = uv - 0.5;
 	float r2 = dot(dc, dc);
-	vec2 off = dc * r2 * aberration * 40.0;
+	vec2 off = dc * r2 * (aberration + hurt * 0.0035) * 40.0;
 	vec3 c;
 	c.r = texture(screen, uv - off).r;
 	c.g = texture(screen, uv).g;

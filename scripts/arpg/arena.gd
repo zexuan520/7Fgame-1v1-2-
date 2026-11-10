@@ -2198,11 +2198,11 @@ func _smoke_column(p: Vector3) -> void:
 
 func _petals() -> void:
 	var pt := CPUParticles3D.new()
-	pt.amount = mini(int(90 * _ka()), 180) / (2 if lod == 0 else 1)
+	pt.amount = mini(int(45 * _ka()), 90) / (2 if lod == 0 else 1)   # 2026-11-10 减半：满地粉点抢了敌人和预警的眼
 	pt.lifetime = 7.0
 	pt.preprocess = 7.0
 	pt.mesh = _particle_quad(0.14)
-	pt.material_override = _fx_mat("light_01", Color(1.0, 0.6, 0.78), true, 1.6)
+	pt.material_override = _fx_mat("light_01", Color(1.0, 0.6, 0.78), true, 1.2)
 	pt.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
 	pt.emission_box_extents = Vector3(size.x * 0.5, 0.5, size.y * 0.5)
 	pt.direction = Vector3(1, -0.3, 0.3)
@@ -2218,7 +2218,7 @@ func _atmosphere() -> void:
 	var info: Dictionary = zone_info()
 	# 漂浮孢子 / 光尘
 	var sp := CPUParticles3D.new()
-	sp.amount = mini(int(140 * _ka()), 280) / (2 if lod == 0 else 1)
+	sp.amount = mini(int(85 * _ka()), 170) / (2 if lod == 0 else 1)   # 2026-11-10 少四成（画面碎点太多）
 	sp.lifetime = 8.0
 	sp.preprocess = 8.0
 	sp.mesh = _particle_quad(0.09)

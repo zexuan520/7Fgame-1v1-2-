@@ -76,6 +76,10 @@ func _ready() -> void:
 	Foe.tokens = 0
 	_rng.randomize()
 	_parse_args()
+	# 物理插值：角色在 60Hz 物理里走，高刷屏上每帧按比例插到两次物理之间，不再一顿一顿。
+	# 只给角色（Actor）开；其余在 _process 里自己动的东西（镜头、特效、飞射物）关掉，免得被拖慢一拍。
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	Actor.interp = not _args.has("nointerp")
 	if _args.has("guide"):
 		# 测试：当成新存档的第一局（逐步解锁、提示全没看过），--guidefights=N 当作已经打过几间战斗房
 		Game.save["arpg_guide"] = "on"
@@ -155,6 +159,7 @@ func _ready() -> void:
 		_enter_title()
 	if _args.has("cam_dist"):
 		cam_rig.distance = float(_args["cam_dist"])
+		cam_rig.auto_dist = false
 	if _args.has("cam_pitch"):
 		cam_rig.pitch_deg = float(_args["cam_pitch"])
 	if _args.has("cam_yaw"):
@@ -192,9 +197,10 @@ func _ready() -> void:
 			n.radius = 0.0
 			n._label.visible = false
 			if n.rig != null and (ids[i][0] == "rogue" or String(ids[i][0]).begins_with("hero_")):
-				# 主角模型按默认皮肤“青衫”换色，和游戏里看到的一样
+				# 主角模型按默认皮肤（白衣）换色，和游戏里看到的一样
+				var sc: Color = ArpgArms.SKINS[0]["swap"]
 				n.rig.mat.set_shader_parameter("swap_green", true)
-				n.rig.mat.set_shader_parameter("swap_color", Vector3(0.28, 0.5, 0.86))
+				n.rig.mat.set_shader_parameter("swap_color", Vector3(sc.r, sc.g, sc.b))
 				n.rig.mat.next_pass = VoxActor.hero_outline_material()
 				n.rig.set_rim(Color(0.45, 0.95, 1.0), 0.6)
 		hero.visible = false
@@ -510,8 +516,16 @@ func apply_quality(q: int) -> void:
 		# 手机屏幕像素密度高（画布按设备像素算），3D 再降一些也看不出来
 		vp.scaling_3d_scale = [0.5, 0.65, 0.8][quality]
 	vp.msaa_3d = Viewport.MSAA_DISABLED if quality < 2 else Viewport.MSAA_2X
-	# 移轴微缩：高画质全开、中画质淡一些（网页默认中），设置里能关
-	_post_full.set_shader_parameter("tilt", (1.0 if quality >= 2 else 0.75) if bool(Game.settings.get("tilt_shift", true)) else 0.0)
+	_apply_tilt()
+
+
+## 移轴微缩：高画质全开、中画质淡一些（网页默认中），设置里能关；
+## 2026-11-10 起战斗房（打架、精英、头目、试炼）不开——上下边糊掉的正是从远处冲过来的敌人，只留给山门、商店、休息这些看景的房间
+func _apply_tilt() -> void:
+	var v := (1.0 if quality >= 2 else 0.75) if bool(Game.settings.get("tilt_shift", true)) else 0.0
+	if mode == "room" and room_kind in ["fight", "elite", "boss", "trial", "tutorial"]:
+		v = 0.0
+	_post_full.set_shader_parameter("tilt", v)
 
 
 ## 灯光上限：兼容渲染器里每盏点光都要在它照到的每个像素上多算一遍，手机吃不消。
@@ -670,11 +684,11 @@ func _setup_world() -> void:
 func _apply_zone_env(info: Dictionary) -> void:
 	var env := world_env.environment
 	env.background_color = info["bg"]
-	env.ambient_light_color = info["amb"]
+	env.ambient_light_color = _neutral(info["amb"], AMB_NEUTRAL)
 	_zone_info = info
 	env.ambient_light_energy = float(info["amb_e"]) * (1.0 if quality >= 1 else LOW_AMBIENT) * FLAT_AMB
 	_apply_hemi()
-	env.fog_light_color = info["fog"]
+	env.fog_light_color = _neutral(info["fog"], FOG_NEUTRAL)
 	env.fog_density = float(info["fog_d"]) * (state.omen_val("fog") if state != null and mode != "hub" else 1.0)
 	env.fog_sky_affect = 1.0
 	env.fog_depth_begin = 15.0
@@ -683,6 +697,7 @@ func _apply_zone_env(info: Dictionary) -> void:
 	sun.light_color = info["sun"]
 	sun.light_energy = info["sun_e"]
 	_apply_grade(arena.zone if arena != null else "")
+	_apply_tilt()
 	Foe.zone_rim = info.get("foe_rim", Color(1.0, 0.55, 0.35))
 	Foe.zone_rim_k = float(info.get("foe_rim_k", 0.45))   # 暖色地面（柳溪村、长明宫、灯冢）上的红橙金敌人：冷色轮廓光加强，别糊进地里
 
@@ -734,10 +749,22 @@ const GRADES := {
 }
 
 
+## 2026-11-10 去“单色罩”：每层的雾色、环境光原来都是一种色相（幽林全青、古寺全橙），人和怪也被染成那个颜色。
+## 雾往同亮度的灰拉 45%、环境光拉 30%，调色的暗部冷色减半、亮部暖色收四成：区域色调还在，但角色、刀光、预警是本色。
+const FOG_NEUTRAL := 0.45
+const AMB_NEUTRAL := 0.3
+const GRADE_K := 0.55
+
+
+static func _neutral(c: Color, k: float) -> Color:
+	var l := c.r * 0.3 + c.g * 0.59 + c.b * 0.11
+	return c.lerp(Color(l, l, l, c.a), k)
+
+
 func _apply_grade(zone_id: String) -> void:
 	var g: Array = GRADES.get("hub" if mode == "hub" else zone_id, [Color(0.01, 0.04, 0.08), Color(1.06, 1.0, 0.9), 1.0])
-	var sh: Color = g[0]
-	var hi: Color = g[1]
+	var sh: Color = g[0] * GRADE_K
+	var hi: Color = Color(1, 1, 1).lerp(g[1], 0.6)
 	_post_full.set_shader_parameter("shadow_tint", Vector3(sh.r, sh.g, sh.b))
 	_post_full.set_shader_parameter("highlight_tint", Vector3(hi.r, hi.g, hi.b))
 	_post_full.set_shader_parameter("saturation", float(g[2]))
@@ -746,7 +773,7 @@ func _apply_grade(zone_id: String) -> void:
 func _apply_hemi() -> void:
 	if _zone_info.is_empty():
 		return
-	var a: Color = _zone_info["amb"]
+	var a: Color = _neutral(_zone_info["amb"], AMB_NEUTRAL)
 	var e := float(_zone_info["amb_e"]) * (1.0 if quality >= 1 else LOW_AMBIENT)
 	var sky := a * e * HEMI_SKY
 	# 地面反光带一点暖色（地面多是土石），底面不至于死青
@@ -862,6 +889,7 @@ func _ensure_hero() -> void:
 
 func _place_hero(p: Vector3, face: Vector3 = Vector3(0, 0, -1)) -> void:
 	hero.global_position = p
+	hero.reset_physics_interpolation()
 	hero.velocity = Vector3.ZERO
 	hero.knock = Vector3.ZERO
 	hero.face_to(face)
@@ -898,6 +926,7 @@ func _enter_title_body() -> void:
 	cam_rig.target = _title_focus
 	cam_rig.pitch_deg = TITLE_PITCH
 	cam_rig.distance = TITLE_DIST
+	cam_rig.auto_dist = false
 	cam_rig.snap()
 	hud.visible = false
 	Game.music("hub")
@@ -999,10 +1028,11 @@ const TITLE_DIST := 14.5
 var _title_focus: Node3D
 
 
-## 标题镜头还原成平时的斜俯视（俯角 50、距离 14.5、对着主角）
+## 标题镜头还原成平时的斜俯视（俯角 50、距离按身边敌人 11~13.2 米自动远近、对着主角）
 func _title_cam_reset() -> void:
 	cam_rig.pitch_deg = 50.0 if not _args.has("cam_pitch") else float(_args["cam_pitch"])
-	cam_rig.distance = 14.5 if not _args.has("cam_dist") else float(_args["cam_dist"])
+	cam_rig.distance = CamRig.NEAR if not _args.has("cam_dist") else float(_args["cam_dist"])
+	cam_rig.auto_dist = not _args.has("cam_dist")
 	cam_rig.yaw_deg = 0.0 if not _args.has("cam_yaw") else float(_args["cam_yaw"])
 	if is_instance_valid(_title_focus):
 		_title_focus.queue_free()
@@ -2245,11 +2275,21 @@ func _spawn_foe(kind: String, p: Vector3, delay: float, affix: Array = []) -> vo
 			f.set("_summon_t", 1.0e9)
 		hud.banner(f.display_name, sub, 2.6)
 		# 登场：镜头特写头目、上下黑边、脚下一圈本色冲击
-		cam_rig.close_up(f, 1.9, 0.6)
-		hud.cinema(2.2)
+		cam_rig.close_up(f, 2.1, 0.62)
+		hud.cinema(2.4)
 		vfx.shock_ring(f.global_position, f.fx_color(), 0.5, 7.0, 0.6)
 		vfx.sheet("spawn-cast", f.global_position, 4.5, Color.WHITE, 1.6, false, 0.0, 1.4)
 		cam_rig.shake(1, 1.0)
+		# 镜头推到脸上那一刻定格：全场停 0.32 秒、一下冲击帧、第二圈冲击和重震，像亮相
+		get_tree().create_timer(0.55, false).timeout.connect(func() -> void:
+			if not is_instance_valid(f) or not f.alive:
+				return
+			Feel.I.pause_world(0.32)
+			Feel.I.impact_frame(0.06)
+			Feel.I.screen_flash(Color(f.fx_color(), 0.35), 6.0)
+			vfx.shock_ring(f.global_position, f.fx_color().lightened(0.3), 0.35, 10.0, 0.45)
+			cam_rig.shake(2, 1.0)
+			Game.sfx("crit", -3.0, 0.0, 0.7))
 
 
 func _on_drop(pos: Vector3, c: int, j: int, kind: String) -> void:
@@ -4089,7 +4129,8 @@ func _open_pause(sel: Variant = 0) -> void:
 		{"id": "diff", "title": "难度", "right": ArpgState.DIFF_NAMES[ArpgState.difficulty()], "desc": ArpgState.DIFF_DESC[ArpgState.difficulty()]},
 		{"id": "impact", "title": "冲击帧", "right": "开" if bool(Game.settings.get("impact_frames", true)) else "关", "desc": "清完一波、斩精英、见切时整屏黑白定格一瞬；对闪光敏感可以关掉"},
 		{"id": "shake", "title": "震屏强度", "right": CamRig.SHAKE_NAMES[CamRig.shake_level()], "desc": "命中、爆炸时镜头抖动的幅度（关 → 弱 → 中 → 强）；容易晕可以调低"},
-		{"id": "tilt", "title": "移轴景深", "right": "开" if bool(Game.settings.get("tilt_shift", true)) else "关", "desc": "画面上下边缘微微虚化，像看微缩模型；中、高画质才有，嫌糊可以关掉"}]
+		{"id": "rumble", "title": "震动", "right": "开" if bool(Game.settings.get("rumble", true)) else "关", "desc": "命中、挨打时手柄震一下；手机上只在重击、会心、斩杀、挨打时震"},
+		{"id": "tilt", "title": "移轴景深", "right": "开" if bool(Game.settings.get("tilt_shift", true)) else "关", "desc": "画面上下边缘微微虚化，像看微缩模型；中、高画质才有，战斗房里自动不开，嫌糊可以关掉"}]
 	if TouchPad.active:
 		items.insert(5, {"id": "touchsize", "title": "按键大小", "right": TouchPad.SIZE_NAMES[TouchPad.size_i], "desc": "右下角触屏按键的大小（小 → 中 → 大）"})
 	items.append({"id": "ach", "title": "成就", "right": "%d / %d" % [ArpgAch.count(), ArpgAch.LIST.size()], "desc": "看看做到了哪些"})
@@ -4134,6 +4175,13 @@ func _on_pause_chosen(i: int) -> void:
 			Game.write_settings()
 			Game.sfx("coin")
 			_open_pause(id)
+		"rumble":
+			Game.settings["rumble"] = not bool(Game.settings.get("rumble", true))
+			Game.write_settings()
+			if Feel.I != null:
+				Feel.I.rumble(0.4, 0.6, 0.15, true)
+			Game.sfx("coin")
+			_open_pause(id)
 		"shake":
 			Game.settings["shake"] = (CamRig.shake_level() + 1) % CamRig.SHAKE_SCALES.size()
 			Game.write_settings()
@@ -4144,7 +4192,7 @@ func _on_pause_chosen(i: int) -> void:
 		"tilt":
 			Game.settings["tilt_shift"] = not bool(Game.settings.get("tilt_shift", true))
 			Game.write_settings()
-			_post_full.set_shader_parameter("tilt", (1.0 if quality >= 2 else 0.75) if bool(Game.settings["tilt_shift"]) else 0.0)
+			_apply_tilt()
 			Game.sfx("coin")
 			_open_pause(id)
 		"touchsize":

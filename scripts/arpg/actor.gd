@@ -28,9 +28,30 @@ var display_name := ""
 var world: Node3D
 
 
+static var interp := true        # 物理插值总开关（--nointerp 关掉对照）
+var _ip_last := Vector3.ZERO
+
+
 func _ready() -> void:
 	collision_layer = 2 if team == 0 else 4
 	collision_mask = 1
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON if interp else Node.PHYSICS_INTERPOLATION_MODE_OFF
+	_ip_last = global_position
+
+
+## 瞬移（传送、换房、闪现）别被插值拉出一道滑行：一帧挪了 2.5 米以上就把插值起点重置到现在
+func _process(_dt: float) -> void:
+	var gp := global_position
+	if gp.distance_squared_to(_ip_last) > 6.25:
+		reset_physics_interpolation()
+	_ip_last = gp
+
+
+## 画面上的位置（插值后），名牌、箭头、镜头跟这个
+func vis_pos() -> Vector3:
+	if is_physics_interpolated_and_enabled() and not Engine.is_in_physics_frame():
+		return get_global_transform_interpolated().origin
+	return global_position
 
 
 ## 这个角色本帧的时间：被顿帧冻住、或者全屏停顿时为 0
@@ -120,7 +141,7 @@ func chest() -> Vector3:
 	var h := 1.0
 	if rig != null:
 		h = rig.height * VoxActor.PX * rig.scale_k * 0.62
-	return global_position + Vector3(0, h, 0)
+	return vis_pos() + Vector3(0, h, 0)
 
 
 func head_top() -> Vector3:

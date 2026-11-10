@@ -300,10 +300,10 @@ static func lightning(hero: Hero, at: Vector3, dmg: float, stun: float = 0.4) ->
 ## neutral 灯光去色（0~1，金色这类暖色在青光、绿光下不发绿）；swap_glow 换色那块自己亮几分；
 ## k 体型缩放；unlock：free / jade 魂玉买 / ach 成就数 / clears 登顶次数 / kills 累计斩敌 / act2 第二幕通关
 const SKINS := [
-	{"id": "qing", "name": "青衫", "desc": "最早那身衣服，洗得发白", "model": "hero_canren", "swap": Color(0.28, 0.5, 0.86), "rim": Color(0.45, 0.95, 1.0), "unlock": {"free": true}},
+	{"id": "qing", "name": "白衣", "desc": "最早那身衣服，洗得发白", "model": "hero_canren", "swap": Color(0.9, 0.88, 0.82), "rim": Color(0.45, 0.95, 1.0), "unlock": {"free": true}},   # 2026-11-10 默认改白（原青蓝把白袍染蓝，蓝色场景里看不清；id 不改，老存档照用）
 	{"id": "chi", "name": "赤焰", "desc": "红得像要烧起来的披风", "model": "hero_canren", "swap": Color(0.7, 0.16, 0.12), "rim": Color(1.0, 0.5, 0.3), "scarf": Color(0.95, 0.72, 0.25), "unlock": {"jade": 25}},
 	{"id": "mo", "name": "墨夜", "desc": "黑里透紫，夜里看不见人", "model": "hero_canren", "swap": Color(0.13, 0.1, 0.18), "rim": Color(0.72, 0.5, 1.0), "scarf": Color(0.6, 0.3, 0.95), "unlock": {"jade": 40}},
-	{"id": "shuang", "name": "白霜", "desc": "一身素白，刀光也冷", "model": "hero_canren", "swap": Color(0.82, 0.86, 0.9), "rim": Color(0.75, 0.92, 1.0), "unlock": {"ach": 10}},
+	{"id": "shuang", "name": "青衫", "desc": "青蓝长衫，刀光也冷", "model": "hero_canren", "swap": Color(0.28, 0.5, 0.86), "rim": Color(0.75, 0.92, 1.0), "unlock": {"ach": 10}},
 	{"id": "knight", "name": "铁甲", "desc": "从柳江远那里学来的札甲", "model": "hero_armor", "swap": Color(0.3, 0.36, 0.5), "rim": Color(1.0, 0.85, 0.5), "unlock": {"clears": 1}},
 	{"id": "barbarian", "name": "北地蛮勇", "desc": "一身兽皮，砍过一千个敌人才穿得上", "model": "hero_wild", "rim": Color(1.0, 0.55, 0.35), "unlock": {"kills": 1000}},
 	{"id": "mage", "name": "云游僧", "desc": "大斗笠、行脚箱，打起来却不含糊", "model": "huiming", "swap": Color(0.5, 0.42, 0.34), "rim": Color(0.72, 0.6, 1.0), "unlock": {"jade": 60}},

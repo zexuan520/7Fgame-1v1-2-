@@ -32,6 +32,9 @@ var _hipmid := Vector3.ZERO
 var _rest_feet := {}
 var blade_tip := Vector3.ZERO     # 刀尖的世界坐标（刀光用）
 var blade_base := Vector3.ZERO
+var _bt_prev := Vector3.ZERO      # 上一次物理帧的刀尖/刀根（物理插值时刀光按比例插在两帧之间，和刀身画面对齐）
+var _bb_prev := Vector3.ZERO
+var _bt_frame := -1
 var height := 50.0
 var _flash := 0.0
 var _flash_col := Color.WHITE
@@ -93,6 +96,14 @@ static func hero_outline_material() -> ShaderMaterial:
 
 
 ## model_id：assets/voxel 下的模型名；weapon_id：assets/voxel/weapon 下的武器名（"" 不拿武器）
+## 画面上的刀尖、刀根：物理插值开着时插在上一次和这一次物理帧之间（这一帧没摆姿势，比如顿帧冻住，就用现在的）
+func blade_vis() -> Array:
+	if _bt_frame == Engine.get_physics_frames() and is_physics_interpolated_and_enabled() and not Engine.is_in_physics_frame():
+		var f := Engine.get_physics_interpolation_fraction()
+		return [_bb_prev.lerp(blade_base, f), _bt_prev.lerp(blade_tip, f)]
+	return [blade_base, blade_tip]
+
+
 func setup(model_id: String, weapon_id: String = "", wlen: float = 30.0, tint: Color = Color.WHITE, k: float = 1.0) -> void:
 	scale_k = k
 	model = VoxelModel.load_model(model_id)
@@ -416,6 +427,15 @@ func apply(p: Dictionary) -> void:
 			bd = Vector3(hz.x, need, hz.y)
 		_place("", hr, hr + bd, weapon)
 		var bw := body.global_transform
+		var pf := Engine.get_physics_frames()
+		if pf != _bt_frame:
+			if _bt_frame < 0 or pf - _bt_frame > 1:
+				_bt_prev = bw * _m2b(hr + bd * weapon_len)
+				_bb_prev = bw * _m2b(hr + bd * weapon_len * 0.25)
+			else:
+				_bt_prev = blade_tip
+				_bb_prev = blade_base
+			_bt_frame = pf
 		blade_base = bw * _m2b(hr + bd * weapon_len * 0.25)
 		blade_tip = bw * _m2b(hr + bd * weapon_len)
 	if offhand != null:

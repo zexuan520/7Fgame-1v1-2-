@@ -18,6 +18,9 @@ uniform float emboss = 1.5;
 uniform vec3 rim_color : source_color = vec3(0.45, 0.95, 1.0);
 uniform float rim_strength = 0.12;
 uniform float shadow_floor = 0.38;
+// 2026-11-10：地面去两成饱和、压暗一点点，人、怪、刀光、预警从地上浮出来（地面是背景，不该和角色抢颜色）
+uniform float mute_sat = 0.2;
+uniform float mute_dark = 0.05;
 global uniform vec4 hemi_sky;
 
 varying vec2 world_xz;
@@ -43,6 +46,8 @@ void fragment() {
 		ao = texture(ao_tex, (world_xz - ao_rect.xy) / ao_rect.zw).r;
 	}
 	src *= ao;
+	float lm = dot(src, vec3(0.3, 0.59, 0.11));
+	src = mix(src, vec3(lm), mute_sat) * (1.0 - mute_dark);
 	ALBEDO = src;
 	float ndv = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
 	EMISSION = rim_color * pow(1.0 - ndv, 3.0) * rim_strength * ao + src * hemi_sky.rgb;

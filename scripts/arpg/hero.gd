@@ -411,7 +411,7 @@ func _ready_body() -> void:
 	cs.shape = cap
 	cs.position.y = 0.9
 	add_child(cs)
-	# 皮肤（ArpgArms.SKINS）：默认“青衫”，兜帽和披风换成深青蓝（原模型是绿的），和青绿场景拉开
+	# 皮肤（ArpgArms.SKINS）：默认“白衣”（2026-11-10 起，原来是青蓝的“青衫”），袍子的绿色占位整块换掉
 	_pose = Poses.idle(0.0)
 	apply_skin(String(Game.save.get("arpg_skin", "qing")))
 	add_to_group("heroes")
@@ -952,8 +952,9 @@ func _nearest_ahead(dist: float) -> bool:
 
 func _spawn_slash(s: AttackStep) -> void:
 	var base := Transform3D(Basis(Vector3.UP, rotation.y), global_position + Vector3(0, 0.95, 0))
-	var core := Color(1.0, 1.0, 1.0)
-	var edge := Color(0.35, 0.78, 1.0)
+	# 月牙和拖尾同色（兵器、连段档位、流派染色都在 trail 上），不再一律青白
+	var core := trail.core if trail != null else Color(1.0, 1.0, 1.0)
+	var edge := trail.edge if trail != null else Color(0.35, 0.78, 1.0)
 	match s.swing:
 		"h_rl":
 			var xf := base * Transform3D(Basis(Vector3(0, 0, 1), s.slash_tilt), Vector3.ZERO)
@@ -964,8 +965,8 @@ func _spawn_slash(s: AttackStep) -> void:
 		"v_down":
 			# 竖着的刀光：扇环平面立起来（绕前后轴转 90°）
 			var xf := base * Transform3D(Basis(Vector3(0, 0, 1), PI / 2) * Basis(Vector3.UP, 0.0), Vector3(0.0, 0.2, 0))
-			Vfx.I.slash(xf, s.slash_radius, deg_to_rad(-60), deg_to_rad(110), 0.22, core, Color(0.4, 0.9, 1.0), 3.6)
-			Vfx.I.shock_ring(global_position + facing * 1.6, Color(0.5, 0.9, 1.0), 0.3, 2.2, 0.25)
+			Vfx.I.slash(xf, s.slash_radius, deg_to_rad(-60), deg_to_rad(110), 0.22, core, edge, 3.6)
+			Vfx.I.shock_ring(global_position + facing * 1.6, edge.lightened(0.2), 0.3, 2.2, 0.25)
 		"thrust":
 			var tc := ArpgArms.trail(weapon_id)
 			var from := global_position + Vector3(0, 1.0, 0) + facing * 0.6
@@ -976,8 +977,8 @@ func _spawn_slash(s: AttackStep) -> void:
 			Vfx.I.pop(global_position + facing * 0.9 + Vector3(0, 1.0, 0), "muzzle_02", Color(0.7, 1.0, 0.95), 0.3, 1.2, 0.1)
 		"spin":
 			var xf := base * Transform3D(Basis.IDENTITY, Vector3(0, -0.15, 0))
-			Vfx.I.slash(xf, s.slash_radius, deg_to_rad(90), deg_to_rad(90) - TAU, 0.3, core, Color(0.3, 0.75, 1.0), 3.4, 0.55)
-			Vfx.I.slash(xf, s.slash_radius * 0.8, deg_to_rad(-90), deg_to_rad(-90) - TAU * 0.8, 0.28, core, Color(0.6, 1.0, 1.0), 2.0, 0.6)
+			Vfx.I.slash(xf, s.slash_radius, deg_to_rad(90), deg_to_rad(90) - TAU, 0.3, core, edge, 3.4, 0.55)
+			Vfx.I.slash(xf, s.slash_radius * 0.8, deg_to_rad(-90), deg_to_rad(-90) - TAU * 0.8, 0.28, core, edge.lightened(0.3), 2.0, 0.6)
 
 
 func _do_hits(s: AttackStep) -> void:
@@ -1009,7 +1010,7 @@ func _do_hits(s: AttackStep) -> void:
 	if landed and not _called and (step_i == combo.size() - 1 or _swap_strike):
 		_called = true
 		var lbl := s.label if not _swap_strike else "换刃·%s" % String(ArpgData.weapon(weapon_id)["name"])
-		Feel.I.callout(head_top() + Vector3(0.6, 0.3, 0), lbl, Color(0.75, 1.0, 1.0), 0.9 if step_i < combo.size() - 1 else 1.2)
+		Feel.I.callout_once(head_top() + Vector3(0.6, 0.3, 0), lbl, Color(0.75, 1.0, 1.0), 0.9 if step_i < combo.size() - 1 else 1.2)
 
 
 ## 一刀（或一箭）落到一个敌人身上：会心、伤害加成、兵器特性、装备特效都在这里算。返回 true 表示真打中了
@@ -1490,7 +1491,7 @@ func _combo_branch() -> void:
 			if Feel.I.on_hit(info):
 				pulled += 1
 		if pulled > 0:
-			Feel.I.callout(head_top() + Vector3(0.6, 0.2, 0), "回风", c, 1.0)
+			Feel.I.callout_once(head_top() + Vector3(0.6, 0.2, 0), "回风", c, 1.0, "回风")
 			if vr >= 3:
 				gain_energy(10.0)
 		Game.sfx("dodge", -2.0, 0.1, 0.7)
@@ -1609,7 +1610,7 @@ func _after_dash(seg: Vector3) -> void:
 					if tr >= 3:
 						a.freeze(1.0 if not a.is_boss else 0.3)
 						Vfx.I.sheet("stunned", a.head_top(), 1.0, SkillFx.THUNDER, 2.0, false, 1.0)
-			Feel.I.callout(to + Vector3(0, 2.6, 0), "雷切", SkillFx.THUNDER, 1.0))
+			Feel.I.callout_once(to + Vector3(0, 2.6, 0), "雷切", SkillFx.THUNDER, 1.0, "雷切"))
 	if skr("echo") > 0 and not _echo_live:
 		_echo_t = 1.5
 		Vfx.I.ghost(rig, SkillFx.SHADOW, 0.8)
@@ -1677,7 +1678,7 @@ func _finish_branch(blasted: Array, stacks: int) -> void:
 				Vfx.I.streaks(b.chest(), a.chest() - b.chest(), SkillFx.BLOOD, 2, a.global_position.distance_to(b.global_position), 0.25, 0.1, 0.12)
 				spread += 1
 		if spread > 0:
-			Feel.I.callout(head_top() + Vector3(-0.6, 0.2, 0), "血莲 ×%d" % spread, SkillFx.BLOOD, 1.0)
+			Feel.I.callout_once(head_top() + Vector3(-0.6, 0.2, 0), "血莲 ×%d" % spread, SkillFx.BLOOD, 1.0, "血莲")
 	var dr := skr("drink")
 	if dr > 0 and stacks > 0:
 		var heal := minf(stacks * (0.5 + 0.5 * dr), max_hp * 0.25)
@@ -1754,7 +1755,7 @@ func _start_art() -> void:
 			_clone_pos = global_position - facing * 1.4 + facing.cross(Vector3.UP) * 1.2
 			Vfx.I.sheet("spawn-cast", _clone_pos, 3.4, Color(0.75, 0.55, 1.0), 2.0)
 			Vfx.I.shock_ring(_clone_pos, SkillFx.SHADOW, 0.3, 3.0, 0.4)
-			Feel.I.callout(head_top(), "分身", SkillFx.SHADOW, 1.0)
+			Feel.I.callout_once(head_top(), "分身", SkillFx.SHADOW, 1.0, "分身")
 			Game.sfx("art", -4.0, 0.1, 1.2)
 			_set_state("art_cast")
 			_link_mark("art")
@@ -1862,7 +1863,7 @@ func _slam() -> void:
 			fo.freeze(0.8 if not fo.is_boss else 0.2)
 	if n > 0:
 		Feel.I.slowmo(0.35, 0.25)
-		Feel.I.callout(head_top() + Vector3(0.6, 0.3, 0), "震岳!", Color(1.0, 0.8, 0.45), 1.3)
+		Feel.I.callout_once(head_top() + Vector3(0.6, 0.3, 0), "震岳!", Color(1.0, 0.8, 0.45), 1.3)
 	if r >= 3:
 		# 火缝：四道裂开的火光
 		for i in range(4):
@@ -2250,7 +2251,7 @@ func _do_dash() -> void:
 	CamRig.I.kick(facing, 0.22)
 	if n > 0:
 		Feel.I.slowmo(0.35, 0.22)
-		Feel.I.callout(head_top() + Vector3(0.6, 0.3, 0), "连闪!" if _echo_live else "突进斩!", _dash_color().lightened(0.3), 1.1)
+		Feel.I.callout_once(head_top() + Vector3(0.6, 0.3, 0), "连闪!" if _echo_live else "突进斩!", _dash_color().lightened(0.3), 1.1, "连闪" if _echo_live else "突进斩")
 	_wind_t = 0.0
 	_after_dash(seg)
 	_set_state("dash")
@@ -2341,7 +2342,7 @@ func _fire_beam() -> void:
 		_mirror_t = 4.0
 		Vfx.I.shock_ring(gp, Color(0.7, 1.0, 0.9), 0.4, 3.6, 0.45)
 		Feel.I.callout(head_top(), "明镜", Color(0.7, 1.0, 0.9), 0.8)
-	Feel.I.callout(head_top() + Vector3(0.6, 0.5, 0), "光束斩!", Color(0.85, 1.0, 1.0), 1.4)
+	Feel.I.callout_once(head_top() + Vector3(0.6, 0.5, 0), "光束斩!", Color(0.85, 1.0, 1.0), 1.4)
 
 
 ## 一道光束的判定：from → to 的线段，半宽 half_w
@@ -2453,7 +2454,7 @@ func _detonate() -> void:
 	if n >= 5:
 		ArpgAch.unlock("burst_5")
 	Game.sfx("execute", 0.0)
-	Feel.I.callout(head_top() + Vector3(0.6, 0.5, 0), "血爆 ×%d" % n, Color(1.0, 0.35, 0.35), 1.3)
+	Feel.I.callout_once(head_top() + Vector3(0.6, 0.5, 0), "血爆 ×%d" % n, Color(1.0, 0.35, 0.35), 1.3, "血爆")
 
 
 # ---------- 药葫芦 ----------

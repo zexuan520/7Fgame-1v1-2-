@@ -7,7 +7,7 @@ static var I: CamRig
 
 @export var pitch_deg := 50.0          # 俯角：40~55，越大越像俯视
 @export var yaw_deg := 0.0
-@export var distance := 14.5
+@export var distance := 11.0
 @export var fov := 38.0
 @export var follow_speed := 7.0
 @export var look_offset := Vector3(0, 0.9, 0.0)
@@ -34,6 +34,16 @@ var _roll_v := 0.0
 var _shot: Node3D                      # 特写：镜头暂时对准它（头目登场、变身、倒下）
 var _shot_left := 0.0                  # 特写剩余时间（真实秒，不受慢镜头影响）
 var _shot_zoom := 0.0
+## 自动远近（2026-11-10 审视 C1）：平时离主角 NEAR 米，身边敌人多或者头目在场时慢慢拉到 FAR 米。
+## 原来固定 14.5 米，主角在 720p 下只有约 85 像素高，一格体素不到一个像素，自制模型的细节全看不见。
+const BASE_DIST := 14.5                # 房间边界（bounds）是按这个距离留的边
+const NEAR := 11.0
+const FAR := 13.2
+const CROWD_R := 12.0                  # 主角多少米内的敌人算“身边”
+var auto_dist := true
+var _crowd := 0.0                      # 0 = 拉近，1 = 拉远（平滑过的）
+var _crowd_want := 0.0
+var _crowd_t := 0.0
 
 
 func _ready() -> void:
@@ -49,6 +59,12 @@ func _ready() -> void:
 func snap() -> void:
 	if is_instance_valid(target):
 		_focus = target.global_position
+	if auto_dist:
+		# 换房间：先按拉近算，敌人刷出来以后再按人数拉远
+		_crowd = 0.0
+		_crowd_want = 0.0
+		_crowd_t = 0.0
+		distance = NEAR
 	_place(0.0)
 
 
@@ -95,10 +111,15 @@ func _process(dt: float) -> void:
 	var shooting := _shot_left > 0.0 and is_instance_valid(_shot)
 	if shooting:
 		punch_zoom(_shot_zoom, 0.05)
+	if auto_dist:
+		_tick_auto_dist(dt)
 	if is_instance_valid(target) or shooting:
-		var goal := (_shot.global_position if shooting else target.global_position + lead_dir * lead)
-		goal.x = clampf(goal.x, bounds.position.x, bounds.end.x)
-		goal.z = clampf(goal.z, bounds.position.y, bounds.end.y)
+		var goal := (_shot.global_position if shooting else _target_pos() + lead_dir * lead)
+		# 镜头近了，看得见的范围小了，焦点可以更贴墙（不然主角走到墙边会跑到画面边上）
+		var g := maxf(BASE_DIST - distance, 0.0)
+		var b := bounds.grow_individual(g * 0.7, g * 0.15, g * 0.7, g * 0.3)
+		goal.x = clampf(goal.x, b.position.x, b.end.x)
+		goal.z = clampf(goal.z, b.position.y, b.end.y)
 		_focus = _focus.lerp(goal, 1.0 - exp(-(follow_speed * (0.6 if shooting else 1.0)) * dt / maxf(Engine.time_scale, 0.3)))
 	if _zoom_hold > 0.0:
 		_zoom_hold -= dt
@@ -114,6 +135,39 @@ func _process(dt: float) -> void:
 	_roll_v += (-_roll * 260.0 - _roll_v * 22.0) * sdt
 	_roll += _roll_v * sdt
 	_place(dt)
+
+
+## 跟随点：角色走物理插值（逻辑 60 帧、画面按屏幕刷新率），跟插值后的位置，高刷屏上镜头和人不互相抖
+func _target_pos() -> Vector3:
+	if target is Actor:
+		return (target as Actor).vis_pos()
+	return target.global_position
+
+
+## 数主角身边的敌人：少于 3 个拉近，9 个以上拉到最远；头目在场至少拉到七成。每 0.25 秒数一次，距离慢慢跟过去
+func _tick_auto_dist(dt: float) -> void:
+	_crowd_t -= dt
+	if _crowd_t <= 0.0:
+		_crowd_t = 0.25
+		var n := 0
+		var boss := false
+		var c := target.global_position if is_instance_valid(target) else _focus
+		for f: Node in get_tree().get_nodes_in_group("foes"):
+			var a := f as Actor
+			if a == null or not a.alive:
+				continue
+			if a is Foe and (a as Foe).is_boss:
+				boss = true
+			elif a.global_position.distance_squared_to(c) < CROWD_R * CROWD_R:
+				n += 1
+		_crowd_want = clampf((n - 3) / 6.0, 0.0, 1.0)
+		if boss:
+			_crowd_want = maxf(_crowd_want, 0.7)
+	# 拉远快一点（敌人涌上来要马上看得见），拉近慢一点（不忽远忽近）
+	var rate := 1.6 if _crowd_want > _crowd else 0.5
+	_crowd = move_toward(_crowd, _crowd_want, rate * dt / maxf(Engine.time_scale, 0.3))
+	var k := _crowd * _crowd * (3.0 - 2.0 * _crowd)
+	distance = lerpf(NEAR, FAR, k)
 
 
 func _place(_dt: float) -> void:

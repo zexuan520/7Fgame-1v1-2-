@@ -228,12 +228,21 @@ func setup_kind(k: String, hp_scale: float = 1.0, dmg_mult: float = 1.0) -> void
 	guard = float(data.get("guard", 0.0))
 
 
+## 头目外形放大倍数（只管看起来多大）
+const BOSS_VIS := {"boss": 1.35, "boss2": 1.3, "boss3": 1.2, "boss4": 1.22, "boss5": 1.2, "boss6": 1.25,
+	"boss7": 1.25, "boss8": 1.2, "boss9": 1.25, "boss10": 1.16}
+
+
 func _ready() -> void:
 	team = 1
 	super._ready()
 	if data.is_empty():
 		setup_kind(kind)
 	var k := float(data["k"])
+	# 头目只放大外形（人偶、碰撞、脚下圈），出招范围仍按 data["k"] 算，难度不变：
+	# 镜头拉近后头目也不过主角一倍半高，压不住场，这里统一放到主角两倍多
+	if is_boss:
+		k *= float(BOSS_VIS.get(kind, 1.2))
 	radius = 0.42 * k
 	var cs := CollisionShape3D.new()
 	var cap := CapsuleShape3D.new()
@@ -264,7 +273,7 @@ func _ready() -> void:
 		rig.set_mount(String(data["mount"]))   # 冲骑、幽骑：骑马
 	match kind:
 		"shadow":
-			rig.set_rim(Color(0.75, 0.5, 1.0), 1.0)   # 残影：一团墨色人影 + 紫色描边，和主角（青衫黄斗笠）一眼分开
+			rig.set_rim(Color(0.75, 0.5, 1.0), 1.0)   # 残影：一团墨色人影 + 紫色描边，和主角（白衣）一眼分开
 		"bomber":
 			rig.set_rim(Color(1.0, 0.55, 0.2), 0.9)
 		"summoner":
